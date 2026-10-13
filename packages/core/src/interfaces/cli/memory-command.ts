@@ -107,21 +107,14 @@ async function runNeighbors(args: string[]): Promise<void> {
   }
 }
 
-export async function runMemoryCommand(
-  action: string,
-  args: string[],
-): Promise<void> {
-  if (action === "reindex") return runReindex(args);
-  if (action === "search") return runSearch(args);
-  if (action === "read") return runRead(args);
-  if (action === "neighbors") return runNeighbors(args);
-  if (action === "facts") {
-    const profile = args[0];
-    if (!profile) {
-      console.error("Usage: ocean memory facts <profile> [key] [value]");
-      process.exitCode = 1;
-      return;
-    }
+async function runFacts(args: string[]): Promise<void> {
+  const profile = args[0];
+  if (!profile) {
+    console.error("Usage: ocean memory facts <profile> [key] [value]");
+    process.exitCode = 1;
+    return;
+  }
+  try {
     if (args[1] === "delete" && args[2])
       console.log(
         JSON.stringify(
@@ -139,8 +132,21 @@ export async function runMemoryCommand(
         ),
       );
     else console.log(JSON.stringify(await readProfileFacts(profile), null, 2));
-    return;
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
   }
+}
+
+export async function runMemoryCommand(
+  action: string,
+  args: string[],
+): Promise<void> {
+  if (action === "reindex") return runReindex(args);
+  if (action === "search") return runSearch(args);
+  if (action === "read") return runRead(args);
+  if (action === "neighbors") return runNeighbors(args);
+  if (action === "facts") return runFacts(args);
   if (action === "doctor") {
     const result = await doctorMemoryIndexes();
     if (!result.ok) {
