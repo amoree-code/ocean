@@ -699,3 +699,29 @@ test("credential shapes the first review found unrefused are refused; ordinary c
     assert.match(sent, /getToken/);
   });
 });
+
+test("secret detection stays fast on hostile 64 KB inputs", async () => {
+  const { containsKnownSecret, redactSecrets } = await import(
+    "../dist/domain/redaction/redaction.js"
+  );
+  const size = 64 * 1024;
+  const fill = (unit) =>
+    unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
+  for (const input of [
+    fill("a_token_"),
+    `${fill("token")}=`,
+    fill("A_"),
+    fill("PASS"),
+    fill("a://"),
+    `a_token="${"x".repeat(size)}`,
+    fill("x tokentoken"),
+    fill(["-----BEGIN", "PRIVATE", "KEY-----"].join(" ")),
+  ]) {
+    const started = Date.now();
+    containsKnownSecret(input);
+    redactSecrets(input);
+    assert.ok(Date.now() - started < 1_000, input.slice(0, 16));
+  }
+  // A key prefix inside a word is not a key.
+  assert.equal(containsKnownSecret("the task-observer-module runs"), false);
+});
