@@ -11,6 +11,11 @@ import {
 import { executionPolicy } from "../../domain/profiles/profile-policy.js";
 import type { HeadlessProvider } from "../../domain/providers/provider.js";
 import { redactRuntimeText } from "../../domain/redaction/redaction.js";
+import {
+  buildExecutionPlan,
+  type ExecutionPlan,
+  executionPlanIdentity,
+} from "../../domain/runs/execution-plan.js";
 import type { RunContract } from "../../domain/runs/run-contract.js";
 import { validateSessionEntryContract } from "../../domain/sessions/entry-contract.js";
 import type { Session } from "../../domain/sessions/session.js";
@@ -82,6 +87,11 @@ export async function runAgent(
   if (profile.governance?.approvalRequired && !request.runContract) {
     throw new Error("Profile requires an approved run contract");
   }
+  const plan = buildExecutionPlan(profile, {
+    cwd: request.cwd,
+    supportedTransports: runtimeTransports,
+    writeAllowed: false,
+  });
   const sessionStore = await deps.openStore();
   const sessionId = request.sessionId ?? randomUUID();
   const session = sessionStore.create({
@@ -136,15 +146,18 @@ export async function runAgent(
         }),
       ),
     );
+    appendExecutionPlan(sessionStore, sessionId, plan);
     const context = await buildContextReferences({
       profile,
       prompt: request.prompt,
       cwd: request.cwd,
     });
-    const factsDigest = buildProfileFactsDigest(
-      profile.name,
-      await readProfileFacts(profile.name),
-    );
+    const factsDigest = plan.memoryNamespace
+      ? buildProfileFactsDigest(
+          plan.memoryNamespace,
+          await readProfileFacts(plan.memoryNamespace),
+        )
+      : { text: "", partial: false };
     const skillIndex = await deps.loadSkillIndex(profile.skills, request.cwd);
     const autoSkills = await loadPromotedSkills(
       request.prompt,
@@ -219,7 +232,7 @@ export async function runAgent(
       clientHome,
       timeoutMs: request.runContract?.budget.timeoutMs,
       maxOutputBytes: request.runContract?.budget.maxOutputBytes,
-      readOnly: true,
+      readOnly: plan.readOnly,
       readDirectories: headlessReadDirectories({
         cwd: request.cwd,
         profileName: profile.name,
@@ -348,7 +361,13 @@ export async function resumeAgent(
         );
       authorizeRun(sessionStore, runContract);
     }
+    const plan = buildExecutionPlan(profile, {
+      cwd: existing.workingDirectory,
+      supportedTransports: runtimeTransports,
+      writeAllowed: false,
+    });
     sessionStore.updateStatus(sessionId, "running");
+    appendExecutionPlan(sessionStore, sessionId, plan);
     sessionStore.appendEvent(
       sessionId,
       "resume_requested",
@@ -372,10 +391,12 @@ export async function resumeAgent(
     }
     let factsPartial = false;
     try {
-      factsPartial = buildProfileFactsDigest(
-        profile.name,
-        await readProfileFacts(profile.name),
-      ).partial;
+      factsPartial = plan.memoryNamespace
+        ? buildProfileFactsDigest(
+            plan.memoryNamespace,
+            await readProfileFacts(plan.memoryNamespace),
+          ).partial
+        : false;
     } catch {
       factsPartial = false;
     }
@@ -398,7 +419,7 @@ export async function resumeAgent(
       clientHome: deps.resolveClientHome(profile),
       timeoutMs: runContract?.budget.timeoutMs,
       maxOutputBytes: runContract?.budget.maxOutputBytes,
-      readOnly: true,
+      readOnly: plan.readOnly,
       readDirectories,
       onSpawn: (pid) => sessionStore.setProviderPid(sessionId, pid),
       onEvent: (event) => {
@@ -442,6 +463,24 @@ export async function resumeAgent(
   } finally {
     sessionStore.close();
   }
+}
+
+// Only CLI clients execute today; API bindings fail closed until their transport lands.
+// Writes stay off (writeAllowed: false) until each provider's sandbox is enforced.
+const runtimeTransports = ["cli"] as const;
+
+// The plan is recorded with its identity before any context is assembled or process starts,
+// so a session always shows the exact client, model, memory namespace and sandbox it ran with.
+function appendExecutionPlan(
+  store: SessionStorePort,
+  sessionId: string,
+  plan: ExecutionPlan,
+): void {
+  store.appendEvent(
+    sessionId,
+    "execution_plan",
+    JSON.stringify({ identity: executionPlanIdentity(plan), plan }),
+  );
 }
 
 // Read access for everything the lean prompt points at outside cwd: skill folders, the
