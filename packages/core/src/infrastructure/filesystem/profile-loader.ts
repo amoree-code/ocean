@@ -12,13 +12,13 @@ function missingAsNull(error: unknown): null {
   throw error;
 }
 
+// The parser's message quotes the text around the error, which could be part of a secret
+// pasted into the file, so only the file is named.
 function parseProfile(source: string, file: string): unknown {
   try {
     return JSON.parse(source);
-  } catch (error) {
-    throw new Error(
-      `Invalid profile JSON in ${file}: ${(error as Error).message}`,
-    );
+  } catch {
+    throw new Error(`Invalid profile JSON in ${file}`);
   }
 }
 

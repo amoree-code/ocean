@@ -526,3 +526,18 @@ unixOnly("the fact directory is created with mode 0700", async () => {
     assert.equal(mode, 0o700);
   });
 });
+
+test("a malformed profile error never quotes the file's contents", async () => {
+  await withRoot(async (root) => {
+    const secret = ["sk", "ant", "abcdefghijklmnop12345"].join("-");
+    await writeFile(
+      path.join(root, SYSTEM_DIR, "profiles", "leaky.json"),
+      `{"name": "leaky", "token": ${secret}}`,
+    );
+    await assert.rejects(loadProfile("leaky"), (error) => {
+      assert.match(error.message, /Invalid profile JSON in .*leaky\.json$/);
+      assert.ok(!error.message.includes(secret.slice(0, 6)));
+      return true;
+    });
+  });
+});
