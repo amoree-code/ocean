@@ -186,7 +186,7 @@ export function oceanPath(...parts: string[]): string {
 // of the deepest existing ancestor of `candidate` and rejoins the (possibly not-yet-created)
 // remainder onto it, so a caller can bounds-check a write target that doesn't exist yet
 // without requiring the whole path to exist first.
-function realDeepestExisting(candidate: string): string {
+export function realDeepestExisting(candidate: string): string {
   let current = candidate;
   const pendingSuffix: string[] = [];
   for (;;) {

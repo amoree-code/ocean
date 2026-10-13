@@ -65,6 +65,16 @@ function deepFreeze<T>(value: T): T {
   return value;
 }
 
+// One definition, used by the plan and by the caller that decides whether writes are granted.
+export function usesToolLoop(profile: Profile): boolean {
+  const binding = profile.clients[profile.provider];
+  return (
+    isApiClient(profile.provider) &&
+    binding?.transport !== "cli" &&
+    binding?.toolLoop === true
+  );
+}
+
 // `profile` is the result of selectProfileClient: its provider is the selected client.
 export function buildExecutionPlan(
   profile: Profile,
@@ -100,8 +110,7 @@ export function buildExecutionPlan(
     ...(binding?.temperature === undefined
       ? {}
       : { temperature: binding.temperature }),
-    toolLoop:
-      transport === "openai-compatible-api" && binding?.toolLoop === true,
+    toolLoop: usesToolLoop(profile),
     memoryNamespace,
     cwd: options.cwd,
     readOnly: mode === "read-only",

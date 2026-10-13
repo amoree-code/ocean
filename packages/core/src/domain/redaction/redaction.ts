@@ -45,6 +45,13 @@ function redactHighEntropyTokens(value: string): string {
   );
 }
 
+// Whether the text holds a credential of a known shape (vendor prefixes, bearer tokens,
+// key=value secrets, JWTs, private keys, credentialed URLs). No entropy guess: used to refuse
+// sending a file, where a false positive on ordinary code would be costly.
+export function containsKnownSecret(value: string): boolean {
+  return secretPatterns.some((pattern) => value.match(pattern) !== null);
+}
+
 // Pattern replacement only, no length bound — for callers that need to persist a redacted
 // payload of arbitrary size (e.g. `ocean observe`'s captured command output).
 export function redactSecrets(value: string): string {

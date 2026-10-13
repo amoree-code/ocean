@@ -32,7 +32,6 @@ export type AgentToolPort = (
   plan: ExecutionPlan,
   name: ToolName,
   args: ToolArguments[ToolName],
-  signal: AbortSignal,
 ) => Promise<string>;
 
 export type ProfileLoader = (name: string) => Promise<Profile>;

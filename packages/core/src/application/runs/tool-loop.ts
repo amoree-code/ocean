@@ -13,6 +13,7 @@ import type {
 import { redactRuntimeText } from "../../domain/redaction/redaction.js";
 import {
   decideToolCall,
+  type ToolLimits,
   toolDefinitions,
 } from "../../domain/runs/agent-tools.js";
 import type { ExecutionPlan } from "../../domain/runs/execution-plan.js";
@@ -32,6 +33,8 @@ export type ToolLoopRequest = {
   prompt: string;
   chat: ChatPort;
   executeTool: AgentToolPort;
+  // The approved run contract's allowedTools/deniedTools, which can only narrow the plan.
+  toolLimits?: ToolLimits;
   timeoutMs?: number;
   maxOutputBytes?: number;
   maxAttempts?: number;
@@ -67,7 +70,7 @@ export async function runToolLoop(
   if (request.signal?.aborted) cancel();
   request.signal?.addEventListener("abort", cancel, { once: true });
   const outputBudget = request.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
-  const tools = toolDefinitions(plan);
+  const tools = toolDefinitions(plan, request.toolLimits);
   const messages: ChatMessage[] = [{ role: "user", content: request.prompt }];
   const seen = new Map<string, number>();
   let toolCalls = 0;
@@ -86,11 +89,16 @@ export async function runToolLoop(
           : { temperature: plan.temperature }),
         messages,
         tools,
+        maxOutputBytes: outputBudget,
         maxAttempts: request.maxAttempts,
         signal: controller.signal,
         onEvent: request.onEvent,
       });
       messages.push(reply.message);
+      // The model's own replies count against the run's output budget, like tool output.
+      outputBytes += Buffer.byteLength(JSON.stringify(reply.message));
+      if (outputBytes > outputBudget)
+        throw new LoopStop("Output budget exceeded.", 125);
       const calls = reply.message.tool_calls ?? [];
       if (!calls.length) {
         emit({
@@ -121,11 +129,15 @@ export async function runToolLoop(
             `Repeated tool call stopped the run: ${call.function.name} x${repeats}.`,
             1,
           );
-        const decision = decideToolCall(plan, {
-          id: call.id,
-          name: call.function.name,
-          arguments: call.function.arguments,
-        });
+        const decision = decideToolCall(
+          plan,
+          {
+            id: call.id,
+            name: call.function.name,
+            arguments: call.function.arguments,
+          },
+          request.toolLimits,
+        );
         let content: string;
         if (!decision.ok) {
           emit({
@@ -136,22 +148,27 @@ export async function runToolLoop(
           });
           content = `denied: ${decision.reason}`;
         } else {
+          // Only the path and size of a write are recorded: its content is the file's.
+          const { content: written, ...rest } = decision.args as {
+            content?: string;
+          };
           emit({
             type: "tool_call",
             id: call.id,
             name: decision.name,
-            arguments: redactRuntimeText(call.function.arguments).slice(
-              0,
-              2_000,
-            ),
+            arguments: redactRuntimeText(JSON.stringify(rest)).slice(0, 2_000),
+            ...(written === undefined
+              ? {}
+              : { bytes: Buffer.byteLength(written) }),
           });
           try {
             content = await request.executeTool(
               plan,
               decision.name,
               decision.args,
-              controller.signal,
             );
+            // A write changes what a repeated read or listing would return.
+            if (decision.name === "write_file") seen.clear();
             emit({
               type: "tool_result",
               id: call.id,

@@ -186,55 +186,197 @@ unixOnly(
   },
 );
 
+test("there is no command tool, even for a writable profile that lists commands", async () => {
+  await withWorkspace(async ({ cwd }) => {
+    const { chat, requests } = scripted([
+      [call("run_command", { command: "node", args: ["-e", "1"] }, "r")],
+      "done",
+    ]);
+    const result = await loop(planFor(writable(["node"]), cwd, true), chat);
+    assert.equal(result.exitCode, 0);
+    assert.ok(
+      !requests[0].tools.some((tool) => tool.function.name === "run_command"),
+    );
+    assert.equal(
+      eventsOf(result, "tool_denied")[0].data.reason,
+      "unknown tool: run_command",
+    );
+  });
+});
+
 unixOnly(
-  "commands: only allowlisted bare names, no shell, no credentials in their env",
+  "a symlink inside an allowed path cannot reach .env or .git, read or write",
   async () => {
     await withWorkspace(async ({ cwd }) => {
-      const previous = process.env.DEEPSEEK_API_KEY;
-      process.env.DEEPSEEK_API_KEY = "credential-value-in-env";
-      try {
-        const { chat, requests } = scripted([
-          [
-            call("run_command", { command: "sh", args: ["-c", "id"] }, "sh"),
-            call("run_command", { command: "/usr/bin/env", args: [] }, "abs"),
-            call(
-              "run_command",
-              {
-                command: "node",
-                args: [
-                  "-e",
-                  "console.log(process.env.DEEPSEEK_API_KEY ?? 'no-key', process.argv[1])",
-                  "$(id); rm -rf /",
-                ],
-              },
-              "node",
-            ),
-          ],
-          "done",
-        ]);
-        const result = await loop(planFor(writable(["node"]), cwd, true), chat);
-        assert.equal(result.exitCode, 0, result.stderr);
-        const denied = eventsOf(result, "tool_denied").map(
-          (event) => event.data.reason,
-        );
-        assert.deepEqual(denied, [
-          "command not allowed: sh",
-          "command must be a bare name, not a path",
-        ]);
-        const output = toolMessages(requests).find(
-          (message) => message.tool_call_id === "node",
-        ).content;
-        assert.match(output, /^exit 0\nno-key \$\(id\); rm -rf \//);
-        assert.ok(
-          !JSON.stringify(requests).includes("credential-value-in-env"),
-        );
-      } finally {
-        if (previous === undefined) delete process.env.DEEPSEEK_API_KEY;
-        else process.env.DEEPSEEK_API_KEY = previous;
-      }
+      await mkdir(path.join(cwd, ".git", "hooks"), { recursive: true });
+      const plan = profileJson({
+        governance: {
+          allowedPaths: ["."],
+          allowedCommands: [],
+          writePolicy: "workspace",
+          sandbox: { mode: "workspace-write", network: "provider-only" },
+        },
+      });
+      await symlink(path.join(cwd, "src", ".env"), path.join(cwd, "notes.txt"));
+      await symlink(path.join(cwd, ".git"), path.join(cwd, "gitdir"));
+      const { chat, requests } = scripted([
+        [
+          call("read_file", { path: "notes.txt" }, "a"),
+          call("read_file", { path: "gitdir/config" }, "b"),
+          call(
+            "write_file",
+            { path: "gitdir/hooks/pre-commit", content: "#!/bin/sh" },
+            "c",
+          ),
+          call("write_file", { path: "notes.txt", content: "x" }, "d"),
+          call("read_file", { path: ".Git/config" }, "e"),
+          call(
+            "write_file",
+            { path: ".GIT/hooks/post-merge", content: "#!/bin/sh" },
+            "f",
+          ),
+          call("read_file", { path: "src/.ENV" }, "g"),
+        ],
+        "done",
+      ]);
+      const result = await loop(planFor(plan, cwd, true), chat);
+      assert.equal(result.exitCode, 0, result.stderr);
+      assert.equal(eventsOf(result, "tool_denied").length, 7);
+      assert.ok(
+        !JSON.stringify(requests.at(-1).messages).includes(SECRET_CONTENT),
+      );
+      await assert.rejects(
+        readFile(path.join(cwd, ".git", "hooks", "pre-commit")),
+        {
+          code: "ENOENT",
+        },
+      );
+      await assert.rejects(
+        readFile(path.join(cwd, ".git", "hooks", "post-merge")),
+        {
+          code: "ENOENT",
+        },
+      );
+      assert.equal(
+        await readFile(path.join(cwd, "src", ".env"), "utf8"),
+        SECRET_CONTENT,
+      );
     });
   },
 );
+
+test("a file holding a known credential shape is refused, not sent or redacted", async () => {
+  await withWorkspace(async ({ cwd }) => {
+    const key = ["sk", "ant", "abcdefghijklmnop12345"].join("-");
+    await writeFile(path.join(cwd, "src", "config.json"), `{"key": "${key}"}`);
+    const { chat, requests } = scripted([
+      [call("read_file", { path: "src/config.json" }, "k")],
+      "done",
+    ]);
+    const result = await loop(planFor(profileJson(), cwd), chat);
+    assert.equal(
+      eventsOf(result, "tool_denied")[0].data.reason,
+      "file appears to contain a credential",
+    );
+    assert.ok(!JSON.stringify(requests).includes(key));
+  });
+});
+
+test("absolute paths and directories are not read", async () => {
+  await withWorkspace(async ({ cwd }) => {
+    const { chat } = scripted([
+      [
+        call("read_file", { path: path.join(cwd, "src", "a.txt") }, "abs"),
+        call("read_file", { path: "src/nested" }, "dir"),
+      ],
+      "done",
+    ]);
+    const result = await loop(planFor(profileJson(), cwd), chat);
+    assert.deepEqual(
+      eventsOf(result, "tool_denied").map((event) => event.data.reason),
+      ["path must be relative to the working directory", "not a file"],
+    );
+  });
+});
+
+test("the run contract narrows the offered tools", async () => {
+  await withWorkspace(async ({ cwd }) => {
+    const { chat, requests } = scripted([
+      [call("write_file", { path: "src/x.txt", content: "x" }, "w")],
+      "done",
+    ]);
+    const result = await loop(planFor(writable(), cwd, true), chat, {
+      toolLimits: { allowed: [], denied: ["write_file"] },
+    });
+    assert.deepEqual(
+      requests[0].tools.map((tool) => tool.function.name),
+      ["read_file", "list_directory"],
+    );
+    assert.equal(
+      eventsOf(result, "tool_denied")[0].data.reason,
+      "tool not allowed in this run: write_file",
+    );
+    const only = scripted(["done"]);
+    await loop(planFor(writable(), cwd, true), only.chat, {
+      toolLimits: { allowed: ["read_file"], denied: [] },
+    });
+    assert.deepEqual(
+      only.requests[0].tools.map((tool) => tool.function.name),
+      ["read_file"],
+    );
+  });
+});
+
+test("a write resets repeat detection, and its content is not stored in events", async () => {
+  await withWorkspace(async ({ cwd }) => {
+    const read = () => call("read_file", { path: "src/a.txt" }, "r");
+    const write = (n) =>
+      call(
+        "write_file",
+        { path: "src/a.txt", content: `version-${n}-body` },
+        `w${n}`,
+      );
+    const { chat } = scripted([
+      [read()],
+      [write(1)],
+      [read()],
+      [write(2)],
+      [read()],
+      "done",
+    ]);
+    const result = await loop(planFor(writable(), cwd, true), chat);
+    assert.equal(result.exitCode, 0, result.stderr);
+    assert.ok(!JSON.stringify(result.events).includes("-body"));
+    const writes = eventsOf(result, "tool_call").filter(
+      (event) => event.data.name === "write_file",
+    );
+    assert.equal(writes[0].data.bytes, Buffer.byteLength("version-1-body"));
+  });
+});
+
+test("the model's replies count against the output budget", async () => {
+  await withWorkspace(async ({ cwd }) => {
+    const result = await loop(
+      planFor(profileJson(), cwd),
+      scripted(["x".repeat(500)]).chat,
+      { maxOutputBytes: 100 },
+    );
+    assert.equal(result.exitCode, 125);
+  });
+});
+
+test("a run cancelled before it starts never calls the model", async () => {
+  await withWorkspace(async ({ cwd }) => {
+    const controller = new AbortController();
+    controller.abort();
+    const { chat, requests } = scripted(["never"]);
+    const result = await loop(planFor(profileJson(), cwd), chat, {
+      signal: controller.signal,
+    });
+    assert.equal(result.exitCode, 130);
+    assert.equal(requests.length, 0);
+  });
+});
 
 test("a prompt-injected tool request outside the plan is denied, not executed", async () => {
   await withWorkspace(async ({ cwd }) => {
@@ -258,7 +400,7 @@ test("a prompt-injected tool request outside the plan is denied, not executed", 
     assert.equal(reasons[1], "unknown tool: exec_shell");
     assert.equal(reasons[2], "arguments are not valid JSON");
     assert.match(reasons[3], /^invalid arguments/);
-    assert.equal(reasons[4], "tool not allowed in this run: run_command");
+    assert.equal(reasons[4], "unknown tool: run_command");
     assert.equal(eventsOf(result, "tool_call").length, 0);
     await assert.rejects(readFile(path.join(cwd, "src", "pwned.txt")), {
       code: "ENOENT",

@@ -1,4 +1,3 @@
-import path from "node:path";
 import { z } from "zod";
 import type { ExecutionPlan } from "./execution-plan.js";
 
@@ -8,7 +7,6 @@ import type { ExecutionPlan } from "./execution-plan.js";
 
 const MAX_PATH = 1_024;
 export const MAX_WRITE_BYTES = 256 * 1024;
-const MAX_ARGS = 64;
 
 const relativePath = z
   .string()
@@ -28,20 +26,6 @@ const toolArgumentSchemas = {
           (value) => Buffer.byteLength(value) <= MAX_WRITE_BYTES,
           `content exceeds ${MAX_WRITE_BYTES} bytes`,
         ),
-    })
-    .strict(),
-  run_command: z
-    .object({
-      command: z.string().min(1).max(128),
-      args: z
-        .array(
-          z
-            .string()
-            .max(4_096)
-            .refine((value) => !value.includes("\0"), "argument contains NUL"),
-        )
-        .max(MAX_ARGS)
-        .default([]),
     })
     .strict(),
 } as const;
@@ -84,34 +68,35 @@ const toolSpecs: Record<ToolName, { description: string; parameters: object }> =
         additionalProperties: false,
       },
     },
-    run_command: {
-      description:
-        "Run one allowed command with arguments, without a shell, in the working directory.",
-      parameters: {
-        type: "object",
-        properties: {
-          command: { type: "string" },
-          args: { type: "array", items: { type: "string" } },
-        },
-        required: ["command"],
-        additionalProperties: false,
-      },
-    },
   };
 
-// Read tools always; write only in a workspace-write sandbox; commands only there and only
-// when the profile allows at least one command.
-export function offeredTools(plan: ExecutionPlan): ToolName[] {
+// What a run contract may narrow the offered tools to. An empty allow list allows all.
+export type ToolLimits = {
+  allowed: readonly string[];
+  denied: readonly string[];
+};
+
+// Read tools always; write only in a workspace-write sandbox; then narrowed by the run
+// contract. There is no command tool: Ocean cannot confine what a command reads, writes or
+// reaches, and the sandbox contract fails closed on a boundary it cannot prove.
+export function offeredTools(
+  plan: ExecutionPlan,
+  limits?: ToolLimits,
+): ToolName[] {
   const tools: ToolName[] = ["read_file", "list_directory"];
-  if (plan.sandbox.mode === "workspace-write") {
-    tools.push("write_file");
-    if (plan.sandbox.allowedCommands.length) tools.push("run_command");
-  }
-  return tools;
+  if (plan.sandbox.mode === "workspace-write") tools.push("write_file");
+  return tools.filter(
+    (tool) =>
+      !limits?.denied.includes(tool) &&
+      (!limits?.allowed.length || limits.allowed.includes(tool)),
+  );
 }
 
-export function toolDefinitions(plan: ExecutionPlan): object[] {
-  return offeredTools(plan).map((name) => ({
+export function toolDefinitions(
+  plan: ExecutionPlan,
+  limits?: ToolLimits,
+): object[] {
+  return offeredTools(plan, limits).map((name) => ({
     type: "function",
     function: { name, ...toolSpecs[name] },
   }));
@@ -123,16 +108,17 @@ export type ToolDecision =
   | { ok: true; name: ToolName; args: ToolArguments[ToolName] }
   | { ok: false; reason: string };
 
-// A call the model asked for is untrusted input: anything not offered, malformed, or outside
-// the plan's command allowlist is denied before execution.
+// A call the model asked for is untrusted input: anything not offered to this run or
+// malformed is denied before execution.
 export function decideToolCall(
   plan: ExecutionPlan,
   call: ToolCall,
+  limits?: ToolLimits,
 ): ToolDecision {
   if (!(call.name in toolArgumentSchemas))
     return { ok: false, reason: `unknown tool: ${call.name}` };
   const name = call.name as ToolName;
-  if (!offeredTools(plan).includes(name))
+  if (!offeredTools(plan, limits).includes(name))
     return { ok: false, reason: `tool not allowed in this run: ${name}` };
   let input: unknown;
   try {
@@ -146,17 +132,5 @@ export function decideToolCall(
       ok: false,
       reason: `invalid arguments: ${parsed.error.issues.map((issue) => `${issue.path.join(".") || "(root)"} ${issue.message}`).join("; ")}`,
     };
-  if (name === "run_command") {
-    const { command } = parsed.data as ToolArguments["run_command"];
-    // A bare name only: a path could point at any binary the allowlist did not mean.
-    if (command.includes("/") || command.includes("\\"))
-      return { ok: false, reason: "command must be a bare name, not a path" };
-    if (
-      !plan.sandbox.allowedCommands.some(
-        (allowed) => path.basename(allowed) === command,
-      )
-    )
-      return { ok: false, reason: `command not allowed: ${command}` };
-  }
   return { ok: true, name, args: parsed.data };
 }

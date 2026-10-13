@@ -19,6 +19,7 @@ import {
   buildExecutionPlan,
   type ExecutionPlan,
   executionPlanIdentity,
+  usesToolLoop,
 } from "../../domain/runs/execution-plan.js";
 import type { RunContract } from "../../domain/runs/run-contract.js";
 import { validateSessionEntryContract } from "../../domain/sessions/entry-contract.js";
@@ -96,7 +97,7 @@ export async function runAgent(
   }
   // Ocean executes a tool loop's tools itself, so it can enforce writes there; a writable
   // tool-loop run still needs an approved run contract. CLI clients stay read-only.
-  const toolLoop = profile.clients[profile.provider]?.toolLoop === true;
+  const toolLoop = usesToolLoop(profile);
   const plan = buildExecutionPlan(profile, {
     cwd: request.cwd,
     ...runtimeCapabilities,
@@ -251,6 +252,10 @@ export async function runAgent(
           prompt,
           chat: deps.chat,
           executeTool: deps.executeAgentTool,
+          toolLimits: request.runContract && {
+            allowed: request.runContract.allowedTools,
+            denied: request.runContract.deniedTools,
+          },
           timeoutMs: request.runContract?.budget.timeoutMs,
           maxOutputBytes: request.runContract?.budget.maxOutputBytes,
           maxAttempts: request.runContract?.budget.maxAttempts,
@@ -506,7 +511,7 @@ export async function resumeAgent(
 }
 
 // What this runtime can enforce today. CLI clients and completion APIs both execute. Writes
-// stay off until a writable sandbox is proven per provider. Every client reaches its own
+// stay off except in a tool loop, where Ocean executes (and bounds) every write itself. Every client reaches its own
 // provider (a completion client reaches only its fixed endpoint), so a "deny" or
 // "allowlist" network policy fails closed.
 const runtimeCapabilities = {

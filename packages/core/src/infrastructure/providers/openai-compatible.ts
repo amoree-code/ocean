@@ -41,7 +41,7 @@ type CompletionDeps = {
   sleep: (ms: number, signal: AbortSignal) => Promise<void>;
 };
 
-export class CompletionFailure extends Error {
+class CompletionFailure extends Error {
   constructor(
     message: string,
     readonly exitCode: number,
