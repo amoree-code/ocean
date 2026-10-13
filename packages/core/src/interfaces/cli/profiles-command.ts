@@ -35,6 +35,11 @@ export async function runProfilesCommand(args: string[]): Promise<void> {
       print({
         applied: result.applied,
         blocked: result.blocked.map(({ next: _next, ...entry }) => entry),
+        ...(result.applied.length
+          ? {
+              note: "Upgraded profiles have a new identity: sessions created before the upgrade cannot be resumed. `ocean profiles upgrade --rollback` restores the v1 files.",
+            }
+          : {}),
       });
       if (result.blocked.length) process.exitCode = 1;
       return;

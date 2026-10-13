@@ -379,3 +379,108 @@ test("ocean profiles validate reports every broken profile by name and exits 1",
     },
   );
 });
+
+test("a runtime.json that is valid JSON but not a valid config is an error", async () => {
+  await withRoot({}, async ({ root }) => {
+    await mkdir(path.join(root, SYSTEM_DIR, "config"), { recursive: true });
+    await writeFile(
+      path.join(root, SYSTEM_DIR, "config", "runtime.json"),
+      JSON.stringify({ schemaVersion: 1, defaultProfile: "../x" }),
+    );
+    await assert.rejects(loadRuntimeConfig(), /Invalid profile name/);
+  });
+});
+
+test("an explicit --profile does not read runtime.json; a --profile with no name is a usage error", async () => {
+  await withRoot({ "reviewer.json": v1Reviewer }, async ({ root }) => {
+    await mkdir(path.join(root, SYSTEM_DIR, "config"), { recursive: true });
+    await writeFile(
+      path.join(root, SYSTEM_DIR, "config", "runtime.json"),
+      "{ broken",
+    );
+    const explicit = runCli(root, [
+      "run",
+      "--profile",
+      "nobody",
+      "--prompt",
+      "hi",
+    ]);
+    assert.match(explicit.stderr, /Profile not found: nobody/);
+    assert.doesNotMatch(explicit.stderr, /runtime config/);
+    for (const args of [
+      ["run", "--prompt", "hi", "--profile"],
+      ["run", "--profile", "--prompt", "hi"],
+    ]) {
+      const result = runCli(root, args);
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /Usage: ocean run --profile <name>/);
+    }
+  });
+});
+
+test("a malformed profile never leaks its contents through check or validate", async () => {
+  const secret = ["sk", "ant", "abcdefghijklmnop12345"].join("-");
+  await withRoot(
+    { "leaky.json": `{"name": "leaky", "token": ${secret}}` },
+    async ({ root }) => {
+      for (const args of [
+        ["profiles", "upgrade", "--check"],
+        ["profiles", "validate"],
+      ]) {
+        const result = runCli(root, args);
+        assert.equal(result.status, 1);
+        assert.ok(
+          !`${result.stdout}${result.stderr}`.includes(secret.slice(0, 6)),
+          args.join(" "),
+        );
+      }
+    },
+  );
+});
+
+test("no profile is replaced until every v1 copy is written", async () => {
+  await withRoot(
+    { "default.json": v1Default, "reviewer.json": v1Reviewer },
+    async ({ dir }) => {
+      const before = await snapshot(dir);
+      // Block the second backup: a directory where its file would go.
+      const sha = sha256(before["reviewer.json"]).slice(0, 12);
+      await mkdir(path.join(dir, ".upgrade", `reviewer.${sha}.v1.json`), {
+        recursive: true,
+      });
+      await assert.rejects(applyProfileUpgrade());
+      assert.deepEqual(await snapshot(dir), before);
+    },
+  );
+});
+
+test("rollback covers every apply batch, not only the last one", async () => {
+  await withRoot({ "default.json": v1Default }, async ({ dir }) => {
+    const first = await snapshot(dir);
+    await applyProfileUpgrade();
+    await writeFile(
+      path.join(dir, "reviewer.json"),
+      `${JSON.stringify(v1Reviewer, null, 2)}\n`,
+    );
+    const second = await readFile(path.join(dir, "reviewer.json"), "utf8");
+    assert.deepEqual((await applyProfileUpgrade()).applied, ["reviewer"]);
+    const result = await rollbackProfileUpgrade();
+    assert.deepEqual(result.restored.sort(), ["default", "reviewer"]);
+    assert.equal(
+      await readFile(path.join(dir, "default.json"), "utf8"),
+      first["default.json"],
+    );
+    assert.equal(
+      await readFile(path.join(dir, "reviewer.json"), "utf8"),
+      second,
+    );
+  });
+});
+
+test("apply warns that pre-upgrade sessions cannot be resumed", async () => {
+  await withRoot({ "reviewer.json": v1Reviewer }, async ({ root }) => {
+    const result = runCli(root, ["profiles", "upgrade", "--apply"]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(JSON.parse(result.stdout).note, /cannot be resumed/);
+  });
+});

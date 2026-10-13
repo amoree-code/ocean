@@ -396,3 +396,57 @@ test("a model that could be read as a CLI flag is rejected", () => {
     "a-b",
   );
 });
+
+test("an echoed credential is stripped even when it matches no secret pattern", async () => {
+  const plain = "plainplainplainplain";
+  await withServer(
+    [json(400, `you sent the key ${plain} which is wrong`)],
+    async ({ url }) => {
+      const result = await executor(url, {
+        env: { DEEPSEEK_API_KEY: plain },
+      }).run(request());
+      assert.equal(result.exitCode, 1);
+      assert.match(result.stderr, /HTTP 400/);
+      assert.ok(!result.stderr.includes(plain));
+    },
+  );
+});
+
+test("fetch is resolved when a request is made, not when the executor is created", async () => {
+  const run = createCompletionExecutor({
+    env: { DEEPSEEK_API_KEY: SECRET },
+  });
+  const original = globalThis.fetch;
+  let called = 0;
+  globalThis.fetch = async () => {
+    called += 1;
+    return new Response(
+      JSON.stringify({ choices: [{ message: { content: "ok" } }] }),
+      { status: 200 },
+    );
+  };
+  try {
+    const result = await run(request());
+    assert.equal(result.exitCode, 0);
+    assert.equal(called, 1);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("a completion client cannot leave its model to a provider default", () => {
+  assert.throws(
+    () =>
+      validateProfile({
+        schemaVersion: 2,
+        name: "api",
+        role: "r",
+        defaultClient: "deepseek",
+        clients: { deepseek: { enabled: true, model: "provider-managed" } },
+        governance: {
+          sandbox: { mode: "read-only", network: "provider-only" },
+        },
+      }),
+    /Client deepseek requires a model/,
+  );
+});

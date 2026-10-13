@@ -46,6 +46,17 @@ function manifestFile(): string {
   return path.join(upgradeDir(), "manifest.json");
 }
 
+async function readManifest(): Promise<UpgradeManifest | null> {
+  try {
+    return JSON.parse(
+      await readFile(manifestFile(), "utf8"),
+    ) as UpgradeManifest;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+}
+
 async function isDirectory(target: string): Promise<boolean> {
   return (await stat(target).catch(() => null))?.isDirectory() ?? false;
 }
@@ -72,12 +83,13 @@ export async function planProfileUpgrade(): Promise<UpgradeEntry[]> {
       let raw: unknown;
       try {
         raw = JSON.parse(source);
-      } catch (error) {
+      } catch {
+        // The parser's message quotes the file around the error; it is not repeated.
         entries.push({
           name,
           file: full,
           status: "rejected",
-          issues: [`invalid JSON: ${(error as Error).message}`],
+          issues: ["invalid JSON"],
         });
         continue;
       }
@@ -137,9 +149,14 @@ export async function applyProfileUpgrade(): Promise<{
     const pending = plan.filter((entry) => entry.status === "upgrade");
     if (!pending.length) return { applied: [], blocked: [] };
     await mkdir(upgradeDir(), { recursive: true, mode: 0o700 });
+    // One manifest across every apply: a later batch adds to it, so rollback still covers
+    // profiles upgraded earlier. A profile upgraded again (after a rollback) replaces its entry.
+    const previous = await readManifest();
     const manifest: UpgradeManifest = {
       appliedAt: new Date().toISOString(),
-      entries: [],
+      entries: (previous?.entries ?? []).filter(
+        (entry) => !pending.some((item) => item.name === entry.name),
+      ),
     };
     // Every v1 copy is written and verified before any profile is replaced.
     for (const entry of pending) {
@@ -182,14 +199,8 @@ export async function rollbackProfileUpgrade(): Promise<{
   skipped: { name: string; reason: string }[];
 }> {
   return withFileLock(manifestFile(), async () => {
-    let manifest: UpgradeManifest;
-    try {
-      manifest = JSON.parse(await readFile(manifestFile(), "utf8"));
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT")
-        throw new Error("No profile upgrade to roll back");
-      throw error;
-    }
+    const manifest = await readManifest();
+    if (!manifest) throw new Error("No profile upgrade to roll back");
     const restored: string[] = [];
     const skipped: { name: string; reason: string }[] = [];
     for (const entry of manifest.entries) {

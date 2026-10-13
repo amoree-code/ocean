@@ -22,10 +22,9 @@ export async function loadRuntimeConfig(): Promise<RuntimeConfig | null> {
   let input: unknown;
   try {
     input = JSON.parse(source);
-  } catch (error) {
-    throw new Error(
-      `Invalid runtime config JSON in ${file}: ${(error as Error).message}`,
-    );
+  } catch {
+    // The parser's message quotes the file around the error; it is not repeated.
+    throw new Error(`Invalid runtime config JSON in ${file}`);
   }
   return validateRuntimeConfig(input);
 }

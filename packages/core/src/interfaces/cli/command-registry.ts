@@ -1011,9 +1011,20 @@ async function commandRun(): Promise<void> {
   const handoffIndex = process.argv.indexOf("--handoff");
   // --profile, then runtime.json's defaultProfile, then the historical "default" while no
   // runtime.json exists. A named profile that does not exist fails; nothing falls back.
+  const explicitProfile =
+    profileIndex >= 0 ? process.argv[profileIndex + 1] : undefined;
+  if (
+    profileIndex >= 0 &&
+    (!explicitProfile || explicitProfile.startsWith("--"))
+  ) {
+    console.error("Usage: ocean run --profile <name> ... --prompt <text>");
+    process.exitCode = 1;
+    return;
+  }
+  // runtime.json is read only when it is needed, so a broken one cannot block an explicit run.
   const profileName = resolveProfileName(
-    profileIndex >= 0 ? process.argv[profileIndex + 1] : undefined,
-    await loadRuntimeConfig(),
+    explicitProfile,
+    explicitProfile ? null : await loadRuntimeConfig(),
   );
   const client = clientIndex >= 0 ? process.argv[clientIndex + 1] : undefined;
   const taskId = taskIndex >= 0 ? process.argv[taskIndex + 1] : undefined;
