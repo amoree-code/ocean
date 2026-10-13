@@ -6,6 +6,7 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { writeProfileFact } from "../dist/application/memory/profile-facts.js";
 import { runAgent } from "../dist/application/runs/run-agent.js";
 import { createAgentRuntime } from "../dist/composition/runtime.js";
 import { validateProfile } from "../dist/domain/profiles/profile-validator.js";
@@ -298,20 +299,24 @@ test("ocean run with a completion profile goes through the HTTP transport end to
         schemaVersion: 2,
         name: "deepseek-coder",
         role: "developer",
+        contextSources: ["README.md"],
         defaultClient: "deepseek",
         clients: {
           deepseek: { enabled: true, model: "deepseek-chat", temperature: 0 },
         },
         governance: {
           allowedCommands: ["pnpm"],
+          allowedPaths: ["."],
           sandbox: { mode: "read-only", network: "provider-only" },
         },
         memory: { enabled: true, scope: "profile" },
       }),
     );
+    await writeFile(path.join(root, "README.md"), "local readme");
     const previous = process.env.OCEAN_ROOT;
     process.env.OCEAN_ROOT = root;
     try {
+      await writeProfileFact("deepseek-coder", "private-note", "stays local");
       let spawned = false;
       const session = await runAgent(
         { profileName: "deepseek-coder", prompt: "explain", cwd: root },
@@ -329,7 +334,12 @@ test("ocean run with a completion profile goes through the HTTP transport end to
       assert.equal(hits.length, 1);
       assert.equal(hits[0].body.model, "deepseek-chat");
       assert.equal(hits[0].body.temperature, 0);
-      assert.match(hits[0].body.messages[0].content, /explain/);
+      const sent = hits[0].body.messages[0].content;
+      assert.match(sent, /explain/);
+      // Nothing local leaves the machine: no facts, no skill or context file pointers.
+      assert.doesNotMatch(sent, /private-note|Durable profile facts/);
+      assert.doesNotMatch(sent, /SKILL\.md|Context references/);
+      assert.ok(!sent.includes(root));
       const store = new SessionStore(
         path.join(root, SYSTEM_DIR, "sessions", "sessions.sqlite"),
       );
@@ -354,4 +364,35 @@ test("ocean run with a completion profile goes through the HTTP transport end to
       await rm(root, { recursive: true, force: true });
     }
   });
+});
+
+test("an upstream error body never carries the credential into stderr", async () => {
+  await withServer(
+    [json(400, `bad request; you sent Authorization: Bearer ${SECRET}`)],
+    async ({ url }) => {
+      const result = await executor(url).run(request());
+      assert.equal(result.exitCode, 1);
+      assert.match(result.stderr, /HTTP 400/);
+      assert.ok(!result.stderr.includes(SECRET));
+    },
+  );
+});
+
+test("a model that could be read as a CLI flag is rejected", () => {
+  for (const model of ["-x", "--dangerously-skip-permissions"])
+    assert.throws(
+      () =>
+        validateProfile({
+          name: "p",
+          role: "r",
+          provider: "claude",
+          model,
+        }),
+      /cannot start with -/,
+    );
+  assert.equal(
+    validateProfile({ name: "p", role: "r", provider: "claude", model: "a-b" })
+      .model,
+    "a-b",
+  );
 });

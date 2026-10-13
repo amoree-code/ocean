@@ -6,6 +6,7 @@ import type {
   CompletionProvider,
   CompletionRequest,
 } from "../../domain/providers/provider.js";
+import { redactRuntimeText } from "../../domain/redaction/redaction.js";
 import { DEFAULT_MAX_OUTPUT_BYTES } from "../process/cli-process.js";
 
 // OpenAI-compatible chat completions over built-in fetch (T-245 Phase 4). Endpoints and
@@ -197,9 +198,13 @@ async function complete(
     // Only 429 and 5xx are transient. Authentication, validation and policy failures are
     // never retried.
     const transient = response.status === 429 || response.status >= 500;
-    const detail = (await readBounded(response, 4_096).catch(() => "")).slice(
-      0,
-      500,
+    // An upstream error body is untrusted: it could echo the request back, so the credential
+    // is removed before it reaches stderr or the session.
+    const detail = redactRuntimeText(
+      (await readBounded(response, 4_096).catch(() => ""))
+        .split(credential)
+        .join("[REDACTED]")
+        .slice(0, 500),
     );
     if (!transient || attempt >= attempts) {
       await response.body?.cancel().catch(() => undefined);
@@ -221,7 +226,8 @@ export function createCompletionExecutor(
   overrides: Partial<CompletionDeps> = {},
 ): (request: CompletionRequest) => Promise<HeadlessResult> {
   const deps: CompletionDeps = {
-    fetch: globalThis.fetch,
+    // Resolved per call, so a fetch installed after import is the one used.
+    fetch: (...args) => globalThis.fetch(...args),
     endpoints: completionEndpoints,
     env: process.env,
     sleep: abortableSleep,

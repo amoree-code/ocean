@@ -201,6 +201,10 @@ export async function runAgent(
       typeof handoff?.compactContext === "string"
         ? `## Ocean handoff\n${handoff.compactContext}`
         : "";
+    // A completion client runs off this machine and cannot open a file, so it gets no file
+    // pointers (skill index, context references) and no profile facts: local paths would leak
+    // the directory layout and facts are private memory that stays local.
+    const local = plan.transport === "cli";
     const { prompt, bytes, breakdown } = assemblePrompt({
       request: request.prompt,
       profile: formatProfileContract(profile, {
@@ -208,12 +212,14 @@ export async function runAgent(
         handoffId: request.handoffId ?? null,
       }),
       instructions: profile.instructions,
-      skills: [formatSkillIndex(skillIndex), formatPromotedSkills(autoSkills)]
-        .filter(Boolean)
-        .join("\n\n"),
-      facts: factsDigest.text,
+      skills: local
+        ? [formatSkillIndex(skillIndex), formatPromotedSkills(autoSkills)]
+            .filter(Boolean)
+            .join("\n\n")
+        : "",
+      facts: local ? factsDigest.text : "",
       handoff: handoffContent,
-      context: context.content,
+      context: local ? context.content : "",
     });
     const contextHash = createHash("sha256").update(prompt).digest("hex");
     sessionStore.updateContext(sessionId, contextHash, bytes);
@@ -224,7 +230,7 @@ export async function runAgent(
         bytes,
         sources: context.manifest.files,
         handoffId: request.handoffId ?? null,
-        selectedSkills: [...skillIndex, ...autoSkills].map(
+        selectedSkills: (local ? [...skillIndex, ...autoSkills] : []).map(
           (skill) => skill.name,
         ),
         sections: breakdown,
