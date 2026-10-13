@@ -657,3 +657,45 @@ test("a tool-loop profile without an approved contract runs read-only", async ()
     );
   });
 });
+
+test("credential shapes the first review found unrefused are refused; ordinary code is not", async () => {
+  await withWorkspace(async ({ cwd }) => {
+    const shapes = {
+      "aws.txt": `key ${["AKIA", "ABCDEFGHIJKLMNOP"].join("")}`,
+      "stripe.txt": ["sk", "live", "abcdefghijklmnop1234"].join("_"),
+      "npm.txt": `${"npm"}_${"a".repeat(18)}${"B".repeat(18)}`,
+      "gitlab.txt": `${"glpat"}-${"x".repeat(20)}`,
+      "github.txt": `${"gho"}_${"y".repeat(36)}`,
+      "env.txt": `DB_PASS=${"hunter2hunter2"}`,
+      "yaml.txt": `client_secret: "${"z".repeat(12)}"`,
+    };
+    for (const [file, content] of Object.entries(shapes))
+      await writeFile(path.join(cwd, "src", file), content);
+    await writeFile(
+      path.join(cwd, "src", "code.ts"),
+      "const token = getToken();\nexport const password = input.value;\n",
+    );
+    await writeFile(path.join(cwd, "src", "credentials.json"), "{}");
+    await writeFile(path.join(cwd, "src", "main.tfstate"), "{}");
+    const { chat, requests } = scripted([
+      [
+        ...Object.keys(shapes).map((file) =>
+          call("read_file", { path: `src/${file}` }, file),
+        ),
+        call("read_file", { path: "src/credentials.json" }, "cj"),
+        call("read_file", { path: "src/main.tfstate" }, "tf"),
+        call("read_file", { path: "src/code.ts" }, "code"),
+      ],
+      "done",
+    ]);
+    const result = await loop(planFor(profileJson(), cwd), chat);
+    assert.equal(
+      eventsOf(result, "tool_denied").length,
+      Object.keys(shapes).length + 2,
+    );
+    const sent = JSON.stringify(requests.at(-1).messages);
+    for (const content of Object.values(shapes))
+      assert.ok(!sent.includes(content), content.slice(0, 8));
+    assert.match(sent, /getToken/);
+  });
+});

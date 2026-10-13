@@ -31,7 +31,11 @@ function isSensitive(relative: string): boolean {
         /^\.envrc$/i.test(segment) ||
         /^id_[a-z0-9]+(\.pub)?$/i.test(segment) ||
         /\.(pem|key|p12|pfx|keystore|jks)$/i.test(segment) ||
-        /^\.(npmrc|netrc|pypirc|htpasswd|pgpass)$/i.test(segment) ||
+        /^\.(npmrc|netrc|pypirc|htpasswd|pgpass|git-credentials)$/i.test(
+          segment,
+        ) ||
+        /^(credentials|secrets?)(\.[a-z0-9]+)*$/i.test(segment) ||
+        /\.tfstate(\.backup)?$/i.test(segment) ||
         /^\.(aws|ssh|gnupg|docker|kube)$/i.test(segment),
     );
 }
