@@ -28,8 +28,17 @@ const governanceSchema = z.object({
   network: z.string().min(1).optional(),
 });
 
+// A profile name is also a filename (profiles/<name>.json) and a memory namespace
+// (memory/profiles/<name>.json), so it is restricted to characters that can never form a path.
+const profileNamePattern = /^[A-Za-z0-9_-]+$/;
+
+export function assertProfileName(name: string): string {
+  if (!profileNamePattern.test(name)) throw new Error("Invalid profile name");
+  return name;
+}
+
 const rawProfileSchema = z.object({
-  name: z.string().min(1),
+  name: z.string().regex(profileNamePattern, "Invalid profile name"),
   description: z.string().default(""),
   version: z.string().min(1).default("1.0.0"),
   provider: providerSchema.optional(),

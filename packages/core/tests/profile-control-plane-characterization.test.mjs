@@ -8,15 +8,18 @@ import assert from "node:assert/strict";
 import {
   mkdir,
   mkdtemp,
+  readdir,
   readFile,
   rm,
   stat,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
+  deleteProfileFact,
   profileFactsFile,
   readProfileFacts,
   writeProfileFact,
@@ -157,7 +160,8 @@ test("memory.scope is a free-form string today, not a closed enum", () => {
 
 // ---- profile loader -----------------------------------------------------------------------
 
-test("GAP: a profile file whose JSON name differs from its filename loads", async () => {
+// Phase 1 flipped: a profile file must declare the name it is loaded by.
+test("a profile file whose JSON name differs from its filename is rejected", async () => {
   await withRoot(async (root) => {
     await writeFile(
       path.join(root, SYSTEM_DIR, "profiles", "alpha.json"),
@@ -168,11 +172,12 @@ test("GAP: a profile file whose JSON name differs from its filename loads", asyn
         role: "r",
       }),
     );
-    assert.equal((await loadProfile("alpha")).name, "beta");
+    await assert.rejects(loadProfile("alpha"), /declares name "beta"/);
   });
 });
 
-test("GAP: a path-like JSON name is accepted by validation (only the filename is checked)", async () => {
+// Phase 1 flipped: the JSON name is validated as an identifier, not only the filename.
+test("a path-like JSON name is rejected by validation", async () => {
   await withRoot(async (root) => {
     await writeFile(
       path.join(root, SYSTEM_DIR, "profiles", "alpha.json"),
@@ -183,24 +188,103 @@ test("GAP: a path-like JSON name is accepted by validation (only the filename is
         role: "r",
       }),
     );
-    assert.equal((await loadProfile("alpha")).name, "../../escape");
+    await assert.rejects(loadProfile("alpha"), /Invalid profile name/);
+    assert.throws(
+      () =>
+        validateProfile({
+          name: "../../escape",
+          provider: "claude",
+          model: "m",
+          role: "r",
+        }),
+      /Invalid profile name/,
+    );
   });
 });
 
-test("GAP: malformed canonical JSON is swallowed and reported as a missing profile, not a parse error", async () => {
+// Phase 1 flipped: malformed JSON surfaces as a parse error; only ENOENT falls back to legacy.
+test("malformed canonical JSON is reported as a parse error, not a missing profile", async () => {
   await withRoot(async (root) => {
     await writeFile(
       path.join(root, SYSTEM_DIR, "profiles", "broken.json"),
       "{ not json",
     );
     await assert.rejects(loadProfile("broken"), (error) => {
-      // The SyntaxError is gone: the legacy-directory fallback's stat() fails instead.
-      assert.equal(error.code, "ENOENT");
-      assert.doesNotMatch(String(error.message), /JSON/i);
+      assert.match(
+        String(error.message),
+        /Invalid profile JSON in .*broken\.json/,
+      );
       return true;
     });
   });
 });
+
+test("a canonical profile that fails validation is not shadowed by a legacy directory", async () => {
+  await withRoot(async (root) => {
+    const profiles = path.join(root, SYSTEM_DIR, "profiles");
+    await writeFile(
+      path.join(profiles, "both.json"),
+      JSON.stringify({ name: "both" }),
+    );
+    await mkdir(path.join(profiles, "both"));
+    await writeFile(
+      path.join(profiles, "both", "profile.json"),
+      JSON.stringify({
+        name: "both",
+        provider: "claude",
+        model: "m",
+        role: "r",
+      }),
+    );
+    await assert.rejects(loadProfile("both"), /role/);
+  });
+});
+
+test("a missing profile is reported as not found", async () => {
+  await withRoot(async () => {
+    await assert.rejects(loadProfile("nobody"), /Profile not found: nobody/);
+  });
+});
+
+test("a legacy directory profile must declare its directory name", async () => {
+  await withRoot(async (root) => {
+    const dir = path.join(root, SYSTEM_DIR, "profiles", "legacy");
+    await mkdir(dir, { recursive: true });
+    await writeFile(
+      path.join(dir, "profile.json"),
+      JSON.stringify({
+        name: "other",
+        provider: "claude",
+        model: "m",
+        role: "r",
+      }),
+    );
+    await assert.rejects(loadProfile("legacy"), /declares name "other"/);
+  });
+});
+
+unixOnly(
+  "a profile file symlinked outside the profiles root is rejected",
+  async () => {
+    await withRoot(async (root) => {
+      const outside = path.join(root, "outside.json");
+      await writeFile(
+        outside,
+        JSON.stringify({
+          name: "linked",
+          provider: "claude",
+          model: "m",
+          role: "r",
+        }),
+      );
+      await symlink(
+        outside,
+        path.join(root, SYSTEM_DIR, "profiles", "linked.json"),
+      );
+      await assert.rejects(loadProfile("linked"), /escapes its allowed root/);
+    });
+  },
+);
 
 test("the legacy directory form (profile.json + instructions.md) still loads", async () => {
   await withRoot(async (root) => {
@@ -281,18 +365,110 @@ unixOnly("fact files are written with mode 0600", async () => {
   });
 });
 
-test("GAP: the profile name is not validated, so a traversal name writes outside memory/profiles", async () => {
+// Phase 1 flipped: the profile name is validated before any fact path is derived.
+test("a traversal or path-like profile name is rejected before any fact read or write", async () => {
   await withRoot(async (root) => {
-    await writeProfileFact("../escape", "k", "v");
-    const outside = path.join(root, SYSTEM_DIR, "memory", "escape.json");
-    assert.match(await readFile(outside, "utf8"), /"key": "k"/);
-    assert.ok(
-      path
-        .relative(
-          path.join(root, SYSTEM_DIR, "memory", "profiles"),
-          profileFactsFile("../escape"),
-        )
-        .startsWith(".."),
+    for (const bad of ["../escape", "a/b", "a.b", "", "a b"]) {
+      assert.throws(() => profileFactsFile(bad), /Invalid profile name/);
+      await assert.rejects(
+        writeProfileFact(bad, "k", "v"),
+        /Invalid profile name/,
+      );
+      await assert.rejects(readProfileFacts(bad), /Invalid profile name/);
+      await assert.rejects(deleteProfileFact(bad, "k"), /Invalid profile name/);
+    }
+    await assert.rejects(
+      readFile(path.join(root, SYSTEM_DIR, "memory", "escape.json")),
+      { code: "ENOENT" },
     );
+  });
+});
+
+unixOnly(
+  "a fact file symlinked outside the memory root is neither read nor written",
+  async () => {
+    await withRoot(async (root) => {
+      const outside = path.join(root, "outside.json");
+      await writeFile(outside, "[]\n");
+      const dir = path.join(root, SYSTEM_DIR, "memory", "profiles");
+      await mkdir(dir, { recursive: true });
+      await symlink(outside, path.join(dir, "alpha.json"));
+      await assert.rejects(
+        readProfileFacts("alpha"),
+        /escapes its allowed root/,
+      );
+      await assert.rejects(
+        writeProfileFact("alpha", "k", "v"),
+        /escapes its allowed root/,
+      );
+      assert.equal(await readFile(outside, "utf8"), "[]\n");
+    });
+  },
+);
+
+test("malformed fact JSON is an error, not an empty fact set", async () => {
+  await withRoot(async (root) => {
+    const dir = path.join(root, SYSTEM_DIR, "memory", "profiles");
+    await mkdir(dir, { recursive: true });
+    await writeFile(path.join(dir, "alpha.json"), "{ not json");
+    await assert.rejects(readProfileFacts("alpha"), SyntaxError);
+    await assert.rejects(writeProfileFact("alpha", "k", "v"), SyntaxError);
+    assert.equal(
+      await readFile(path.join(dir, "alpha.json"), "utf8"),
+      "{ not json",
+    );
+  });
+});
+
+test("concurrent writers to one profile keep every fact", async () => {
+  await withRoot(async () => {
+    await Promise.all(
+      Array.from({ length: 20 }, (_, index) =>
+        writeProfileFact("alpha", `k${index}`, `v${index}`),
+      ),
+    );
+    const facts = await readProfileFacts("alpha");
+    assert.equal(facts.length, 20);
+    assert.deepEqual(
+      new Set(facts.map((fact) => fact.key)),
+      new Set(Array.from({ length: 20 }, (_, index) => `k${index}`)),
+    );
+  });
+});
+
+test("a stale lock left by a dead writer does not block fact writes", async () => {
+  await withRoot(async () => {
+    const file = profileFactsFile("alpha");
+    await mkdir(path.dirname(file), { recursive: true });
+    // A pid that cannot be alive (pid_max is far below this) marks the lock as abandoned.
+    await writeFile(`${file}.lock`, "2147483646 dead-writer");
+    await writeProfileFact("alpha", "k", "v");
+    assert.equal((await readProfileFacts("alpha"))[0].value, "v");
+    const leftovers = (await readdir(path.dirname(file))).filter(
+      (entry) => entry !== "alpha.json",
+    );
+    assert.deepEqual(leftovers, []);
+  });
+});
+
+test("deleting a fact keeps the others and reports whether anything was removed", async () => {
+  await withRoot(async () => {
+    await writeProfileFact("alpha", "a", "one");
+    await writeProfileFact("alpha", "b", "two");
+    assert.equal(await deleteProfileFact("alpha", "a"), true);
+    assert.equal(await deleteProfileFact("alpha", "a"), false);
+    assert.deepEqual(
+      (await readProfileFacts("alpha")).map((fact) => fact.key),
+      ["b"],
+    );
+  });
+});
+
+unixOnly("the fact directory is created with mode 0700", async () => {
+  await withRoot(async () => {
+    await writeProfileFact("alpha", "k", "v");
+    const mode =
+      (await stat(path.dirname(profileFactsFile("alpha")))).mode & 0o777;
+    assert.equal(mode, 0o700);
   });
 });

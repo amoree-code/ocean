@@ -21,10 +21,11 @@ import { LEGACY_REGISTRY_DIR, oceanPath, REGISTRY_DIR } from "./paths.js";
 export async function atomicWrite(
   target: string,
   content: string,
+  mode?: number,
 ): Promise<number> {
   const temp = `${target}.ocean-tmp-${process.pid}-${Date.now()}`;
   try {
-    await writeFile(temp, content, "utf8");
+    await writeFile(temp, content, { encoding: "utf8", mode });
     await rename(temp, target);
     return Buffer.byteLength(content, "utf8");
   } catch (error) {

@@ -1,15 +1,21 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
-import { truncateUtf8 } from "../../fs-utils.js";
-import { oceanPath, SYSTEM_DIR } from "../../paths.js";
+import { assertProfileName } from "../../domain/profiles/profile.js";
+import { atomicWrite, truncateUtf8, withFileLock } from "../../fs-utils.js";
+import { oceanPath, resolveWithin, SYSTEM_DIR } from "../../paths.js";
 
 const maxFacts = 100;
 const maxFactBytes = 2_000;
 
 export type ProfileFact = { key: string; value: string; updatedAt: string };
 
+// The profile name is validated and the path is bounds-checked (including symlinks), so one
+// profile's namespace can never resolve to another file inside or outside the memory root.
 export function profileFactsFile(profile: string): string {
-  return oceanPath(SYSTEM_DIR, "memory", "profiles", `${profile}.json`);
+  return resolveWithin(
+    oceanPath(SYSTEM_DIR, "memory", "profiles"),
+    `${assertProfileName(profile)}.json`,
+  );
 }
 
 export async function readProfileFacts(
@@ -24,6 +30,26 @@ export async function readProfileFacts(
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
     throw error;
   }
+}
+
+// Read-modify-write under the file lock, replaced atomically: concurrent writers to the same
+// profile each see the other's facts, and a crash never leaves a truncated file. `change`
+// returns null to skip the write.
+async function updateProfileFacts(
+  profile: string,
+  change: (facts: ProfileFact[]) => ProfileFact[] | null,
+): Promise<void> {
+  const file = profileFactsFile(profile);
+  await mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
+  await withFileLock(file, async () => {
+    const next = change(await readProfileFacts(profile));
+    if (next)
+      await atomicWrite(
+        file,
+        `${JSON.stringify(next.slice(0, maxFacts), null, 2)}\n`,
+        0o600,
+      );
+  });
 }
 
 export async function writeProfileFact(
@@ -42,16 +68,10 @@ export async function writeProfileFact(
     value: value.trim(),
     updatedAt: new Date().toISOString(),
   };
-  const facts = (await readProfileFacts(profile)).filter(
-    (item) => item.key !== key,
-  );
-  facts.unshift(fact);
-  await mkdir(path.dirname(profileFactsFile(profile)), { recursive: true });
-  await writeFile(
-    profileFactsFile(profile),
-    `${JSON.stringify(facts.slice(0, maxFacts), null, 2)}\n`,
-    { mode: 0o600 },
-  );
+  await updateProfileFacts(profile, (facts) => [
+    fact,
+    ...facts.filter((item) => item.key !== key),
+  ]);
   return fact;
 }
 
@@ -59,18 +79,13 @@ export async function deleteProfileFact(
   profile: string,
   key: string,
 ): Promise<boolean> {
-  const facts = await readProfileFacts(profile);
-  const remaining = facts.filter((fact) => fact.key !== key);
-  if (remaining.length === facts.length) return false;
-  await mkdir(path.dirname(profileFactsFile(profile)), { recursive: true });
-  await writeFile(
-    profileFactsFile(profile),
-    `${JSON.stringify(remaining, null, 2)}\n`,
-    {
-      mode: 0o600,
-    },
-  );
-  return true;
+  let deleted = false;
+  await updateProfileFacts(profile, (facts) => {
+    const remaining = facts.filter((fact) => fact.key !== key);
+    deleted = remaining.length !== facts.length;
+    return deleted ? remaining : null;
+  });
+  return deleted;
 }
 
 export const PROFILE_FACTS_DIGEST_MAX_BYTES = 2_048;
