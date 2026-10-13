@@ -19,6 +19,7 @@ import {
   buildExecutionPlan,
   type ExecutionPlan,
   executionPlanIdentity,
+  usesToolLoop,
 } from "../../domain/runs/execution-plan.js";
 import type { RunContract } from "../../domain/runs/run-contract.js";
 import { validateSessionEntryContract } from "../../domain/sessions/entry-contract.js";
@@ -46,6 +47,7 @@ import {
   readDirectoriesOutside,
 } from "./prompt-assembly.js";
 import { authorizeRun } from "./run-authorization.js";
+import { runToolLoop } from "./tool-loop.js";
 
 // Re-exported for existing importers (scheduler, task-loop, gateway).
 export type { AgentRuntimeDeps } from "../../domain/ports/runtime-ports.js";
@@ -93,9 +95,13 @@ export async function runAgent(
   if (profile.governance?.approvalRequired && !request.runContract) {
     throw new Error("Profile requires an approved run contract");
   }
+  // Ocean executes a tool loop's tools itself, so it can enforce writes there; a writable
+  // tool-loop run still needs an approved run contract. CLI clients stay read-only.
+  const toolLoop = usesToolLoop(profile);
   const plan = buildExecutionPlan(profile, {
     cwd: request.cwd,
     ...runtimeCapabilities,
+    writeAllowed: toolLoop && request.runContract?.approval.approved === true,
   });
   const sessionStore = await deps.openStore();
   const sessionId = request.sessionId ?? randomUUID();
@@ -240,8 +246,22 @@ export async function runAgent(
       captureProviderSessionId(sessionStore, sessionId, event);
       sessionStore.appendEvent(sessionId, event.type, boundedEventData(event));
     };
-    const result =
-      plan.transport === "openai-compatible-api"
+    const result = plan.toolLoop
+      ? await runToolLoop({
+          plan,
+          prompt,
+          chat: deps.chat,
+          executeTool: deps.executeAgentTool,
+          toolLimits: request.runContract && {
+            allowed: request.runContract.allowedTools,
+            denied: request.runContract.deniedTools,
+          },
+          timeoutMs: request.runContract?.budget.timeoutMs,
+          maxOutputBytes: request.runContract?.budget.maxOutputBytes,
+          maxAttempts: request.runContract?.budget.maxAttempts,
+          onEvent,
+        })
+      : plan.transport === "openai-compatible-api"
         ? await deps.executeCompletion({
             provider: plan.provider as CompletionProvider,
             model: plan.model,
@@ -491,7 +511,7 @@ export async function resumeAgent(
 }
 
 // What this runtime can enforce today. CLI clients and completion APIs both execute. Writes
-// stay off until a writable sandbox is proven per provider. Every client reaches its own
+// stay off except in a tool loop, where Ocean executes (and bounds) every write itself. Every client reaches its own
 // provider (a completion client reaches only its fixed endpoint), so a "deny" or
 // "allowlist" network policy fails closed.
 const runtimeCapabilities = {

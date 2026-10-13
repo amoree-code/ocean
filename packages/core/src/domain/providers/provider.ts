@@ -50,6 +50,38 @@ export type CompletionRequest = {
   onEvent?: (event: RuntimeEvent) => void;
 };
 
+// One turn of a tool-loop conversation, in the OpenAI-compatible shape (T-245 Phase 6).
+export type ChatToolCall = {
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
+};
+
+export type ChatMessage =
+  | { role: "user"; content: string }
+  | { role: "assistant"; content: string | null; tool_calls?: ChatToolCall[] }
+  | { role: "tool"; tool_call_id: string; content: string };
+
+export type ChatRequest = {
+  provider: CompletionProvider;
+  model: string;
+  temperature?: number;
+  messages: ChatMessage[];
+  tools: object[];
+  maxOutputBytes?: number;
+  maxAttempts?: number;
+  // The caller's deadline and cancellation; the transport adds none of its own.
+  signal: AbortSignal;
+  onEvent?: (event: RuntimeEvent) => void;
+};
+
+export type ChatReply = {
+  message: Extract<ChatMessage, { role: "assistant" }>;
+  model: string;
+  usage: unknown;
+  id: string | null;
+};
+
 export type ProviderAdapter = {
   provider: HeadlessProvider;
   capabilities: readonly string[];

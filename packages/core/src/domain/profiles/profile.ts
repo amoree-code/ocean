@@ -38,6 +38,8 @@ const clientBindingSchema = z.object({
   transport: transportSchema.optional(),
   model: modelSchema.optional(),
   temperature: z.number().min(0).max(2).optional(),
+  // A completion client that may call Ocean's bounded tools (T-245 Phase 6). Off unless set.
+  toolLoop: z.boolean().optional(),
   profile: z.string().min(1).optional(),
   home: z.string().min(1).optional(),
   mode: z.string().min(1).optional(),
@@ -155,6 +157,12 @@ export const profileSchema = rawProfileSchema
           code: z.ZodIssueCode.custom,
           path: ["clients", client, "transport"],
           message: `Client ${client} uses transport ${expected}`,
+        });
+      if (binding.toolLoop && !isApiClient(client))
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["clients", client, "toolLoop"],
+          message: `Client ${client} runs its own tools; toolLoop is for completion clients`,
         });
       if (
         isApiClient(client) &&

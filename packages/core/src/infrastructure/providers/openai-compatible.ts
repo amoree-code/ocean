@@ -3,6 +3,9 @@ import type {
   RuntimeEvent,
 } from "../../domain/process/process-events.js";
 import type {
+  ChatReply,
+  ChatRequest,
+  ChatToolCall,
   CompletionProvider,
   CompletionRequest,
 } from "../../domain/providers/provider.js";
@@ -101,38 +104,76 @@ function rateLimit(response: Response): Record<string, string> {
   );
 }
 
-type CompletionBody = {
+type ChatBody = {
   id?: unknown;
   model?: unknown;
   usage?: unknown;
-  choices?: { message?: { content?: unknown } }[];
+  choices?: { message?: { content?: unknown; tool_calls?: unknown } }[];
 };
 
-function completionText(source: string): {
-  body: CompletionBody;
-  text: string;
-} {
-  let body: CompletionBody;
+const MAX_TOOL_CALLS_PER_REPLY = 16;
+
+function parseToolCalls(value: unknown): ChatToolCall[] | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (!Array.isArray(value) || value.length > MAX_TOOL_CALLS_PER_REPLY)
+    throw new CompletionFailure("Malformed completion response: tool_calls", 1);
+  return value.map((call) => {
+    const { id, function: fn } = (call ?? {}) as {
+      id?: unknown;
+      function?: { name?: unknown; arguments?: unknown };
+    };
+    if (
+      typeof id !== "string" ||
+      typeof fn?.name !== "string" ||
+      typeof fn.arguments !== "string"
+    )
+      throw new CompletionFailure(
+        "Malformed completion response: tool_calls",
+        1,
+      );
+    return {
+      id,
+      type: "function" as const,
+      function: { name: fn.name, arguments: fn.arguments },
+    };
+  });
+}
+
+function parseReply(source: string, fallbackModel: string): ChatReply {
+  let body: ChatBody;
   try {
-    body = JSON.parse(source) as CompletionBody;
+    body = JSON.parse(source) as ChatBody;
   } catch {
     throw new CompletionFailure("Malformed completion response: not JSON", 1);
   }
-  const text = body?.choices?.[0]?.message?.content;
-  if (typeof text !== "string")
+  const message = body?.choices?.[0]?.message;
+  const toolCalls = parseToolCalls(message?.tool_calls);
+  const content = message?.content ?? null;
+  if (typeof content !== "string" && !(content === null && toolCalls?.length))
     throw new CompletionFailure(
       "Malformed completion response: no choices[0].message.content",
       1,
     );
-  return { body, text };
+  return {
+    message: {
+      role: "assistant",
+      content,
+      ...(toolCalls?.length ? { tool_calls: toolCalls } : {}),
+    },
+    model: typeof body.model === "string" ? body.model : fallbackModel,
+    usage: body.usage ?? null,
+    id: typeof body.id === "string" ? body.id : null,
+  };
 }
 
-async function complete(
-  request: CompletionRequest,
+// One chat turn: credential check, request, bounded read, transient retries. Throws a
+// CompletionFailure (with its exit code) on anything else.
+async function chat(
+  request: Omit<ChatRequest, "signal" | "onEvent">,
   deps: CompletionDeps,
   emit: (event: RuntimeEvent) => void,
   signal: AbortSignal,
-): Promise<void> {
+): Promise<ChatReply & { meta: Record<string, unknown> }> {
   const endpoint = deps.endpoints[request.provider];
   const credentialName = completionCredentialEnv[request.provider];
   if (!endpoint)
@@ -149,7 +190,6 @@ async function complete(
     );
   const maxBytes = request.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
   const attempts = Math.max(1, request.maxAttempts ?? 1);
-  const started = Date.now();
   for (let attempt = 1; ; attempt += 1) {
     const response = await deps.fetch(endpoint, {
       method: "POST",
@@ -159,12 +199,13 @@ async function complete(
       },
       body: JSON.stringify({
         model: request.model,
-        messages: [{ role: "user", content: request.prompt }],
+        messages: request.messages,
         max_tokens: MAX_COMPLETION_TOKENS,
         stream: false,
         ...(request.temperature === undefined
           ? {}
           : { temperature: request.temperature }),
+        ...(request.tools.length ? { tools: request.tools } : {}),
       }),
       // A redirect could carry the credential to another host; it is an error instead.
       redirect: "error",
@@ -177,24 +218,11 @@ async function complete(
       rateLimit: rateLimit(response),
       attempt,
     };
-    if (response.ok) {
-      const { body, text } = completionText(
-        await readBounded(response, maxBytes),
-      );
-      emit({
-        type: "json",
-        data: {
-          type: "completion",
-          ...meta,
-          id: typeof body.id === "string" ? body.id : null,
-          model: typeof body.model === "string" ? body.model : request.model,
-          usage: body.usage ?? null,
-          durationMs: Date.now() - started,
-          text,
-        },
-      });
-      return;
-    }
+    if (response.ok)
+      return {
+        ...parseReply(await readBounded(response, maxBytes), request.model),
+        meta,
+      };
     // Only 429 and 5xx are transient. Authentication, validation and policy failures are
     // never retried.
     const transient = response.status === 429 || response.status >= 500;
@@ -222,10 +250,48 @@ async function complete(
   }
 }
 
-export function createCompletionExecutor(
-  overrides: Partial<CompletionDeps> = {},
-): (request: CompletionRequest) => Promise<HeadlessResult> {
-  const deps: CompletionDeps = {
+async function complete(
+  request: CompletionRequest,
+  deps: CompletionDeps,
+  emit: (event: RuntimeEvent) => void,
+  signal: AbortSignal,
+): Promise<void> {
+  const started = Date.now();
+  const reply = await chat(
+    {
+      provider: request.provider,
+      model: request.model,
+      temperature: request.temperature,
+      messages: [{ role: "user", content: request.prompt }],
+      tools: [],
+      maxOutputBytes: request.maxOutputBytes,
+      maxAttempts: request.maxAttempts,
+    },
+    deps,
+    emit,
+    signal,
+  );
+  if (typeof reply.message.content !== "string")
+    throw new CompletionFailure(
+      "Malformed completion response: no choices[0].message.content",
+      1,
+    );
+  emit({
+    type: "json",
+    data: {
+      type: "completion",
+      ...reply.meta,
+      id: reply.id,
+      model: reply.model,
+      usage: reply.usage,
+      durationMs: Date.now() - started,
+      text: reply.message.content,
+    },
+  });
+}
+
+function defaultDeps(overrides: Partial<CompletionDeps>): CompletionDeps {
+  return {
     // Resolved per call, so a fetch installed after import is the one used.
     fetch: (...args) => globalThis.fetch(...args),
     endpoints: completionEndpoints,
@@ -233,6 +299,40 @@ export function createCompletionExecutor(
     sleep: abortableSleep,
     ...overrides,
   };
+}
+
+// The tool loop's transport: one turn per call, under the caller's signal. A failure is
+// thrown with an `exitCode` (124 when the caller's deadline aborted it).
+export function createChatTransport(
+  overrides: Partial<CompletionDeps> = {},
+): (request: ChatRequest) => Promise<ChatReply> {
+  const deps = defaultDeps(overrides);
+  return async ({ signal, onEvent, ...request }) => {
+    try {
+      const { meta: _meta, ...reply } = await chat(
+        request,
+        deps,
+        (event) => onEvent?.(event),
+        signal,
+      );
+      return reply;
+    } catch (error) {
+      if (error instanceof CompletionFailure) throw error;
+      if (signal.aborted) throw signal.reason;
+      throw new CompletionFailure(
+        `Completion request failed: ${(error as Error).message}`,
+        1,
+      );
+    }
+  };
+}
+
+export const chatTransport = createChatTransport();
+
+export function createCompletionExecutor(
+  overrides: Partial<CompletionDeps> = {},
+): (request: CompletionRequest) => Promise<HeadlessResult> {
+  const deps = defaultDeps(overrides);
   return async (request) => {
     const events: RuntimeEvent[] = [];
     const emit = (event: RuntimeEvent) => {

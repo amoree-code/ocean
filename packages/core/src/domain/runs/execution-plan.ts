@@ -18,6 +18,8 @@ export type ExecutionPlan = Readonly<{
   provider: string;
   model: string;
   temperature?: number;
+  // A completion client running Ocean's bounded tool loop instead of a single completion.
+  toolLoop: boolean;
   memoryNamespace: string | null;
   cwd: string;
   readOnly: boolean;
@@ -63,6 +65,16 @@ function deepFreeze<T>(value: T): T {
   return value;
 }
 
+// One definition, used by the plan and by the caller that decides whether writes are granted.
+export function usesToolLoop(profile: Profile): boolean {
+  const binding = profile.clients[profile.provider];
+  return (
+    isApiClient(profile.provider) &&
+    binding?.transport !== "cli" &&
+    binding?.toolLoop === true
+  );
+}
+
 // `profile` is the result of selectProfileClient: its provider is the selected client.
 export function buildExecutionPlan(
   profile: Profile,
@@ -98,6 +110,7 @@ export function buildExecutionPlan(
     ...(binding?.temperature === undefined
       ? {}
       : { temperature: binding.temperature }),
+    toolLoop: usesToolLoop(profile),
     memoryNamespace,
     cwd: options.cwd,
     readOnly: mode === "read-only",
