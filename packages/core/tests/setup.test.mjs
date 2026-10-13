@@ -3,6 +3,8 @@ import { mkdtemp, readFile, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { loadProfile } from "../dist/infrastructure/filesystem/profile-loader.js";
+import { loadRuntimeConfig } from "../dist/infrastructure/filesystem/runtime-config-loader.js";
 import { setup } from "../dist/interfaces/cli/setup-command.js";
 import {
   enginePath,
@@ -78,6 +80,18 @@ test("setup isolates its writes to OCEAN_ROOT and the (fake) home directory, nev
       );
     }
     await stat(path.join(privateRoot, SYSTEM_DIR, "profiles", "default.json"));
+    // T-245: setup writes the runtime config, which loads and names a v2 default profile.
+    assert.deepEqual(
+      JSON.parse(
+        await readFile(
+          path.join(privateRoot, SYSTEM_DIR, "config", "runtime.json"),
+          "utf8",
+        ),
+      ),
+      { schemaVersion: 1, defaultProfile: "default" },
+    );
+    assert.equal((await loadRuntimeConfig()).defaultProfile, "default");
+    assert.equal((await loadProfile("default")).schemaVersion, 2);
     await assert.rejects(
       stat(
         path.join(
