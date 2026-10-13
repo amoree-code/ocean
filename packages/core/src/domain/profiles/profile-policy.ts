@@ -1,7 +1,10 @@
 import path from "node:path";
-import type { Profile } from "./profile.js";
+import { type ApiClient, isApiClient, type Profile } from "./profile.js";
 
-const providerCommand: Record<Profile["provider"], string> = {
+const providerCommand: Record<
+  Exclude<Profile["provider"], ApiClient>,
+  string
+> = {
   claude: "claude",
   codex: "codex",
   gemini: "gemini",
@@ -12,7 +15,8 @@ const providerCommand: Record<Profile["provider"], string> = {
 };
 
 export type ExecutionPolicy = {
-  providerCommand: string;
+  // null for a completion client: it calls a fixed HTTP endpoint and runs no command.
+  providerCommand: string | null;
   writePolicy: Profile["writePolicy"];
   allowedPaths: string[];
 };
@@ -21,8 +25,11 @@ export function executionPolicy(
   profile: Profile,
   cwd: string,
 ): ExecutionPolicy {
-  const command = providerCommand[profile.provider];
+  const command = isApiClient(profile.provider)
+    ? null
+    : providerCommand[profile.provider];
   if (
+    command !== null &&
     profile.allowedCommands.length &&
     !profile.allowedCommands.some(
       (allowed) =>

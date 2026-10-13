@@ -195,18 +195,13 @@ test("a disabled client fails closed before a plan exists", () => {
 test("a binding on a transport this runtime cannot execute fails closed", () => {
   const profile = validateProfile(
     v2({
-      clients: {
-        claude: {
-          enabled: true,
-          model: "deepseek-chat",
-          transport: "openai-compatible-api",
-        },
-      },
+      defaultClient: "deepseek",
+      clients: { deepseek: { enabled: true, model: "deepseek-chat" } },
     }),
   );
   assert.throws(
     () => buildExecutionPlan(selectProfileClient(profile), cli),
-    /Unsupported transport for client claude: openai-compatible-api/,
+    /Unsupported transport for client deepseek: openai-compatible-api/,
   );
   assert.equal(
     buildExecutionPlan(selectProfileClient(profile), {
@@ -214,6 +209,54 @@ test("a binding on a transport this runtime cannot execute fails closed", () => 
       supportedTransports: ["cli", "openai-compatible-api"],
     }).transport,
     "openai-compatible-api",
+  );
+});
+
+test("a client's transport is fixed by what it is", () => {
+  assert.throws(
+    () =>
+      validateProfile(
+        v2({
+          clients: {
+            claude: {
+              enabled: true,
+              model: "sonnet",
+              transport: "openai-compatible-api",
+            },
+          },
+        }),
+      ),
+    /Client claude uses transport cli/,
+  );
+  assert.throws(
+    () =>
+      validateProfile(
+        v2({
+          defaultClient: "deepseek",
+          clients: {
+            deepseek: { enabled: true, model: "m", transport: "cli" },
+          },
+        }),
+      ),
+    /Client deepseek uses transport openai-compatible-api/,
+  );
+  // Even a v1 profile cannot leave a completion client's model to a provider default.
+  assert.throws(
+    () =>
+      validateProfile({
+        name: "legacy",
+        role: "r",
+        defaultClient: "openrouter",
+        clients: { openrouter: { enabled: true } },
+      }),
+    /Client openrouter requires a model/,
+  );
+  assert.throws(
+    () =>
+      validateProfile(
+        v2({ clients: { claude: { enabled: true, model: "--yolo" } } }),
+      ),
+    /cannot start with -/,
   );
 });
 
@@ -377,7 +420,7 @@ test("a run records its execution plan and identity before any context or proces
   });
 });
 
-test("an unsupported transport is refused before a session is created", async () => {
+test("a client on the wrong transport is refused before a session is created", async () => {
   await withProfile(
     readOnlyV2({
       clients: {
@@ -400,7 +443,7 @@ test("an unsupported transport is refused before a session is created", async ()
             },
           }),
         ),
-        /Unsupported transport/,
+        /Client claude uses transport cli/,
       );
       assert.equal(executed, false);
     },

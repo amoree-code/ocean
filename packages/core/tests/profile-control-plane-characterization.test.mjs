@@ -30,6 +30,7 @@ import {
 } from "../dist/domain/profiles/profile.js";
 import { validateProfile } from "../dist/domain/profiles/profile-validator.js";
 import { loadProfile } from "../dist/infrastructure/filesystem/profile-loader.js";
+import { completionEndpoints } from "../dist/infrastructure/providers/openai-compatible.js";
 import {
   buildProviderInvocation,
   providerAdapterRegistry,
@@ -97,10 +98,12 @@ test("a disabled or unsupported client fails closed", () => {
     () => selectProfileClient(profile, "gemini"),
     /not enabled for profile/,
   );
-  assert.throws(() => selectProfileClient(profile, "deepseek"), /Unsupported/);
+  assert.throws(() => selectProfileClient(profile, "mystery"), /Unsupported/);
 });
 
-test("GAP: DeepSeek and OpenRouter are not registered providers", () => {
+// Phase 4 flipped: DeepSeek and OpenRouter are completion clients with fixed endpoints; the
+// CLI adapter registry is unchanged.
+test("DeepSeek and OpenRouter are completion clients, not CLI adapters", () => {
   assert.deepEqual(Object.keys(providerAdapterRegistry).sort(), [
     "antigravity",
     "claude",
@@ -110,6 +113,22 @@ test("GAP: DeepSeek and OpenRouter are not registered providers", () => {
     "kilo",
     "kimi",
   ]);
+  assert.deepEqual(completionEndpoints, {
+    deepseek: "https://api.deepseek.com/chat/completions",
+    openrouter: "https://openrouter.ai/api/v1/chat/completions",
+  });
+  for (const client of ["deepseek", "openrouter"])
+    assert.equal(
+      selectProfileClient(
+        validateProfile({
+          name: "api",
+          role: "r",
+          defaultClient: client,
+          clients: { [client]: { enabled: true, model: "m" } },
+        }),
+      ).provider,
+      client,
+    );
 });
 
 // ---- model selection ----------------------------------------------------------------------

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { defaultSkillNames } from "../skills/default-skills.js";
 
-const providerSchema = z.enum([
+const cliClients = [
   "claude",
   "codex",
   "gemini",
@@ -10,7 +10,24 @@ const providerSchema = z.enum([
   "hermes",
   "kilo",
   "kimi",
-]);
+] as const;
+// Completion clients reached over HTTP at a fixed endpoint (T-245 Phase 4). They return text;
+// they never spawn a process or touch the workspace.
+const apiClients = ["deepseek", "openrouter"] as const;
+const providerSchema = z.enum([...cliClients, ...apiClients]);
+
+export type ApiClient = (typeof apiClients)[number];
+
+export function isApiClient(client: string): client is ApiClient {
+  return (apiClients as readonly string[]).includes(client);
+}
+// A model is passed to a CLI as the argument after its model flag; a leading "-" could be
+// read as another flag.
+const modelSchema = z
+  .string()
+  .min(1)
+  .refine((model) => !model.startsWith("-"), "A model cannot start with -");
+
 export const transportSchema = z.enum(["cli", "openai-compatible-api"]);
 export type Transport = z.infer<typeof transportSchema>;
 
@@ -19,7 +36,7 @@ export type Transport = z.infer<typeof transportSchema>;
 const clientBindingSchema = z.object({
   enabled: z.boolean().default(true),
   transport: transportSchema.optional(),
-  model: z.string().min(1).optional(),
+  model: modelSchema.optional(),
   temperature: z.number().min(0).max(2).optional(),
   profile: z.string().min(1).optional(),
   home: z.string().min(1).optional(),
@@ -62,7 +79,7 @@ const rawProfileSchema = z.object({
   description: z.string().default(""),
   version: z.string().min(1).default("1.0.0"),
   provider: providerSchema.optional(),
-  model: z.string().min(1).optional(),
+  model: modelSchema.optional(),
   role: z.string().min(1),
   skills: z.array(z.string()).default([]),
   allowedPaths: z.array(z.string()).default([]),
@@ -123,12 +140,27 @@ function refineV2(
 export const profileSchema = rawProfileSchema
   .superRefine((input, context) => {
     if (input.schemaVersion === 2) refineV2(input, context);
-    for (const client of Object.keys(input.clients)) {
+    for (const [client, binding] of Object.entries(input.clients)) {
       if (!providerSchema.safeParse(client).success)
         context.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["clients", client],
           message: `Unsupported client: ${client}`,
+        });
+      // A client's transport is fixed by what it is: a CLI cannot be called over HTTP and a
+      // completion API cannot be spawned. An API client has no provider default model.
+      const expected = isApiClient(client) ? "openai-compatible-api" : "cli";
+      if (binding.transport && binding.transport !== expected)
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["clients", client, "transport"],
+          message: `Client ${client} uses transport ${expected}`,
+        });
+      if (isApiClient(client) && binding.enabled && !binding.model)
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["clients", client, "model"],
+          message: `Client ${client} requires a model`,
         });
     }
     if (

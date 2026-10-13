@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+  isApiClient,
   type Profile,
   profileIdentity,
   type SandboxPolicy,
@@ -69,7 +70,9 @@ export function buildExecutionPlan(
 ): ExecutionPlan {
   const client = profile.provider;
   const binding = profile.clients[client];
-  const transport = binding?.transport ?? "cli";
+  const transport =
+    binding?.transport ??
+    (isApiClient(client) ? "openai-compatible-api" : "cli");
   if (!options.supportedTransports.includes(transport))
     throw new Error(`Unsupported transport for client ${client}: ${transport}`);
   const sandbox = profileSandbox(profile);
