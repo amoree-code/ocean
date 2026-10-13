@@ -64,7 +64,7 @@ function redactHighEntropyTokens(value: string): string {
 // bounded line at a time with bounded runs, so a long or hostile line cannot backtrack.
 const MAX_LINE = 4_096;
 const assignedSecretPatterns = [
-  /^[ \t]{0,16}(?:export[ \t]+)?[A-Z0-9_]{0,64}(?:PASS|PASSWORD|PASSWD|PWD|SECRET|TOKEN|API_?KEY|PRIVATE_KEY)[A-Z0-9_]{0,64}[ \t]{0,8}=[ \t]{0,8}\S{6}/,
+  /^[ \t]{0,16}(?:(?:export|ENV|ARG)[ \t]+)?[A-Z0-9_]{0,64}(?:PASS|PASSWORD|PASSWD|PWD|SECRET|TOKEN|API_?KEY|PRIVATE_KEY)[A-Z0-9_]{0,64}[ \t]{0,8}=[ \t]{0,8}\S{6}/,
   /(?:^|[^A-Za-z0-9_])["']?[A-Za-z0-9_]{0,64}(?:secret|token|passw(?:or)?d|pwd|api_?key)[A-Za-z0-9_]{0,64}["']?[ \t]{0,8}[:=][ \t]{0,8}["'][^"'\s]{8,256}["']/i,
 ];
 

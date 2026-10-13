@@ -722,6 +722,9 @@ test("secret detection stays fast on hostile 64 KB inputs", async () => {
     redactSecrets(input);
     assert.ok(Date.now() - started < 1_000, input.slice(0, 16));
   }
+  // Dockerfile-style secret lines are env-style lines too.
+  assert.equal(containsKnownSecret(`ENV DB_PASS=${"s".repeat(10)}`), true);
+  assert.equal(containsKnownSecret(`ARG API_KEY=${"s".repeat(10)}`), true);
   // A key prefix inside a word is not a key.
   assert.equal(containsKnownSecret("the task-observer-module runs"), false);
 });
