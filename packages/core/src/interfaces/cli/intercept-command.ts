@@ -411,6 +411,7 @@ function classifyProviderResult(
 
 function interceptedProfile(provider: string): Profile {
   return {
+    schemaVersion: 1,
     name: `intercepted:${provider}`,
     description: "Ocean transparent CLI interception profile",
     version: "1.0.0",

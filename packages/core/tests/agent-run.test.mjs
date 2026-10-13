@@ -180,6 +180,7 @@ test("connects profile, context, headless execution, and session storage", async
     store.listEvents(session.sessionId).map((event) => event.type),
     [
       "session_entry_contract",
+      "execution_plan",
       "user_input",
       "context_manifest",
       "context_cost",
@@ -497,6 +498,7 @@ test("marks the session failed and records the error event when the provider thr
     store.listEvents(session.sessionId).map((event) => event.type),
     [
       "session_entry_contract",
+      "execution_plan",
       "user_input",
       "context_manifest",
       "context_cost",
