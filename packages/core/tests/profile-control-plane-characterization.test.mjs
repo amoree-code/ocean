@@ -35,6 +35,7 @@ import {
   buildProviderInvocation,
   providerAdapterRegistry,
 } from "../dist/infrastructure/providers/providers.js";
+import { runMemoryCommand } from "../dist/interfaces/cli/memory-command.js";
 import { SYSTEM_DIR } from "../dist/paths.js";
 
 const unixOnly = process.platform === "win32" ? test.skip : test;
@@ -384,6 +385,37 @@ unixOnly("fact files are written with mode 0600", async () => {
     await writeProfileFact("alpha", "k", "v");
     const mode = (await stat(profileFactsFile("alpha"))).mode & 0o777;
     assert.equal(mode, 0o600);
+  });
+});
+
+test("profile names are lowercase identifiers of at most 64 characters", () => {
+  const base = { provider: "claude", model: "m", role: "r" };
+  for (const good of ["a", "security-auditor", "dev_2", "0x", "a".repeat(64)])
+    assert.equal(validateProfile({ ...base, name: good }).name, good);
+  // Uppercase would let "Alpha" and "alpha" share one file on a case-insensitive filesystem.
+  for (const bad of ["Alpha", "-lead", "_lead", "a".repeat(65)]) {
+    assert.throws(
+      () => validateProfile({ ...base, name: bad }),
+      /Invalid profile name/,
+    );
+    assert.throws(() => profileFactsFile(bad), /Invalid profile name/);
+  }
+});
+
+test("ocean memory facts reports an invalid profile name without a stack trace", async () => {
+  await withRoot(async () => {
+    const errors = [];
+    const original = console.error;
+    const previousExit = process.exitCode;
+    console.error = (message) => errors.push(String(message));
+    try {
+      await runMemoryCommand("facts", ["../escape", "k", "v"]);
+      assert.equal(process.exitCode, 1);
+    } finally {
+      console.error = original;
+      process.exitCode = previousExit;
+    }
+    assert.deepEqual(errors, ["Invalid profile name"]);
   });
 });
 

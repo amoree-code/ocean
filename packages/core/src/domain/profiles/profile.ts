@@ -30,7 +30,8 @@ const governanceSchema = z.object({
 
 // A profile name is also a filename (profiles/<name>.json) and a memory namespace
 // (memory/profiles/<name>.json), so it is restricted to characters that can never form a path.
-const profileNamePattern = /^[A-Za-z0-9_-]+$/;
+// Lowercase only: on a case-insensitive filesystem "Alpha" and "alpha" would share one file.
+const profileNamePattern = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 
 export function assertProfileName(name: string): string {
   if (!profileNamePattern.test(name)) throw new Error("Invalid profile name");
