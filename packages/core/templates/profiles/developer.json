@@ -1,23 +1,56 @@
 {
+  "schemaVersion": 2,
   "name": "developer",
   "description": "Implementation profile: reads and writes within the workspace to build and fix code.",
   "version": "1.0.0",
-  "provider": "claude",
-  "model": "sonnet",
-  "clients": {
-    "claude": { "enabled": true, "model": "sonnet" },
-    "codex": { "enabled": true },
-    "gemini": { "enabled": true },
-    "antigravity": { "enabled": true },
-    "hermes": { "enabled": true }
-  },
-  "defaultClient": "claude",
   "role": "developer",
   "skills": [],
-  "allowedPaths": ["."],
-  "allowedCommands": [],
-  "writePolicy": "workspace",
   "contextSources": [],
-  "instructions": "Inspect before editing. Preserve unrelated work. Run focused tests and report proven results.",
-  "verification": { "commands": ["pnpm test"] }
+  "defaultClient": "claude",
+  "clients": {
+    "claude": {
+      "enabled": true,
+      "model": "sonnet",
+      "transport": "cli"
+    },
+    "codex": {
+      "enabled": true,
+      "transport": "cli",
+      "model": "provider-managed"
+    },
+    "gemini": {
+      "enabled": true,
+      "transport": "cli",
+      "model": "provider-managed"
+    },
+    "antigravity": {
+      "enabled": true,
+      "transport": "cli",
+      "model": "provider-managed"
+    },
+    "hermes": {
+      "enabled": true,
+      "transport": "cli",
+      "model": "provider-managed"
+    }
+  },
+  "governance": {
+    "allowedPaths": ["."],
+    "allowedCommands": [],
+    "writePolicy": "workspace",
+    "sandbox": {
+      "mode": "workspace-write",
+      "network": "provider-only",
+      "allowedHosts": []
+    }
+  },
+  "memory": {
+    "enabled": true,
+    "scope": "profile"
+  },
+  "verification": {
+    "commands": ["pnpm test"]
+  },
+  "contextCompression": "none",
+  "instructions": "Inspect before editing. Preserve unrelated work. Run focused tests and report proven results."
 }
