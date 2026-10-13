@@ -49,7 +49,9 @@ const governanceSchema = z.object({
 const profileNamePattern = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 
 export function assertProfileName(name: string): string {
-  if (!profileNamePattern.test(name)) throw new Error("Invalid profile name");
+  // typeof first: RegExp#test coerces, so null would otherwise pass as "null".
+  if (typeof name !== "string" || !profileNamePattern.test(name))
+    throw new Error("Invalid profile name");
   return name;
 }
 

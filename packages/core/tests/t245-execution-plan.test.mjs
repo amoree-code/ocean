@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { writeProfileFact } from "../dist/application/memory/profile-facts.js";
-import { runAgent } from "../dist/application/runs/run-agent.js";
+import { resumeAgent, runAgent } from "../dist/application/runs/run-agent.js";
 import { createAgentRuntime } from "../dist/composition/runtime.js";
 import {
   profileIdentity,
@@ -20,7 +20,12 @@ import {
 import { SessionStore } from "../dist/infrastructure/persistence/session-store.js";
 import { SYSTEM_DIR } from "../dist/paths.js";
 
-const cli = { cwd: "/work", supportedTransports: ["cli"], writeAllowed: false };
+const cli = {
+  cwd: "/work",
+  supportedTransports: ["cli"],
+  writeAllowed: false,
+  enforceableNetwork: ["provider-only", "deny", "allowlist"],
+};
 
 const v2 = (overrides = {}) => ({
   schemaVersion: 2,
@@ -420,4 +425,81 @@ test("a profile with memory disabled gets no facts in its prompt", async () => {
       assert.doesNotMatch(prompt, /secret-plan|Durable profile facts/);
     },
   );
+});
+
+test("a resumed turn records its own execution plan", async () => {
+  await withProfile(readOnlyV2(), async (root) => {
+    const session = await runAgent(
+      { profileName: "coder", prompt: "plan", cwd: root },
+      createAgentRuntime({
+        executeProvider: async (request) => {
+          request.onEvent?.({
+            type: "json",
+            data: { session_id: "provider-1" },
+          });
+          return { exitCode: 0, events: [], stderr: "" };
+        },
+      }),
+    );
+    let resumed;
+    await resumeAgent(
+      session.sessionId,
+      "continue",
+      createAgentRuntime({
+        executeProvider: async (request) => {
+          resumed = request;
+          return { exitCode: 0, events: [], stderr: "" };
+        },
+      }),
+    );
+    const store = new SessionStore(
+      path.join(root, SYSTEM_DIR, "sessions", "sessions.sqlite"),
+    );
+    try {
+      const plans = store
+        .listEvents(session.sessionId)
+        .filter((event) => event.type === "execution_plan")
+        .map((event) => JSON.parse(event.data));
+      assert.equal(plans.length, 2);
+      assert.equal(plans[1].identity, plans[0].identity);
+      assert.equal(plans[1].plan.model, "sonnet");
+      assert.equal(resumed.resumeId, "provider-1");
+      assert.equal(resumed.readOnly, plans[1].plan.readOnly);
+    } finally {
+      store.close();
+    }
+  });
+});
+
+test("a v1 profile with memory disabled gets no facts in its prompt", async () => {
+  await withProfile(
+    {
+      name: "coder",
+      role: "r",
+      provider: "claude",
+      memory: { enabled: false, scope: "profile" },
+    },
+    async (root) => {
+      await writeProfileFact("coder", "secret-plan", "do not show");
+      let prompt = "";
+      await runAgent(
+        { profileName: "coder", prompt: "plan", cwd: root },
+        createAgentRuntime({
+          executeProvider: async (request) => {
+            prompt = request.prompt;
+            return { exitCode: 0, events: [], stderr: "" };
+          },
+        }),
+      );
+      assert.doesNotMatch(prompt, /secret-plan|Durable profile facts/);
+    },
+  );
+});
+
+test("a non-string profile name is never coerced into a namespace", async () => {
+  const { profileFactsFile } = await import(
+    "../dist/application/memory/profile-facts.js"
+  );
+  for (const bad of [null, undefined, 42])
+    assert.throws(() => profileFactsFile(bad), /Invalid profile name/);
 });

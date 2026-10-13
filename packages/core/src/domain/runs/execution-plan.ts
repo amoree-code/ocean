@@ -38,6 +38,9 @@ export type ExecutionPlanOptions = {
   // Whether this run may write: the profile allows it, an approved run contract grants it,
   // and the runtime can enforce it. The effective sandbox is the strictest of the three.
   writeAllowed: boolean;
+  // Network policies the selected client can enforce. A stricter policy it cannot enforce
+  // fails closed rather than running with a weaker one.
+  enforceableNetwork: readonly SandboxPolicy["network"][];
 };
 
 // A v1 profile has no sandbox block; it maps to the policy it already implied.
@@ -70,6 +73,10 @@ export function buildExecutionPlan(
   if (!options.supportedTransports.includes(transport))
     throw new Error(`Unsupported transport for client ${client}: ${transport}`);
   const sandbox = profileSandbox(profile);
+  if (!options.enforceableNetwork.includes(sandbox.network))
+    throw new Error(
+      `Client ${client} cannot enforce network policy: ${sandbox.network}`,
+    );
   const mode =
     sandbox.mode === "workspace-write" && options.writeAllowed
       ? "workspace-write"

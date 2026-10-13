@@ -24,7 +24,6 @@ import {
   readProfileFacts,
   writeProfileFact,
 } from "../dist/application/memory/profile-facts.js";
-import { formatProfileContract } from "../dist/application/runs/prompt-assembly.js";
 import {
   profileIdentity,
   selectProfileClient,
@@ -115,23 +114,47 @@ test("GAP: DeepSeek and OpenRouter are not registered providers", () => {
 
 // ---- model selection ----------------------------------------------------------------------
 
-test("GAP: the selected model is prompt text only — no adapter passes it to its CLI", () => {
-  const selected = selectProfileClient(multiClient(), "claude");
-  assert.match(
-    formatProfileContract(selected, { taskId: null, handoffId: null }),
-    /model: claude-model/,
+// Phase 3 flipped: every adapter passes the plan's model with its client's own flag.
+test("every adapter enforces the requested model with a CLI flag", () => {
+  const flags = {
+    claude: "--model",
+    codex: "--model",
+    gemini: "--model",
+    antigravity: "--model",
+    hermes: "-m",
+    kilo: "--model",
+    kimi: "--model",
+  };
+  assert.deepEqual(
+    Object.keys(flags).sort(),
+    Object.keys(providerAdapterRegistry).sort(),
   );
-  // A provider request has no model field, and no adapter turns a model into a CLI flag.
-  for (const provider of Object.keys(providerAdapterRegistry)) {
-    const invocation = buildProviderInvocation({
+  for (const [provider, flag] of Object.entries(flags)) {
+    const { args } = buildProviderInvocation({
       provider,
       prompt: "hello",
       cwd: "/tmp",
-      model: "claude-model",
+      model: "chosen-model",
     });
-    assert.ok(!invocation.args.includes("claude-model"), provider);
-    assert.ok(!invocation.args.includes("--model"), provider);
+    const at = args.indexOf("chosen-model");
+    assert.ok(at > 0, provider);
+    assert.equal(args[at - 1], flag, provider);
+    // The flag precedes the prompt, so a CLI cannot read it as part of the prompt.
+    assert.ok(at < args.indexOf("hello"), provider);
   }
+});
+
+test("a provider-managed or absent model adds no model flag", () => {
+  for (const provider of Object.keys(providerAdapterRegistry))
+    for (const model of [undefined, "provider-managed"]) {
+      const { args } = buildProviderInvocation({
+        provider,
+        prompt: "hello",
+        cwd: "/tmp",
+        model,
+      });
+      assert.ok(!args.includes("--model") && !args.includes("-m"), provider);
+    }
 });
 
 // ---- profile identity ---------------------------------------------------------------------

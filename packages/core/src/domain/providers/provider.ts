@@ -24,6 +24,10 @@ export type ProviderRequest = {
   onEvent?: (event: RuntimeEvent) => void;
   onSpawn?: (pid: number) => void;
   readOnly?: boolean;
+  // The execution plan's model. Absent or "provider-managed" leaves the client's own default.
+  model?: string;
+  // Child-only variables from the execution plan; never written to this process's env.
+  env?: Readonly<Record<string, string>>;
   // Directories outside cwd that the prompt points the provider at (skill folders, context
   // references). Workspace-restricted providers are granted read access to them.
   readDirectories?: string[];
