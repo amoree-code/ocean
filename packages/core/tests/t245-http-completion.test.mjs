@@ -11,7 +11,10 @@ import { runAgent } from "../dist/application/runs/run-agent.js";
 import { createAgentRuntime } from "../dist/composition/runtime.js";
 import { validateProfile } from "../dist/domain/profiles/profile-validator.js";
 import { SessionStore } from "../dist/infrastructure/persistence/session-store.js";
-import { createCompletionExecutor } from "../dist/infrastructure/providers/openai-compatible.js";
+import {
+  createChatTransport,
+  createCompletionExecutor,
+} from "../dist/infrastructure/providers/openai-compatible.js";
 import { SYSTEM_DIR } from "../dist/paths.js";
 
 const SECRET = "fake-credential-for-tests";
@@ -448,5 +451,66 @@ test("a completion client cannot leave its model to a provider default", () => {
         },
       }),
     /Client deepseek requires a model/,
+  );
+});
+
+test("a chat turn sends the tools and parses tool calls from the reply", async () => {
+  const toolReply = json(200, {
+    model: "deepseek-chat",
+    choices: [
+      {
+        message: {
+          content: null,
+          tool_calls: [
+            {
+              id: "call_1",
+              type: "function",
+              function: { name: "read_file", arguments: '{"path":"a"}' },
+            },
+          ],
+        },
+      },
+    ],
+  });
+  await withServer(
+    [toolReply, json(200, { choices: [{ message: { tool_calls: "x" } }] })],
+    async ({ url, hits }) => {
+      const chat = createChatTransport({
+        endpoints: { deepseek: url, openrouter: url },
+        env: { DEEPSEEK_API_KEY: SECRET },
+      });
+      const tools = [{ type: "function", function: { name: "read_file" } }];
+      const messages = [{ role: "user", content: "go" }];
+      const reply = await chat({
+        provider: "deepseek",
+        model: "deepseek-chat",
+        messages,
+        tools,
+        signal: new AbortController().signal,
+      });
+      assert.deepEqual(hits[0].body.tools, tools);
+      assert.deepEqual(hits[0].body.messages, messages);
+      assert.deepEqual(reply.message, {
+        role: "assistant",
+        content: null,
+        tool_calls: [
+          {
+            id: "call_1",
+            type: "function",
+            function: { name: "read_file", arguments: '{"path":"a"}' },
+          },
+        ],
+      });
+      await assert.rejects(
+        chat({
+          provider: "deepseek",
+          model: "deepseek-chat",
+          messages,
+          tools,
+          signal: new AbortController().signal,
+        }),
+        (error) => error.exitCode === 1 && /tool_calls/.test(error.message),
+      );
+    },
   );
 });

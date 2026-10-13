@@ -1,10 +1,14 @@
 import type { HeadlessResult } from "../process/process-events.js";
 import type { Profile } from "../profiles/profile.js";
 import type {
+  ChatReply,
+  ChatRequest,
   CompletionRequest,
   HeadlessProvider,
   ProviderRequest,
 } from "../providers/provider.js";
+import type { ToolArguments, ToolName } from "../runs/agent-tools.js";
+import type { ExecutionPlan } from "../runs/execution-plan.js";
 import type { SkillIndexEntry } from "../skills/skill.js";
 import type { SessionStoreFactory } from "./session-store-port.js";
 
@@ -19,6 +23,17 @@ export type ProviderExecutor = (
 export type CompletionExecutor = (
   request: CompletionRequest,
 ) => Promise<HeadlessResult>;
+
+// One tool-loop turn against a completion client (T-245 Phase 6).
+export type ChatPort = (request: ChatRequest) => Promise<ChatReply>;
+
+// Runs one tool call that the plan has already allowed.
+export type AgentToolPort = (
+  plan: ExecutionPlan,
+  name: ToolName,
+  args: ToolArguments[ToolName],
+  signal: AbortSignal,
+) => Promise<string>;
 
 export type ProfileLoader = (name: string) => Promise<Profile>;
 
@@ -53,6 +68,8 @@ export type AgentRuntimeDeps = {
   openStore: SessionStoreFactory;
   executeProvider: ProviderExecutor;
   executeCompletion: CompletionExecutor;
+  chat: ChatPort;
+  executeAgentTool: AgentToolPort;
   loadProfile: ProfileLoader;
   loadSkillIndex: SkillIndexLoader;
   resolveClientHome: ClientHomeResolver;

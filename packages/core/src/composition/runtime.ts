@@ -22,10 +22,14 @@ import {
   openSessionStore,
   SessionStore,
 } from "../infrastructure/persistence/session-store.js";
+import { executeAgentTool } from "../infrastructure/process/agent-tool-executor.js";
 import { runHeadless } from "../infrastructure/process/cli-process.js";
 import { runInteractive } from "../infrastructure/process/interactive-process.js";
 import { resolveClientHome } from "../infrastructure/providers/client-home.js";
-import { runCompletion } from "../infrastructure/providers/openai-compatible.js";
+import {
+  chatTransport,
+  runCompletion,
+} from "../infrastructure/providers/openai-compatible.js";
 import { resolveOriginalExecutable } from "../infrastructure/providers/provider-registry.js";
 import {
   assertProviderSupportsReadOnly,
@@ -54,6 +58,8 @@ export const defaultAgentRuntime: AgentRuntimeDeps = {
   openStore: openSessionStore,
   executeProvider: runProvider,
   executeCompletion: runCompletion,
+  chat: chatTransport,
+  executeAgentTool,
   loadProfile,
   loadSkillIndex,
   resolveClientHome,

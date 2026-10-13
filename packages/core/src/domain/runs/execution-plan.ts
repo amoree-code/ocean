@@ -18,6 +18,8 @@ export type ExecutionPlan = Readonly<{
   provider: string;
   model: string;
   temperature?: number;
+  // A completion client running Ocean's bounded tool loop instead of a single completion.
+  toolLoop: boolean;
   memoryNamespace: string | null;
   cwd: string;
   readOnly: boolean;
@@ -98,6 +100,8 @@ export function buildExecutionPlan(
     ...(binding?.temperature === undefined
       ? {}
       : { temperature: binding.temperature }),
+    toolLoop:
+      transport === "openai-compatible-api" && binding?.toolLoop === true,
     memoryNamespace,
     cwd: options.cwd,
     readOnly: mode === "read-only",
