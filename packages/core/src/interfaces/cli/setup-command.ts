@@ -151,6 +151,12 @@ export async function setup(options: SetupOptions = {}): Promise<void> {
       "utf8",
     ),
   );
+  // T-245: the runtime config names the default profile, so `ocean run` without --profile
+  // no longer depends on the historical fallback. An existing file is never replaced.
+  await ensureFile(
+    oceanPath(SYSTEM_DIR, "config", "runtime.json"),
+    `${JSON.stringify({ schemaVersion: 1, defaultProfile: "default" }, null, 2)}\n`,
+  );
   await ensureFile(
     oceanPath(SYSTEM_DIR, "config", "startup", "STARTUP.md"),
     "# Ocean startup\n\nManaged by `ocean setup`.\n",
