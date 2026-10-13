@@ -1,6 +1,7 @@
 import type { HeadlessResult } from "../process/process-events.js";
 import type { Profile } from "../profiles/profile.js";
 import type {
+  CompletionRequest,
   HeadlessProvider,
   ProviderRequest,
 } from "../providers/provider.js";
@@ -13,6 +14,10 @@ import type { SessionStoreFactory } from "./session-store-port.js";
 
 export type ProviderExecutor = (
   request: ProviderRequest,
+) => Promise<HeadlessResult>;
+
+export type CompletionExecutor = (
+  request: CompletionRequest,
 ) => Promise<HeadlessResult>;
 
 export type ProfileLoader = (name: string) => Promise<Profile>;
@@ -47,6 +52,7 @@ export type ReadOnlyAssertion = (provider: HeadlessProvider) => void;
 export type AgentRuntimeDeps = {
   openStore: SessionStoreFactory;
   executeProvider: ProviderExecutor;
+  executeCompletion: CompletionExecutor;
   loadProfile: ProfileLoader;
   loadSkillIndex: SkillIndexLoader;
   resolveClientHome: ClientHomeResolver;

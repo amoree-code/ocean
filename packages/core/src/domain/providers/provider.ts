@@ -33,6 +33,23 @@ export type ProviderRequest = {
   readDirectories?: string[];
 };
 
+// A text completion over an OpenAI-compatible HTTP API (T-245 Phase 4). The endpoint and the
+// credential's environment-variable name are fixed per provider by the transport; a request
+// can name neither.
+export type CompletionProvider = "deepseek" | "openrouter";
+
+export type CompletionRequest = {
+  provider: CompletionProvider;
+  model: string;
+  prompt: string;
+  temperature?: number;
+  timeoutMs?: number;
+  maxOutputBytes?: number;
+  // Total attempts, including the first; only 429 and 5xx responses are retried.
+  maxAttempts?: number;
+  onEvent?: (event: RuntimeEvent) => void;
+};
+
 export type ProviderAdapter = {
   provider: HeadlessProvider;
   capabilities: readonly string[];

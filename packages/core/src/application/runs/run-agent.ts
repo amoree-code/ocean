@@ -5,11 +5,15 @@ import type { AgentRuntimeDeps } from "../../domain/ports/runtime-ports.js";
 import type { SessionStorePort } from "../../domain/ports/session-store-port.js";
 import type { RuntimeEvent } from "../../domain/process/process-events.js";
 import {
+  isApiClient,
   profileIdentity,
   selectProfileClient,
 } from "../../domain/profiles/profile.js";
 import { executionPolicy } from "../../domain/profiles/profile-policy.js";
-import type { HeadlessProvider } from "../../domain/providers/provider.js";
+import type {
+  CompletionProvider,
+  HeadlessProvider,
+} from "../../domain/providers/provider.js";
 import { redactRuntimeText } from "../../domain/redaction/redaction.js";
 import {
   buildExecutionPlan,
@@ -77,7 +81,9 @@ export async function runAgent(
     (typeof handoff?.taskId === "string" ? handoff.taskId : null);
   const clientHome = deps.resolveClientHome(profile);
   executionPolicy(profile, request.cwd);
-  deps.assertProviderSupportsReadOnly(profile.provider as HeadlessProvider);
+  // A completion client returns text and touches nothing, so it is read-only by construction.
+  if (!isApiClient(profile.provider))
+    deps.assertProviderSupportsReadOnly(profile.provider as HeadlessProvider);
   if (
     profile.writePolicy !== "none" &&
     !request.runContract?.approval.approved
@@ -224,33 +230,44 @@ export async function runAgent(
         sections: breakdown,
       }),
     );
-    const result = await execute({
-      provider: profile.provider as HeadlessProvider,
-      prompt,
-      cwd: request.cwd,
-      clientHome,
-      timeoutMs: request.runContract?.budget.timeoutMs,
-      maxOutputBytes: request.runContract?.budget.maxOutputBytes,
-      readOnly: plan.readOnly,
-      model: plan.model,
-      env: plan.childEnv,
-      readDirectories: headlessReadDirectories({
-        cwd: request.cwd,
-        profileName: profile.name,
-        skillIndex,
-        factsPartial: factsDigest.partial,
-        contextDirectories: context.readDirectories,
-      }),
-      onSpawn: (pid) => sessionStore.setProviderPid(sessionId, pid),
-      onEvent: (event) => {
-        captureProviderSessionId(sessionStore, sessionId, event);
-        sessionStore.appendEvent(
-          sessionId,
-          event.type,
-          boundedEventData(event),
-        );
-      },
-    });
+    const onEvent = (event: RuntimeEvent) => {
+      captureProviderSessionId(sessionStore, sessionId, event);
+      sessionStore.appendEvent(sessionId, event.type, boundedEventData(event));
+    };
+    const result =
+      plan.transport === "openai-compatible-api"
+        ? await deps.executeCompletion({
+            provider: plan.provider as CompletionProvider,
+            model: plan.model,
+            prompt,
+            ...(plan.temperature === undefined
+              ? {}
+              : { temperature: plan.temperature }),
+            timeoutMs: request.runContract?.budget.timeoutMs,
+            maxOutputBytes: request.runContract?.budget.maxOutputBytes,
+            maxAttempts: request.runContract?.budget.maxAttempts,
+            onEvent,
+          })
+        : await execute({
+            provider: profile.provider as HeadlessProvider,
+            prompt,
+            cwd: request.cwd,
+            clientHome,
+            timeoutMs: request.runContract?.budget.timeoutMs,
+            maxOutputBytes: request.runContract?.budget.maxOutputBytes,
+            readOnly: plan.readOnly,
+            model: plan.model,
+            env: plan.childEnv,
+            readDirectories: headlessReadDirectories({
+              cwd: request.cwd,
+              profileName: profile.name,
+              skillIndex,
+              factsPartial: factsDigest.partial,
+              contextDirectories: context.readDirectories,
+            }),
+            onSpawn: (pid) => sessionStore.setProviderPid(sessionId, pid),
+            onEvent,
+          });
     sessionStore.clearProviderPid(sessionId);
     sessionStore.updateStatus(
       sessionId,
@@ -467,12 +484,12 @@ export async function resumeAgent(
   }
 }
 
-// What this runtime can enforce today. Only CLI clients execute; API bindings fail closed
-// until their transport lands. Writes stay off until a writable sandbox is proven per
-// provider. CLI clients reach their own provider and cannot be confined further, so a
-// "deny" or "allowlist" network policy fails closed.
+// What this runtime can enforce today. CLI clients and completion APIs both execute. Writes
+// stay off until a writable sandbox is proven per provider. Every client reaches its own
+// provider (a completion client reaches only its fixed endpoint), so a "deny" or
+// "allowlist" network policy fails closed.
 const runtimeCapabilities = {
-  supportedTransports: ["cli"],
+  supportedTransports: ["cli", "openai-compatible-api"],
   writeAllowed: false,
   enforceableNetwork: ["provider-only"],
 } as const;
