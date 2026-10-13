@@ -14,7 +14,10 @@ import path from "node:path";
 import test from "node:test";
 import { runAgent } from "../dist/application/runs/run-agent.js";
 import { createAgentRuntime } from "../dist/composition/runtime.js";
+import { selectProfileClient } from "../dist/domain/profiles/profile.js";
+import { validateProfile } from "../dist/domain/profiles/profile-validator.js";
 import { SessionStore } from "../dist/infrastructure/persistence/session-store.js";
+import { buildProviderInvocation } from "../dist/infrastructure/providers/providers.js";
 import { SYSTEM_DIR } from "../dist/paths.js";
 
 const unixOnly = process.platform === "win32" ? test.skip : test;
@@ -198,4 +201,34 @@ test("a client that cannot enforce read-only fails before spawn", async () => {
       assert.equal(executed, false);
     },
   );
+});
+
+test("a v1 profile's own model is never passed to another client", () => {
+  // The shape of the shipped templates and live profiles: a Claude model, other clients
+  // enabled without one.
+  const profile = validateProfile({
+    name: "default",
+    role: "r",
+    clients: {
+      claude: { enabled: true, model: "sonnet" },
+      codex: { enabled: true },
+    },
+  });
+  assert.equal(selectProfileClient(profile).model, "sonnet");
+  const codex = selectProfileClient(profile, "codex");
+  assert.equal(codex.model, "provider-managed");
+  const { args } = buildProviderInvocation({
+    provider: "codex",
+    prompt: "hi",
+    cwd: "/tmp",
+    model: codex.model,
+  });
+  assert.ok(!args.includes("--model") && !args.includes("sonnet"));
+  const single = validateProfile({
+    name: "single",
+    role: "r",
+    provider: "codex",
+    model: "gpt-5",
+  });
+  assert.equal(selectProfileClient(single).model, "gpt-5");
 });

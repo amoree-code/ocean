@@ -180,11 +180,16 @@ export function selectProfileClient(
   const binding = profile.clients[client];
   if (Object.keys(profile.clients).length && !binding?.enabled)
     throw new Error(`Client is not enabled for profile: ${client}`);
+  // The profile-level model belongs to the profile's own provider. Another client without a
+  // model of its own keeps its provider default: since the model became a CLI flag, passing
+  // e.g. a Claude model to codex would break the run.
   return {
     ...profile,
     provider: client,
     defaultClient: client,
-    model: binding?.model ?? profile.model,
+    model:
+      binding?.model ??
+      (client === profile.provider ? profile.model : "provider-managed"),
   };
 }
 
