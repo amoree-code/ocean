@@ -89,8 +89,7 @@ export async function runAgent(
   }
   const plan = buildExecutionPlan(profile, {
     cwd: request.cwd,
-    supportedTransports: runtimeTransports,
-    writeAllowed: false,
+    ...runtimeCapabilities,
   });
   const sessionStore = await deps.openStore();
   const sessionId = request.sessionId ?? randomUUID();
@@ -233,6 +232,8 @@ export async function runAgent(
       timeoutMs: request.runContract?.budget.timeoutMs,
       maxOutputBytes: request.runContract?.budget.maxOutputBytes,
       readOnly: plan.readOnly,
+      model: plan.model,
+      env: plan.childEnv,
       readDirectories: headlessReadDirectories({
         cwd: request.cwd,
         profileName: profile.name,
@@ -363,8 +364,7 @@ export async function resumeAgent(
     }
     const plan = buildExecutionPlan(profile, {
       cwd: existing.workingDirectory,
-      supportedTransports: runtimeTransports,
-      writeAllowed: false,
+      ...runtimeCapabilities,
     });
     sessionStore.updateStatus(sessionId, "running");
     appendExecutionPlan(sessionStore, sessionId, plan);
@@ -420,6 +420,8 @@ export async function resumeAgent(
       timeoutMs: runContract?.budget.timeoutMs,
       maxOutputBytes: runContract?.budget.maxOutputBytes,
       readOnly: plan.readOnly,
+      model: plan.model,
+      env: plan.childEnv,
       readDirectories,
       onSpawn: (pid) => sessionStore.setProviderPid(sessionId, pid),
       onEvent: (event) => {
@@ -465,9 +467,15 @@ export async function resumeAgent(
   }
 }
 
-// Only CLI clients execute today; API bindings fail closed until their transport lands.
-// Writes stay off (writeAllowed: false) until each provider's sandbox is enforced.
-const runtimeTransports = ["cli"] as const;
+// What this runtime can enforce today. Only CLI clients execute; API bindings fail closed
+// until their transport lands. Writes stay off until a writable sandbox is proven per
+// provider. CLI clients reach their own provider and cannot be confined further, so a
+// "deny" or "allowlist" network policy fails closed.
+const runtimeCapabilities = {
+  supportedTransports: ["cli"],
+  writeAllowed: false,
+  enforceableNetwork: ["provider-only"],
+} as const;
 
 // The plan is recorded with its identity before any context is assembled or process starts,
 // so a session always shows the exact client, model, memory namespace and sandbox it ran with.

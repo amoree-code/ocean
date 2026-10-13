@@ -49,7 +49,9 @@ const governanceSchema = z.object({
 const profileNamePattern = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 
 export function assertProfileName(name: string): string {
-  if (!profileNamePattern.test(name)) throw new Error("Invalid profile name");
+  // typeof first: RegExp#test coerces, so null would otherwise pass as "null".
+  if (typeof name !== "string" || !profileNamePattern.test(name))
+    throw new Error("Invalid profile name");
   return name;
 }
 
@@ -178,11 +180,16 @@ export function selectProfileClient(
   const binding = profile.clients[client];
   if (Object.keys(profile.clients).length && !binding?.enabled)
     throw new Error(`Client is not enabled for profile: ${client}`);
+  // The profile-level model belongs to the profile's own provider. Another client without a
+  // model of its own keeps its provider default: since the model became a CLI flag, passing
+  // e.g. a Claude model to codex would break the run.
   return {
     ...profile,
     provider: client,
     defaultClient: client,
-    model: binding?.model ?? profile.model,
+    model:
+      binding?.model ??
+      (client === profile.provider ? profile.model : "provider-managed"),
   };
 }
 
