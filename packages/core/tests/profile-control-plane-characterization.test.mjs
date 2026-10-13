@@ -240,6 +240,28 @@ test("a canonical profile that fails validation is not shadowed by a legacy dire
   });
 });
 
+unixOnly(
+  "an unreadable canonical profile is an error, not a legacy fallback",
+  async () => {
+    await withRoot(async (root) => {
+      // A directory named <name>.json makes readFile fail with EISDIR, not ENOENT.
+      const profiles = path.join(root, SYSTEM_DIR, "profiles");
+      await mkdir(path.join(profiles, "odd.json"));
+      await mkdir(path.join(profiles, "odd"));
+      await writeFile(
+        path.join(profiles, "odd", "profile.json"),
+        JSON.stringify({
+          name: "odd",
+          provider: "claude",
+          model: "m",
+          role: "r",
+        }),
+      );
+      await assert.rejects(loadProfile("odd"), { code: "EISDIR" });
+    });
+  },
+);
+
 test("a missing profile is reported as not found", async () => {
   await withRoot(async () => {
     await assert.rejects(loadProfile("nobody"), /Profile not found: nobody/);
