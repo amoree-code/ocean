@@ -30,6 +30,7 @@ test("CLI help exposes every top-level command", () => {
     "doctor",
     "repair",
     "run",
+    "profiles",
     "session",
     "service",
     "intercept",

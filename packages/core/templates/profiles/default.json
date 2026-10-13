@@ -1,23 +1,56 @@
 {
+  "schemaVersion": 2,
   "name": "default",
   "description": "General-purpose assistant profile for ad-hoc work across the active workspace.",
   "version": "1.0.0",
-  "provider": "claude",
-  "model": "sonnet",
-  "clients": {
-    "claude": { "enabled": true, "model": "sonnet" },
-    "codex": { "enabled": true },
-    "gemini": { "enabled": true },
-    "antigravity": { "enabled": true },
-    "hermes": { "enabled": true }
-  },
-  "defaultClient": "claude",
   "role": "general assistant",
   "skills": [],
-  "allowedPaths": ["."],
-  "allowedCommands": [],
-  "writePolicy": "workspace",
   "contextSources": [],
-  "instructions": "Handle ad-hoc work carefully. Preserve unrelated changes and report what was verified.",
-  "verification": { "commands": [] }
+  "defaultClient": "claude",
+  "clients": {
+    "claude": {
+      "enabled": true,
+      "model": "sonnet",
+      "transport": "cli"
+    },
+    "codex": {
+      "enabled": true,
+      "transport": "cli",
+      "model": "provider-managed"
+    },
+    "gemini": {
+      "enabled": true,
+      "transport": "cli",
+      "model": "provider-managed"
+    },
+    "antigravity": {
+      "enabled": true,
+      "transport": "cli",
+      "model": "provider-managed"
+    },
+    "hermes": {
+      "enabled": true,
+      "transport": "cli",
+      "model": "provider-managed"
+    }
+  },
+  "governance": {
+    "allowedPaths": ["."],
+    "allowedCommands": [],
+    "writePolicy": "workspace",
+    "sandbox": {
+      "mode": "workspace-write",
+      "network": "provider-only",
+      "allowedHosts": []
+    }
+  },
+  "memory": {
+    "enabled": true,
+    "scope": "profile"
+  },
+  "verification": {
+    "commands": []
+  },
+  "contextCompression": "none",
+  "instructions": "Handle ad-hoc work carefully. Preserve unrelated changes and report what was verified."
 }

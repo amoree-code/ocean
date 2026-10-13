@@ -99,6 +99,8 @@ import {
   defaultSessionStoreOpener,
   defaultWrapperManager,
 } from "../../composition/runtime.js";
+import { resolveProfileName } from "../../domain/profiles/runtime-config.js";
+import { loadRuntimeConfig } from "../../infrastructure/filesystem/runtime-config-loader.js";
 import { runObsidianMcpServer } from "../../infrastructure/mcp/obsidian-server.js";
 import { runOceanMcpServer } from "../../infrastructure/mcp/ocean-server.js";
 import { openSessionStore } from "../../infrastructure/persistence/session-store.js";
@@ -129,6 +131,7 @@ import { runMigrateCommand } from "./migrate-command.js";
 import { runObserveCommand } from "./observe-command.js";
 import { manageClients, runOnboardCommand } from "./onboard-command.js";
 import { runOperateCommand } from "./operate-command.js";
+import { runProfilesCommand } from "./profiles-command.js";
 import { setup } from "./setup-command.js";
 import { runTasksCommand } from "./tasks-command.js";
 
@@ -1006,8 +1009,23 @@ async function commandRun(): Promise<void> {
   const clientIndex = process.argv.indexOf("--client");
   const taskIndex = process.argv.indexOf("--task");
   const handoffIndex = process.argv.indexOf("--handoff");
-  const profileName =
-    profileIndex >= 0 ? process.argv[profileIndex + 1] : "default";
+  // --profile, then runtime.json's defaultProfile, then the historical "default" while no
+  // runtime.json exists. A named profile that does not exist fails; nothing falls back.
+  const explicitProfile =
+    profileIndex >= 0 ? process.argv[profileIndex + 1] : undefined;
+  if (
+    profileIndex >= 0 &&
+    (!explicitProfile || explicitProfile.startsWith("--"))
+  ) {
+    console.error("Usage: ocean run --profile <name> ... --prompt <text>");
+    process.exitCode = 1;
+    return;
+  }
+  // runtime.json is read only when it is needed, so a broken one cannot block an explicit run.
+  const profileName = resolveProfileName(
+    explicitProfile,
+    explicitProfile ? null : await loadRuntimeConfig(),
+  );
   const client = clientIndex >= 0 ? process.argv[clientIndex + 1] : undefined;
   const taskId = taskIndex >= 0 ? process.argv[taskIndex + 1] : undefined;
   const handoffId =
@@ -1264,5 +1282,6 @@ export const commandRegistry: Record<string, CommandHandler> = {
   repair: commandRepair,
   browser: commandBrowser,
   run: commandRun,
+  profiles: () => runProfilesCommand(process.argv.slice(3)),
   session: commandSession,
 };

@@ -1,23 +1,56 @@
 {
+  "schemaVersion": 2,
   "name": "reviewer",
   "description": "Read-only profile: reviews changes and reports findings without writing to the workspace.",
   "version": "1.0.0",
-  "provider": "claude",
-  "model": "sonnet",
-  "clients": {
-    "claude": { "enabled": true, "model": "sonnet" },
-    "codex": { "enabled": true },
-    "gemini": { "enabled": true },
-    "antigravity": { "enabled": true },
-    "hermes": { "enabled": true }
-  },
-  "defaultClient": "claude",
   "role": "code reviewer",
   "skills": [],
-  "allowedPaths": ["."],
-  "allowedCommands": [],
-  "writePolicy": "none",
   "contextSources": [],
-  "instructions": "Review changes without editing files. Separate findings from assumptions and identify missing evidence.",
-  "verification": { "commands": [] }
+  "defaultClient": "claude",
+  "clients": {
+    "claude": {
+      "enabled": true,
+      "model": "sonnet",
+      "transport": "cli"
+    },
+    "codex": {
+      "enabled": true,
+      "transport": "cli",
+      "model": "provider-managed"
+    },
+    "gemini": {
+      "enabled": true,
+      "transport": "cli",
+      "model": "provider-managed"
+    },
+    "antigravity": {
+      "enabled": true,
+      "transport": "cli",
+      "model": "provider-managed"
+    },
+    "hermes": {
+      "enabled": true,
+      "transport": "cli",
+      "model": "provider-managed"
+    }
+  },
+  "governance": {
+    "allowedPaths": ["."],
+    "allowedCommands": [],
+    "writePolicy": "none",
+    "sandbox": {
+      "mode": "read-only",
+      "network": "provider-only",
+      "allowedHosts": []
+    }
+  },
+  "memory": {
+    "enabled": true,
+    "scope": "profile"
+  },
+  "verification": {
+    "commands": []
+  },
+  "contextCompression": "none",
+  "instructions": "Review changes without editing files. Separate findings from assumptions and identify missing evidence."
 }

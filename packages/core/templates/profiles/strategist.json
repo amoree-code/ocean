@@ -1,23 +1,56 @@
 {
+  "schemaVersion": 2,
   "name": "strategist",
   "description": "Planning-only profile: reasons about approach and risk without writing to the workspace.",
   "version": "1.0.0",
-  "provider": "claude",
-  "model": "sonnet",
-  "clients": {
-    "claude": { "enabled": true, "model": "sonnet" },
-    "codex": { "enabled": true },
-    "gemini": { "enabled": true },
-    "antigravity": { "enabled": true },
-    "hermes": { "enabled": true }
-  },
-  "defaultClient": "claude",
   "role": "strategist",
   "skills": [],
-  "allowedPaths": ["."],
-  "allowedCommands": [],
-  "writePolicy": "none",
   "contextSources": [],
-  "instructions": "Plan and reason about approach and risk without writing to the workspace.",
-  "verification": { "commands": [] }
+  "defaultClient": "claude",
+  "clients": {
+    "claude": {
+      "enabled": true,
+      "model": "sonnet",
+      "transport": "cli"
+    },
+    "codex": {
+      "enabled": true,
+      "transport": "cli",
+      "model": "provider-managed"
+    },
+    "gemini": {
+      "enabled": true,
+      "transport": "cli",
+      "model": "provider-managed"
+    },
+    "antigravity": {
+      "enabled": true,
+      "transport": "cli",
+      "model": "provider-managed"
+    },
+    "hermes": {
+      "enabled": true,
+      "transport": "cli",
+      "model": "provider-managed"
+    }
+  },
+  "governance": {
+    "allowedPaths": ["."],
+    "allowedCommands": [],
+    "writePolicy": "none",
+    "sandbox": {
+      "mode": "read-only",
+      "network": "provider-only",
+      "allowedHosts": []
+    }
+  },
+  "memory": {
+    "enabled": true,
+    "scope": "profile"
+  },
+  "verification": {
+    "commands": []
+  },
+  "contextCompression": "none",
+  "instructions": "Plan and reason about approach and risk without writing to the workspace."
 }

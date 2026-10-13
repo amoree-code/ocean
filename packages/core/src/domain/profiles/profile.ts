@@ -156,7 +156,11 @@ export const profileSchema = rawProfileSchema
           path: ["clients", client, "transport"],
           message: `Client ${client} uses transport ${expected}`,
         });
-      if (isApiClient(client) && binding.enabled && !binding.model)
+      if (
+        isApiClient(client) &&
+        binding.enabled &&
+        (!binding.model || binding.model === "provider-managed")
+      )
         context.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["clients", client, "model"],
