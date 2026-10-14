@@ -56,6 +56,20 @@ test("tasks list returns live task summaries and filters by state", async () => 
     path.join(root, PROJECTS_DIR, "ocean", "tasks", "T-001", "task.md"),
     "---\nid: T-001\ntitle: First\nstate: active\ngoal: Test goal\nupdated_at: 2026-09-13\n---\n",
   );
+  await mkdir(path.join(root, PROJECTS_DIR, "ocean", "tasks", "T-002"), {
+    recursive: true,
+  });
+  await writeFile(
+    path.join(root, PROJECTS_DIR, "ocean", "tasks", "T-002", "task.md"),
+    "---\nid: T-002\ntitle: Second\nstate: todo\ngoal: Not yet\n---\n",
+  );
+  await mkdir(path.join(root, PROJECTS_DIR, "ocean", "tasks", "T-003"), {
+    recursive: true,
+  });
+  await writeFile(
+    path.join(root, PROJECTS_DIR, "ocean", "tasks", "T-003", "task.md"),
+    "---\nid: T-003\ntitle: \"Quoted — title\"\nstate: active\ngoal: Quotes\n---\n",
+  );
   const result = spawnSync(
     process.execPath,
     [path.resolve("dist/main.js"), "tasks", "list", "active"],
@@ -69,6 +83,13 @@ test("tasks list returns live task summaries and filters by state", async () => 
       state: "active",
       goal: "Test goal",
       updatedAt: "2026-09-13",
+    },
+    {
+      id: "T-003",
+      title: "Quoted — title",
+      state: "active",
+      goal: "Quotes",
+      updatedAt: "",
     },
   ]);
 });

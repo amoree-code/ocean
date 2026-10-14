@@ -14,7 +14,11 @@ if [ -f "$FILE" ]; then echo "daily record: $FILE"; else echo "daily record: NOT
 
 echo
 echo "=== ocean context ==="
-ocean context 2>/dev/null
+CTX=$(ocean context 2>/dev/null)
+echo "$CTX"
+# The session's project leads the plan; everything else is a one-line summary.
+PROJECT=$(printf '%s\n' "$CTX" | sed -n 's/^project: \([^ ]*\).*/\1/p' | head -1)
+PROJECT="${PROJECT:-ocean}"
 
 echo
 echo "=== last 3 sessions ==="
@@ -22,21 +26,24 @@ ocean session list 2>/dev/null | jq -r '.[0:3][] | "\(.updatedAt)  \(.status)  \
   || echo "(none yet, or ocean session list unavailable)"
 
 echo
-echo "=== active/blocked tasks ==="
+echo "=== tasks: $PROJECT ==="
 found=0
-for state in active blocked; do
-  count=$(ocean tasks list "$state" 2>/dev/null | jq 'length' 2>/dev/null || echo 0)
-  if [ "$count" != "0" ]; then
-    ocean tasks list "$state" 2>/dev/null | jq -r --arg st "$state" '.[] | "  \(.id)  \($st)  \(.project)  \(.title)"'
-    found=1
-  fi
+for state in active blocked paused; do
+  ocean tasks list "$state" --project "$PROJECT" 2>/dev/null \
+    | jq -r --arg st "$state" '.[] | "  \(.id)  \($st)  \(.title)"' 2>/dev/null \
+    | grep . && found=1
 done
-[ "$found" = 0 ] && echo "  (none — see ocean tasks list)"
+[ "$found" = 0 ] && echo "  (none — see ocean tasks list --project $PROJECT)"
 
 echo
-echo "=== registry active rows ==="
-REG="$BRAIN/04-projects/registry.md"
-[ -f "$REG" ] && grep -E '^\| \*\*' "$REG" | grep 'active' || echo "(registry.md not found or no active rows)"
+echo "=== other projects (active tasks) ==="
+for dir in "$BRAIN"/04-projects/*/tasks; do
+  [ -d "$dir" ] || continue
+  other=$(basename "$(dirname "$dir")")
+  [ "$other" = "$PROJECT" ] && continue
+  ids=$(ocean tasks list active --project "$other" 2>/dev/null | jq -r '[.[].id] | join(" ")' 2>/dev/null)
+  [ -n "$ids" ] && echo "  $other: $ids"
+done
 
 echo
 echo "=== repos with uncommitted work ==="

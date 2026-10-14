@@ -34,7 +34,9 @@ export async function runTasksCommand(
   if (!projectId) throw new Error("--project requires a project id");
   if (action === "list") {
     const state = args.find(
-      (arg, index) => !arg.startsWith("--") && index !== projectIndex + 1,
+      (arg, index) =>
+        !arg.startsWith("--") &&
+        (projectIndex < 0 || index !== projectIndex + 1),
     );
     console.log(JSON.stringify(await listTasks(state, projectId), null, 2));
     return;
