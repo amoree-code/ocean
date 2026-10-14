@@ -2,12 +2,18 @@ import { execFile as execFileCallback } from "node:child_process";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
+import { resolveProject } from "../../application/context/project-resolution.js";
 import {
   archiveDoneTasks,
   completeTask,
 } from "../../application/tasks/archive-tasks.js";
 import { checkpointTask } from "../../application/tasks/checkpoint-task.js";
-import { listTasks } from "../../application/tasks/list-tasks.js";
+import {
+  listTasks,
+  projectsHoldingTask,
+  projectsWithTasks,
+  type TaskSummary,
+} from "../../application/tasks/list-tasks.js";
 import { verifyTask } from "../../application/tasks/verify-task.js";
 import {
   enginePath,
@@ -24,21 +30,84 @@ const execFile = promisify(execFileCallback);
 // implementation and the MCP server both live in the application layer now.
 export { listTasks };
 
+async function boundProjectOf(cwd: string): Promise<string | null> {
+  try {
+    const resolution = await resolveProject(cwd);
+    return resolution.status === "bound" ? resolution.projectId : null;
+  } catch {
+    return null;
+  }
+}
+
+// The project an id-based action works on: --project if given, else the cwd's project when it
+// holds the id, else the one project that does. Several holders is an error, never a guess.
+async function taskProject(
+  id: string,
+  explicitProject: string | undefined,
+  cwdProject: string | null,
+): Promise<string> {
+  if (explicitProject) return explicitProject;
+  const holders = await projectsHoldingTask(id);
+  if (cwdProject && holders.includes(cwdProject)) return cwdProject;
+  if (holders.length === 1) return holders[0];
+  if (holders.length > 1)
+    throw new Error(
+      `${id} exists in ${holders.join(", ")}; pass --project <id>`,
+    );
+  return cwdProject ?? WORKSPACE_PROJECT_ID;
+}
+
 export async function runTasksCommand(
   action: string,
   args: string[],
 ): Promise<void> {
   const projectIndex = args.indexOf("--project");
-  const projectId =
-    projectIndex >= 0 ? args[projectIndex + 1] : WORKSPACE_PROJECT_ID;
-  if (!projectId) throw new Error("--project requires a project id");
+  const explicitProject =
+    projectIndex >= 0 ? args[projectIndex + 1] : undefined;
+  if (projectIndex >= 0 && !explicitProject)
+    throw new Error("--project requires a project id");
+  // Without --project, the tasks are the folder's project's (T-256): the cwd decides, and only a
+  // folder that is no project falls back to the workspace project.
+  const cwdProject = explicitProject
+    ? null
+    : await boundProjectOf(process.cwd());
+  const projectId = explicitProject ?? cwdProject ?? WORKSPACE_PROJECT_ID;
   if (action === "list") {
     const state = args.find(
       (arg, index) =>
         !arg.startsWith("--") &&
         (projectIndex < 0 || index !== projectIndex + 1),
     );
-    console.log(JSON.stringify(await listTasks(state, projectId), null, 2));
+    const withProject = (project: string, tasks: TaskSummary[]) =>
+      tasks.map((task) => ({ ...task, project }));
+    if (explicitProject) {
+      console.log(
+        JSON.stringify(
+          withProject(explicitProject, await listTasks(state, explicitProject)),
+          null,
+          2,
+        ),
+      );
+      return;
+    }
+    if (cwdProject) {
+      const own = await listTasks(state, cwdProject);
+      if (own.length) {
+        console.log(JSON.stringify(withProject(cwdProject, own), null, 2));
+        return;
+      }
+    }
+    // No project here, or it has no matching tasks: show every project's, labelled.
+    const all = [];
+    for (const project of await projectsWithTasks())
+      all.push(...withProject(project, await listTasks(state, project)));
+    const which = state ? `${state} ` : "";
+    console.error(
+      cwdProject
+        ? `No ${which}tasks in ${cwdProject}; showing every project.`
+        : `This folder is not an Ocean project; showing every project's ${which}tasks.`,
+    );
+    console.log(JSON.stringify(all, null, 2));
     return;
   }
   if (action === "doctor") {
@@ -94,15 +163,16 @@ export async function runTasksCommand(
       throw new Error(
         "Usage: ocean tasks checkpoint <id> --note <text> [--next <text>] [--project <id>]",
       );
+    const owner = await taskProject(id, explicitProject, cwdProject);
     const result = await checkpointTask(
       id,
-      resolveWithin(oceanPath(PROJECTS_DIR), projectFolder(projectId), "tasks"),
+      resolveWithin(oceanPath(PROJECTS_DIR), projectFolder(owner), "tasks"),
       {
         note: args[noteIndex + 1],
         next: nextIndex >= 0 ? args[nextIndex + 1] : undefined,
       },
     );
-    console.log(JSON.stringify({ ...result, project: projectId }, null, 2));
+    console.log(JSON.stringify({ ...result, project: owner }, null, 2));
     return;
   }
   if (action === "verify") {
@@ -114,7 +184,11 @@ export async function runTasksCommand(
     }
     const outcome = await verifyTask(
       id,
-      resolveWithin(oceanPath(PROJECTS_DIR), projectFolder(projectId), "tasks"),
+      resolveWithin(
+        oceanPath(PROJECTS_DIR),
+        projectFolder(await taskProject(id, explicitProject, cwdProject)),
+        "tasks",
+      ),
     );
     console.log(JSON.stringify(outcome, null, 2));
     if (!outcome.passed) process.exitCode = 1;
@@ -128,13 +202,14 @@ export async function runTasksCommand(
       return;
     }
     try {
+      const owner = await taskProject(id, explicitProject, cwdProject);
       console.log(
         JSON.stringify(
           await completeTask(
             id,
             resolveWithin(
               oceanPath(PROJECTS_DIR),
-              projectFolder(projectId),
+              projectFolder(owner),
               "tasks",
             ),
             { verify: !args.includes("--no-verify") },
