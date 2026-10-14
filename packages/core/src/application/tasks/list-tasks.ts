@@ -55,7 +55,8 @@ export async function listTasks(
         .filter((line) => /^[\w-]+:/.test(line))
         .map((line) => {
           const index = line.indexOf(":");
-          return [line.slice(0, index), line.slice(index + 1).trim()];
+          const value = line.slice(index + 1).trim();
+          return [line.slice(0, index), value.replace(/^(["'])(.*)\1$/, "$2")];
         }),
     );
     if (state && fields.state !== state) continue;
