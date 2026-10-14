@@ -30,13 +30,10 @@ const execFile = promisify(execFileCallback);
 // implementation and the MCP server both live in the application layer now.
 export { listTasks };
 
+// A registry that cannot be read throws here: no guessing which project a folder is (T-256).
 async function boundProjectOf(cwd: string): Promise<string | null> {
-  try {
-    const resolution = await resolveProject(cwd);
-    return resolution.status === "bound" ? resolution.projectId : null;
-  } catch {
-    return null;
-  }
+  const resolution = await resolveProject(cwd);
+  return resolution.status === "bound" ? resolution.projectId : null;
 }
 
 // The project an id-based action works on: --project if given, else the cwd's project when it
@@ -54,7 +51,7 @@ async function taskProject(
     throw new Error(
       `${id} exists in ${holders.join(", ")}; pass --project <id>`,
     );
-  return cwdProject ?? WORKSPACE_PROJECT_ID;
+  throw new Error(`${id} is not a task in any project`);
 }
 
 export async function runTasksCommand(

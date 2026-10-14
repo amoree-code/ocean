@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { PROJECTS_DIR } from "../dist/paths.js";
+import { PROJECTS_DIR, SYSTEM_DIR } from "../dist/paths.js";
 
 function validate(root) {
   return new Promise((resolve) => {
@@ -229,4 +229,31 @@ test("an id held by two projects needs --project", async () => {
   );
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /T-101 exists in ocean, shop; pass --project/);
+});
+
+test("an id no project holds is reported as such", async () => {
+  const { shopRepo, run } = await twoProjects();
+  const result = run(shopRepo, "verify", "T-999");
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /T-999 is not a task in any project/);
+});
+
+test("index defaults to the folder's project", async () => {
+  const { shopRepo, run } = await twoProjects();
+  const index = run(shopRepo, "index");
+  assert.equal(index.status, 0, index.stderr);
+  assert.match(index.stdout, /\| T-101 \|/);
+  assert.equal(index.stdout.includes("| T-001 |"), false);
+});
+
+test("a corrupt registry fails the task commands closed instead of guessing", async () => {
+  const { root, shopRepo, run } = await twoProjects();
+  const registry = path.join(root, SYSTEM_DIR, "registry");
+  await mkdir(registry, { recursive: true });
+  await writeFile(path.join(registry, "project-bindings.json"), "{bad");
+  for (const args of [["list"], ["checkpoint", "T-101", "--note", "x"]]) {
+    const result = run(shopRepo, ...args);
+    assert.notEqual(result.status, 0, args.join(" "));
+    assert.equal(result.stdout, "");
+  }
 });
