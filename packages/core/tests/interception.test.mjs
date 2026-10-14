@@ -35,6 +35,8 @@ import {
 import { SYSTEM_DIR } from "../dist/paths.js";
 
 const unixOnly = process.platform === "win32" ? test.skip : test;
+const oceanCliWrapper = (directory) =>
+  path.join(directory, process.platform === "win32" ? "ocean.cmd" : "ocean");
 
 async function withEnvironment(run) {
   const root = await import("node:fs/promises").then(({ mkdtemp }) =>
@@ -83,7 +85,7 @@ test("sync creates Ocean wrappers and shell activation", async () => {
     const wrapper = await readFile(providerWrapperPath("claude"), "utf8");
     assert.match(wrapper, /intercept --client/);
     const oceanWrapper = await readFile(
-      path.join(result.directory, "ocean"),
+      oceanCliWrapper(result.directory),
       "utf8",
     );
     assert.match(oceanWrapper, /dist[\\/]main\.js/);
@@ -148,7 +150,7 @@ test("shell integration leaves an unterminated begin marker alone and appends it
 test("doctor reports a missing ocean CLI wrapper", async () => {
   await withEnvironment(async () => {
     const { directory } = await syncProviderWrappers();
-    await rm(path.join(directory, "ocean"), { force: true });
+    await rm(oceanCliWrapper(directory), { force: true });
     const findings = await wrapperDoctor();
     assert.ok(
       findings.some((finding) =>
