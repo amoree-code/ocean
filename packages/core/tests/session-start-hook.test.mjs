@@ -79,6 +79,61 @@ test("ocean hook session-start CLI works with no stdin payload at all (falls bac
   assert.equal(parsed.hookSpecificOutput.hookEventName, "SessionStart");
 });
 
+test("ocean hook session-start --client codex keeps the hookSpecificOutput shape", () => {
+  const result = spawnSync(
+    process.execPath,
+    [
+      path.resolve("dist/main.js"),
+      "hook",
+      "session-start",
+      "--client",
+      "codex",
+    ],
+    { input: JSON.stringify({ cwd: os.tmpdir() }), encoding: "utf8" },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  const parsed = JSON.parse(result.stdout.trim());
+  assert.equal(parsed.hookSpecificOutput.hookEventName, "SessionStart");
+  assert.match(parsed.hookSpecificOutput.additionalContext, /^ocean=1 /);
+});
+
+test("ocean hook session-start --client hermes emits Hermes' {context} shape only", () => {
+  const result = spawnSync(
+    process.execPath,
+    [
+      path.resolve("dist/main.js"),
+      "hook",
+      "session-start",
+      "--client",
+      "hermes",
+    ],
+    {
+      input: JSON.stringify({ cwd: os.tmpdir(), session_id: "sess_1" }),
+      encoding: "utf8",
+    },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  const parsed = JSON.parse(result.stdout.trim());
+  assert.deepEqual(Object.keys(parsed), ["context"]);
+  assert.match(parsed.context, /^ocean=1 /);
+  assert.ok(
+    Buffer.byteLength(parsed.context) <= 256 + WORKTREE_WARNING_MAX_BYTES + 1,
+  );
+});
+
+test("ocean hook session-start rejects an unknown or missing --client value", () => {
+  for (const args of [["--client", "cursor"], ["--client"]]) {
+    const result = spawnSync(
+      process.execPath,
+      [path.resolve("dist/main.js"), "hook", "session-start", ...args],
+      { input: "", encoding: "utf8" },
+    );
+    assert.equal(result.status, 1);
+    assert.equal(result.stdout, "");
+    assert.match(result.stderr, /--client claude\|codex\|hermes/);
+  }
+});
+
 test("readBoundedStdin rejects a payload larger than its bound instead of buffering it unbounded", async () => {
   const { readBoundedStdin } = await import(
     "../dist/application/hooks/session-start-hook.js"
