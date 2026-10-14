@@ -588,19 +588,26 @@ async function commandProject(): Promise<void> {
 async function commandHook(): Promise<void> {
   const action = process.argv[3] ?? "";
   if (action === "session-start") {
-    const clientIndex = process.argv.indexOf("--client", 4);
-    const client =
-      clientIndex >= 0 ? (process.argv[clientIndex + 1] ?? "") : "claude";
+    const flags = process.argv.slice(4);
+    const inline = flags.find((arg) => arg.startsWith("--client="));
+    const clientIndex = flags.indexOf("--client");
+    const client = inline
+      ? inline.slice("--client=".length)
+      : clientIndex >= 0
+        ? (flags[clientIndex + 1] ?? "")
+        : "claude";
     if (!isSessionStartClient(client)) {
-      console.error(
-        `Usage: ocean hook session-start [--client ${SESSION_START_CLIENTS.join("|")}]`,
-      );
+      console.error(sessionStartUsage);
       process.exitCode = 1;
       return;
     }
     try {
       const raw = await readBoundedStdin();
-      const payload = raw.trim() ? JSON.parse(raw) : {};
+      const parsed: unknown = raw.trim() ? JSON.parse(raw) : {};
+      const payload =
+        parsed && typeof parsed === "object" && !Array.isArray(parsed)
+          ? parsed
+          : {};
       console.log(
         JSON.stringify(await sessionStartHookForClient(client, payload)),
       );
@@ -619,11 +626,13 @@ async function commandHook(): Promise<void> {
     }
   } else {
     console.error(
-      "Usage: ocean hook session-start [--client claude|codex|hermes]|session-end (reads a hook payload from stdin)",
+      `${sessionStartUsage}|session-end (reads a hook payload from stdin)`,
     );
     process.exitCode = 1;
   }
 }
+
+const sessionStartUsage = `Usage: ocean hook session-start [--client ${SESSION_START_CLIENTS.join("|")}]`;
 
 async function commandIntent(): Promise<void> {
   const action = process.argv[3] ?? "classify";
