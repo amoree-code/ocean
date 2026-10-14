@@ -384,7 +384,10 @@ export async function wrapperDoctor(commandPath?: string): Promise<string[]> {
   } catch {
     /* reported above as missing wrappers */
   }
-  for (const name of names.filter((entry) => !isNamespacedShim(entry)).sort())
+  const strays = names.filter(
+    (entry) => !entry.startsWith(".") && !isNamespacedShim(entry),
+  );
+  for (const name of strays.sort())
     findings.push(
       `${name}: ${path.join(shimDirectory(), name)} can shadow the native ${name} command; run: ocean client sync, or remove it if it is not Ocean's`,
     );
@@ -402,9 +405,10 @@ export function absolutePathBypassFinding(commandPath: string): string | null {
   const provider = loadProviderRegistry().find(
     (candidate) => candidate.command === command,
   );
-  if (!provider)
-    return `BYPASS_DETECTED: absolute path is outside Ocean and is not a registered provider: ${resolved}`;
-  return `BYPASS_DETECTED: ${provider.id} was invoked by absolute path outside Ocean shims: ${resolved}`;
+  // A registered provider run natively is the supported route since T-266: it reaches Ocean
+  // through its own hooks, not a shim.
+  if (provider) return null;
+  return `BYPASS_DETECTED: absolute path is outside Ocean and is not a registered provider: ${resolved}`;
 }
 
 export async function wrapperStatus(): Promise<

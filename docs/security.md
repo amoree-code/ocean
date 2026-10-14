@@ -65,7 +65,8 @@ remove` removes only Ocean registration, wrappers, and receipts. Provider binari
 and provider-owned credentials remain outside Ocean ownership.
 
 Native desktop clients, absolute-path launches, unconfigured shells, and operating-system
-processes outside the managed shim remain explicit bypass boundaries. Ocean reports these when
+processes outside the managed shim remain explicit bypass boundaries; a plain provider
+command is one of them unless its native hook is registered. Ocean reports these when
 detectable; it does not claim universal interception.
 
 Gateway credentials support an identity and optional profile scope using the environment-only

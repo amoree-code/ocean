@@ -665,19 +665,36 @@ unixOnly(
   },
 );
 
-unixOnly("doctor reports an absolute-path provider bypass", async () => {
+unixOnly(
+  "doctor treats a native provider path as supported and flags an unknown one",
+  async () => {
+    await withEnvironment(async (root) => {
+      const bin = path.join(root, "bin");
+      await mkdir(bin, { recursive: true });
+      const executable = path.join(bin, "direct-ai");
+      await writeFile(executable, "#!/bin/sh\nexit 0\n");
+      await chmod(executable, 0o755);
+      await registerProvider("direct", "direct-ai");
+      assert.equal(absolutePathBypassFinding(executable), null);
+      assert.doesNotMatch(
+        (await wrapperDoctor(executable)).join("\n"),
+        /BYPASS_DETECTED/,
+      );
+      assert.match(
+        absolutePathBypassFinding(path.join(bin, "unknown-ai")),
+        /BYPASS_DETECTED: absolute path is outside Ocean and is not a registered provider/,
+      );
+    });
+  },
+);
+
+test("doctor ignores dotfiles in the shim directory", async () => {
   await withEnvironment(async (root) => {
-    const bin = path.join(root, "bin");
-    await mkdir(bin, { recursive: true });
-    const executable = path.join(bin, "direct-ai");
-    await writeFile(executable, "#!/bin/sh\nexit 0\n");
-    await chmod(executable, 0o755);
-    await registerProvider("direct", "direct-ai");
-    assert.match(absolutePathBypassFinding(executable), /BYPASS_DETECTED/);
-    assert.match(
-      (await wrapperDoctor(executable)).join("\n"),
-      /BYPASS_DETECTED/,
-    );
+    const { directory } = await syncProviderWrappers();
+    await writeFile(path.join(directory, ".DS_Store"), "");
+    process.env.PATH = `${directory}${path.delimiter}${path.join(root, "bin")}`;
+    const findings = await wrapperDoctor();
+    assert.ok(!findings.some((finding) => finding.includes(".DS_Store")));
   });
 });
 

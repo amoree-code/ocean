@@ -21,13 +21,17 @@ ocean run
   -> explicit capture or promotion
 ```
 
-### Terminal shim
+### Native hooks and the `ocean-<command>` wrapper
 
-`ocean setup` installs shims for the registered provider commands. A direct
-`claude`, `codex`, `gemini`, `agy`, `hermes`, `kilo`, or `kimi` command enters
-`terminal-shim` with `observed` control.
+A plain `claude`, `codex`, `gemini`, `agy`, `hermes`, `kilo`, or `kimi` command
+runs the provider's own binary. Ocean never installs a shim under a provider's
+own name: a same-name shim only works while its directory is first on `PATH`,
+so the same command behaved differently per shell. Clients reach Ocean through
+their native hooks instead (`ocean hook session-start --client claude|codex|hermes`).
 
-The shim records its entry contract, provider resolution, authentication state,
+`ocean setup` installs an `ocean-<command>` wrapper per registered provider
+(`ocean-claude`, `ocean-codex`, ...). Running it enters `terminal-shim` with
+`observed` control. The wrapper records its entry contract, provider resolution, authentication state,
 bounded provider output, terminal input when a TTY is available, lifecycle, and
 evidence. It does not claim to own provider-native policy or to provide semantic
 conversation capture for raw terminal bytes.

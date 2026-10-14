@@ -11,6 +11,7 @@ import {
   resolveOriginalExecutable,
 } from "../../infrastructure/providers/provider-registry.js";
 import {
+  providerWrapperName,
   providerWrapperPath,
   shimDirectory,
 } from "../../infrastructure/wrappers/wrapper-manager.js";
@@ -64,8 +65,7 @@ async function buildReport(
       ? await claudeEntryBoundaryStatus()
       : {
           kind: "shim-fallback",
-          detail:
-            "Routed through the Ocean intercept shim (ocean intercept --client). No provider-specific native hook is wired for this provider yet.",
+          detail: `No native hook is wired for this provider. A plain ${provider.command} runs natively; ${providerWrapperName(provider.command)} routes it through Ocean (ocean intercept --client).`,
         };
   return {
     provider: provider.id,
@@ -131,13 +131,12 @@ async function claudeEntryBoundaryStatus(): Promise<{
   if (hook.scriptInstalled) {
     return {
       kind: "native-hook-available-not-registered",
-      detail: `Hook script exists at ${hook.scriptPath} but hooks.SessionStart in ${hook.settingsPath} does not reference it. Falling back to the Ocean intercept shim for this provider.`,
+      detail: `Hook script exists at ${hook.scriptPath} but hooks.SessionStart in ${hook.settingsPath} does not reference it. Until it does, only ${providerWrapperName("claude")} routes Claude through Ocean.`,
     };
   }
   return {
     kind: "shim-fallback",
-    detail:
-      "No native SessionStart hook script found. Routed through the Ocean intercept shim (ocean intercept --client claude).",
+    detail: `No native SessionStart hook script found. Only ${providerWrapperName("claude")} routes Claude through Ocean (ocean intercept --client claude).`,
   };
 }
 
