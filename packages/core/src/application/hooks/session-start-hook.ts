@@ -4,7 +4,9 @@ import path from "node:path";
 import { truncateUtf8 } from "../../fs-utils.js";
 import { oceanRoot, SYSTEM_DIR } from "../../paths.js";
 import {
+  autoRegisterProject,
   gitChangedFiles,
+  type ProjectResolution,
   resolveProject,
 } from "../context/project-resolution.js";
 import { buildOceanBootstrap } from "../context/resource-injection.js";
@@ -87,15 +89,33 @@ export async function oceanWorktreeWarning(
   }
 }
 
+// The first session in an unregistered repo under a code root registers it (T-256 phase 2).
+// Best-effort: a failure here leaves the session unbound, never fails the hook.
+async function registerIfUnbound(
+  cwd: string,
+  resolved: ProjectResolution,
+): Promise<ProjectResolution> {
+  if (resolved.status !== "unbound") return resolved;
+  try {
+    const registration = await autoRegisterProject(cwd);
+    return registration.status === "registered"
+      ? await resolveProject(cwd)
+      : resolved;
+  } catch {
+    return resolved;
+  }
+}
+
 export async function claudeSessionStartHook(
   payload: ClaudeSessionStartPayload,
 ): Promise<ClaudeSessionStartResult> {
   // `||`, not `??`: Hermes sends cwd "" when its own cwd is unreadable.
   const cwd = payload.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
-  const [project, warning] = await Promise.all([
+  const [resolved, warning] = await Promise.all([
     resolveProject(cwd),
     oceanWorktreeWarning(cwd),
   ]);
+  const project = await registerIfUnbound(cwd, resolved);
   const bootstrap = buildOceanBootstrap(project);
   return {
     hookSpecificOutput: {

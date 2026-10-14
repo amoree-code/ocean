@@ -1,11 +1,19 @@
 import { execFile } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
-import { mkdir, readdir, readFile } from "node:fs/promises";
+import {
+  mkdir,
+  readdir,
+  readFile,
+  realpath,
+  rename,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { atomicWrite, registryFile, withFileLock } from "../../fs-utils.js";
 import {
+  oceanEnv,
   oceanPath,
   oceanRoot,
   PROJECTS_DIR,
@@ -581,4 +589,164 @@ async function writeProjectIndexLocked(): Promise<{
   await mkdir(path.dirname(file), { recursive: true });
   await atomicWrite(file, next);
   return { file, changed: true };
+}
+
+// Where a session may register its repo as a project without being asked (T-256 phase 2).
+// OCEAN_CODE_ROOTS (a PATH-style list) overrides the default, ~/Documents.
+export function codeRoots(): string[] {
+  const configured = oceanEnv("CODE_ROOTS");
+  return (configured ? configured.split(path.delimiter) : ["~/Documents"])
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => path.resolve(expandHome(entry)));
+}
+
+export function projectSlug(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^[^a-z0-9]+/, "")
+    .replace(/[-._]+$/, "")
+    .slice(0, 64);
+}
+
+export type AutoRegistration =
+  | { status: "registered"; projectId: string; path: string }
+  | { status: "skipped"; reason: string };
+
+async function realOrSelf(target: string): Promise<string> {
+  try {
+    return await realpath(target);
+  } catch {
+    return path.resolve(target);
+  }
+}
+
+function within(root: string, target: string): boolean {
+  const prefix = root.endsWith(path.sep) ? root : `${root}${path.sep}`;
+  return target === root || target.startsWith(prefix);
+}
+
+// A session opened in a git repo that no project claims registers that repo as its own
+// project: 04-projects/<slug>/ with project.json, tasks/ and MEMORY.md. Never inside the Ocean
+// workspace or the temp dir, never outside the code roots, never a code root itself, and never
+// over an existing 04-projects folder. Sibling repos are not merged: a code-root folder often
+// holds unrelated repos, so joining one project to another stays explicit (`bind --add`).
+export async function autoRegisterProject(
+  cwd: string,
+): Promise<AutoRegistration> {
+  const skipped = (reason: string): AutoRegistration => ({
+    status: "skipped",
+    reason,
+  });
+  if (oceanEnv("AUTO_REGISTER") === "0")
+    return skipped("disabled by OCEAN_AUTO_REGISTER=0");
+  const resolution = await resolveProject(cwd);
+  if (resolution.status !== "unbound")
+    return skipped(`already ${resolution.status}`);
+  if (!resolution.gitRoot) return skipped("not inside a git repository");
+  const repo = await realOrSelf(resolution.gitRoot);
+  if (within(await realOrSelf(oceanRoot()), repo))
+    return skipped("inside the Ocean workspace");
+  const roots = await Promise.all(codeRoots().map(realOrSelf));
+  const root = roots.find(
+    (candidate) => repo !== candidate && within(candidate, repo),
+  );
+  if (!root) return skipped("outside the code roots");
+  // The temp dir is excluded unless the owner deliberately put a code root inside it.
+  const temp = await realOrSelf(os.tmpdir());
+  if (within(temp, repo) && !within(temp, root))
+    return skipped("inside the temp directory");
+  const id = projectSlug(path.basename(repo));
+  if (!isValidProjectId(id)) return skipped(`no usable id from '${repo}'`);
+  if (existsSync(path.join(projectsRoot(), id)))
+    return skipped(`04-projects/${id} already exists; bind it explicitly`);
+  const result = await bindProject(id, resolution.gitRoot, {
+    autoRegistered: true,
+  });
+  if (result.conflict)
+    return skipped(`conflicts with project '${result.conflict.id}'`);
+  const folder = path.join(projectsRoot(), id);
+  await mkdir(path.join(folder, "tasks"), { recursive: true });
+  try {
+    await writeFile(
+      path.join(folder, "MEMORY.md"),
+      `# ${id} — memory\n\nIndex of this project's memory. Loaded only for sessions in this project.\n`,
+      { flag: "wx" },
+    );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+  }
+  return { status: "registered", projectId: id, path: resolution.gitRoot };
+}
+
+// Undoes a binding (a wrong auto-registration, a moved repo). Only the path goes; the project
+// folder and its tasks stay, since deleting them is the owner's call.
+export async function unbindProjectPath(
+  targetPath: string,
+): Promise<{ removed: ProjectBinding | null }> {
+  const resolvedPath = path.resolve(expandHome(targetPath));
+  return withProjectsLock(async () => {
+    const manifests = await listProjectManifests();
+    const legacy = await listLegacyBindings();
+    const removed =
+      combineBindings(manifests, legacy).find(
+        (binding) => binding.path === resolvedPath,
+      ) ?? null;
+    if (!removed) return { removed };
+    const owner = manifests.find((manifest) =>
+      manifest.paths.some(
+        (stored) => path.resolve(expandHome(stored)) === resolvedPath,
+      ),
+    );
+    if (owner)
+      await writeManifest({
+        ...owner,
+        paths: owner.paths.filter(
+          (stored) => path.resolve(expandHome(stored)) !== resolvedPath,
+        ),
+      });
+    // A legacy entry for the same path would otherwise take the binding back.
+    const keptLegacy = legacy.filter(
+      (binding) => path.resolve(binding.path) !== resolvedPath,
+    );
+    await saveProjectBindings(
+      cacheBindings(await listProjectManifests(), keptLegacy),
+    );
+    return { removed };
+  });
+}
+
+// Renames a project folder (fixes a wrong auto-registered id). Refused while the project has
+// tasks: their records carry the project id, and rewriting them belongs to phase 3.
+export async function renameProject(
+  from: string,
+  to: string,
+): Promise<{ from: string; to: string }> {
+  if (!isValidProjectId(from) || !isValidProjectId(to))
+    throw new Error("Project ids must be lowercase letters, digits, . _ or -");
+  return withProjectsLock(async () => {
+    const source = path.join(projectsRoot(), from);
+    const target = path.join(projectsRoot(), to);
+    const manifest = (await listProjectManifests()).find(
+      (candidate) => candidate.id === from,
+    );
+    if (!manifest) throw new Error(`No project.json for '${from}'`);
+    if (existsSync(target)) throw new Error(`04-projects/${to} already exists`);
+    const tasks = await readdir(path.join(source, "tasks")).catch(() => []);
+    if (tasks.some((entry) => entry !== ".gitkeep"))
+      throw new Error(
+        `'${from}' has tasks; renaming a project with tasks is not supported yet`,
+      );
+    await rename(source, target);
+    await writeManifest({
+      ...manifest,
+      id: to,
+      name: manifest.name === from ? to : manifest.name,
+    });
+    await saveProjectBindings(
+      cacheBindings(await listProjectManifests(), await listLegacyBindings()),
+    );
+    return { from, to };
+  });
 }
