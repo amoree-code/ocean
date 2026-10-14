@@ -3,10 +3,12 @@ import path from "node:path";
 import { classifyIntent } from "../../application/context/intent-router.js";
 import {
   bindProject,
+  findGitRoot,
   listProjectBindings,
   migrateProjectBindings,
   renderProjectIndex,
   resolveProject,
+  scanProjectManifests,
   writeProjectIndex,
 } from "../../application/context/project-resolution.js";
 import {
@@ -581,7 +583,15 @@ async function commandProject(): Promise<void> {
       if (result.conflict) process.exitCode = 2;
     }
   } else if (action === "list") {
-    console.log(JSON.stringify(await listProjectBindings(), null, 2));
+    const { errors } = await scanProjectManifests();
+    for (const { file, error } of errors)
+      console.error(`skipped invalid ${file}: ${error}`);
+    const bindings = (await listProjectBindings()).map((binding) => ({
+      ...binding,
+      gitRoot: binding.gitRoot ?? findGitRoot(binding.path),
+    }));
+    console.log(JSON.stringify(bindings, null, 2));
+    if (errors.length) process.exitCode = 2;
   } else if (action === "migrate") {
     const result = await migrateProjectBindings(
       process.argv.includes("--write"),

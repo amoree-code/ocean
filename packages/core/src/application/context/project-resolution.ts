@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -124,8 +124,10 @@ export function portablePath(value: string): string {
   return resolved;
 }
 
-// A project id names a folder under 04-projects, so it must be one plain path segment.
-const PROJECT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+// A project id names a folder under 04-projects, so it must be one plain path segment. It is
+// lowercase because folders are case-insensitive on macOS and Windows: `Ocean-Language` and
+// `ocean-language` would be two ids for one folder, and one write would clobber the other.
+const PROJECT_ID = /^[a-z0-9][a-z0-9._-]*$/;
 
 export function isValidProjectId(value: string): boolean {
   return PROJECT_ID.test(value) && !value.includes("..");
@@ -147,9 +149,7 @@ function parseManifest(file: string, folder: string, raw: string) {
     !Array.isArray(parsed.paths) ||
     parsed.paths.some((entry) => typeof entry !== "string" || !entry.trim())
   )
-    throw new Error(
-      `Invalid project manifest (paths must be strings): ${file}`,
-    );
+    throw new Error("paths must be a list of non-empty strings");
   // The folder name is the id; a manifest cannot claim another project's identity.
   return {
     id: folder,
@@ -160,30 +160,45 @@ function parseManifest(file: string, folder: string, raw: string) {
   } satisfies ProjectManifest;
 }
 
-export async function listProjectManifests(): Promise<ProjectManifest[]> {
+export type ProjectManifestScan = {
+  manifests: ProjectManifest[];
+  errors: Array<{ file: string; error: string }>;
+};
+
+// A broken project.json takes only its own project out of resolution: resolveProject runs in
+// every session's start hook, so one bad file must not break every project. The errors are
+// returned for `ocean project list` to report.
+export async function scanProjectManifests(): Promise<ProjectManifestScan> {
+  const scan: ProjectManifestScan = { manifests: [], errors: [] };
   let folders: string[];
   try {
     folders = (await readdir(projectsRoot(), { withFileTypes: true }))
-      .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+      .filter((entry) => entry.isDirectory() && isValidProjectId(entry.name))
       .map((entry) => entry.name)
       .sort();
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return scan;
     throw error;
   }
-  const manifests: ProjectManifest[] = [];
   for (const folder of folders) {
     const file = path.join(projectsRoot(), folder, MANIFEST_FILE);
-    let raw: string;
     try {
-      raw = await readFile(file, "utf8");
+      scan.manifests.push(
+        parseManifest(file, folder, await readFile(file, "utf8")),
+      );
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
-      throw error;
+      scan.errors.push({
+        file,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
-    manifests.push(parseManifest(file, folder, raw));
   }
-  return manifests;
+  return scan;
+}
+
+export async function listProjectManifests(): Promise<ProjectManifest[]> {
+  return (await scanProjectManifests()).manifests;
 }
 
 async function writeManifest(manifest: ProjectManifest): Promise<void> {
@@ -194,7 +209,8 @@ async function writeManifest(manifest: ProjectManifest): Promise<void> {
 
 // Bindings recorded before T-256, read from the flat registry file. Kept as a fallback until
 // `ocean project migrate --write` folds them into manifests, and rewritten as a cache after
-// every manifest change for anything that still reads the file.
+// every manifest change for anything that still reads the file. Entries the cache holds for
+// manifests are skipped, so a deleted project folder does not come back through it.
 async function listLegacyBindings(): Promise<ProjectBinding[]> {
   try {
     const raw = await readFile(bindingsFile(), "utf8");
@@ -209,41 +225,56 @@ async function listLegacyBindings(): Promise<ProjectBinding[]> {
   }
 }
 
+// gitRoot is left null here: resolution matches on paths, and walking up from every path of
+// every project on each session start would cost a filesystem walk per path for nothing.
 function manifestBindings(manifests: ProjectManifest[]): ProjectBinding[] {
   return manifests.flatMap((manifest) =>
-    manifest.paths.map((stored) => {
-      const resolved = path.resolve(expandHome(stored));
-      return {
-        id: manifest.id,
-        name: manifest.name,
-        path: resolved,
-        gitRoot: findGitRoot(resolved),
-        boundAt: manifest.created,
-        manifest: true,
-      };
-    }),
+    manifest.paths.map((stored) => ({
+      id: manifest.id,
+      name: manifest.name,
+      path: path.resolve(expandHome(stored)),
+      gitRoot: null,
+      boundAt: manifest.created,
+      manifest: true,
+    })),
   );
 }
 
-export async function listProjectBindings(): Promise<ProjectBinding[]> {
-  const fromManifests = manifestBindings(await listProjectManifests());
+function combineBindings(
+  manifests: ProjectManifest[],
+  legacy: ProjectBinding[],
+): ProjectBinding[] {
+  const fromManifests = manifestBindings(manifests);
   const claimed = new Set(fromManifests.map((binding) => binding.path));
-  const legacy = (await listLegacyBindings()).filter(
-    (binding) => !claimed.has(path.resolve(binding.path)),
+  return [
+    ...fromManifests,
+    ...legacy.filter((binding) => !claimed.has(path.resolve(binding.path))),
+  ];
+}
+
+export async function listProjectBindings(): Promise<ProjectBinding[]> {
+  return combineBindings(
+    await listProjectManifests(),
+    await listLegacyBindings(),
   );
-  return [...fromManifests, ...legacy];
+}
+
+// The cache keeps every legacy entry, including ones a manifest now claims, so deleting that
+// manifest later never loses the old binding.
+function cacheBindings(
+  manifests: ProjectManifest[],
+  legacy: ProjectBinding[],
+): ProjectBinding[] {
+  return [...manifestBindings(manifests), ...legacy];
 }
 
 async function saveProjectBindings(bindings: ProjectBinding[]): Promise<void> {
   const file = bindingsFile();
   await mkdir(path.dirname(file), { recursive: true });
-  const tmp = `${file}.ocean-tmp-${process.pid}`;
-  await writeFile(
-    tmp,
+  await atomicWrite(
+    file,
     `${JSON.stringify({ version: 1, bindings }, null, 2)}\n`,
-    "utf8",
   );
-  await rename(tmp, file);
 }
 
 // One lock for every manifest/cache write: bindings are checked across all projects (a path
@@ -350,40 +381,38 @@ export async function bindProject(
 ): Promise<BindProjectResult> {
   if (!isValidProjectId(name))
     throw new Error(
-      `Invalid project id '${name}': use letters, digits, dot, underscore or hyphen`,
+      `Invalid project id '${name}': use lowercase letters, digits, dot, underscore or hyphen`,
     );
   const resolvedPath = path.resolve(expandHome(targetPath));
   return withProjectsLock(async () => {
-    const bindings = await listProjectBindings();
+    const manifests = await listProjectManifests();
+    const legacy = await listLegacyBindings();
+    const bindings = combineBindings(manifests, legacy);
     const existingAtPath = bindings.find(
       (binding) => path.resolve(binding.path) === resolvedPath,
     );
-    if (existingAtPath) {
-      if (existingAtPath.id === name && existingAtPath.manifest)
-        return { binding: existingAtPath, created: false };
-      if (existingAtPath.id !== name)
-        return {
-          binding: existingAtPath,
-          created: false,
-          conflict: existingAtPath,
-        };
-    }
-    const manifests = await listProjectManifests();
-    const existing = manifests.find((manifest) => manifest.id === name);
+    if (existingAtPath && existingAtPath.id !== name)
+      return {
+        binding: existingAtPath,
+        created: false,
+        conflict: existingAtPath,
+      };
+    if (existingAtPath?.manifest)
+      return { binding: existingAtPath, created: false };
+    // From here the path is free, or is this project's own legacy binding being folded in,
+    // which is never a conflict.
     const existingByName = bindings.find(
       (binding) => binding.id === name && binding.path !== resolvedPath,
     );
-    if (existingByName && !options.addPath)
+    if (existingByName && !existingAtPath && !options.addPath)
       return {
         binding: existingByName,
         created: false,
         conflict: existingByName,
       };
+    const existing = manifests.find((manifest) => manifest.id === name);
     const manifest: ProjectManifest = existing
-      ? {
-          ...existing,
-          paths: [...existing.paths, portablePath(resolvedPath)],
-        }
+      ? { ...existing, paths: [...existing.paths, portablePath(resolvedPath)] }
       : {
           id: name,
           name,
@@ -392,8 +421,12 @@ export async function bindProject(
           autoRegistered: options.autoRegistered === true,
         };
     await writeManifest(manifest);
-    await saveProjectBindings(await listProjectBindings());
-    const binding = (await listProjectBindings()).find(
+    const updated = manifests
+      .filter((candidate) => candidate.id !== name)
+      .concat(manifest);
+    const next = combineBindings(updated, legacy);
+    await saveProjectBindings(cacheBindings(updated, legacy));
+    const binding = next.find(
       (candidate) => candidate.path === resolvedPath,
     ) as ProjectBinding;
     return { binding, created: true };
@@ -427,6 +460,14 @@ export async function migrateProjectBindings(
     for (const binding of legacy) {
       const resolved = path.resolve(binding.path);
       if (claimed.has(resolved)) continue;
+      if (!isValidProjectId(binding.id)) {
+        result.orphaned.push({
+          id: binding.id,
+          path: resolved,
+          reason: "id is not a valid project folder name; bind it explicitly",
+        });
+        continue;
+      }
       const folder = path.join(projectsRoot(), projectFolder(binding.id));
       if (!existsSync(folder)) {
         result.orphaned.push({
@@ -453,7 +494,9 @@ export async function migrateProjectBindings(
     }
     if (write && updates.size) {
       for (const manifest of updates.values()) await writeManifest(manifest);
-      await saveProjectBindings(await listProjectBindings());
+      await saveProjectBindings(
+        cacheBindings(await listProjectManifests(), legacy),
+      );
     }
     return result;
   });
@@ -466,11 +509,14 @@ const INDEX_END = "<!-- ocean:projects:end -->";
 // Generated view of every project.json, kept in a managed block of 04-projects/registry.md so
 // the hand-kept rows around it are never rewritten.
 export async function renderProjectIndex(): Promise<string> {
+  // Table cells: a `|` or a line break in a name or path would split the row.
+  const cell = (value: string) =>
+    value.replace(/[\r\n]+/g, " ").replaceAll("|", "\\|");
   const rows = (await listProjectManifests()).map(
     (manifest) =>
-      `| \`${manifest.id}\` | ${manifest.name} | ${
+      `| \`${manifest.id}\` | ${cell(manifest.name)} | ${
         manifest.paths.length
-          ? manifest.paths.map((entry) => `\`${entry}\``).join("<br>")
+          ? manifest.paths.map((entry) => `\`${cell(entry)}\``).join("<br>")
           : "—"
       } | ${manifest.autoRegistered ? "auto" : "manual"} |`,
   );
@@ -486,6 +532,13 @@ export async function renderProjectIndex(): Promise<string> {
 }
 
 export async function writeProjectIndex(): Promise<{
+  file: string;
+  changed: boolean;
+}> {
+  return withProjectsLock(writeProjectIndexLocked);
+}
+
+async function writeProjectIndexLocked(): Promise<{
   file: string;
   changed: boolean;
 }> {

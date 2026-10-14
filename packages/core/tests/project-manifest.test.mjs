@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -11,6 +11,7 @@ import {
   migrateProjectBindings,
   portablePath,
   resolveProject,
+  scanProjectManifests,
   writeProjectIndex,
 } from "../dist/application/context/project-resolution.js";
 import { PROJECTS_DIR, SYSTEM_DIR } from "../dist/paths.js";
@@ -192,14 +193,98 @@ test("migrate folds bindings into existing project folders and reports orphans",
   });
 });
 
-test("an invalid manifest fails loudly instead of being guessed at", async () => {
+test("an invalid manifest takes only its own project out of resolution, and is reported", async () => {
   await withRoot(async (root) => {
-    await mkdir(path.join(projects(root), "broken"), { recursive: true });
-    await writeFile(
-      path.join(projects(root), "broken", "project.json"),
-      JSON.stringify({ id: "broken", paths: "not-a-list" }),
+    const good = await mkdtemp(path.join(os.tmpdir(), "ocean-good-"));
+    await bindProject("good", good);
+    for (const [folder, body] of [
+      ["broken", JSON.stringify({ paths: "not-a-list" })],
+      ["truncated", "{bad"],
+    ]) {
+      await mkdir(path.join(projects(root), folder), { recursive: true });
+      await writeFile(path.join(projects(root), folder, "project.json"), body);
+    }
+    const scan = await scanProjectManifests();
+    assert.deepEqual(
+      scan.manifests.map((manifest) => manifest.id),
+      ["good"],
     );
-    await assert.rejects(listProjectManifests(), /Invalid project manifest/);
+    assert.deepEqual(
+      scan.errors.map((entry) => path.basename(path.dirname(entry.file))),
+      ["broken", "truncated"],
+    );
+    assert.equal((await resolveProject(good)).projectId, "good");
+  });
+});
+
+test("project ids are lowercase so one folder never has two ids", async () => {
+  await withRoot(async () => {
+    const repo = await mkdtemp(path.join(os.tmpdir(), "ocean-case-"));
+    await bindProject("ocean-language", repo);
+    await assert.rejects(
+      bindProject("Ocean-Language", os.tmpdir(), { addPath: true }),
+      /Invalid project id/,
+    );
+  });
+});
+
+test("re-binding a project's own legacy path folds it in, without a conflict", async () => {
+  await withRoot(async (root) => {
+    const p = await mkdtemp(path.join(os.tmpdir(), "ocean-p-"));
+    const q = await mkdtemp(path.join(os.tmpdir(), "ocean-q-"));
+    await bindProject("demo", q);
+    await writeLegacy(root, [
+      { id: "demo", name: "demo", path: p, gitRoot: null, boundAt: "t0" },
+    ]);
+    const result = await bindProject("demo", p);
+    assert.equal(result.conflict, undefined);
+    assert.deepEqual((await manifestOf(root, "demo")).paths, [
+      portablePath(q),
+      portablePath(p),
+    ]);
+  });
+});
+
+test("the cache keeps a legacy entry after a manifest claims its path", async () => {
+  await withRoot(async (root) => {
+    const repo = await mkdtemp(path.join(os.tmpdir(), "ocean-cache-"));
+    await mkdir(path.join(projects(root), "kept"), { recursive: true });
+    await writeLegacy(root, [
+      { id: "kept", name: "kept", path: repo, gitRoot: null, boundAt: "t0" },
+    ]);
+    await bindProject("kept", repo);
+    const cache = JSON.parse(
+      await readFile(
+        path.join(root, SYSTEM_DIR, "registry", "project-bindings.json"),
+        "utf8",
+      ),
+    );
+    assert.ok(cache.bindings.some((entry) => !entry.manifest));
+    await rm(path.join(projects(root), "kept"), { recursive: true });
+    assert.equal((await resolveProject(repo)).projectId, "kept");
+  });
+});
+
+test("migrate reports a legacy id that is not a valid folder name", async () => {
+  await withRoot(async (root) => {
+    await mkdir(path.join(projects(root)), { recursive: true });
+    await writeLegacy(root, [
+      { id: "", name: "", path: "/x", gitRoot: null, boundAt: "t0" },
+      {
+        id: "../../bridge",
+        name: "x",
+        path: "/y",
+        gitRoot: null,
+        boundAt: "t0",
+      },
+    ]);
+    const result = await migrateProjectBindings(true);
+    assert.equal(result.migrated.length, 0);
+    assert.equal(result.orphaned.length, 2);
+    await assert.rejects(
+      readFile(path.join(projects(root), "project.json")),
+      /ENOENT/,
+    );
   });
 });
 
@@ -231,6 +316,17 @@ test("index writes a managed block and keeps the hand-kept registry text", async
     assert.ok(once.startsWith(hand.trimEnd()), "hand-kept text untouched");
     assert.match(once, /<!-- ocean:projects:begin/);
     assert.match(once, /\| `alpha` \| alpha \|/);
+    await writeFile(
+      path.join(projects(root), "alpha", "project.json"),
+      JSON.stringify({ name: "Dash | API\nv2", paths: [] }),
+    );
+    await writeProjectIndex();
+    assert.match(
+      await readFile(registry, "utf8"),
+      /\| `alpha` \| Dash \\\| API v2 \| — \|/,
+    );
+    await bindProject("alpha", repo);
+    await writeProjectIndex();
 
     assert.equal((await writeProjectIndex()).changed, false, "idempotent");
     await bindProject(
