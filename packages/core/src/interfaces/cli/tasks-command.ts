@@ -2,17 +2,16 @@ import { execFile as execFileCallback } from "node:child_process";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import { resolveProject } from "../../application/context/project-resolution.js";
 import {
   archiveDoneTasks,
   completeTask,
 } from "../../application/tasks/archive-tasks.js";
 import { checkpointTask } from "../../application/tasks/checkpoint-task.js";
 import {
+  folderProject,
   listTasks,
+  listTasksForFolder,
   projectsHoldingTask,
-  projectsWithTasks,
-  type TaskSummary,
 } from "../../application/tasks/list-tasks.js";
 import { verifyTask } from "../../application/tasks/verify-task.js";
 import {
@@ -29,12 +28,6 @@ const execFile = promisify(execFileCallback);
 // Re-exported for existing importers (daily/context commands, tests). The
 // implementation and the MCP server both live in the application layer now.
 export { listTasks };
-
-// A registry that cannot be read throws here: no guessing which project a folder is (T-256).
-async function boundProjectOf(cwd: string): Promise<string | null> {
-  const resolution = await resolveProject(cwd);
-  return resolution.status === "bound" ? resolution.projectId : null;
-}
 
 // The project an id-based action works on: --project if given, else the cwd's project when it
 // holds the id, else the one project that does. Several holders is an error, never a guess.
@@ -67,7 +60,7 @@ export async function runTasksCommand(
   // folder that is no project falls back to the workspace project.
   const cwdProject = explicitProject
     ? null
-    : await boundProjectOf(process.cwd());
+    : await folderProject(process.cwd());
   const projectId = explicitProject ?? cwdProject ?? WORKSPACE_PROJECT_ID;
   if (action === "list") {
     const state = args.find(
@@ -75,36 +68,13 @@ export async function runTasksCommand(
         !arg.startsWith("--") &&
         (projectIndex < 0 || index !== projectIndex + 1),
     );
-    const withProject = (project: string, tasks: TaskSummary[]) =>
-      tasks.map((task) => ({ ...task, project }));
-    if (explicitProject) {
-      console.log(
-        JSON.stringify(
-          withProject(explicitProject, await listTasks(state, explicitProject)),
-          null,
-          2,
-        ),
-      );
-      return;
-    }
-    if (cwdProject) {
-      const own = await listTasks(state, cwdProject);
-      if (own.length) {
-        console.log(JSON.stringify(withProject(cwdProject, own), null, 2));
-        return;
-      }
-    }
-    // No project here, or it has no matching tasks: show every project's, labelled.
-    const all = [];
-    for (const project of await projectsWithTasks())
-      all.push(...withProject(project, await listTasks(state, project)));
-    const which = state ? `${state} ` : "";
-    console.error(
-      cwdProject
-        ? `No ${which}tasks in ${cwdProject}; showing every project.`
-        : `This folder is not an Ocean project; showing every project's ${which}tasks.`,
-    );
-    console.log(JSON.stringify(all, null, 2));
+    const found = await listTasksForFolder({
+      cwd: process.cwd(),
+      project: explicitProject,
+      state,
+    });
+    if (found.note) console.error(found.note);
+    console.log(JSON.stringify(found.tasks, null, 2));
     return;
   }
   if (action === "doctor") {
