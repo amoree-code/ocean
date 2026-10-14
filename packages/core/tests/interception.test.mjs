@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -16,6 +23,7 @@ import {
   registerProvider,
   setProviderEnabled,
   shellKind,
+  shellPathLine,
   syncProviderWrappers,
   wrapperDoctor,
   wrapperStatus,
@@ -74,7 +82,10 @@ test("sync creates Ocean wrappers and shell activation", async () => {
     assert.ok(result.providers.some((provider) => provider.id === "claude"));
     const wrapper = await readFile(providerWrapperPath("claude"), "utf8");
     assert.match(wrapper, /intercept --client/);
-    const oceanWrapper = await readFile(providerWrapperPath("ocean"), "utf8");
+    const oceanWrapper = await readFile(
+      path.join(result.directory, "ocean"),
+      "utf8",
+    );
     assert.match(oceanWrapper, /dist[\\/]main\.js/);
     if (process.platform !== "win32") {
       assert.match(wrapper, /export OCEAN_SHIM_DIR=/);
@@ -136,8 +147,8 @@ test("shell integration leaves an unterminated begin marker alone and appends it
 
 test("doctor reports a missing ocean CLI wrapper", async () => {
   await withEnvironment(async () => {
-    await syncProviderWrappers();
-    await rm(providerWrapperPath("ocean"), { force: true });
+    const { directory } = await syncProviderWrappers();
+    await rm(path.join(directory, "ocean"), { force: true });
     const findings = await wrapperDoctor();
     assert.ok(
       findings.some((finding) =>
@@ -190,10 +201,14 @@ unixOnly(
         PATH: `${directory}${path.delimiter}${bin}`,
         OCEAN_ROOT: root,
       };
-      const result = spawnSync(path.join(directory, "claude"), ["hello"], {
-        env,
-        encoding: "utf8",
-      });
+      const result = spawnSync(
+        path.join(directory, "ocean-claude"),
+        ["hello"],
+        {
+          env,
+          encoding: "utf8",
+        },
+      );
       assert.equal(result.status, 0, `${result.stderr}\n${result.stdout}`);
       assert.match(result.stdout, /wrapped-output:hello/);
     });
@@ -552,21 +567,100 @@ exit 1
   },
 );
 
+test("sync never writes a shim under a native command's own name", async () => {
+  await withEnvironment(async () => {
+    const { directory, providers } = await syncProviderWrappers();
+    const names = await readdir(directory);
+    for (const provider of providers) {
+      assert.ok(names.includes(`ocean-${provider.command}`), provider.command);
+      assert.ok(!names.includes(provider.command), provider.command);
+    }
+  });
+});
+
+test("sync removes an Ocean same-name shim but leaves a foreign file, which doctor reports", async () => {
+  await withEnvironment(async (root) => {
+    const shims = path.join(root, SYSTEM_DIR, "runtime", "shims");
+    await mkdir(shims, { recursive: true });
+    await writeFile(
+      path.join(shims, "claude"),
+      "#!/bin/sh\nexec node main.js intercept --client 'claude' -- \"$@\"\n",
+    );
+    await writeFile(path.join(shims, "codex"), "#!/bin/sh\necho mine\n");
+    await syncProviderWrappers();
+    const names = await readdir(shims);
+    assert.ok(!names.includes("claude"));
+    assert.ok(names.includes("codex"));
+    process.env.PATH = `${shims}${path.delimiter}${process.env.PATH}`;
+    const findings = await wrapperDoctor();
+    assert.ok(
+      findings.some(
+        (finding) =>
+          finding.startsWith("codex: ") && finding.includes("shadow"),
+      ),
+      findings.join("\n"),
+    );
+    assert.ok(!findings.some((finding) => finding.includes("PATH entries")));
+  });
+});
+
+unixOnly("doctor accepts the shim directory anywhere on PATH", async () => {
+  await withEnvironment(async (root) => {
+    const { directory } = await syncProviderWrappers();
+    process.env.PATH = `${path.join(root, "bin")}${path.delimiter}${directory}`;
+    const findings = await wrapperDoctor();
+    assert.ok(!findings.some((finding) => finding.includes("shim directory")));
+    assert.ok(!findings.some((finding) => finding.includes("shadow")));
+  });
+});
+
 unixOnly(
-  "doctor reports a shim that is present but ordered after another PATH entry",
+  "posix shell activation appends the shim directory exactly once",
   async () => {
     await withEnvironment(async (root) => {
-      const bin = path.join(root, "bin");
-      await mkdir(bin, { recursive: true });
-      const executable = path.join(bin, "ordered-ai");
-      await writeFile(executable, "#!/bin/sh\nexit 0\n");
-      await chmod(executable, 0o755);
-      await registerProvider("ordered", "ordered-ai");
-      process.env.PATH = `${bin}${path.delimiter}${path.join(root, SYSTEM_DIR, "runtime", "shims")}`;
-      const findings = await wrapperDoctor();
-      assert.ok(
-        findings.some((finding) => finding.includes("after 1 PATH entries")),
+      const profile = await installShellIntegration();
+      const directory = path.join(root, SYSTEM_DIR, "runtime", "shims");
+      const result = spawnSync(
+        "/bin/sh",
+        ["-c", `. "${profile}"; . "${profile}"; printf %s "$PATH"`],
+        { env: { PATH: "/usr/bin:/bin" }, encoding: "utf8" },
       );
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(result.stdout, `/usr/bin:/bin:${directory}`);
+    });
+  },
+);
+
+test("fish and powershell activation append rather than prepend", () => {
+  const fish = shellPathLine("fish", "/x/shims");
+  assert.equal(fish, "fish_add_path --global --append '/x/shims'");
+  const ps = shellPathLine("powershell", "C:\\x\\shims");
+  assert.match(ps, /-contains "C:\\x\\shims"/);
+  assert.match(ps, /\$env:Path = "\$env:Path;C:\\x\\shims"/);
+});
+
+unixOnly(
+  "wrappers fall back to node on PATH when the recorded interpreter is gone",
+  async () => {
+    await withEnvironment(async (root) => {
+      const { directory } = await syncProviderWrappers();
+      const wrapper = path.join(directory, "ocean");
+      const contents = await readFile(wrapper, "utf8");
+      await writeFile(
+        wrapper,
+        contents.replace(`'${process.execPath}'`, "'/nonexistent/node'"),
+      );
+      assert.match(await readFile(wrapper, "utf8"), /\/nonexistent\/node/);
+      const result = spawnSync(wrapper, ["client", "list"], {
+        env: {
+          ...process.env,
+          PATH: `${path.dirname(process.execPath)}${path.delimiter}/usr/bin:/bin`,
+          OCEAN_ROOT: root,
+        },
+        encoding: "utf8",
+      });
+      assert.equal(result.status, 0, `${result.stderr}\n${result.stdout}`);
+      assert.match(result.stdout, /claude/);
     });
   },
 );
