@@ -6,6 +6,7 @@ import test from "node:test";
 import {
   autoRegisterProject,
   bindProject,
+  canonicalPath,
   projectSlug,
   renameProject,
   resolveProject,
@@ -63,7 +64,7 @@ test("the first session in an unregistered repo registers it as a project", asyn
     assert.deepEqual(registered, {
       status: "registered",
       projectId: "my-app",
-      path: app,
+      path: canonicalPath(app),
     });
     assert.equal(resolution.status, "bound");
     assert.equal(resolution.projectId, "my-app");

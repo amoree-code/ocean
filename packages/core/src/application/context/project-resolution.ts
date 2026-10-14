@@ -757,7 +757,7 @@ function memoryHeading(id: string): string {
 export async function unbindProjectPath(
   targetPath: string,
 ): Promise<{ removed: ProjectBinding | null }> {
-  const resolvedPath = path.resolve(expandHome(targetPath));
+  const resolvedPath = canonicalPath(targetPath);
   return withProjectsLock(async () => {
     const manifests = await listProjectManifests();
     const legacy = await listLegacyBindings();
@@ -770,20 +770,18 @@ export async function unbindProjectPath(
     if (!removed) return { removed };
     const boundPath = path.resolve(removed.path);
     const owner = manifests.find((manifest) =>
-      manifest.paths.some(
-        (stored) => path.resolve(expandHome(stored)) === boundPath,
-      ),
+      manifest.paths.some((stored) => canonicalPath(stored) === boundPath),
     );
     if (owner)
       await writeManifest({
         ...owner,
         paths: owner.paths.filter(
-          (stored) => path.resolve(expandHome(stored)) !== boundPath,
+          (stored) => canonicalPath(stored) !== boundPath,
         ),
       });
     // A legacy entry for the same path would otherwise take the binding back.
     const keptLegacy = legacy.filter(
-      (binding) => path.resolve(binding.path) !== boundPath,
+      (binding) => canonicalPath(binding.path) !== boundPath,
     );
     await saveProjectBindings(
       cacheBindings(await listProjectManifests(), keptLegacy),
