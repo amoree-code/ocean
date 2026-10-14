@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { mkdir, readdir, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -133,6 +133,18 @@ export function isValidProjectId(value: string): boolean {
   return PROJECT_ID.test(value) && !value.includes("..");
 }
 
+// One spelling per directory: symlinks resolved (macOS /var is /private/var, and process.cwd()
+// returns the resolved form), so a bound path and the cwd of a session inside it compare equal.
+// A path that does not exist (a repo not cloned on this machine yet) is kept as written.
+export function canonicalPath(value: string): string {
+  const resolved = path.resolve(expandHome(value));
+  try {
+    return realpathSync(resolved);
+  } catch {
+    return resolved;
+  }
+}
+
 function projectsRoot(): string {
   return oceanPath(PROJECTS_DIR);
 }
@@ -232,7 +244,7 @@ function manifestBindings(manifests: ProjectManifest[]): ProjectBinding[] {
     manifest.paths.map((stored) => ({
       id: manifest.id,
       name: manifest.name,
-      path: path.resolve(expandHome(stored)),
+      path: canonicalPath(stored),
       gitRoot: null,
       boundAt: manifest.created,
       manifest: true,
@@ -248,7 +260,9 @@ function combineBindings(
   const claimed = new Set(fromManifests.map((binding) => binding.path));
   return [
     ...fromManifests,
-    ...legacy.filter((binding) => !claimed.has(path.resolve(binding.path))),
+    ...legacy
+      .map((binding) => ({ ...binding, path: canonicalPath(binding.path) }))
+      .filter((binding) => !claimed.has(binding.path)),
   ];
 }
 
@@ -287,7 +301,7 @@ function withProjectsLock<T>(run: () => Promise<T>): Promise<T> {
 // requirement. Match order is git root, then the exact cwd, then (as a last resort) whether
 // the path is inside the Ocean workspace root itself, which is always the workspace project.
 export async function resolveProject(cwd: string): Promise<ProjectResolution> {
-  const resolvedCwd = path.resolve(cwd);
+  const resolvedCwd = canonicalPath(cwd);
   const gitRoot = findGitRoot(resolvedCwd);
   const bindings = await listProjectBindings();
 
@@ -345,7 +359,7 @@ export async function resolveProject(cwd: string): Promise<ProjectResolution> {
     };
   }
 
-  const root = oceanRoot();
+  const root = canonicalPath(oceanRoot());
   const isFilesystemRoot = root === path.parse(root).root;
   if (
     resolvedCwd === root ||
@@ -383,7 +397,7 @@ export async function bindProject(
     throw new Error(
       `Invalid project id '${name}': use lowercase letters, digits, dot, underscore or hyphen`,
     );
-  const resolvedPath = path.resolve(expandHome(targetPath));
+  const resolvedPath = canonicalPath(targetPath);
   return withProjectsLock(async () => {
     const manifests = await listProjectManifests();
     const legacy = await listLegacyBindings();
@@ -458,7 +472,7 @@ export async function migrateProjectBindings(
     };
     const updates = new Map<string, ProjectManifest>();
     for (const binding of legacy) {
-      const resolved = path.resolve(binding.path);
+      const resolved = canonicalPath(binding.path);
       if (claimed.has(resolved)) continue;
       if (!isValidProjectId(binding.id)) {
         result.orphaned.push({

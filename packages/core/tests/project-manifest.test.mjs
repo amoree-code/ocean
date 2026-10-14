@@ -1,10 +1,19 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { realpathSync } from "node:fs";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
   bindProject,
+  canonicalPath,
   expandHome,
   listProjectBindings,
   listProjectManifests,
@@ -71,8 +80,8 @@ test("bind writes project.json and one project resolves from several repos", asy
 
     const manifest = await manifestOf(root, "ocean-language");
     assert.deepEqual(manifest.paths, [
-      portablePath(dashboard),
-      portablePath(backend),
+      portablePath(canonicalPath(dashboard)),
+      portablePath(canonicalPath(backend)),
     ]);
     assert.equal(manifest.autoRegistered, false);
     for (const cwd of [path.join(dashboard, "src"), backend]) {
@@ -178,7 +187,7 @@ test("migrate folds bindings into existing project folders and reports orphans",
     const done = await migrateProjectBindings(true);
     assert.equal(done.written, true);
     const manifest = await manifestOf(root, "kept");
-    assert.deepEqual(manifest.paths, [portablePath(kept)]);
+    assert.deepEqual(manifest.paths, [portablePath(canonicalPath(kept))]);
     assert.equal(manifest.name, "Kept");
     assert.equal(
       (await migrateProjectBindings(true)).migrated.length,
@@ -239,8 +248,8 @@ test("re-binding a project's own legacy path folds it in, without a conflict", a
     const result = await bindProject("demo", p);
     assert.equal(result.conflict, undefined);
     assert.deepEqual((await manifestOf(root, "demo")).paths, [
-      portablePath(q),
-      portablePath(p),
+      portablePath(canonicalPath(q)),
+      portablePath(canonicalPath(p)),
     ]);
   });
 });
@@ -370,5 +379,22 @@ test("concurrent binds of different repos to one project keep every path", async
         .map((repo) => bindProject("multi", repo, { addPath: true })),
     );
     assert.equal((await manifestOf(root, "multi")).paths.length, 6);
+  });
+});
+
+test("a repo bound through a symlink resolves from its real path, and back", async () => {
+  await withRoot(async () => {
+    const real = await mkdtemp(path.join(os.tmpdir(), "ocean-real-"));
+    const link = path.join(
+      await mkdtemp(path.join(os.tmpdir(), "ocean-link-")),
+      "repo",
+    );
+    await symlink(real, link);
+    await bindProject("linked", link);
+    assert.equal(
+      (await resolveProject(path.join(realpathSync(real)))).projectId,
+      "linked",
+    );
+    assert.equal((await resolveProject(link)).projectId, "linked");
   });
 });
