@@ -596,7 +596,9 @@ async function commandProject(): Promise<void> {
     console.log(JSON.stringify(bindings, null, 2));
     if (errors.length) process.exitCode = 2;
   } else if (action === "register") {
-    const result = await autoRegisterProject(process.argv[4] ?? process.cwd());
+    const result = await autoRegisterProject(process.argv[4] ?? process.cwd(), {
+      explicit: true,
+    });
     console.log(JSON.stringify(result, null, 2));
     if (result.status !== "registered") process.exitCode = 2;
   } else if (action === "unbind") {
@@ -614,7 +616,14 @@ async function commandProject(): Promise<void> {
     if (!from || !to) {
       console.error("Usage: ocean project rename <id> <new-id>");
       process.exitCode = 1;
-    } else console.log(JSON.stringify(await renameProject(from, to), null, 2));
+    } else {
+      try {
+        console.log(JSON.stringify(await renameProject(from, to), null, 2));
+      } catch (error) {
+        console.error(error instanceof Error ? error.message : String(error));
+        process.exitCode = 2;
+      }
+    }
   } else if (action === "migrate") {
     const result = await migrateProjectBindings(
       process.argv.includes("--write"),

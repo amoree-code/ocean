@@ -97,10 +97,8 @@ async function registerIfUnbound(
 ): Promise<ProjectResolution> {
   if (resolved.status !== "unbound") return resolved;
   try {
-    const registration = await autoRegisterProject(cwd);
-    return registration.status === "registered"
-      ? await resolveProject(cwd)
-      : resolved;
+    return (await autoRegisterProject(cwd, { resolution: resolved }))
+      .resolution;
   } catch {
     return resolved;
   }
@@ -112,7 +110,15 @@ export async function claudeSessionStartHook(
   // `||`, not `??`: Hermes sends cwd "" when its own cwd is unreadable.
   const cwd = payload.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
   const [resolved, warning] = await Promise.all([
-    resolveProject(cwd),
+    // A broken registry must cost this session its project, never its bootstrap.
+    resolveProject(cwd).catch(
+      (): ProjectResolution => ({
+        status: "unbound",
+        cwd: path.resolve(cwd),
+        gitRoot: null,
+        confidence: "none",
+      }),
+    ),
     oceanWorktreeWarning(cwd),
   ]);
   const project = await registerIfUnbound(cwd, resolved);

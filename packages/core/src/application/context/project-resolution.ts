@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import {
   mkdir,
   readdir,
@@ -76,6 +76,24 @@ export function findGitRoot(startDir: string): string | null {
     const parent = path.dirname(dir);
     if (parent === dir) return null;
     dir = parent;
+  }
+}
+
+// A linked worktree (`git worktree add`) has a `.git` file pointing into the main repo's
+// `.git/worktrees/<name>`; returns that main repo, or null for a normal repo or a submodule.
+export function linkedWorktreeMain(gitRoot: string): string | null {
+  try {
+    const dotGit = path.join(gitRoot, ".git");
+    if (!statSync(dotGit).isFile()) return null;
+    const pointer = readFileSync(dotGit, "utf8").match(
+      /^gitdir:\s*(.+)$/m,
+    )?.[1];
+    if (!pointer) return null;
+    const gitdir = path.resolve(gitRoot, pointer.trim());
+    const match = gitdir.match(/^(.*)[\\/]\.git[\\/]worktrees[\\/][^\\/]+$/);
+    return match ? match[1] : null;
+  } catch {
+    return null;
   }
 }
 
@@ -161,7 +179,7 @@ function manifestPath(projectId: string): string {
   return path.join(projectsRoot(), projectFolder(projectId), MANIFEST_FILE);
 }
 
-function parseManifest(file: string, folder: string, raw: string) {
+function parseManifest(folder: string, raw: string) {
   const parsed = JSON.parse(raw) as Partial<ProjectManifest>;
   if (
     !parsed ||
@@ -203,9 +221,7 @@ export async function scanProjectManifests(): Promise<ProjectManifestScan> {
   for (const folder of folders) {
     const file = path.join(projectsRoot(), folder, MANIFEST_FILE);
     try {
-      scan.manifests.push(
-        parseManifest(file, folder, await readFile(file, "utf8")),
-      );
+      scan.manifests.push(parseManifest(folder, await readFile(file, "utf8")));
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
       scan.errors.push({
@@ -231,6 +247,8 @@ async function writeManifest(manifest: ProjectManifest): Promise<void> {
 // `ocean project migrate --write` folds them into manifests, and rewritten as a cache after
 // every manifest change for anything that still reads the file. Entries the cache holds for
 // manifests are skipped, so a deleted project folder does not come back through it.
+// A corrupt file throws: resolution fails closed (no project, no task references) and writers
+// never overwrite what they cannot read. The session-start hook catches it on its own.
 async function listLegacyBindings(): Promise<ProjectBinding[]> {
   try {
     const raw = await readFile(bindingsFile(), "utf8");
@@ -238,6 +256,8 @@ async function listLegacyBindings(): Promise<ProjectBinding[]> {
       version: number;
       bindings: ProjectBinding[];
     };
+    if (!Array.isArray(parsed?.bindings ?? []))
+      throw new Error(`${bindingsFile()}: bindings is not a list`);
     return (parsed.bindings ?? []).filter((binding) => !binding.manifest);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
@@ -367,6 +387,13 @@ export async function resolveProject(cwd: string): Promise<ProjectResolution> {
     };
   }
 
+  // A worktree beside its repo (house convention: <repo>-worktrees/<slug>) is that repo's project.
+  const main = gitRoot ? linkedWorktreeMain(gitRoot) : null;
+  if (main && main !== gitRoot) {
+    const viaMain = await resolveProject(main);
+    if (viaMain.status === "bound") return viaMain;
+  }
+
   const root = canonicalPath(oceanRoot());
   const isFilesystemRoot = root === path.parse(root).root;
   if (
@@ -433,6 +460,16 @@ export async function bindProject(
         conflict: existingByName,
       };
     const existing = manifests.find((manifest) => manifest.id === name);
+    // Auto-registration never takes over a folder someone else made (checked under the lock,
+    // so a folder created a moment ago by another writer counts).
+    if (
+      options.autoRegistered &&
+      !existing &&
+      existsSync(path.join(projectsRoot(), projectFolder(name)))
+    )
+      throw new ProjectFolderTaken(
+        `04-projects/${name} already exists; bind it explicitly`,
+      );
     const manifest: ProjectManifest = existing
       ? { ...existing, paths: [...existing.paths, portablePath(resolvedPath)] }
       : {
@@ -606,13 +643,14 @@ export function projectSlug(name: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9._-]+/g, "-")
     .replace(/^[^a-z0-9]+/, "")
-    .replace(/[-._]+$/, "")
-    .slice(0, 64);
+    .slice(0, 64)
+    .replace(/[-._]+$/, "");
 }
 
-export type AutoRegistration =
+export type AutoRegistration = { resolution: ProjectResolution } & (
   | { status: "registered"; projectId: string; path: string }
-  | { status: "skipped"; reason: string };
+  | { status: "skipped"; reason: string }
+);
 
 async function realOrSelf(target: string): Promise<string> {
   try {
@@ -627,57 +665,91 @@ function within(root: string, target: string): boolean {
   return target === root || target.startsWith(prefix);
 }
 
+class ProjectFolderTaken extends Error {}
+
 // A session opened in a git repo that no project claims registers that repo as its own
-// project: 04-projects/<slug>/ with project.json, tasks/ and MEMORY.md. Never inside the Ocean
-// workspace or the temp dir, never outside the code roots, never a code root itself, and never
-// over an existing 04-projects folder. Sibling repos are not merged: a code-root folder often
-// holds unrelated repos, so joining one project to another stays explicit (`bind --add`).
+// project: 04-projects/<slug>/ with project.json, tasks/ and MEMORY.md. Automatic runs stay
+// under the code roots, out of the temp dir and off a code root itself; `explicit` (the
+// `ocean project register` command) is the owner asking, so only the hard rules apply: a git
+// repo, not a linked worktree or submodule, not the Ocean workspace, never over an existing
+// project folder. Sibling repos are never merged: a code-root folder often holds unrelated
+// repos, so joining one project to another stays explicit (`bind --add`).
 export async function autoRegisterProject(
   cwd: string,
+  options: { explicit?: boolean; resolution?: ProjectResolution } = {},
 ): Promise<AutoRegistration> {
+  let resolution = options.resolution ?? (await resolveProject(cwd));
   const skipped = (reason: string): AutoRegistration => ({
     status: "skipped",
     reason,
+    resolution,
   });
-  if (oceanEnv("AUTO_REGISTER") === "0")
+  if (!options.explicit && oceanEnv("AUTO_REGISTER") === "0")
     return skipped("disabled by OCEAN_AUTO_REGISTER=0");
-  const resolution = await resolveProject(cwd);
   if (resolution.status !== "unbound")
     return skipped(`already ${resolution.status}`);
   if (!resolution.gitRoot) return skipped("not inside a git repository");
+  if (!statSync(path.join(resolution.gitRoot, ".git")).isDirectory())
+    return skipped("a linked worktree or submodule; bind it explicitly");
   const repo = await realOrSelf(resolution.gitRoot);
   if (within(await realOrSelf(oceanRoot()), repo))
     return skipped("inside the Ocean workspace");
-  const roots = await Promise.all(codeRoots().map(realOrSelf));
-  const root = roots.find(
-    (candidate) => repo !== candidate && within(candidate, repo),
-  );
-  if (!root) return skipped("outside the code roots");
-  // The temp dir is excluded unless the owner deliberately put a code root inside it.
-  const temp = await realOrSelf(os.tmpdir());
-  if (within(temp, repo) && !within(temp, root))
-    return skipped("inside the temp directory");
+  if (!options.explicit) {
+    const roots = await Promise.all(codeRoots().map(realOrSelf));
+    if (roots.includes(repo)) return skipped("is a code root itself");
+    const root = roots.find((candidate) => within(candidate, repo));
+    if (!root) return skipped("outside the code roots");
+    // The temp dir is excluded unless the owner deliberately put a code root inside it.
+    const temp = await realOrSelf(os.tmpdir());
+    if (within(temp, repo) && !within(temp, root))
+      return skipped("inside the temp directory");
+  }
   const id = projectSlug(path.basename(repo));
   if (!isValidProjectId(id)) return skipped(`no usable id from '${repo}'`);
-  if (existsSync(path.join(projectsRoot(), id)))
-    return skipped(`04-projects/${id} already exists; bind it explicitly`);
-  const result = await bindProject(id, resolution.gitRoot, {
-    autoRegistered: true,
-  });
-  if (result.conflict)
+  let result: BindProjectResult;
+  try {
+    result = await bindProject(id, resolution.gitRoot, {
+      autoRegistered: true,
+    });
+  } catch (error) {
+    if (!(error instanceof ProjectFolderTaken)) throw error;
+    // Another session may have registered this very repo a moment ago.
+    resolution = await resolveProject(cwd);
+    return skipped(error.message);
+  }
+  if (result.conflict) {
+    resolution = await resolveProject(cwd);
     return skipped(`conflicts with project '${result.conflict.id}'`);
+  }
   const folder = path.join(projectsRoot(), id);
   await mkdir(path.join(folder, "tasks"), { recursive: true });
   try {
     await writeFile(
       path.join(folder, "MEMORY.md"),
-      `# ${id} — memory\n\nIndex of this project's memory. Loaded only for sessions in this project.\n`,
+      `${memoryHeading(id)}\n\nIndex of this project's memory. Loaded only for sessions in this project.\n`,
       { flag: "wx" },
     );
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
   }
-  return { status: "registered", projectId: id, path: resolution.gitRoot };
+  resolution = {
+    status: "bound",
+    projectId: id,
+    name: id,
+    path: result.binding.path,
+    matchedOn: result.binding.path === path.resolve(cwd) ? "cwd" : "path",
+    confidence: "high",
+  };
+  return {
+    status: "registered",
+    projectId: id,
+    path: result.binding.path,
+    resolution,
+  };
+}
+
+function memoryHeading(id: string): string {
+  return `# ${id} — memory`;
 }
 
 // Undoes a binding (a wrong auto-registration, a moved repo). Only the path goes; the project
@@ -689,26 +761,29 @@ export async function unbindProjectPath(
   return withProjectsLock(async () => {
     const manifests = await listProjectManifests();
     const legacy = await listLegacyBindings();
+    // The binding whose path contains the given one, longest first, so `unbind .` works from
+    // anywhere inside the repo.
     const removed =
-      combineBindings(manifests, legacy).find(
-        (binding) => binding.path === resolvedPath,
-      ) ?? null;
+      combineBindings(manifests, legacy)
+        .filter((binding) => within(path.resolve(binding.path), resolvedPath))
+        .sort((a, b) => b.path.length - a.path.length)[0] ?? null;
     if (!removed) return { removed };
+    const boundPath = path.resolve(removed.path);
     const owner = manifests.find((manifest) =>
       manifest.paths.some(
-        (stored) => path.resolve(expandHome(stored)) === resolvedPath,
+        (stored) => path.resolve(expandHome(stored)) === boundPath,
       ),
     );
     if (owner)
       await writeManifest({
         ...owner,
         paths: owner.paths.filter(
-          (stored) => path.resolve(expandHome(stored)) !== resolvedPath,
+          (stored) => path.resolve(expandHome(stored)) !== boundPath,
         ),
       });
     // A legacy entry for the same path would otherwise take the binding back.
     const keptLegacy = legacy.filter(
-      (binding) => path.resolve(binding.path) !== resolvedPath,
+      (binding) => path.resolve(binding.path) !== boundPath,
     );
     await saveProjectBindings(
       cacheBindings(await listProjectManifests(), keptLegacy),
@@ -734,7 +809,7 @@ export async function renameProject(
     if (!manifest) throw new Error(`No project.json for '${from}'`);
     if (existsSync(target)) throw new Error(`04-projects/${to} already exists`);
     const tasks = await readdir(path.join(source, "tasks")).catch(() => []);
-    if (tasks.some((entry) => entry !== ".gitkeep"))
+    if (tasks.some((entry) => !entry.startsWith(".")))
       throw new Error(
         `'${from}' has tasks; renaming a project with tasks is not supported yet`,
       );
@@ -744,6 +819,25 @@ export async function renameProject(
       id: to,
       name: manifest.name === from ? to : manifest.name,
     });
+    const memory = path.join(target, "MEMORY.md");
+    try {
+      const text = await readFile(memory, "utf8");
+      if (text.startsWith(memoryHeading(from)))
+        await atomicWrite(
+          memory,
+          `${memoryHeading(to)}${text.slice(memoryHeading(from).length)}`,
+        );
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    if (
+      (
+        await readFile(path.join(projectsRoot(), "registry.md"), "utf8").catch(
+          () => "",
+        )
+      ).includes(INDEX_BEGIN)
+    )
+      await writeProjectIndexLocked();
     await saveProjectBindings(
       cacheBindings(await listProjectManifests(), await listLegacyBindings()),
     );
