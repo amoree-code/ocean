@@ -4,7 +4,10 @@ import { classifyIntent } from "../../application/context/intent-router.js";
 import {
   bindProject,
   listProjectBindings,
+  migrateProjectBindings,
+  renderProjectIndex,
   resolveProject,
+  writeProjectIndex,
 } from "../../application/context/project-resolution.js";
 import {
   hasFailures,
@@ -566,20 +569,31 @@ async function commandProject(): Promise<void> {
       ),
     );
   } else if (action === "bind") {
-    const [name, targetPath] = process.argv.slice(4);
+    const args = process.argv.slice(4);
+    const addPath = args.includes("--add");
+    const [name, targetPath] = args.filter((arg) => arg !== "--add");
     if (!name || !targetPath) {
-      console.error("Usage: ocean project bind <name> <path>");
+      console.error("Usage: ocean project bind <name> <path> [--add]");
       process.exitCode = 1;
     } else {
-      const result = await bindProject(name, targetPath);
+      const result = await bindProject(name, targetPath, { addPath });
       console.log(JSON.stringify(result, null, 2));
       if (result.conflict) process.exitCode = 2;
     }
   } else if (action === "list") {
     console.log(JSON.stringify(await listProjectBindings(), null, 2));
+  } else if (action === "migrate") {
+    const result = await migrateProjectBindings(
+      process.argv.includes("--write"),
+    );
+    console.log(JSON.stringify(result, null, 2));
+  } else if (action === "index") {
+    if (process.argv.includes("--write"))
+      console.log(JSON.stringify(await writeProjectIndex(), null, 2));
+    else console.log(await renderProjectIndex());
   } else {
     console.error(
-      "Usage: ocean project resolve [path]|bind <name> <path>|list",
+      "Usage: ocean project resolve [path]|bind <name> <path> [--add]|list|migrate [--write]|index [--write]",
     );
     process.exitCode = 1;
   }
