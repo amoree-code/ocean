@@ -90,7 +90,8 @@ export async function oceanWorktreeWarning(
 export async function claudeSessionStartHook(
   payload: ClaudeSessionStartPayload,
 ): Promise<ClaudeSessionStartResult> {
-  const cwd = payload.cwd ?? process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
+  // `||`, not `??`: Hermes sends cwd "" when its own cwd is unreadable.
+  const cwd = payload.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
   const [project, warning] = await Promise.all([
     resolveProject(cwd),
     oceanWorktreeWarning(cwd),
@@ -104,6 +105,36 @@ export async function claudeSessionStartHook(
         : bootstrap.content,
     },
   };
+}
+
+// Clients that take the bootstrap through their own hooks instead of a same-name shim (T-266).
+// Codex reads Claude Code's hookSpecificOutput shape. Hermes injects context only from a
+// pre_llm_call shell hook, as {"context": "..."} (hermes agent/shell_hooks.py _parse_response);
+// that hook fires on every turn, so only the first turn gets the bootstrap.
+export const SESSION_START_CLIENTS = ["claude", "codex", "hermes"] as const;
+export type SessionStartClient = (typeof SESSION_START_CLIENTS)[number];
+
+export function isSessionStartClient(
+  value: string,
+): value is SessionStartClient {
+  return (SESSION_START_CLIENTS as readonly string[]).includes(value);
+}
+
+// Hermes' payload: {hook_event_name, tool_name, tool_input, session_id, cwd, extra}, where
+// extra.is_first_turn is false on every turn after the first (agent/turn_context.py).
+export type SessionStartPayload = ClaudeSessionStartPayload & {
+  extra?: { is_first_turn?: boolean };
+};
+
+export async function sessionStartHookForClient(
+  client: SessionStartClient,
+  payload: SessionStartPayload,
+): Promise<ClaudeSessionStartResult | { context?: string }> {
+  if (client !== "hermes") return claudeSessionStartHook(payload);
+  // Later turns: no context and no git/project work on Hermes' per-turn hot path.
+  if (payload.extra?.is_first_turn === false) return {};
+  const result = await claudeSessionStartHook(payload);
+  return { context: result.hookSpecificOutput.additionalContext };
 }
 
 export type ClaudeNativeHookStatus = {

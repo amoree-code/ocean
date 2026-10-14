@@ -14,8 +14,10 @@ import {
 import { createWebhookGateway } from "../../application/gateway/webhook-gateway.js";
 import { claudeSessionEndHook } from "../../application/hooks/session-end-hook.js";
 import {
-  claudeSessionStartHook,
+  isSessionStartClient,
   readBoundedStdin,
+  SESSION_START_CLIENTS,
+  sessionStartHookForClient,
 } from "../../application/hooks/session-start-hook.js";
 import {
   findInstallSpec,
@@ -586,10 +588,29 @@ async function commandProject(): Promise<void> {
 async function commandHook(): Promise<void> {
   const action = process.argv[3] ?? "";
   if (action === "session-start") {
+    const flags = process.argv.slice(4);
+    const inline = flags.find((arg) => arg.startsWith("--client="));
+    const clientIndex = flags.indexOf("--client");
+    const client = inline
+      ? inline.slice("--client=".length)
+      : clientIndex >= 0
+        ? (flags[clientIndex + 1] ?? "")
+        : "claude";
+    if (!isSessionStartClient(client)) {
+      console.error(sessionStartUsage);
+      process.exitCode = 1;
+      return;
+    }
     try {
       const raw = await readBoundedStdin();
-      const payload = raw.trim() ? JSON.parse(raw) : {};
-      console.log(JSON.stringify(await claudeSessionStartHook(payload)));
+      const parsed: unknown = raw.trim() ? JSON.parse(raw) : {};
+      const payload =
+        parsed && typeof parsed === "object" && !Array.isArray(parsed)
+          ? parsed
+          : {};
+      console.log(
+        JSON.stringify(await sessionStartHookForClient(client, payload)),
+      );
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));
       process.exitCode = 1;
@@ -605,11 +626,13 @@ async function commandHook(): Promise<void> {
     }
   } else {
     console.error(
-      "Usage: ocean hook session-start|session-end (reads a Claude Code hook payload from stdin)",
+      `${sessionStartUsage}|session-end (reads a hook payload from stdin)`,
     );
     process.exitCode = 1;
   }
 }
+
+const sessionStartUsage = `Usage: ocean hook session-start [--client ${SESSION_START_CLIENTS.join("|")}]`;
 
 async function commandIntent(): Promise<void> {
   const action = process.argv[3] ?? "classify";
