@@ -143,13 +143,17 @@ export async function listTasksForFolder(options: {
     tasks.map((task) => ({ ...task, project }));
   if (options.project) {
     // A mistyped id would otherwise read as a project with no tasks.
-    try {
-      await stat(
-        resolveWithin(oceanPath(PROJECTS_DIR), projectFolder(options.project)),
-      );
-    } catch {
+    // resolveWithin throws on its own for an id that escapes the projects root.
+    const folder = resolveWithin(
+      oceanPath(PROJECTS_DIR),
+      projectFolder(options.project),
+    );
+    const isProject = await stat(folder).then(
+      (entry) => entry.isDirectory(),
+      () => false,
+    );
+    if (!isProject)
       throw new Error(`No project ${options.project} in ${PROJECTS_DIR}`);
-    }
     return {
       scope: "project",
       project: options.project,

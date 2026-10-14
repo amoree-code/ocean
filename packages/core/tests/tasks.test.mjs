@@ -259,10 +259,19 @@ test("a corrupt registry fails the task commands closed instead of guessing", as
 });
 
 test("tasks list --project with an unknown id says so", async () => {
-  const { shopRepo, run } = await twoProjects();
+  const { root, shopRepo, run } = await twoProjects();
   const result = run(shopRepo, "list", "--project", "shpo");
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /No project shpo/);
+  // A stray file is no project either; a real project with no tasks is just empty.
+  await writeFile(path.join(root, PROJECTS_DIR, "afile"), "x");
+  assert.match(
+    run(shopRepo, "list", "--project", "afile").stderr,
+    /No project afile/,
+  );
+  const quiet = run(shopRepo, "list", "--project", "quiet");
+  assert.equal(quiet.status, 0, quiet.stderr);
+  assert.deepEqual(JSON.parse(quiet.stdout), []);
 });
 
 test("tasks list --pretty prints a table", async () => {
