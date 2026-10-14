@@ -588,7 +588,7 @@ async function commandProject(): Promise<void> {
 async function commandHook(): Promise<void> {
   const action = process.argv[3] ?? "";
   if (action === "session-start") {
-    const clientIndex = process.argv.indexOf("--client");
+    const clientIndex = process.argv.indexOf("--client", 4);
     const client =
       clientIndex >= 0 ? (process.argv[clientIndex + 1] ?? "") : "claude";
     if (!isSessionStartClient(client)) {
