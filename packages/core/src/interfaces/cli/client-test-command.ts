@@ -64,7 +64,7 @@ async function buildReport(
     provider.id === "claude"
       ? await claudeEntryBoundaryStatus()
       : {
-          kind: "shim-fallback",
+          kind: "wrapper-only",
           detail: `No native hook is wired for this provider. A plain ${provider.command} runs natively; ${providerWrapperName(provider.command)} routes it through Ocean (ocean intercept --client).`,
         };
   return {
@@ -135,7 +135,7 @@ async function claudeEntryBoundaryStatus(): Promise<{
     };
   }
   return {
-    kind: "shim-fallback",
+    kind: "wrapper-only",
     detail: `No native SessionStart hook script found. Only ${providerWrapperName("claude")} routes Claude through Ocean (ocean intercept --client claude).`,
   };
 }

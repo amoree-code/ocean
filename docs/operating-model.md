@@ -69,5 +69,5 @@ Claude, Codex, and Gemini have verified headless invocation paths on the develop
 machine. Claude has a registered Ocean `SessionStart` hook; direct hook execution and
 configuration registration are proven, while invocation and application by a newly
 opened live Claude session require a fresh-session check. Providers without a verified
-headless contract remain explicitly unsupported or shim-fallback; executable discovery
+headless contract remain explicitly unsupported or wrapper-only; executable discovery
 alone is not compatibility evidence.

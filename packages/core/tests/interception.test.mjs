@@ -570,7 +570,9 @@ exit 1
 test("sync never writes a shim under a native command's own name", async () => {
   await withEnvironment(async () => {
     const { directory, providers } = await syncProviderWrappers();
-    const names = await readdir(directory);
+    const names = (await readdir(directory)).map((name) =>
+      name.replace(/\.cmd$/i, ""),
+    );
     for (const provider of providers) {
       assert.ok(names.includes(`ocean-${provider.command}`), provider.command);
       assert.ok(!names.includes(provider.command), provider.command);
@@ -578,31 +580,40 @@ test("sync never writes a shim under a native command's own name", async () => {
   });
 });
 
-test("sync removes an Ocean same-name shim but leaves a foreign file, which doctor reports", async () => {
-  await withEnvironment(async (root) => {
-    const shims = path.join(root, SYSTEM_DIR, "runtime", "shims");
-    await mkdir(shims, { recursive: true });
-    await writeFile(
-      path.join(shims, "claude"),
-      "#!/bin/sh\nexec node main.js intercept --client 'claude' -- \"$@\"\n",
-    );
-    await writeFile(path.join(shims, "codex"), "#!/bin/sh\necho mine\n");
-    await syncProviderWrappers();
-    const names = await readdir(shims);
-    assert.ok(!names.includes("claude"));
-    assert.ok(names.includes("codex"));
-    process.env.PATH = `${shims}${path.delimiter}${process.env.PATH}`;
-    const findings = await wrapperDoctor();
-    assert.ok(
-      findings.some(
-        (finding) =>
-          finding.startsWith("codex: ") && finding.includes("shadow"),
-      ),
-      findings.join("\n"),
-    );
-    assert.ok(!findings.some((finding) => finding.includes("PATH entries")));
-  });
-});
+unixOnly(
+  "sync removes Ocean same-name shims, registered or not, but leaves foreign files",
+  async () => {
+    await withEnvironment(async (root) => {
+      const shims = path.join(root, SYSTEM_DIR, "runtime", "shims");
+      await mkdir(shims, { recursive: true });
+      const legacy =
+        "#!/bin/sh\nexport OCEAN_SHIM_DIR='/x'\nexec node main.js intercept --client 'claude' -- \"$@\"\n";
+      await writeFile(path.join(shims, "claude"), legacy);
+      await writeFile(path.join(shims, "kilo-old"), legacy);
+      await writeFile(
+        path.join(shims, "gemini"),
+        '#!/bin/sh\nexec ocean intercept --client gemini -- "$@"\n',
+      );
+      await writeFile(path.join(shims, "codex"), "#!/bin/sh\necho mine\n");
+      await syncProviderWrappers();
+      const names = await readdir(shims);
+      assert.ok(!names.includes("claude"));
+      assert.ok(!names.includes("kilo-old"));
+      assert.ok(names.includes("codex"));
+      assert.ok(names.includes("gemini"));
+      process.env.PATH = `${shims}${path.delimiter}${process.env.PATH}`;
+      const findings = await wrapperDoctor();
+      assert.ok(
+        findings.some(
+          (finding) =>
+            finding.startsWith("codex: ") && finding.includes("shadow"),
+        ),
+        findings.join("\n"),
+      );
+      assert.ok(!findings.some((finding) => finding.includes("PATH entries")));
+    });
+  },
+);
 
 unixOnly("doctor accepts the shim directory anywhere on PATH", async () => {
   await withEnvironment(async (root) => {
@@ -633,7 +644,7 @@ unixOnly(
 
 test("fish and powershell activation append rather than prepend", () => {
   const fish = shellPathLine("fish", "/x/shims");
-  assert.equal(fish, "fish_add_path --global --append '/x/shims'");
+  assert.equal(fish, "fish_add_path --append --path '/x/shims'");
   const ps = shellPathLine("powershell", "C:\\x\\shims");
   assert.match(ps, /-contains "C:\\x\\shims"/);
   assert.match(ps, /\$env:Path = "\$env:Path;C:\\x\\shims"/);
@@ -666,7 +677,7 @@ unixOnly(
 );
 
 unixOnly(
-  "doctor treats a native provider path as supported and flags an unknown one",
+  "doctor names a native provider path as hook-only and flags an unknown one",
   async () => {
     await withEnvironment(async (root) => {
       const bin = path.join(root, "bin");
@@ -675,7 +686,10 @@ unixOnly(
       await writeFile(executable, "#!/bin/sh\nexit 0\n");
       await chmod(executable, 0o755);
       await registerProvider("direct", "direct-ai");
-      assert.equal(absolutePathBypassFinding(executable), null);
+      assert.match(
+        absolutePathBypassFinding(executable),
+        /^NATIVE_ENTRY: direct .* native hook; ocean-direct-ai routes it/,
+      );
       assert.doesNotMatch(
         (await wrapperDoctor(executable)).join("\n"),
         /BYPASS_DETECTED/,

@@ -24,6 +24,7 @@ import {
 const execFile = promisify(execFileCallback);
 
 const CLI_WRAPPER_NAMES = ["ocean"] as const;
+const DESKTOP_WRAPPER_PROVIDERS = ["claude"] as const;
 
 export function shimDirectory(): string {
   return oceanPath(SYSTEM_DIR, "runtime", "shims");
@@ -56,18 +57,27 @@ function isNamespacedShim(name: string): boolean {
   return (
     (CLI_WRAPPER_NAMES as readonly string[]).includes(base) ||
     base.startsWith("ocean-") ||
-    base.endsWith("-vscode")
+    DESKTOP_WRAPPER_PROVIDERS.some((provider) => base === `${provider}-vscode`)
   );
 }
 
+// Every provider wrapper Ocean has written (posix and .cmd) sets OCEAN_SHIM_DIR and calls
+// intercept; a user's own script that merely calls `ocean intercept` does not set the variable.
 function isOceanInterceptWrapper(contents: string): boolean {
-  return contents.includes(" intercept --client ");
+  return (
+    contents.includes("OCEAN_SHIM_DIR=") &&
+    contents.includes(" intercept --client ")
+  );
 }
 
 // The interpreter recorded at sync time, or `node` from PATH once that one is gone
 // (an fnm/nvm upgrade removes the old version's directory).
 function posixNode(): string {
   return `node=${shellQuote(process.execPath)}\n[ -x "$node" ] || node=node\n`;
+}
+
+function windowsNode(): string {
+  return `set "node=${process.execPath}"\r\nif not exist "%node%" set "node=node"\r\n`;
 }
 
 export function desktopWrapperPath(provider = "claude"): string {
@@ -77,21 +87,21 @@ export function desktopWrapperPath(provider = "claude"): string {
 function wrapperContents(provider: ProviderRecord): string {
   const entry = shellQuote(enginePath("dist", "main.js"));
   if (process.platform === "win32") {
-    return `@echo off\r\nset "OCEAN_SHIM_DIR=${shimDirectory()}"\r\n"${process.execPath}" "${enginePath("dist", "main.js")}" intercept --client "${provider.id}" -- %*\r\n`;
+    return `@echo off\r\nset "OCEAN_SHIM_DIR=${shimDirectory()}"\r\n${windowsNode()}"%node%" "${enginePath("dist", "main.js")}" intercept --client "${provider.id}" -- %*\r\n`;
   }
   return `#!/bin/sh\nexport OCEAN_SHIM_DIR=${shellQuote(shimDirectory())}\n${posixNode()}exec "$node" ${entry} intercept --client ${shellQuote(provider.id)} -- "$@"\n`;
 }
 
 function cliWrapperContents(): string {
   if (process.platform === "win32") {
-    return `@echo off\r\n"${process.execPath}" "${enginePath("dist", "main.js")}" %*\r\n`;
+    return `@echo off\r\n${windowsNode()}"%node%" "${enginePath("dist", "main.js")}" %*\r\n`;
   }
   return `#!/bin/sh\n${posixNode()}exec "$node" ${shellQuote(enginePath("dist", "main.js"))} "$@"\n`;
 }
 
 function desktopWrapperContents(provider: string): string {
   if (process.platform === "win32") {
-    return `@echo off\r\nif "%~1"=="" exit /b 64\r\nset "native=%~1"\r\nshift\r\n"${process.execPath}" "${enginePath("dist", "main.js")}" intercept --client "${provider}" --executable "%native%" -- %*\r\n`;
+    return `@echo off\r\nif "%~1"=="" exit /b 64\r\nset "native=%~1"\r\nshift\r\n${windowsNode()}"%node%" "${enginePath("dist", "main.js")}" intercept --client "${provider}" --executable "%native%" -- %*\r\n`;
   }
   return `#!/bin/sh
 if [ "$#" -lt 1 ]; then
@@ -119,25 +129,35 @@ export async function syncProviderWrappers(): Promise<{
     const file = providerWrapperPath(provider.command);
     await writeFile(file, wrapperContents(provider));
     if (process.platform !== "win32") await chmod(file, 0o755);
-    await removeLegacyShim(provider.command);
   }
-  const desktopWrapper = desktopWrapperPath("claude");
-  await writeFile(desktopWrapper, desktopWrapperContents("claude"));
-  if (process.platform !== "win32") await chmod(desktopWrapper, 0o755);
+  for (const provider of DESKTOP_WRAPPER_PROVIDERS) {
+    const desktopWrapper = desktopWrapperPath(provider);
+    await writeFile(desktopWrapper, desktopWrapperContents(provider));
+    if (process.platform !== "win32") await chmod(desktopWrapper, 0o755);
+  }
+  await removeLegacyShims();
   await saveProviderRegistry(providers);
   return { providers, directory: shimDirectory() };
 }
 
-// Removes a same-name shim left by an earlier sync, but only one Ocean wrote: a file there that
-// is not an Ocean intercept wrapper is the user's, and doctor reports it instead.
-async function removeLegacyShim(command: string): Promise<void> {
-  const legacy = wrapperPath(command);
-  try {
-    if (isOceanInterceptWrapper(await readFile(legacy, "utf8")))
-      await rm(legacy, { force: true });
-  } catch {
-    /* nothing there */
+// Removes same-name shims left by earlier syncs, including ones for providers no longer
+// registered, but only files Ocean wrote: anything else is the user's, and doctor reports it.
+async function removeLegacyShims(): Promise<void> {
+  for (const name of await readdir(shimDirectory())) {
+    if (name.startsWith(".") || isNamespacedShim(name)) continue;
+    await removeLegacyShim(path.join(shimDirectory(), name));
   }
+}
+
+async function removeLegacyShim(file: string): Promise<void> {
+  let contents: string;
+  try {
+    contents = await readFile(file, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw error;
+  }
+  if (isOceanInterceptWrapper(contents)) await rm(file, { force: true });
 }
 
 export async function registerProvider(
@@ -195,7 +215,7 @@ export async function removeProvider(id: string): Promise<ProviderRecord> {
     );
   }
   await rm(providerWrapperPath(provider.command), { force: true });
-  await removeLegacyShim(provider.command);
+  await removeLegacyShim(wrapperPath(provider.command));
   await saveProviderRegistry(
     providers.filter((candidate) => candidate.id !== provider.id),
   );
@@ -244,7 +264,8 @@ export function shellPathLine(
   if (kind === "powershell")
     return `if (-not (($env:Path -split ';') -contains "${directory}")) { $env:Path = "$env:Path;${directory}" }`;
   const quoted = shellQuote(directory);
-  if (kind === "fish") return `fish_add_path --global --append ${quoted}`;
+  // --path edits $PATH itself; without it fish puts fish_user_paths in front of the system dirs.
+  if (kind === "fish") return `fish_add_path --append --path ${quoted}`;
   return `case ":$PATH:" in *:${quoted}:*) ;; *) export PATH="$PATH":${quoted} ;; esac`;
 }
 
@@ -405,9 +426,10 @@ export function absolutePathBypassFinding(commandPath: string): string | null {
   const provider = loadProviderRegistry().find(
     (candidate) => candidate.command === command,
   );
-  // A registered provider run natively is the supported route since T-266: it reaches Ocean
-  // through its own hooks, not a shim.
-  if (provider) return null;
+  // Running a provider natively is the normal route since T-266, but it reaches Ocean only
+  // through a registered native hook; say so instead of calling it a misuse.
+  if (provider)
+    return `NATIVE_ENTRY: ${provider.id} at ${resolved} reaches Ocean only through its native hook; ${providerWrapperName(provider.command)} routes it through Ocean`;
   return `BYPASS_DETECTED: absolute path is outside Ocean and is not a registered provider: ${resolved}`;
 }
 
