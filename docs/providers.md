@@ -32,7 +32,8 @@ The provider's CLI binary must be on `PATH`:
 
 ## Interactive limits
 
-`ocean run` is the full-head path. A direct provider command enters through the
+`ocean run` is the full-head path. A plain provider command runs natively and
+reaches Ocean only through its own hooks. `ocean-<command>` enters through the
 terminal shim with `observed` control: Ocean records the entry contract,
 provider resolution, bounded output, terminal input when a TTY is available,
 lifecycle, and evidence, but it does not claim provider-native policy control.

@@ -29,7 +29,7 @@ test("client test reports Ocean sources and Claude transport", () => {
   assert.match(
     report.routing.shim,
     new RegExp(
-      `${sep}${systemPattern}${sep}runtime${sep}shims${sep}claude(?:\\.cmd)?$`,
+      `${sep}${systemPattern}${sep}runtime${sep}shims${sep}ocean-claude(?:\\.cmd)?$`,
     ),
   );
   assert.match(
