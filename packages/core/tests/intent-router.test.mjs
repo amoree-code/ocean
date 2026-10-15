@@ -66,6 +66,26 @@ test("invalid task id shape ('TASK-123', no hyphenated T- prefix) is not treated
   assert.equal(result.identifier, null);
 });
 
+test("a registered project prefix makes 'OL-001' an identifier; look-alikes and unregistered prefixes stay text", () => {
+  const prefixes = ["T", "OL"];
+  const hit = classifyIntent("show OL-001", prefixes);
+  assert.equal(hit.entityType, "task");
+  assert.equal(hit.identifier, "OL-001");
+  assert.equal(classifyIntent("show OL-001").identifier, null);
+  assert.equal(classifyIntent("show ol-1", prefixes).identifier, null);
+  for (const text of [
+    "show UTF-8",
+    "show SHA-256",
+    "show GPT-5",
+    "show TASK-123",
+  ])
+    assert.equal(classifyIntent(text, prefixes).identifier, null, text);
+  assert.match(
+    classifyIntent("compare T-1 and OL-2", prefixes).ambiguityReason,
+    /multiple task identifiers/,
+  );
+});
+
 test("invalid task id shape ('T123', missing hyphen) is not treated as an identifier", () => {
   const result = classifyIntent("show T123");
   assert.notEqual(result.identifier, "T123");

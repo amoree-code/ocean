@@ -1163,3 +1163,52 @@ test("memory.search without a built brain index falls back to substring matching
       ),
     );
   }));
+
+test("task.create in a project with a prefix issues PREFIX-nnn and advances its counter", async () => {
+  await withFixture(async (root) => {
+    const repo = await mkdtemp(path.join(os.tmpdir(), "ocean-prefixed-repo-"));
+    await bindProject("lab", repo);
+    const first = await peekNextTaskId("lab");
+    assert.equal(first, "LAB-001");
+    const classification = classifyIntent("create a new task called First");
+    const target = path.join(
+      root,
+      PROJECTS_DIR,
+      "lab",
+      "tasks",
+      first,
+      "task.md",
+    );
+    const result = await runOperation("task.create", classification, BUDGET, {
+      cwd: repo,
+      approval: approval("task.create", target),
+    });
+    assert.equal(result.ok, true, result.reason);
+    assert.match(await readFile(target, "utf8"), /^---\nid: LAB-001\n/);
+    assert.equal(await peekNextTaskId("lab"), "LAB-002");
+    const manifest = JSON.parse(
+      await readFile(
+        path.join(root, PROJECTS_DIR, "lab", "project.json"),
+        "utf8",
+      ),
+    );
+    assert.equal(manifest.nextTask, 2);
+    // The new task is readable by its prefixed id, and refused from another project.
+    const get = await runOperation(
+      "task.get",
+      classifyIntent("show LAB-001", ["T", "LAB"]),
+      BUDGET,
+      { cwd: repo },
+    );
+    assert.equal(get.ok, true, get.reason);
+    assert.equal(get.records[0].identifier, "LAB-001");
+    const foreign = await runOperation(
+      "task.get",
+      classifyIntent("show LAB-001", ["T", "LAB"]),
+      BUDGET,
+      { cwd: root },
+    );
+    assert.equal(foreign.ok, false);
+    assert.match(foreign.reason, /cross-project request refused/);
+  });
+});

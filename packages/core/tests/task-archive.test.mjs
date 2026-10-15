@@ -154,10 +154,7 @@ test("rejects traversal in task reads and archive metadata", async () => {
   await writeFile(path.join(root, "outside.md"), task("outside"));
   process.env.OCEAN_ROOT = root;
   try {
-    await assert.rejects(
-      getTask("../outside"),
-      /is not a task id/,
-    );
+    await assert.rejects(getTask("../outside"), /is not a task id/);
   } finally {
     delete process.env.OCEAN_ROOT;
   }
