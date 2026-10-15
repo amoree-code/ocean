@@ -167,14 +167,9 @@ export function portablePath(value: string): string {
   return resolved;
 }
 
-// A project id names a folder under 04-projects, so it must be one plain path segment. It is
-// lowercase because folders are case-insensitive on macOS and Windows: `Ocean-Language` and
-// `ocean-language` would be two ids for one folder, and one write would clobber the other.
-const PROJECT_ID = /^[a-z0-9][a-z0-9._-]*$/;
+import { isValidProjectId } from "../../domain/context/project-id.js";
 
-export function isValidProjectId(value: string): boolean {
-  return PROJECT_ID.test(value) && !value.includes("..");
-}
+export { isValidProjectId };
 
 // One spelling per directory: symlinks resolved (macOS /var is /private/var, and process.cwd()
 // returns the resolved form), so a bound path and the cwd of a session inside it compare equal.

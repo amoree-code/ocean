@@ -35,6 +35,7 @@ import {
   oceanRoot,
   PERSONAL_DIR,
   PROJECTS_DIR,
+  REGISTRY_DIR,
 } from "../dist/paths.js";
 
 const reindexBrain = (options) =>
@@ -464,6 +465,96 @@ test("search is deduplicated and capped by budget.maxFiles with an explicit trun
     );
     assert.equal(result.records.length, 3);
     assert.match(result.violations.join(" "), /truncated to maxFiles=3/);
+  }));
+
+// ---------------------------------------------------------------- project scope (T-256 4a)
+
+async function withScopedRecords(fn) {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-slice7-scope-"));
+  const repoA = await mkdtemp(path.join(os.tmpdir(), "ocean-slice7-repo-a-"));
+  const elsewhere = await mkdtemp(path.join(os.tmpdir(), "ocean-slice7-out-"));
+  await mkdir(path.join(root, PROJECTS_DIR, "a"), { recursive: true });
+  await writeFile(
+    path.join(root, PROJECTS_DIR, "a", "project.json"),
+    JSON.stringify({ name: "a", paths: [repoA] }),
+  );
+  const write = async (dir, name, scope) => {
+    await mkdir(path.join(root, dir), { recursive: true });
+    await writeFile(
+      path.join(root, dir, `${name}.md`),
+      `---\nid: ${name}\ntitle: zebrafood ${name}\n${scope ? `scope: ${scope}\n` : ""}---\n\nzebrafood\n`,
+    );
+  };
+  for (const dir of [PERSONAL_DIR, `${KNOWLEDGE_DIR}/decisions`]) {
+    const tag = dir === PERSONAL_DIR ? "m" : "k";
+    await write(dir, `${tag}-global`, "global");
+    await write(dir, `${tag}-none`, "");
+    await write(dir, `${tag}-a`, "project:a");
+    await write(dir, `${tag}-b`, "project:b");
+    await write(dir, `${tag}-bad`, "ocean");
+  }
+  const previous = process.env.OCEAN_ROOT;
+  process.env.OCEAN_ROOT = root;
+  try {
+    return await fn({ root, repoA, elsewhere });
+  } finally {
+    if (previous === undefined) delete process.env.OCEAN_ROOT;
+    else process.env.OCEAN_ROOT = previous;
+  }
+}
+
+const recordNames = (result) =>
+  result.records
+    .map((record) => path.basename(record.sourcePath, ".md"))
+    .sort();
+
+for (const [operation, tag, text] of [
+  ["memory.search", "m", "what do you remember about zebrafood"],
+  ["knowledge.search", "k", "what knowledge do we have about zebrafood"],
+]) {
+  for (const indexed of [true, false]) {
+    test(`${operation} (${indexed ? "index" : "substring"}) hides other projects' and malformed-scope records`, () =>
+      withScopedRecords(async ({ root, repoA, elsewhere }) => {
+        if (indexed) await reindexBrain({ root, embedder: null });
+        const search = (cwd) =>
+          runOperation(operation, classifyIntent(text), BUDGET, {
+            cwd,
+            query: "zebrafood",
+            indexPort: indexed ? defaultBrainIndexPort : undefined,
+          });
+        const bound = await search(repoA);
+        assert.deepEqual(recordNames(bound), [
+          `${tag}-a`,
+          `${tag}-global`,
+          `${tag}-none`,
+        ]);
+        assert.deepEqual(recordNames(await search(elsewhere)), [
+          `${tag}-global`,
+          `${tag}-none`,
+        ]);
+      }));
+  }
+}
+
+test("memory.search reports an unreadable registry and falls back to global records", () =>
+  withScopedRecords(async ({ root, repoA }) => {
+    // A corrupt legacy registry is what makes resolveProject throw (a bad manifest only hides itself).
+    await mkdir(path.join(root, REGISTRY_DIR), { recursive: true });
+    await writeFile(
+      path.join(root, REGISTRY_DIR, "project-bindings.json"),
+      "{ not json",
+    );
+    const result = await runOperation(
+      "memory.search",
+      classifyIntent("what do you remember about zebrafood"),
+      BUDGET,
+      { cwd: repoA, query: "zebrafood" },
+    );
+    assert.deepEqual(recordNames(result), ["m-global", "m-none"]);
+    assert.match(
+      result.violations.join(" "),
+      /project unresolved: .*global records only/,
+    );
   }));
 
 // ---------------------------------------------------------------- write gating

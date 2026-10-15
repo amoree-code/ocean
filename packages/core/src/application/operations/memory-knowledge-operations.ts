@@ -1,5 +1,9 @@
 import { mkdir, stat } from "node:fs/promises";
 import path from "node:path";
+import {
+  normalizeScope,
+  scopeVisible,
+} from "../../domain/brain/record-scope.js";
 import type { BrainIndexPort } from "../../domain/ports/brain-index-port.js";
 import { atomicWrite } from "../../fs-utils.js";
 import {
@@ -10,10 +14,11 @@ import {
   STORE_DIR,
 } from "../../paths.js";
 import { brainIndexPath } from "../brain/brain-reindex.js";
-import { brainSearch } from "../brain/brain-service.js";
+import { BrainIndexStaleError, brainSearch } from "../brain/brain-service.js";
 import type { ContextBudget } from "../context/context-ladder.js";
 import type { RecordType } from "../context/context-packet.js";
 import type { IntentClassification } from "../context/intent-router.js";
+import { resolveProject } from "../context/project-resolution.js";
 import {
   approvalMatchesTarget,
   type OperationRecord,
@@ -107,6 +112,8 @@ async function searchViaBrainIndex(
   budget: ContextBudget,
   query: string,
   indexPort: BrainIndexPort,
+  project: string | null,
+  notes: string[],
 ): Promise<OperationRecord[] | null> {
   const root = oceanRoot();
   try {
@@ -123,6 +130,7 @@ async function searchViaBrainIndex(
       root,
       pathPrefix: pathPrefix ? `${pathPrefix}/` : undefined,
       limit: Math.min(20, budget.maxFiles),
+      scope: { project },
       indexPort,
     });
     return result.results.map((hit) => ({
@@ -145,7 +153,10 @@ async function searchViaBrainIndex(
         RECORD_FIELDS,
       ),
     }));
-  } catch {
+  } catch (error) {
+    // A stale index is the one failure worth naming: the fallback still answers, but the
+    // caller should know why ranking is gone and how to get it back.
+    if (error instanceof BrainIndexStaleError) notes.push(error.message);
     return null;
   }
 }
@@ -165,6 +176,19 @@ export async function searchRecords(
     return operationResult(operation, "record root escapes the Ocean root");
   }
 
+  // Search shows global records plus the cwd's project. An unbound cwd, or a registry that
+  // cannot be read, narrows to global — and the failure is reported, not swallowed.
+  let project: string | null = null;
+  const scopeViolations: string[] = [];
+  try {
+    const resolution = await resolveProject(options.cwd ?? process.cwd());
+    if (resolution.status === "bound") project = resolution.projectId;
+  } catch (error) {
+    scopeViolations.push(
+      `project unresolved: ${error instanceof Error ? error.message : String(error)}; global records only`,
+    );
+  }
+
   if (options.query && options.indexPort) {
     const viaIndex = await searchViaBrainIndex(
       recordType,
@@ -173,6 +197,8 @@ export async function searchRecords(
       budget,
       options.query,
       options.indexPort,
+      project,
+      scopeViolations,
     );
     if (viaIndex) {
       const shaped = shapeRecords(viaIndex, budget.maxFiles);
@@ -181,7 +207,7 @@ export async function searchRecords(
         ok: true,
         reason: `${shaped.records.length} ${recordType} reference(s) selected`,
         records: shaped.records,
-        violations: shaped.violations,
+        violations: [...scopeViolations, ...shaped.violations],
         written: null,
         packet: null,
       };
@@ -195,6 +221,8 @@ export async function searchRecords(
   for (const file of files) {
     const record = await readFrontmatterFile(file);
     if (!record) continue;
+    if (!scopeVisible(normalizeScope(record.fields.scope).scope, project))
+      continue;
     if (!matchesQuery(record.fields, file, options.query ?? "")) continue;
     bytes += Math.min(record.size, FRONTMATTER_READ_BYTES);
     if (bytes > budget.maxBytes) {
@@ -223,7 +251,7 @@ export async function searchRecords(
     ok: true,
     reason: `${shaped.records.length} ${recordType} reference(s) selected`,
     records: shaped.records,
-    violations: [...violations, ...shaped.violations],
+    violations: [...scopeViolations, ...violations, ...shaped.violations],
     written: null,
     packet: null,
   };

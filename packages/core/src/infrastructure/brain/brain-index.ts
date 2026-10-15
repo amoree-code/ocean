@@ -1,15 +1,16 @@
 import { rename, rm } from "node:fs/promises";
 import { DatabaseSync } from "node:sqlite";
 import * as sqliteVec from "sqlite-vec";
-import type {
-  BrainIndexPort,
-  BrainIndexReaderPort,
-  BuildIndexOptions,
-  FtsHit,
-  IndexDocInput,
-  IndexLinkInput,
-  IndexMeta,
-  VecHit,
+import {
+  BRAIN_INDEX_SCHEMA_VERSION,
+  type BrainIndexPort,
+  type BrainIndexReaderPort,
+  type BuildIndexOptions,
+  type FtsHit,
+  type IndexDocInput,
+  type IndexLinkInput,
+  type IndexMeta,
+  type VecHit,
 } from "../../domain/ports/brain-index-port.js";
 
 // Sole file in the brain subsystem that imports node:sqlite (and, when vectors are enabled,
@@ -30,8 +31,6 @@ export type {
   VecHit,
 } from "../../domain/ports/brain-index-port.js";
 
-const SCHEMA_VERSION = "1";
-
 function createSchema(
   db: DatabaseSync,
   withVectors: boolean,
@@ -47,6 +46,7 @@ function createSchema(
       summary TEXT NOT NULL,
       tags_json TEXT NOT NULL,
       type TEXT NOT NULL,
+      scope TEXT NOT NULL,
       confidence TEXT NOT NULL,
       created TEXT,
       updated TEXT,
@@ -92,9 +92,9 @@ async function populate(
   options: BuildIndexOptions,
 ): Promise<void> {
   const insertDoc = db.prepare(`
-    INSERT INTO docs (id, path, title, summary, tags_json, type, confidence, created, updated,
+    INSERT INTO docs (id, path, title, summary, tags_json, type, scope, confidence, created, updated,
       last_confirmed_at, content_hash, bytes, conformance_json)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const insertChunk = db.prepare(`
     INSERT INTO chunks (doc_id, ordinal, heading, text) VALUES (?, ?, ?, ?)
@@ -122,6 +122,7 @@ async function populate(
         doc.summary,
         JSON.stringify(doc.tags),
         doc.type,
+        doc.scope,
         doc.confidence,
         doc.created,
         doc.updated,
@@ -192,7 +193,7 @@ async function populate(
 
   db.prepare("INSERT INTO meta (key, value) VALUES (?, ?)").run(
     "schema_version",
-    SCHEMA_VERSION,
+    BRAIN_INDEX_SCHEMA_VERSION,
   );
   db.prepare("INSERT INTO meta (key, value) VALUES (?, ?)").run(
     "embedder",
@@ -262,7 +263,11 @@ export class BrainIndexReader implements BrainIndexReaderPort {
     if (this.hasVectors) sqliteVec.load(this.db);
   }
 
-  ftsQuery(normalizedQuery: string, limit: number): FtsHit[] {
+  ftsQuery(
+    normalizedQuery: string,
+    limit: number,
+    scopes?: string[],
+  ): FtsHit[] {
     // Tokens are matched as quoted prefixes (`"token"*`), ANDed together (FTS5's default):
     // exact-token phrase matching is too strict for agglutinative languages like Sorani,
     // where a query word is frequently a prefix of the inflected form actually stored.
@@ -272,15 +277,19 @@ export class BrainIndexReader implements BrainIndexReaderPort {
       .filter(Boolean)
       .map((token) => `"${token.replace(/"/g, '""')}"*`);
     if (tokens.length === 0) return [];
+    // Filtered in SQL, before LIMIT, so another project's records cannot crowd out the hits.
+    const scopeFilter = scopes
+      ? ` AND c.doc_id IN (SELECT doc_id FROM docs WHERE scope IN (${scopes.map(() => "?").join(",")}))`
+      : "";
     try {
       const rows = this.db
         .prepare(`
           SELECT c.chunk_id AS chunkId, c.doc_id AS docId, bm25(chunks_fts) AS rank
           FROM chunks_fts JOIN chunks c ON c.chunk_id = chunks_fts.rowid
-          WHERE chunks_fts MATCH ?
+          WHERE chunks_fts MATCH ?${scopeFilter}
           ORDER BY rank LIMIT ?
         `)
-        .all(tokens.join(" "), limit) as Array<{
+        .all(tokens.join(" "), ...(scopes ?? []), limit) as Array<{
         chunkId: number;
         docId: number;
         rank: number;

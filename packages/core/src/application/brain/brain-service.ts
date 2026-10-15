@@ -1,6 +1,14 @@
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import type { BrainIndexPort } from "../../domain/ports/brain-index-port.js";
+import {
+  scopeVisible,
+  visibleScopes,
+} from "../../domain/brain/record-scope.js";
+import {
+  BRAIN_INDEX_SCHEMA_VERSION,
+  type BrainIndexPort,
+  type BrainIndexReaderPort,
+} from "../../domain/ports/brain-index-port.js";
 import type { EmbedderPort } from "../../domain/ports/embedder-port.js";
 import {
   oceanRoot,
@@ -15,12 +23,28 @@ import {
   reindexBrain,
 } from "./brain-reindex.js";
 
+// Which project's records a caller may see. Absent = unfiltered (brain_read, tooling);
+// `project: null` = unbound session, global records only.
+export type BrainScopeFilter = { project: string | null };
+
+// A v1 index has no scope column, so it cannot answer a scoped query: say how to fix it
+// rather than return unfiltered hits.
+export class BrainIndexStaleError extends Error {}
+
+function assertScoped(reader: BrainIndexReaderPort): void {
+  if (reader.meta.schemaVersion !== BRAIN_INDEX_SCHEMA_VERSION)
+    throw new BrainIndexStaleError(
+      `brain index schema ${reader.meta.schemaVersion} predates record scopes — run \`ocean memory reindex\``,
+    );
+}
+
 export type BrainSearchOptions = {
   query: string;
   limit?: number;
   types?: string[];
   root?: string;
   pathPrefix?: string;
+  scope?: BrainScopeFilter;
   embedder?: EmbedderPort | null;
   indexPort: BrainIndexPort;
 };
@@ -31,6 +55,7 @@ export type BrainSearchHit = {
   title: string;
   summary: string;
   type: string;
+  scope: string;
   confidence: string;
   lastConfirmedAt: string | null;
   heading: string | null;
@@ -71,15 +96,24 @@ export async function brainSearch(
 
   const reader = options.indexPort.openIndexReadOnly(indexFile);
   try {
+    if (options.scope) assertScoped(reader);
+    const scopes = options.scope
+      ? visibleScopes(options.scope.project)
+      : undefined;
     const normalizedQuery = normalizeForSearch(options.query);
-    const ftsHits = reader.ftsQuery(normalizedQuery, limit * 4);
+    const ftsHits = reader.ftsQuery(normalizedQuery, limit * 4, scopes);
 
     let vecHits: { chunkId: number; docId: number; distance: number }[] = [];
     let vectorStatus = "unavailable: index built without an embedder";
     if (reader.hasVectors && options.embedder) {
       try {
         const [embedding] = await options.embedder.embed([normalizedQuery]);
-        vecHits = reader.vecQuery(embedding, limit * 4);
+        // KNN cannot filter by scope before k, so a scoped query oversamples: other projects'
+        // chunks would otherwise fill the top hits and the backstop below would drop them all.
+        vecHits = reader.vecQuery(
+          embedding,
+          options.scope ? limit * 16 : limit * 4,
+        );
         vectorStatus = "ok";
       } catch (error) {
         vectorStatus = `unavailable: ${error instanceof Error ? error.message : String(error)}`;
@@ -148,6 +182,12 @@ export async function brainSearch(
         continue;
       if (options.types?.length && !options.types.includes(String(doc.type)))
         continue;
+      // Backstop for hits the SQL filter never saw (vector hits are not scope-filtered).
+      if (
+        options.scope &&
+        !scopeVisible(String(doc.scope), options.scope.project)
+      )
+        continue;
       const chunk = reader.getChunk(item.chunkId);
       results.push({
         id: String(doc.id),
@@ -155,6 +195,7 @@ export async function brainSearch(
         title: String(doc.title),
         summary: String(doc.summary),
         type: String(doc.type),
+        scope: String(doc.scope ?? "global"),
         confidence: String(doc.confidence),
         lastConfirmedAt: (doc.last_confirmed_at as string | null) ?? null,
         heading: chunk ? ((chunk.heading as string | null) ?? null) : null,
@@ -194,6 +235,7 @@ export type BrainReadResult = {
   summary: string;
   tags: string[];
   type: string;
+  scope: string;
   confidence: string;
   created: string | null;
   updated: string | null;
@@ -242,6 +284,7 @@ export async function brainRead(
     summary: record.summary,
     tags: record.tags,
     type: record.type,
+    scope: record.scope,
     confidence: record.confidence,
     created: record.created,
     updated: record.updated,
@@ -257,6 +300,7 @@ export type BrainNeighborsOptions = {
   direction?: "out" | "in" | "both";
   limit?: number;
   root?: string;
+  scope?: BrainScopeFilter;
   indexPort: BrainIndexPort;
 };
 
@@ -277,8 +321,11 @@ export async function brainNeighbors(
   const indexFile = brainIndexPath(root);
   const reader = options.indexPort.openIndexReadOnly(indexFile);
   try {
+    if (options.scope) assertScoped(reader);
+    const visible = (doc: Record<string, unknown>) =>
+      !options.scope || scopeVisible(String(doc.scope), options.scope.project);
     const start = reader.getDocByIdOrPath(options.idOrPath);
-    if (!start)
+    if (!start || !visible(start))
       throw new Error(`no brain record found for '${options.idOrPath}'`);
 
     const visited = new Set<number>([Number(start.doc_id)]);
@@ -301,7 +348,7 @@ export async function brainNeighbors(
               continue;
             visited.add(targetId);
             const doc = reader.getDoc(targetId);
-            if (!doc) continue;
+            if (!doc || !visible(doc)) continue;
             neighbors.push({
               id: String(doc.id),
               path: String(doc.path),

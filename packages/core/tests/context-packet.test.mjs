@@ -111,6 +111,42 @@ test("decision lookup selects bounded authoritative decision references", () =>
     );
   }));
 
+test("decision lookup carries another project's records only to that project", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-packet-scope-"));
+  const repo = await mkdtemp(path.join(os.tmpdir(), "ocean-packet-repo-"));
+  const outside = await mkdtemp(path.join(os.tmpdir(), "ocean-packet-out-"));
+  const decisions = path.join(root, KNOWLEDGE_DIR, "decisions");
+  await mkdir(decisions, { recursive: true });
+  for (const [name, scope] of [
+    ["d-global", "global"],
+    ["d-a", "project:a"],
+    ["d-b", "project:b"],
+  ])
+    await writeFile(
+      path.join(decisions, `${name}.md`),
+      `---\nid: ${name}\nscope: ${scope}\n---\n\nx\n`,
+    );
+  await mkdir(path.join(root, PROJECTS_DIR, "a"), { recursive: true });
+  await writeFile(
+    path.join(root, PROJECTS_DIR, "a", "project.json"),
+    JSON.stringify({ name: "a", paths: [repo] }),
+  );
+  const previous = process.env.OCEAN_ROOT;
+  process.env.OCEAN_ROOT = root;
+  try {
+    const classification = classifyIntent("what did we decide about auth");
+    const names = async (cwd) =>
+      (await buildContextPacket(classification, GOOD_BUDGET, cwd)).sourcePaths
+        .map((sourcePath) => path.basename(sourcePath))
+        .sort();
+    assert.deepEqual(await names(repo), ["d-a.md", "d-global.md"]);
+    assert.deepEqual(await names(outside), ["d-global.md"]);
+  } finally {
+    if (previous === undefined) delete process.env.OCEAN_ROOT;
+    else process.env.OCEAN_ROOT = previous;
+  }
+});
+
 // --- invalid identifier ---
 
 test("invalid identifier shape (hand-crafted, bypassing the router) is rejected with a violation, never a guessed path", async () => {

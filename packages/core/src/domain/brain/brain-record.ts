@@ -15,6 +15,8 @@ export const brainRecordSchema = z.object({
   created: z.string().nullable().default(null),
   updated: z.string().nullable().default(null),
   lastConfirmedAt: z.string().nullable().default(null),
+  // Normalized by domain/brain/record-scope.ts: "global", "project:<id>" or "invalid".
+  scope: z.string().default("global"),
 });
 
 export type BrainRecord = z.infer<typeof brainRecordSchema>;

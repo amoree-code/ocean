@@ -13,7 +13,9 @@ import {
   readProfileFacts,
   writeProfileFact,
 } from "../../application/memory/profile-facts.js";
+import { folderProject } from "../../application/tasks/list-tasks.js";
 import { defaultBrainIndexPort } from "../../composition/runtime.js";
+import { isValidProjectId } from "../../domain/context/project-id.js";
 import { createOllamaEmbedder } from "../../infrastructure/providers/ollama-embedder.js";
 
 async function runReindex(args: string[]): Promise<void> {
@@ -37,17 +39,55 @@ async function runReindex(args: string[]): Promise<void> {
   console.log(JSON.stringify(result, null, 2));
 }
 
+const searchUsage =
+  "Usage: ocean memory search <query> [--project <id> | --all] [--json]";
+const neighborsUsage =
+  "Usage: ocean memory neighbors <id|path> [--depth N] [--project <id> | --all]";
+
+// --project <id> / --all, shared by search and neighbors. Default: the cwd's project plus
+// global records; --all is the explicit unscoped view. null means the flags are malformed.
+function parseScopeFlags(
+  args: string[],
+): { all: boolean; project?: string; rest: string[] } | null {
+  let all = false;
+  let project: string | undefined;
+  const rest: string[] = [];
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--all") all = true;
+    else if (arg === "--project") {
+      project = args[index + 1] ?? "";
+      index += 1;
+    } else rest.push(arg);
+  }
+  if (project !== undefined && (all || !isValidProjectId(project))) return null;
+  return { all, project, rest };
+}
+
+async function scopeFrom(flags: {
+  all: boolean;
+  project?: string;
+}): Promise<{ project: string | null } | undefined> {
+  return flags.all
+    ? undefined
+    : { project: flags.project ?? (await folderProject(process.cwd())) };
+}
+
 async function runSearch(args: string[]): Promise<void> {
+  const flags = parseScopeFlags(args);
   const json = args.includes("--json");
-  const query = args.filter((arg) => !arg.startsWith("--")).join(" ");
-  if (!query) {
-    console.error("Usage: ocean memory search <query> [--json]");
+  const query = (flags?.rest ?? [])
+    .filter((arg) => !arg.startsWith("--"))
+    .join(" ");
+  if (!flags || !query) {
+    console.error(searchUsage);
     process.exitCode = 1;
     return;
   }
   try {
     const result = await brainSearch({
       query,
+      scope: await scopeFrom(flags),
       indexPort: defaultBrainIndexPort,
     });
     console.log(
@@ -81,11 +121,13 @@ async function runRead(args: string[]): Promise<void> {
 }
 
 async function runNeighbors(args: string[]): Promise<void> {
-  const idOrPath = args[0];
-  const depthIndex = args.indexOf("--depth");
-  const depth = depthIndex >= 0 ? Number(args[depthIndex + 1]) : 1;
-  if (!idOrPath) {
-    console.error("Usage: ocean memory neighbors <id|path> [--depth N]");
+  const flags = parseScopeFlags(args);
+  const rest = flags?.rest ?? [];
+  const depthIndex = rest.indexOf("--depth");
+  const depth = depthIndex >= 0 ? Number(rest[depthIndex + 1]) : 1;
+  const idOrPath = rest[0];
+  if (!flags || !idOrPath || idOrPath.startsWith("--")) {
+    console.error(neighborsUsage);
     process.exitCode = 1;
     return;
   }
@@ -95,6 +137,7 @@ async function runNeighbors(args: string[]): Promise<void> {
         await brainNeighbors({
           idOrPath,
           depth: depth === 2 ? 2 : 1,
+          scope: await scopeFrom(flags),
           indexPort: defaultBrainIndexPort,
         }),
         null,
@@ -175,7 +218,7 @@ export async function runMemoryCommand(
     return;
   }
   console.error(
-    "Usage: ocean memory doctor|sync [--apply]|facts <profile> [key] [value]|facts <profile> delete <key>|reindex [--no-vectors]|search <q> [--json]|read <id|path>|neighbors <id|path> [--depth N]",
+    "Usage: ocean memory doctor|sync [--apply]|facts <profile> [key] [value]|facts <profile> delete <key>|reindex [--no-vectors]|search <q> [--project <id>|--all] [--json]|read <id|path>|neighbors <id|path> [--depth N] [--project <id>|--all]",
   );
   process.exitCode = 1;
 }
