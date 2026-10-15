@@ -10,7 +10,12 @@ import { oceanRoot } from "../../paths.js";
 import { resolveLadderRung } from "./context-ladder.js";
 import { buildContextPacket } from "./context-packet.js";
 import { classifyIntent } from "./intent-router.js";
-import { knownTaskPrefixes } from "./project-resolution.js";
+import {
+  knownTaskPrefixes,
+  projectRules,
+  readProjectManifest,
+  resolveProject,
+} from "./project-resolution.js";
 
 // Lean context for headless runs: the prompt carries references (path + why), never file
 // bodies. The provider is an agentic CLI with file access and reads a reference only if the
@@ -209,6 +214,37 @@ function renderReference(reference: ContextReference): string {
   return `- ${target} (${reference.recordType}, ${bytes} B): ${reason}`;
 }
 
+function renderProjectRules(rules: {
+  project: string;
+  rules: string[];
+}): string {
+  return [
+    `## Project rules (${rules.project})`,
+    ...rules.rules.map((rule) => `- ${rule}`),
+  ].join("\n");
+}
+
+// A bound project's rules ride in every headless run there, whatever the prompt or the profile's
+// memory setting. Unreadable rules refuse the run (the error is not swallowed): a hard constraint
+// is never silently dropped.
+async function boundProjectRulesBlock(cwd: string): Promise<string> {
+  // A broken registry leaves no bound project to read rules from (the headless path never
+  // failed on it before); the session-start hook treats it the same way.
+  const resolution = await resolveProject(cwd).catch(() => null);
+  if (resolution?.status !== "bound") return "";
+  const project = resolution.projectId;
+  let rules: string[];
+  try {
+    const manifest = await readProjectManifest(project);
+    rules = manifest ? projectRules(manifest) : [];
+  } catch (error) {
+    throw new Error(
+      `Project rules (${project}) unreadable: ${error instanceof Error ? error.message : String(error)} — fix 04-projects/${project}/project.json`,
+    );
+  }
+  return rules.length ? renderProjectRules({ project, rules }) : "";
+}
+
 export async function buildContextReferences(options: {
   profile: Pick<Profile, "contextSources" | "allowedPaths" | "memory">;
   prompt: string;
@@ -223,6 +259,11 @@ export async function buildContextReferences(options: {
   const packet = profile.memory.enabled
     ? await selectPacketReferences(prompt, cwd, profile.allowedPaths)
     : { references: [], omitted: [] };
+  const rulesBlock = await boundProjectRulesBlock(cwd);
+  // The rules come first and are never squeezed out; the references fit in what is left.
+  const referenceBudget = rulesBlock
+    ? CONTEXT_REFERENCE_MAX_BYTES - Buffer.byteLength(rulesBlock) - 2
+    : CONTEXT_REFERENCE_MAX_BYTES;
   const seen = new Set<string>();
   const candidates = [...sources.references, ...packet.references].filter(
     (reference) => {
@@ -240,10 +281,7 @@ export async function buildContextReferences(options: {
   for (const reference of candidates) {
     const line = renderReference(reference);
     const next = [SECTION_HEADER, ...lines, line].join("\n");
-    if (
-      overflow.length === 0 &&
-      Buffer.byteLength(next) <= CONTEXT_REFERENCE_MAX_BYTES
-    ) {
+    if (overflow.length === 0 && Buffer.byteLength(next) <= referenceBudget) {
       lines.push(line);
       references.push(reference);
     } else {
@@ -258,7 +296,7 @@ export async function buildContextReferences(options: {
       lines.length &&
       Buffer.byteLength(
         [SECTION_HEADER, ...lines, note(overflow.length)].join("\n"),
-      ) > CONTEXT_REFERENCE_MAX_BYTES
+      ) > referenceBudget
     ) {
       lines.pop();
       const dropped = references.pop();
@@ -268,7 +306,10 @@ export async function buildContextReferences(options: {
     omitted.push(...overflow.map((reference) => reference.path));
   }
 
-  const content = lines.length ? [SECTION_HEADER, ...lines].join("\n") : "";
+  const referencesBlock = lines.length
+    ? [SECTION_HEADER, ...lines].join("\n")
+    : "";
+  const content = [rulesBlock, referencesBlock].filter(Boolean).join("\n\n");
   return {
     content,
     readDirectories: await referenceReadDirectories(

@@ -11,6 +11,7 @@ import {
   PERSONAL_DIR,
   PROJECTS_DIR,
   projectFolder,
+  projectOfTasksRoot,
   resolveWithin,
   sameProject,
 } from "../dist/paths.js";
@@ -115,4 +116,21 @@ test("other projects keep their own folder name untouched, and only the workspac
   assert.equal(sameProject("legacy", "ocean"), false);
   assert.equal(sameProject("ocean", "ocean-language"), false);
   assert.equal(sameProject("acme", "acme"), true);
+});
+
+test("projectOfTasksRoot inverts a project's tasks root and nothing else", async () => {
+  assert.equal(
+    projectOfTasksRoot(oceanPath(PROJECTS_DIR, "lab", "tasks")),
+    "lab",
+  );
+  assert.equal(projectOfTasksRoot(oceanPath(PROJECTS_DIR, "lab")), null);
+  assert.equal(
+    projectOfTasksRoot(oceanPath(PROJECTS_DIR, "lab", "tasks", "x", "tasks")),
+    null,
+  );
+  assert.equal(projectOfTasksRoot("/elsewhere/lab/tasks"), null);
+  assert.equal(
+    projectOfTasksRoot(oceanPath(PROJECTS_DIR, "Bad Id", "tasks")),
+    null,
+  );
 });

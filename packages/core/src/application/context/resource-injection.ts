@@ -24,8 +24,10 @@ function projectTag(project: ProjectResolution): string {
 // absence), and names the on-demand operations a client can call. Never Ocean file content.
 export function buildOceanBootstrap(
   project: ProjectResolution,
+  extra: { rules?: number } = {},
 ): OceanBootstrap {
-  const content = `ocean=1 project=${projectTag(project)} confidence=${project.confidence} ops=${SUPPORTED_OPERATIONS}`;
+  const rules = extra.rules && extra.rules > 0 ? ` rules=${extra.rules}` : "";
+  const content = `ocean=1 project=${projectTag(project)} confidence=${project.confidence}${rules} ops=${SUPPORTED_OPERATIONS}`;
   const bytes = Buffer.byteLength(content, "utf8");
   if (bytes > OCEAN_BOOTSTRAP_MAX_BYTES) {
     throw new Error(

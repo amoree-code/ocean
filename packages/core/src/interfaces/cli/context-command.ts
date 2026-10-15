@@ -6,7 +6,12 @@ import {
   DEFAULT_CONTEXT_BUDGET,
   measureContextCost,
 } from "../../application/context/context-cost.js";
-import { resolveProject } from "../../application/context/project-resolution.js";
+import {
+  projectRules,
+  projectVerify,
+  readProjectManifest,
+  resolveProject,
+} from "../../application/context/project-resolution.js";
 import {
   BRAIN_RECORD_DIRS,
   oceanRoot,
@@ -46,9 +51,30 @@ export async function runContextCommand(json = false): Promise<void> {
         (task) => task.state === "active" || task.state === "blocked",
       )
     : [];
+  // Unreadable rules are shown as such, never as an empty list.
+  const problems: string[] = [];
+  const manifest = project
+    ? await readProjectManifest(project).catch((error: unknown) => {
+        problems.push(error instanceof Error ? error.message : String(error));
+        return null;
+      })
+    : null;
+  const read = (load: (m: NonNullable<typeof manifest>) => string[]) => {
+    try {
+      return manifest ? load(manifest) : [];
+    } catch (error) {
+      problems.push(error instanceof Error ? error.message : String(error));
+      return [];
+    }
+  };
+  const rules = read(projectRules);
+  const verify = read(projectVerify);
   const context = {
     project,
     projectResolution: resolution,
+    rules,
+    verify,
+    ...(problems.length ? { problems } : {}),
     version,
     roots: [...BRAIN_RECORD_DIRS, PROJECTS_DIR, SYSTEM_DIR],
     memory: await existingMemoryFiles(project),
@@ -69,6 +95,13 @@ export async function runContextCommand(json = false): Promise<void> {
     console.log(
       `project: ${resolution.projectId} (confidence: ${resolution.confidence})`,
     );
+  if (rules.length)
+    console.log(`rules:\n${rules.map((rule) => `- ${rule}`).join("\n")}`);
+  if (verify.length)
+    console.log(
+      `verify:\n${verify.map((command) => `- ${command}`).join("\n")}`,
+    );
+  for (const problem of problems) console.log(`unreadable: ${problem}`);
   console.log(`memory: ${context.memory.join(", ") || "none"}`);
   if (!tasks.length) console.log("active tasks: none");
   else

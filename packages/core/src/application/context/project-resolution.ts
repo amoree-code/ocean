@@ -147,7 +147,18 @@ export type ProjectManifest = {
   // without a prefix keeps issuing the legacy T-<n> ids.
   prefix?: string;
   nextTask?: number;
+  // Hard constraints a session must hold from turn one (single lines), and the commands that
+  // verify a task in this project when the task declares none of its own.
+  // Kept as written so every writer preserves them; read through projectRules/projectVerify,
+  // which validate. A typo here must never unbind the project.
+  rules?: unknown;
+  verify?: unknown;
 };
+
+export const MAX_PROJECT_RULES = 10;
+export const MAX_PROJECT_RULE_BYTES = 200;
+export const MAX_PROJECT_VERIFY = 5;
+export const MAX_PROJECT_VERIFY_BYTES = 300;
 
 const MANIFEST_FILE = "project.json";
 
@@ -191,6 +202,61 @@ function manifestPath(projectId: string): string {
   return path.join(projectsRoot(), projectFolder(projectId), MANIFEST_FILE);
 }
 
+// Control characters (tab aside) and Unicode line breaks: a rule or command is one plain line.
+const LINE_BREAKING = /[\p{Cc}\u2028\u2029]/u;
+
+export function hasControlCharacters(value: string): boolean {
+  return LINE_BREAKING.test(value.replace(/\t/g, " "));
+}
+
+function lineList(
+  field: string,
+  value: unknown,
+  maxEntries: number,
+  maxBytes: number,
+): string[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value))
+    throw new Error(`${field} must be a list of strings`);
+  if (value.length > maxEntries)
+    throw new Error(`${field} holds at most ${maxEntries} entries`);
+  return value.map((entry, index) => {
+    if (typeof entry !== "string" || !entry.trim())
+      throw new Error(`${field}[${index}] must be a non-empty string`);
+    const line = entry.trim();
+    if (hasControlCharacters(line))
+      throw new Error(
+        `${field}[${index}] must be a single line without control characters`,
+      );
+    if (Buffer.byteLength(line, "utf8") > maxBytes)
+      throw new Error(`${field}[${index}] exceeds ${maxBytes} bytes`);
+    return line;
+  });
+}
+
+// The validated lists, or an Error naming the field.
+export function projectRules(
+  manifest: Pick<ProjectManifest, "rules">,
+): string[] {
+  return lineList(
+    "rules",
+    manifest.rules,
+    MAX_PROJECT_RULES,
+    MAX_PROJECT_RULE_BYTES,
+  );
+}
+
+export function projectVerify(
+  manifest: Pick<ProjectManifest, "verify">,
+): string[] {
+  return lineList(
+    "verify",
+    manifest.verify,
+    MAX_PROJECT_VERIFY,
+    MAX_PROJECT_VERIFY_BYTES,
+  );
+}
+
 function parseManifest(folder: string, raw: string) {
   const parsed = JSON.parse(raw) as Partial<ProjectManifest>;
   if (
@@ -223,6 +289,8 @@ function parseManifest(folder: string, raw: string) {
     autoRegistered: parsed.autoRegistered === true,
     ...(parsed.prefix !== undefined ? { prefix: parsed.prefix } : {}),
     ...(parsed.nextTask !== undefined ? { nextTask: parsed.nextTask } : {}),
+    ...(parsed.rules !== undefined ? { rules: parsed.rules } : {}),
+    ...(parsed.verify !== undefined ? { verify: parsed.verify } : {}),
   } satisfies ProjectManifest;
 }
 
@@ -259,6 +327,27 @@ export async function scanProjectManifests(): Promise<ProjectManifestScan> {
     }
   }
   return scan;
+}
+
+// One project's manifest, or null when it has none. A manifest that does not parse throws:
+// callers that must hold a project's rules fail closed instead of dropping them.
+export async function readProjectManifest(
+  id: string,
+  root: string = oceanRoot(),
+): Promise<ProjectManifest | null> {
+  if (!isValidProjectId(id)) return null;
+  try {
+    return parseManifest(
+      projectFolder(id),
+      await readFile(
+        path.join(root, PROJECTS_DIR, projectFolder(id), MANIFEST_FILE),
+        "utf8",
+      ),
+    );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
 }
 
 export async function listProjectManifests(): Promise<ProjectManifest[]> {

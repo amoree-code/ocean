@@ -135,3 +135,20 @@ test("bindProject repeated with the same name and path is idempotent, not a conf
     assert.equal(second.conflict, undefined);
   });
 });
+
+test("rules=N is appended only when N > 0 and the 256-byte budget still holds", () => {
+  const project = {
+    status: "bound",
+    projectId: "a-fairly-long-project-id-for-the-bound",
+    name: "x",
+    path: "/x",
+    matchedOn: "ocean-root",
+    confidence: "high",
+  };
+  const none = buildOceanBootstrap(project, { rules: 0 });
+  assert.doesNotMatch(none.content, /rules=/);
+  assert.equal(buildOceanBootstrap(project).content, none.content);
+  const some = buildOceanBootstrap(project, { rules: 10 });
+  assert.match(some.content, / confidence=high rules=10 ops=/);
+  assert.ok(some.manifest.bytes <= OCEAN_BOOTSTRAP_MAX_BYTES);
+});
