@@ -50,7 +50,7 @@ const BUDGET = {
 
 function taskDoc(id, state = "active", checked = true) {
   const item = checked ? '- "[x] done work"' : '- "[ ] unfinished work"';
-  return `---\nkind: task\nid: ${id}\ntitle: Task ${id}\nstate: ${state}\nproject: ocean\ngoal: goal for ${id}\npriority: level_2\nupdated_at: 2026-09-16\n---\n\nchecklist:\n  ${item}\n\n## Objective\nbody of ${id}\n`;
+  return `---\nkind: task\nid: ${id}\ntitle: Task ${id}\nstate: ${state}\nproject: ocean\ngoal: goal for ${id}\npriority: level_2\nupdated_at: 2026-09-16\n---\n\nchecklist:\n  ${item}\n\n## Objective\nbody of ${id}\n\n## Definition of done\n\n- [x] Observable result is present\n\n## Verification\n\n- \`node --version\`\n\n## Blockers\n\nNone.\n`;
 }
 
 function recordDoc(name, description) {

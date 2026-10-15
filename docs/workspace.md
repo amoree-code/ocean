@@ -79,11 +79,14 @@ Use the governed completion command when a task is genuinely finished:
 ocean tasks complete T-123
 ```
 
-It requires every checklist item to be checked, writes `state: done`, and moves the
-whole task directory (including sibling artifacts) into `04-projects/ocean/tasks/archive/Ocean/`
-in one operation. Read-only commands such as `ocean tasks list` do not mutate files.
+It requires every `Definition of done` criterion to be an explicitly checked box, an empty
+`Blockers` section (or `None.`), and passing commands from `Verification`. Only then does it
+write `state: done` and move the whole task directory (including sibling artifacts) into
+`04-projects/ocean/tasks/archive/Ocean/`. `--no-verify` is rejected. Read-only commands such as
+`ocean tasks list` do not mutate files.
 
-Tasks that were marked `done` by an external editor can be reconciled explicitly:
+Tasks marked `done` by an external editor are checked for blockers, acceptance criteria, and
+passing verification before they move. The dry run reports blocked tasks without changing them:
 
 ```bash
 ocean tasks archive --auto
