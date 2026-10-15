@@ -3,7 +3,7 @@ import { mkdir, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { TASK_ID } from "../../domain/tasks/task-id.js";
 import { atomicWrite } from "../../fs-utils.js";
-import { oceanPath, PROJECTS_DIR, projectFolder } from "../../paths.js";
+import { PROJECTS_DIR, projectFolder } from "../../paths.js";
 import type { ContextBudget } from "../context/context-ladder.js";
 import type { IntentClassification } from "../context/intent-router.js";
 import { withNextTaskId } from "../context/project-resolution.js";

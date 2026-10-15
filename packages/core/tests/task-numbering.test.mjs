@@ -119,7 +119,7 @@ test("a prefix is scanned within its own namespace only", async () => {
 });
 
 test("bindProject gives a new empty project a derived prefix and keeps both on --add", async () => {
-  const root = await workspace();
+  await workspace();
   const repo = await mkdtemp(path.join(os.tmpdir(), "ocean-numbering-repo-"));
   const second = await mkdtemp(path.join(os.tmpdir(), "ocean-numbering-repo-"));
   await bindProject("ocean-language", repo);

@@ -6,8 +6,6 @@ import {
   KNOWLEDGE_DIR,
   oceanRoot,
   PERSONAL_DIR,
-  PROJECTS_DIR,
-  projectFolder,
   resolveStorePath,
   resolveWithin,
   storeRelativeToRoot,
