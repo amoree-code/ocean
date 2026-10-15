@@ -4,6 +4,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
 concurrency:
   group: release-gate-${{ github.ref }}
   cancel-in-progress: true
@@ -16,11 +17,15 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
+      - run: pnpm check:changelog
+        if: matrix.os == 'ubuntu-latest'
       - run: pnpm check:skills
       - run: pnpm check:privacy
       - run: pnpm check:tasks
