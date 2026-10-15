@@ -5,10 +5,13 @@
       "entry": ["scripts/*.mjs"],
       "project": ["scripts/**/*.mjs"]
     },
-    "packages/core": {
+    "packages/harness": {
       "entry": ["tests/*.test.mjs", "scripts/*.mjs"],
       "project": ["src/**/*.ts", "tests/**/*.mjs", "scripts/**/*.mjs"],
       "ignore": ["tests/fixtures/**"]
+    },
+    "packages/core": {
+      "project": ["src/**/*.ts"]
     }
   }
 }

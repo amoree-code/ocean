@@ -35,7 +35,7 @@ the engine still reads that layout, see below.)
   (resolved from the running module, whether compiled under `dist/` or run under `tsx`
   from `src/`).
 - `oceanRoot()` — `OCEAN_ROOT` if set (resolved to an absolute path),
-  otherwise three directories above `engineRoot()` (`kernel/packages/core` → the workspace root). This is the default private-workspace
+  otherwise three directories above `engineRoot()` (`kernel/packages/harness` → the workspace root). This is the default private-workspace
   location: `kernel/` is expected to sit inside the workspace root as a sibling of `bridge/`.
 - `oceanPath(...)` — joins onto `<oceanRoot>/`, used for all private workspace state, via
   the `PERSONAL_DIR`/`PROJECTS_DIR`/`SYSTEM_DIR` constants (`02-personal`, `04-projects`,
@@ -59,15 +59,15 @@ the same three constants, so they track any future layout change):
 - Creates `bridge/config/startup`, `bridge/profiles`, `bridge/sessions`, `bridge/registry`,
   `bridge/integrations`, `bridge/archive` and `bridge/runtime/{shims,temporary}` under the
   workspace root.
-- Writes `bridge/profiles/default.json` from the template in `packages/core/templates/`,
+- Writes `bridge/profiles/default.json` from the template in `packages/harness/templates/`,
   without overwriting existing files.
-- Installs a per-OS startup entry that launches `kernel/packages/core/dist/main.js service`
+- Installs a per-OS startup entry that launches `kernel/packages/harness/dist/main.js service`
   with the workspace root as its working directory: a macOS `launchd` plist under
   `~/Library/LaunchAgents`, a Linux `systemd --user` unit under
   `~/.config/systemd/user`, or a Windows Startup-folder launcher script.
 - Restricts the private `bridge` tree to `0700` permissions.
 
-Startup always points at `kernel/packages/core/dist/main.js` (the built engine), never at
+Startup always points at `kernel/packages/harness/dist/main.js` (the built engine), never at
 `src/`, and always runs with the private workspace directory as its current working
 directory.
 
@@ -94,7 +94,7 @@ making a read-only inspection command silently move user data.
 
 ## Skills
 
-There is one live skills store: `bridge/skills` (machine-local, git-ignored). `packages/core/skills` is
+There is one live skills store: `bridge/skills` (machine-local, git-ignored). `packages/harness/skills` is
 only the set of core skills shipped with the engine; `ocean skill hub` copies it, plus any extra folders
 you name, into the store (additive, never overwrites).
 

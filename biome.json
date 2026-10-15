@@ -7,7 +7,7 @@
       "!!node_modules",
       "!!graft",
       "!!graphify-out",
-      "!!packages/core/tests/_tmp",
+      "!!packages/harness/tests/_tmp",
       "!!bridge",
       "!!.claude/helpers",
       "!!.cursor/hooks",

@@ -16,8 +16,8 @@ pnpm check:style      # biome check .
 ## Hard rules
 
 - No credentials, no personal data — anywhere in source, config, logs, tests, docs.
-- Public code only under `packages/core/src/`. Provider execution only under
-  `packages/core/src/infrastructure/providers/`.
+- Public code only under `packages/*/src/`. Provider execution only under
+  `packages/harness/src/infrastructure/providers/`.
 - Private personal/project data (`brain/`) lives as a sibling of this repo, outside it
   entirely. Machine-local state (`bridge/` — profiles, sessions, config, registry,
   integrations, archive) is physically nested inside this repo but git-ignored; never
@@ -39,8 +39,8 @@ pnpm check:style      # biome check .
 
 Headless prompts carry references, not bodies: a skill index with SKILL.md paths, a compact
 profile contract, a facts digest (<= 2 KB, with a pointer) and context references (paths + why),
-assembled in `packages/core/src/application/runs/prompt-assembly.ts` and
-`packages/core/src/application/context/context-references.ts`. `ocean context cost` reports each
+assembled in `packages/harness/src/application/runs/prompt-assembly.ts` and
+`packages/harness/src/application/context/context-references.ts`. `ocean context cost` reports each
 client's always-on bytes (rules, memory index, skill frontmatter).
 
 <!-- graft:start -->
