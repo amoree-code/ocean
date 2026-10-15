@@ -270,7 +270,7 @@ export async function listProjectManifests(): Promise<ProjectManifest[]> {
   return (await scanProjectManifests()).manifests;
 }
 
-async function writeManifest(manifest: ProjectManifest): Promise<void> {
+export async function writeManifest(manifest: ProjectManifest): Promise<void> {
   const file = manifestPath(manifest.id);
   await mkdir(path.dirname(file), { recursive: true });
   await atomicWrite(file, `${JSON.stringify(manifest, null, 2)}\n`);
@@ -405,7 +405,7 @@ const TASK_NUMBER_SCAN_DEPTH = 2;
 // Highest <prefix>-<n> folder under every project's tasks/, live and archived. Archives are
 // tasks/archive/<namespace>/<id> (or flat archive/<id>), so descend archive/ two levels.
 // Every project is scanned because the legacy T sequence was shared by all of them.
-async function highestTaskNumber(prefix: string): Promise<number> {
+export async function highestTaskNumber(prefix: string): Promise<number> {
   const pattern = new RegExp(`^${prefix}-(\\d+)$`);
   let highest = 0;
   const visit = async (directory: string, depth: number): Promise<void> => {

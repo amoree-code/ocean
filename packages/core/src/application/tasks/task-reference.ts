@@ -76,7 +76,7 @@ async function directories(parent: string): Promise<Dirent[]> {
 }
 
 // Every task folder of a project, live and archived, as [folder name, task.md, archived].
-async function taskFolders(
+export async function taskFolders(
   projectsDir: string,
   project: string,
 ): Promise<Array<[string, string, boolean]>> {

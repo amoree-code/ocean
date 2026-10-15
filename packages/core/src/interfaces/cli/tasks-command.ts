@@ -13,6 +13,7 @@ import {
   listTasksForFolder,
   type ProjectTask,
 } from "../../application/tasks/list-tasks.js";
+import { renumberTasks } from "../../application/tasks/renumber-tasks.js";
 import { resolveTaskReference } from "../../application/tasks/task-reference.js";
 import { verifyTask } from "../../application/tasks/verify-task.js";
 import {
@@ -205,9 +206,29 @@ export async function runTasksCommand(
     }
     return;
   }
+  if (action === "renumber") {
+    const prefixIndex = args.indexOf("--prefix");
+    const prefix = prefixIndex >= 0 ? args[prefixIndex + 1] : undefined;
+    if (!explicitProject || !prefix)
+      throw new Error(
+        "Usage: ocean tasks renumber --project <id> --prefix <PREFIX> [--write]",
+      );
+    console.log(
+      JSON.stringify(
+        await renumberTasks({
+          project: explicitProject,
+          prefix,
+          write: args.includes("--write"),
+        }),
+        null,
+        2,
+      ),
+    );
+    return;
+  }
   if (action !== "archive") {
     console.error(
-      "Usage: ocean tasks list [state] [--project <id>] [--pretty]|doctor|index [--write]|checkpoint <id> --note <text> [--next <text>]|verify <id>|complete <id>|archive [--apply|--auto]",
+      "Usage: ocean tasks list [state] [--project <id>] [--pretty]|doctor|index [--write]|checkpoint <id> --note <text> [--next <text>]|verify <id>|complete <id>|archive [--apply|--auto]|renumber --project <id> --prefix <PREFIX> [--write]",
     );
     process.exitCode = 1;
     return;
