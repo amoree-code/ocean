@@ -263,7 +263,7 @@ test("headless context starts with the project's rules, and references fit what 
     });
     assert.ok(result.content.startsWith("## Project rules (ocean)\n- rule 0"));
     assert.match(result.content, /\n\n## Context references\n/);
-    assert.match(result.content, /T-1\/task\.md/);
+    assert.match(result.content, /T-1[\\/]task\.md/);
     assert.ok(Buffer.byteLength(result.content) <= CONTEXT_REFERENCE_MAX_BYTES);
     assert.equal(result.manifest.bytes, Buffer.byteLength(result.content));
   } finally {

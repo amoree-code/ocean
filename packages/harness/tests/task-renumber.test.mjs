@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 import { PROJECTS_DIR } from "../dist/paths.js";
 
 // ocean has T-1 and T-2; lab holds T-5, T-7 live and T-6 archived.
@@ -170,7 +171,7 @@ test("after a renumber, a third project still on T never reissues a moved number
     [
       "--input-type=module",
       "-e",
-      `const m = await import(${JSON.stringify(path.resolve("dist/application/context/project-resolution.js"))}); console.log(await m.peekNextTaskId("shop"));`,
+      `const m = await import(${JSON.stringify(pathToFileURL(path.resolve("dist/application/context/project-resolution.js")).href)}); console.log(await m.peekNextTaskId("shop"));`,
     ],
     { env: { ...process.env, OCEAN_ROOT: root }, encoding: "utf8" },
   );
