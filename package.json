@@ -14,6 +14,7 @@
     "check:skills": "pnpm --filter ocean run check:skills",
     "generate:skills": "pnpm --filter ocean run generate:skills",
     "check:privacy": "node scripts/scan-privacy.mjs",
+    "check:changelog": "node scripts/check-changelog.mjs",
     "check:tasks": "node packages/harness/scripts/validate-tasks.mjs",
     "check:package": "node scripts/validate-package.mjs",
     "check:system": "sh scripts/health-check.sh",
