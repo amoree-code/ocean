@@ -327,3 +327,32 @@ test("'ocean intent classify' CLI is reusable client-neutrally: same output as t
   );
   assert.equal(before, after);
 });
+
+// --- task list (no id): T-258 phase C, from real unknown requests ---
+
+for (const text of [
+  "what tasks we have",
+  "what the next taks",
+  "check what we tasks not completed",
+  "شنو عدننه تكتات هسه",
+  "شنو عدنه تاسكات",
+]) {
+  test(`task list: "${text}" routes to task-lookup/list, medium confidence, no identifier`, () => {
+    const result = classifyIntent(text);
+    assert.equal(result.intent, "task-lookup");
+    assert.equal(result.action, "list");
+    assert.equal(result.identifier, null);
+    assert.equal(result.confidence, "medium");
+    assert.ok(result.ambiguityReason);
+  });
+}
+
+test("task list: a task noun without a list cue stays unknown ('update all tasks')", () => {
+  assert.equal(classifyIntent("rename all tasks").intent, "unknown");
+});
+
+test("task list: an explicit id still wins over the list wording", () => {
+  const result = classifyIntent("what is the status of T-12 task");
+  assert.equal(result.identifier, "T-12");
+  assert.equal(result.action, "get");
+});
