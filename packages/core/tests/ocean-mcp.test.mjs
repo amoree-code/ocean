@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { handleOceanMcpRequest } from "../dist/infrastructure/mcp/ocean-server.js";
+import { SessionStore } from "../dist/infrastructure/persistence/session-store.js";
 import { PROJECTS_DIR, SYSTEM_DIR } from "../dist/paths.js";
 
 test("Ocean MCP exposes provider-neutral read-only tools without Obsidian", async () => {
@@ -229,6 +230,47 @@ test("ocean_tasks_list follows the folder it is given, else lists every project"
     assert.deepEqual(ids(elsewhere), ["ocean/T-001", "shop/T-101"]);
     assert.match(elsewhere.note, /not an Ocean project/);
     assert.deepEqual(ids(await call({ project: "ocean" })), ["ocean/T-001"]);
+  } finally {
+    if (previous === undefined) delete process.env.OCEAN_ROOT;
+    else process.env.OCEAN_ROOT = previous;
+  }
+});
+
+test("ocean_handoffs_list filters by project", async () => {
+  const root = await mkdtemp(
+    path.join(os.tmpdir(), "ocean-mcp-handoff-project-"),
+  );
+  const previous = process.env.OCEAN_ROOT;
+  process.env.OCEAN_ROOT = root;
+  try {
+    await mkdir(path.join(root, SYSTEM_DIR, "sessions"), { recursive: true });
+    const store = new SessionStore();
+    for (const [id, project] of [
+      ["h-shop", "shop"],
+      ["h-ocean", "ocean"],
+      ["h-none", null],
+    ])
+      store.saveHandoff({
+        handoffId: id,
+        title: id,
+        state: "paused",
+        projectId: project,
+      });
+    store.close();
+    const list = async (args) => {
+      const response = await handleOceanMcpRequest({
+        jsonrpc: "2.0",
+        id: 21,
+        method: "tools/call",
+        params: { name: "ocean_handoffs_list", arguments: args },
+      });
+      return JSON.parse(response.result.content[0].text)
+        .handoffs.map((h) => h.handoffId)
+        .sort();
+    };
+    assert.deepEqual(await list({}), ["h-none", "h-ocean", "h-shop"]);
+    assert.deepEqual(await list({ project: "shop" }), ["h-shop"]);
+    assert.deepEqual(await list({ project: "nowhere" }), []);
   } finally {
     if (previous === undefined) delete process.env.OCEAN_ROOT;
     else process.env.OCEAN_ROOT = previous;

@@ -3,6 +3,7 @@ import { stat } from "node:fs/promises";
 import readline from "node:readline";
 import type { SessionStoreFactory } from "../../domain/ports/session-store-port.js";
 import { finalizeSession } from "../memory/session-closeout.js";
+import { sessionProjectId } from "../sessions/session-projects.js";
 
 // The documented Claude Code SessionEnd hook contract (same family as the
 // SessionStart payload in session-start-hook.ts): a small JSON payload on
@@ -129,6 +130,7 @@ export async function claudeSessionEndHook(
         profileIdentity: "",
         workingDirectory: cwd,
         resumeData: null,
+        projectId: await sessionProjectId(cwd),
       });
       store.updateStatus(sessionId, "running");
       session = store.get(sessionId);

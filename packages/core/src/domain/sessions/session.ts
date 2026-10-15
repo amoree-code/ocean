@@ -36,6 +36,7 @@ export const sessionSchema = z.object({
   closeoutStatus: z.enum(["pending", "completed", "failed"]).default("pending"),
   closeoutVersion: z.string().default("1"),
   closedAt: z.string().nullable().default(null),
+  projectId: z.string().nullable().default(null),
 });
 
 export type Session = z.infer<typeof sessionSchema>;

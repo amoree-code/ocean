@@ -40,11 +40,13 @@ export async function runHandoffCommand(
   }
   if (action === "list") {
     const taskIndex = args.indexOf("--task");
+    const projectIndex = args.indexOf("--project");
     console.log(
       JSON.stringify(
         await listHandoffs(
           defaultSessionStoreFactory,
           taskIndex >= 0 ? args[taskIndex + 1] : undefined,
+          projectIndex >= 0 ? args[projectIndex + 1] : undefined,
         ),
         null,
         2,
@@ -53,7 +55,7 @@ export async function runHandoffCommand(
     return;
   }
   console.error(
-    "Usage: ocean handoff create [--task <id>] [--session <id>] [--next <action>]|show <id>|context <id>|list [--task <id>]",
+    "Usage: ocean handoff create [--task <id>] [--session <id>] [--next <action>]|show <id>|context <id>|list [--task <id>] [--project <id>]",
   );
   process.exitCode = 1;
 }

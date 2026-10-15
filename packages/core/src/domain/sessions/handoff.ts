@@ -9,6 +9,7 @@ const handoffSchema = z.object({
   profileId: z.string().default(""),
   profileIdentity: z.string().default(""),
   sourceSessionId: z.string().nullable(),
+  projectId: z.string().nullable().default(null),
   provider: z.string().default(""),
   parentSessionId: z.string().nullable(),
   decisions: z.array(z.string()).default([]),

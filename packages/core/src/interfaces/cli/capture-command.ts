@@ -3,6 +3,7 @@ import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { syncCaptureInbox } from "../../application/capture/inbox-sync.js";
 import { syncMemoryIndexes } from "../../application/memory/index-sync.js";
+import { sessionProjectId } from "../../application/sessions/session-projects.js";
 import { validateSessionEntryContract } from "../../domain/sessions/entry-contract.js";
 import { redactRuntimeText } from "../../infrastructure/observability/runtime-logger.js";
 import { openSessionStore } from "../../infrastructure/persistence/session-store.js";
@@ -33,6 +34,7 @@ export async function runCaptureCommand(
         profile: "manual-capture",
         profileIdentity: "",
         workingDirectory: oceanRoot(),
+        projectId: await sessionProjectId(oceanRoot()),
         resumeData: null,
       });
       store.appendEvent(

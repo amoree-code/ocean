@@ -55,6 +55,7 @@ type SessionRow = Omit<
   closeout_status: "pending" | "completed" | "failed";
   closeout_version: string;
   closed_at: string | null;
+  project_id: string | null;
 };
 
 export class SessionStore implements SessionStorePort {
@@ -172,6 +173,7 @@ export class SessionStore implements SessionStorePort {
     this.migrateTicketIdToTaskId();
     this.migrateProfileIdentityColumn();
     this.migrateHandoffSummaryColumn();
+    this.migrateProjectColumns();
     this.database.exec(
       "CREATE INDEX IF NOT EXISTS handoffs_task_id ON handoffs(task_id);",
     );
@@ -243,6 +245,22 @@ export class SessionStore implements SessionStorePort {
     }
   }
 
+  // T-256: sessions and handoffs know their project. Additive only, and deliberately not in the
+  // CREATE TABLE block above, so an old and a new database take the same path.
+  private migrateProjectColumns(): void {
+    for (const table of ["sessions", "handoffs"] as const) {
+      const columns = this.database
+        .prepare(`PRAGMA table_info(${table})`)
+        .all() as Array<{ name: string }>;
+      if (!columns.some((column) => column.name === "project_id"))
+        this.database.exec(`ALTER TABLE ${table} ADD COLUMN project_id TEXT`);
+    }
+    this.database.exec(`
+      CREATE INDEX IF NOT EXISTS sessions_project_id ON sessions(project_id);
+      CREATE INDEX IF NOT EXISTS handoffs_project_task ON handoffs(project_id, task_id);
+    `);
+  }
+
   create(input: SessionCreateInput): Session {
     const now = new Date().toISOString();
     const session = validateSession({
@@ -254,8 +272,8 @@ export class SessionStore implements SessionStorePort {
     this.database
       .prepare(`
       INSERT INTO sessions (session_id, title, task_id, handoff_id, provider, provider_session_id, parent_session_id, profile,
-        profile_identity, working_directory, status, created_at, updated_at, resume_data, context_hash, context_bytes, next_action, verification_status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        profile_identity, working_directory, status, created_at, updated_at, resume_data, context_hash, context_bytes, next_action, verification_status, project_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
       .run(
         session.sessionId,
@@ -276,6 +294,7 @@ export class SessionStore implements SessionStorePort {
         session.contextBytes,
         session.nextAction,
         session.verificationStatus,
+        session.projectId,
       );
 
     if (session.parentSessionId) {
@@ -398,8 +417,8 @@ export class SessionStore implements SessionStorePort {
       INSERT INTO handoffs (handoff_id, task_id, title, objective, state, profile_id, profile_identity,
         source_session_id, provider, parent_session_id, decisions_json, changed_files_json, commit_ref,
         verification_json, not_proven_json, blocked_json, permissions_json, context_manifest_json,
-        next_action, source_summary_path, content, content_bytes, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        next_action, source_summary_path, content, content_bytes, created_at, updated_at, project_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(handoff_id) DO UPDATE SET task_id=excluded.task_id, title=excluded.title,
         objective=excluded.objective, state=excluded.state, profile_id=excluded.profile_id,
         profile_identity=excluded.profile_identity, source_session_id=excluded.source_session_id,
@@ -410,7 +429,8 @@ export class SessionStore implements SessionStorePort {
         permissions_json=excluded.permissions_json, context_manifest_json=excluded.context_manifest_json,
         next_action=excluded.next_action, source_summary_path=excluded.source_summary_path,
         content=excluded.content, content_bytes=excluded.content_bytes,
-        updated_at=excluded.updated_at
+        updated_at=excluded.updated_at,
+        project_id=COALESCE(excluded.project_id, handoffs.project_id)
     `)
       .run(
         value("handoffId", ""),
@@ -437,6 +457,7 @@ export class SessionStore implements SessionStorePort {
         value("contentBytes", 0),
         value("createdAt", now),
         now,
+        value("projectId", null),
       );
   }
 
@@ -447,19 +468,58 @@ export class SessionStore implements SessionStorePort {
     return row ? this.deserializeHandoff(row) : null;
   }
 
-  listHandoffs(taskId?: string): Array<Record<string, unknown>> {
-    const rows = (
-      taskId
-        ? this.database
-            .prepare(
-              "SELECT * FROM handoffs WHERE task_id = ? ORDER BY updated_at DESC",
-            )
-            .all(taskId)
-        : this.database
-            .prepare("SELECT * FROM handoffs ORDER BY updated_at DESC")
-            .all()
-    ) as Array<Record<string, unknown>>;
+  listHandoffs(
+    taskId?: string,
+    projectId?: string,
+  ): Array<Record<string, unknown>> {
+    const filters: string[] = [];
+    const values: string[] = [];
+    if (taskId) {
+      filters.push("task_id = ?");
+      values.push(taskId);
+    }
+    if (projectId) {
+      filters.push("project_id = ?");
+      values.push(projectId);
+    }
+    const where = filters.length ? ` WHERE ${filters.join(" AND ")}` : "";
+    const rows = this.database
+      .prepare(`SELECT * FROM handoffs${where} ORDER BY updated_at DESC`)
+      .all(...values) as Array<Record<string, unknown>>;
     return rows.map((row) => this.deserializeHandoff(row));
+  }
+
+  // --- project backfill (T-256) --------------------------------------------------------
+  sessionDirectoriesMissingProject(): string[] {
+    return (
+      this.database
+        .prepare(
+          "SELECT DISTINCT working_directory FROM sessions WHERE project_id IS NULL",
+        )
+        .all() as Array<{ working_directory: string }>
+    ).map((row) => row.working_directory);
+  }
+
+  setProjectForDirectory(directory: string, projectId: string): number {
+    return Number(
+      this.database
+        .prepare(
+          "UPDATE sessions SET project_id = ? WHERE working_directory = ? AND project_id IS NULL",
+        )
+        .run(projectId, directory).changes,
+    );
+  }
+
+  backfillHandoffProjects(): number {
+    return Number(
+      this.database
+        .prepare(
+          `UPDATE handoffs SET project_id = (SELECT s.project_id FROM sessions s WHERE s.session_id = handoffs.source_session_id)
+           WHERE project_id IS NULL AND source_session_id IS NOT NULL
+             AND (SELECT s.project_id FROM sessions s WHERE s.session_id = handoffs.source_session_id) IS NOT NULL`,
+        )
+        .run().changes,
+    );
   }
 
   saveIdea(input: SaveIdeaInput): void {
@@ -533,6 +593,7 @@ export class SessionStore implements SessionStorePort {
       profileId: row.profile_id,
       profileIdentity: row.profile_identity,
       sourceSessionId: row.source_session_id,
+      projectId: row.project_id ?? null,
       provider: row.provider,
       parentSessionId: row.parent_session_id,
       decisions: json("decisions_json", []),
@@ -924,6 +985,7 @@ export class SessionStore implements SessionStorePort {
       closeoutStatus: row.closeout_status,
       closeoutVersion: row.closeout_version,
       closedAt: row.closed_at,
+      projectId: row.project_id ?? null,
     });
   }
 }

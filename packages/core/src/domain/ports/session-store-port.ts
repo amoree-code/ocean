@@ -24,6 +24,7 @@ export type SessionCreateInput = Omit<
   | "closeoutStatus"
   | "closeoutVersion"
   | "closedAt"
+  | "projectId"
 > & {
   status?: SessionStatus;
   title?: string;
@@ -33,6 +34,7 @@ export type SessionCreateInput = Omit<
   contextBytes?: number;
   nextAction?: string;
   verificationStatus?: "unknown" | "proven" | "not_proven" | "blocked";
+  projectId?: string | null;
 };
 
 export type CloseoutInput = {
@@ -92,7 +94,14 @@ export interface SessionStorePort {
   updateCloseout(sessionId: string, input: CloseoutInput): void;
   saveHandoff(input: Record<string, unknown>): void;
   getHandoff(handoffId: string): Record<string, unknown> | null;
-  listHandoffs(taskId?: string): Array<Record<string, unknown>>;
+  listHandoffs(
+    taskId?: string,
+    projectId?: string,
+  ): Array<Record<string, unknown>>;
+  // Project backfill (T-256): fill project_id on rows recorded before the column existed.
+  sessionDirectoriesMissingProject(): string[];
+  setProjectForDirectory(directory: string, projectId: string): number;
+  backfillHandoffProjects(): number;
   saveIdea(input: SaveIdeaInput): void;
   listIdeas(status?: string): Array<Record<string, unknown>>;
   updateIdea(
