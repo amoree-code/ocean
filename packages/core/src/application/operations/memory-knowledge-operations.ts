@@ -14,7 +14,7 @@ import {
   STORE_DIR,
 } from "../../paths.js";
 import { brainIndexPath } from "../brain/brain-reindex.js";
-import { brainSearch } from "../brain/brain-service.js";
+import { BrainIndexStaleError, brainSearch } from "../brain/brain-service.js";
 import type { ContextBudget } from "../context/context-ladder.js";
 import type { RecordType } from "../context/context-packet.js";
 import type { IntentClassification } from "../context/intent-router.js";
@@ -113,6 +113,7 @@ async function searchViaBrainIndex(
   query: string,
   indexPort: BrainIndexPort,
   project: string | null,
+  notes: string[],
 ): Promise<OperationRecord[] | null> {
   const root = oceanRoot();
   try {
@@ -152,7 +153,10 @@ async function searchViaBrainIndex(
         RECORD_FIELDS,
       ),
     }));
-  } catch {
+  } catch (error) {
+    // A stale index is the one failure worth naming: the fallback still answers, but the
+    // caller should know why ranking is gone and how to get it back.
+    if (error instanceof BrainIndexStaleError) notes.push(error.message);
     return null;
   }
 }
@@ -194,6 +198,7 @@ export async function searchRecords(
       options.query,
       options.indexPort,
       project,
+      scopeViolations,
     );
     if (viaIndex) {
       const shaped = shapeRecords(viaIndex, budget.maxFiles);

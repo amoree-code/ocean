@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -6,6 +7,7 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { reindexBrain } from "../dist/application/brain/brain-reindex.js";
 import {
+  BrainIndexStaleError,
   brainNeighbors,
   brainRead,
   brainSearch,
@@ -128,6 +130,8 @@ test("a v1 index (no scope column) refuses a scoped query and tells the caller t
     );
     db.close();
     await assert.rejects(search(root, { project: "a" }), /reindex/);
+    // Typed, so the ops and ladder fallbacks can name it instead of hiding it.
+    await assert.rejects(search(root, { project: "a" }), BrainIndexStaleError);
     await assert.rejects(
       brainNeighbors({
         idOrPath: "rec-G",
@@ -139,5 +143,38 @@ test("a v1 index (no scope column) refuses a scoped query and tells the caller t
     );
     // Unscoped callers are untouched by the version.
     assert.ok((await search(root, undefined)).results.length > 0);
+  });
+});
+
+test("the memory CLI scopes neighbors like search, and --project needs an id", async () => {
+  await withRoot(async (root) => {
+    await reindexBrain({ root, indexPort });
+    const nowhere = await mkdtemp(path.join(os.tmpdir(), "ocean-scope-cwd-"));
+    const memory = (...args) =>
+      spawnSync(
+        process.execPath,
+        [path.resolve("dist/main.js"), "memory", ...args],
+        {
+          cwd: nowhere,
+          env: { ...process.env, OCEAN_ROOT: root },
+          encoding: "utf8",
+        },
+      );
+    const neighborIds = (result) =>
+      JSON.parse(result.stdout)
+        .neighbors.map((hit) => hit.id)
+        .sort();
+    const scoped = memory("neighbors", "rec-G");
+    assert.equal(scoped.status, 0, scoped.stderr);
+    assert.deepEqual(neighborIds(scoped), ["rec-U"]);
+    const all = memory("neighbors", "rec-G", "--all");
+    assert.ok(neighborIds(all).includes("rec-B"));
+    const projectB = memory("neighbors", "rec-G", "--project", "b");
+    assert.ok(neighborIds(projectB).includes("rec-B"));
+    assert.equal(neighborIds(projectB).includes("rec-A"), false);
+    const missing = memory("search", "zebrafood", "--project");
+    assert.notEqual(missing.status, 0);
+    assert.match(missing.stderr, /Usage: ocean memory search/);
+    await rm(nowhere, { recursive: true, force: true });
   });
 });

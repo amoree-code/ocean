@@ -29,9 +29,11 @@ export type BrainScopeFilter = { project: string | null };
 
 // A v1 index has no scope column, so it cannot answer a scoped query: say how to fix it
 // rather than return unfiltered hits.
+export class BrainIndexStaleError extends Error {}
+
 function assertScoped(reader: BrainIndexReaderPort): void {
   if (reader.meta.schemaVersion !== BRAIN_INDEX_SCHEMA_VERSION)
-    throw new Error(
+    throw new BrainIndexStaleError(
       `brain index schema ${reader.meta.schemaVersion} predates record scopes — run \`ocean memory reindex\``,
     );
 }
@@ -106,7 +108,12 @@ export async function brainSearch(
     if (reader.hasVectors && options.embedder) {
       try {
         const [embedding] = await options.embedder.embed([normalizedQuery]);
-        vecHits = reader.vecQuery(embedding, limit * 4);
+        // KNN cannot filter by scope before k, so a scoped query oversamples: other projects'
+        // chunks would otherwise fill the top hits and the backstop below would drop them all.
+        vecHits = reader.vecQuery(
+          embedding,
+          options.scope ? limit * 16 : limit * 4,
+        );
         vectorStatus = "ok";
       } catch (error) {
         vectorStatus = `unavailable: ${error instanceof Error ? error.message : String(error)}`;

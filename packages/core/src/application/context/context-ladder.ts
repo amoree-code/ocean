@@ -18,7 +18,7 @@ import {
   storeRelativeToRoot,
   WORKSPACE_PROJECT_ID,
 } from "../../paths.js";
-import { brainSearch } from "../brain/brain-service.js";
+import { BrainIndexStaleError, brainSearch } from "../brain/brain-service.js";
 import { resolveTaskReference } from "../tasks/task-reference.js";
 import type { IntentClassification } from "./intent-router.js";
 
@@ -313,6 +313,7 @@ async function planRankedReferencesViaIndex(
   indexPort: BrainIndexPort,
   projectId: string | null,
   leading: string[],
+  notes: string[],
 ): Promise<BoundedReadResult | null> {
   const rung: LadderRung = "ranked-references";
   let result: Awaited<ReturnType<typeof brainSearch>>;
@@ -324,7 +325,8 @@ async function planRankedReferencesViaIndex(
       scope: { project: projectId },
       indexPort,
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof BrainIndexStaleError) notes.push(error.message);
     return null;
   }
   const files: string[] = [];
@@ -408,6 +410,7 @@ async function planRankedReferences(
     );
   }
   const memoryLookup = intent === "memory-lookup";
+  const indexNotes: string[] = [];
   if (query && indexPort) {
     const viaIndex = await planRankedReferencesViaIndex(
       query,
@@ -416,6 +419,7 @@ async function planRankedReferences(
       indexPort,
       projectId,
       memoryLookup ? await memoryFiles(root, projectId) : [],
+      indexNotes,
     );
     if (viaIndex) return viaIndex;
     // No index built: fall through to the fixed authoritative files below, but say why.
@@ -466,9 +470,11 @@ async function planRankedReferences(
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
   }
-  const queryNote = query
-    ? " (brain index not built — falling back to authoritative files)"
-    : "";
+  const queryNote = !query
+    ? ""
+    : indexNotes.length
+      ? ` (${indexNotes[0]} — falling back to authoritative files)`
+      : " (brain index not built — falling back to authoritative files)";
   return withinCharBudget(
     {
       rung,
