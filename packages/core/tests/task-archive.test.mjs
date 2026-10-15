@@ -156,7 +156,7 @@ test("rejects traversal in task reads and archive metadata", async () => {
   try {
     await assert.rejects(
       getTask("../outside"),
-      /Path escapes its allowed root/,
+      /is not a task id/,
     );
   } finally {
     delete process.env.OCEAN_ROOT;

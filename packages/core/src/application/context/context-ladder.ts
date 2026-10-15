@@ -1,6 +1,7 @@
 import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import type { BrainIndexPort } from "../../domain/ports/brain-index-port.js";
+import { parseTaskId } from "../../domain/tasks/task-id.js";
 import {
   KNOWLEDGE_DIR,
   oceanRoot,
@@ -13,6 +14,7 @@ import {
   WORKSPACE_PROJECT_ID,
 } from "../../paths.js";
 import { brainSearch } from "../brain/brain-service.js";
+import { resolveTaskReference } from "../tasks/task-reference.js";
 import type { IntentClassification } from "./intent-router.js";
 
 // Context ladder: startup identity only -> project metadata -> ranked references -> exact
@@ -187,8 +189,6 @@ function withinCharBudget(
   return { ...result, allowed: true, violation: null };
 }
 
-const TASK_ID_SHAPE = /^T-\d+$/i;
-
 // Only ever resolves a single, already-validated task id to its task.md path, and only
 // ever stats it (size), never reads its content — the actual compact read is a later slice.
 async function planExactTaskRecord(
@@ -198,10 +198,11 @@ async function planExactTaskRecord(
   projectId = WORKSPACE_PROJECT_ID,
 ): Promise<BoundedReadResult> {
   const rung: LadderRung = "exact-record";
-  if (!TASK_ID_SHAPE.test(identifier)) {
+  const parsed = parseTaskId(identifier);
+  if (!parsed) {
     return budgetRejection(
       rung,
-      `'${identifier}' is not a valid task identifier shape (expected T-<digits>) — refusing to guess a path`,
+      `'${identifier}' is not a valid task identifier shape (expected <PREFIX>-<digits>) — refusing to guess a path`,
       null,
     );
   }
@@ -220,22 +221,21 @@ async function planExactTaskRecord(
       "max-files-exceeded",
     );
   }
-  const normalized = `T-${identifier.replace(/^T-/i, "")}`;
+  const normalized = `${parsed.prefix}${identifier.slice(identifier.indexOf("-"))}`;
+  // Stays inside this project: the ladder never reads another project's task.
   let resolvedPath: string;
   try {
-    resolvedPath = resolveWithin(
-      resolveWithin(
-        path.join(root, PROJECTS_DIR),
-        projectFolder(projectId),
-        "tasks",
-      ),
-      normalized,
-      "task.md",
-    );
+    resolvedPath = (
+      await resolveTaskReference(identifier, {
+        projectId,
+        acrossProjects: false,
+        root,
+      })
+    ).file;
   } catch {
     return budgetRejection(
       rung,
-      "resolved task path escapes the Ocean task root — refusing to read outside scope",
+      `task ${normalized} was not found under the Ocean task root`,
       null,
     );
   }

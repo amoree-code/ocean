@@ -119,8 +119,13 @@ if (knownIds.size !== records.length) {
     if (count > 1)
       errors.push(`duplicate task id across live/archive records: ${id}`);
 }
+// A renumbered task keeps its old id in `legacyId`, so references written before still resolve.
+for (const record of records)
+  if (record.fields.legacyId) knownIds.add(record.fields.legacyId);
 for (const record of records) {
-  const refs = [...(record.fields.references?.match(/T-\d+/g) ?? [])];
+  const refs = [
+    ...(record.fields.references?.match(/\b[A-Z][A-Z0-9]{0,5}-\d+\b/g) ?? []),
+  ];
   for (const ref of refs)
     if (!knownIds.has(ref))
       errors.push(`${record.file}: broken reference ${ref}`);

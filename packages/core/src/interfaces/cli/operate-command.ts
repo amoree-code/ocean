@@ -1,4 +1,5 @@
 import { classifyIntent } from "../../application/context/intent-router.js";
+import { knownTaskPrefixes } from "../../application/context/project-resolution.js";
 import {
   type OperationName,
   operationForIntent,
@@ -19,7 +20,7 @@ const OPERATION_BUDGET = {
 };
 
 export async function runOperateCommand(text: string): Promise<void> {
-  const classification = classifyIntent(text);
+  const classification = classifyIntent(text, await knownTaskPrefixes());
   const mapped = operationForIntent(classification);
   if (!mapped.operation) {
     console.log(

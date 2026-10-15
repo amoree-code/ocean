@@ -1,5 +1,11 @@
 import { execFile } from "node:child_process";
-import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
+import {
+  type Dirent,
+  existsSync,
+  readFileSync,
+  realpathSync,
+  statSync,
+} from "node:fs";
 import {
   mkdir,
   readdir,
@@ -11,8 +17,15 @@ import {
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import {
+  derivePrefix,
+  formatTaskId,
+  isValidPrefix,
+  LEGACY_PREFIX,
+} from "../../domain/tasks/task-id.js";
 import { atomicWrite, registryFile, withFileLock } from "../../fs-utils.js";
 import {
+  isWorkspaceProject,
   oceanEnv,
   oceanPath,
   oceanRoot,
@@ -130,6 +143,10 @@ export type ProjectManifest = {
   paths: string[];
   created: string;
   autoRegistered: boolean;
+  // Task id namespace (OL -> OL-001) and the next number to issue. Both optional: a project
+  // without a prefix keeps issuing the legacy T-<n> ids.
+  prefix?: string;
+  nextTask?: number;
 };
 
 const MANIFEST_FILE = "project.json";
@@ -188,6 +205,20 @@ function parseManifest(folder: string, raw: string) {
     parsed.paths.some((entry) => typeof entry !== "string" || !entry.trim())
   )
     throw new Error("paths must be a list of non-empty strings");
+  if (
+    parsed.prefix !== undefined &&
+    (typeof parsed.prefix !== "string" ||
+      parsed.prefix === LEGACY_PREFIX ||
+      !isValidPrefix(parsed.prefix))
+  )
+    throw new Error(
+      `prefix '${String(parsed.prefix)}' is not a valid task prefix`,
+    );
+  if (
+    parsed.nextTask !== undefined &&
+    (!Number.isInteger(parsed.nextTask) || (parsed.nextTask as number) < 1)
+  )
+    throw new Error("nextTask must be a positive integer");
   // The folder name is the id; a manifest cannot claim another project's identity.
   return {
     id: folder,
@@ -195,6 +226,8 @@ function parseManifest(folder: string, raw: string) {
     paths: parsed.paths,
     created: typeof parsed.created === "string" ? parsed.created : "",
     autoRegistered: parsed.autoRegistered === true,
+    ...(parsed.prefix !== undefined ? { prefix: parsed.prefix } : {}),
+    ...(parsed.nextTask !== undefined ? { nextTask: parsed.nextTask } : {}),
   } satisfies ProjectManifest;
 }
 
@@ -321,8 +354,127 @@ async function saveProjectBindings(bindings: ProjectBinding[]): Promise<void> {
 
 // One lock for every manifest/cache write: bindings are checked across all projects (a path
 // may belong to one project only), so per-project locks would let two writers both pass.
-function withProjectsLock<T>(run: () => Promise<T>): Promise<T> {
+export function withProjectsLock<T>(run: () => Promise<T>): Promise<T> {
   return withFileLock(bindingsFile(), run);
+}
+
+// A manifest for a project seen for the first time. A folder with no tasks gets its own task
+// prefix and counter; one that already holds tasks stays on the legacy T namespace until
+// `ocean tasks renumber`. The workspace project is always T.
+async function newManifest(
+  id: string,
+  fields: Pick<
+    ProjectManifest,
+    "name" | "paths" | "created" | "autoRegistered"
+  >,
+  others: ProjectManifest[],
+): Promise<ProjectManifest> {
+  const manifest: ProjectManifest = { id, ...fields };
+  if (isWorkspaceProject(id)) return manifest;
+  const tasks = await readdir(
+    path.join(projectsRoot(), projectFolder(id), "tasks"),
+  ).catch(() => []);
+  if (tasks.some((entry) => !entry.startsWith("."))) return manifest;
+  const taken = others.flatMap((other) => (other.prefix ? [other.prefix] : []));
+  return { ...manifest, prefix: derivePrefix(id, taken), nextTask: 1 };
+}
+
+export async function knownTaskPrefixes(): Promise<string[]> {
+  const prefixes = (await listProjectManifests()).flatMap((manifest) =>
+    manifest.prefix ? [manifest.prefix] : [],
+  );
+  return [LEGACY_PREFIX, ...new Set(prefixes)];
+}
+
+// The project that owns a non-legacy prefix; null for T (the caller's own project) or a prefix
+// nobody uses. Two manifests claiming one prefix is a configuration error, never a guess.
+export async function projectForPrefix(prefix: string): Promise<string | null> {
+  if (prefix === LEGACY_PREFIX) return null;
+  const owners = (await listProjectManifests())
+    .filter((manifest) => manifest.prefix === prefix)
+    .map((manifest) => manifest.id);
+  if (owners.length > 1)
+    throw new Error(
+      `prefix ${prefix} is claimed by ${owners.join(", ")}; fix project.json`,
+    );
+  return owners[0] ?? null;
+}
+
+const TASK_NUMBER_SCAN_DEPTH = 2;
+
+// Highest <prefix>-<n> folder under every project's tasks/, live and archived. Archives are
+// tasks/archive/<namespace>/<id> (or flat archive/<id>), so descend archive/ two levels.
+// Every project is scanned because the legacy T sequence was shared by all of them.
+async function highestTaskNumber(prefix: string): Promise<number> {
+  const pattern = new RegExp(`^${prefix}-(\\d+)$`);
+  let highest = 0;
+  const visit = async (directory: string, depth: number): Promise<void> => {
+    let entries: Dirent[];
+    try {
+      entries = await readdir(directory, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const match = pattern.exec(entry.name);
+      if (match) highest = Math.max(highest, Number(match[1]));
+      else if (
+        depth < TASK_NUMBER_SCAN_DEPTH &&
+        (depth > 0 || entry.name === "archive")
+      )
+        await visit(path.join(directory, entry.name), depth + 1);
+    }
+  };
+  let projects: Dirent[];
+  try {
+    projects = await readdir(projectsRoot(), { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+  for (const project of projects)
+    if (project.isDirectory() && !project.name.startsWith("."))
+      await visit(path.join(projectsRoot(), project.name, "tasks"), 0);
+  return highest;
+}
+
+async function nextTaskNumber(
+  projectId: string,
+): Promise<{ prefix: string; number: number; manifest?: ProjectManifest }> {
+  const folder = projectFolder(projectId);
+  const manifest = (await listProjectManifests()).find(
+    (candidate) => candidate.id === folder,
+  );
+  const prefix = manifest?.prefix ?? LEGACY_PREFIX;
+  const number = Math.max(
+    manifest?.nextTask ?? 1,
+    (await highestTaskNumber(prefix)) + 1,
+  );
+  return { prefix, number, manifest };
+}
+
+// The id the next task of this project would get. A prediction only: another writer may take
+// it before the caller writes, so a write goes through withNextTaskId.
+export async function peekNextTaskId(projectId: string): Promise<string> {
+  return withProjectsLock(async () => {
+    const next = await nextTaskNumber(projectId);
+    return formatTaskId(next.prefix, next.number);
+  });
+}
+
+// Issues the next id and runs the write under the projects lock, so two creators never get one
+// id. The counter advances only when the write succeeded; a refused write consumes nothing.
+export async function withNextTaskId<T extends { ok: boolean }>(
+  projectId: string,
+  run: (id: string) => Promise<T>,
+): Promise<T> {
+  return withProjectsLock(async () => {
+    const next = await nextTaskNumber(projectId);
+    const result = await run(formatTaskId(next.prefix, next.number));
+    if (result.ok && next.manifest)
+      await writeManifest({ ...next.manifest, nextTask: next.number + 1 });
+    return result;
+  });
 }
 
 // Resolves the active Ocean project from a working directory: no terminal-in-Ocean
@@ -472,13 +624,16 @@ export async function bindProject(
       );
     const manifest: ProjectManifest = existing
       ? { ...existing, paths: [...existing.paths, portablePath(resolvedPath)] }
-      : {
-          id: name,
+      : await newManifest(
           name,
-          paths: [portablePath(resolvedPath)],
-          created: new Date().toISOString(),
-          autoRegistered: options.autoRegistered === true,
-        };
+          {
+            name,
+            paths: [portablePath(resolvedPath)],
+            created: new Date().toISOString(),
+            autoRegistered: options.autoRegistered === true,
+          },
+          manifests,
+        );
     await writeManifest(manifest);
     const updated = manifests
       .filter((candidate) => candidate.id !== name)
@@ -536,14 +691,19 @@ export async function migrateProjectBindings(
         });
         continue;
       }
-      const base = updates.get(binding.id) ??
-        manifests.find((manifest) => manifest.id === binding.id) ?? {
-          id: binding.id,
-          name: binding.name || binding.id,
-          paths: [],
-          created: binding.boundAt || new Date().toISOString(),
-          autoRegistered: false,
-        };
+      const base =
+        updates.get(binding.id) ??
+        manifests.find((manifest) => manifest.id === binding.id) ??
+        (await newManifest(
+          binding.id,
+          {
+            name: binding.name || binding.id,
+            paths: [],
+            created: binding.boundAt || new Date().toISOString(),
+            autoRegistered: false,
+          },
+          [...manifests, ...updates.values()],
+        ));
       updates.set(binding.id, {
         ...base,
         paths: [...base.paths, portablePath(resolved)],

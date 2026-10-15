@@ -5,6 +5,7 @@ import {
   autoRegisterProject,
   bindProject,
   findGitRoot,
+  knownTaskPrefixes,
   listProjectBindings,
   migrateProjectBindings,
   renameProject,
@@ -697,7 +698,9 @@ async function commandIntent(): Promise<void> {
     process.exitCode = 1;
   } else {
     const text = process.argv.slice(4).join(" ");
-    console.log(JSON.stringify(classifyIntent(text)));
+    console.log(
+      JSON.stringify(classifyIntent(text, await knownTaskPrefixes())),
+    );
   }
 }
 

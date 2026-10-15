@@ -361,6 +361,8 @@ test("context-ladder.ts imports only node:fs/promises, node:path, and the existi
     "./intent-router.js",
     "../brain/brain-service.js",
     "../../domain/ports/brain-index-port.js",
+    "../../domain/tasks/task-id.js",
+    "../tasks/task-reference.js",
   ]);
   for (const specifier of imports)
     assert.ok(allowed.has(specifier), `unexpected import: ${specifier}`);

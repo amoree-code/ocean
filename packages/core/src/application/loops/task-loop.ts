@@ -2,20 +2,30 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { AgentRuntimeDeps } from "../../domain/ports/runtime-ports.js";
+import { TASK_ID } from "../../domain/tasks/task-id.js";
 import {
   oceanPath,
+  PROJECTS_DIR,
+  projectFolder,
   resolveWithin,
   SYSTEM_DIR,
-  workspaceTasksRoot,
 } from "../../paths.js";
 import { runAgent } from "../runs/run-agent.js";
 import { checkpointTask } from "../tasks/checkpoint-task.js";
+import { folderProject } from "../tasks/list-tasks.js";
+import {
+  resolveTaskReference,
+  type TaskLocation,
+} from "../tasks/task-reference.js";
 import { type CommandRunner, verifyTask } from "../tasks/verify-task.js";
 
 type TaskLoopStatus = "active" | "paused" | "completed" | "failed" | "stopped";
 export type TaskLoop = {
   id: string;
   taskId: string;
+  // The project the loop started in (null: not inside one). Optional: loops written before
+  // task ids carried a prefix have none and find their task by id alone.
+  projectId?: string | null;
   profile: string;
   prompt: string;
   cwd: string;
@@ -56,11 +66,12 @@ export async function startTaskLoop(input: {
 }): Promise<TaskLoop> {
   if (!input.approved)
     throw new Error("Loop start requires explicit approval.");
-  if (!input.taskId || !/^T-\d+$/.test(input.taskId))
+  if (!input.taskId || !TASK_ID.test(input.taskId))
     throw new Error("Loop requires a valid task id.");
   const loop: TaskLoop = {
     id: `loop-${randomUUID()}`,
     taskId: input.taskId,
+    projectId: await folderProject(input.cwd),
     profile: input.profile,
     prompt: input.prompt.trim(),
     cwd: input.cwd,
@@ -149,8 +160,10 @@ export async function runTaskLoopsOnce(
       // A task is only complete when it claims done AND an independent verifier
       // agrees. A self-reported `state: done` whose checks fail keeps the loop
       // active and records why.
-      if (await taskClaimsDone(loop.taskId)) {
-        const outcome = await verifyTask(loop.taskId, undefined, {
+      const task = await loopTask(loop, cwd);
+      const root = tasksRootOf(task);
+      if (await taskClaimsDone(task.file)) {
+        const outcome = await verifyTask(task.id, root, {
           cwd: loop.cwd || cwd,
           run: options.verifyRun,
         });
@@ -159,7 +172,7 @@ export async function runTaskLoopsOnce(
       }
       // Durable per-step checkpoint: survives a cold restart because it is
       // written into the task file, not just held in loops.json.
-      await recordStepCheckpoint(loop, session.status);
+      await recordStepCheckpoint(loop, task, root, session.status);
       loop.resultPath = await persistWorkerResult(
         loop,
         sessionId,
@@ -177,12 +190,25 @@ export async function runTaskLoopsOnce(
   return ran;
 }
 
+// The loop's task, found where it lives now (renumbered or archived tasks included).
+function loopTask(loop: TaskLoop, cwd: string): Promise<TaskLocation> {
+  return resolveTaskReference(loop.taskId, {
+    projectId: loop.projectId ?? undefined,
+    cwd: loop.projectId ? undefined : loop.cwd || cwd,
+  });
+}
+
+const tasksRootOf = (task: TaskLocation): string =>
+  oceanPath(PROJECTS_DIR, projectFolder(task.projectId), "tasks");
+
 async function recordStepCheckpoint(
   loop: TaskLoop,
+  task: TaskLocation,
+  root: string,
   status: string,
 ): Promise<void> {
   try {
-    await checkpointTask(loop.taskId, undefined, {
+    await checkpointTask(task.id, root, {
       note: `loop ${loop.id} iteration ${loop.iterations}: session ${status}; ${loop.lastError ?? "verified progress"}`,
     });
   } catch {
@@ -241,8 +267,7 @@ export async function runTaskLoopWorker(
   }
 }
 
-async function taskClaimsDone(id: string): Promise<boolean> {
-  const file = resolveWithin(workspaceTasksRoot(), id, "task.md");
+async function taskClaimsDone(file: string): Promise<boolean> {
   const source = await readFile(file, "utf8");
   return /^state:\s*done\s*$/m.test(source);
 }

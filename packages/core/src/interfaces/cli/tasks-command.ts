@@ -12,8 +12,8 @@ import {
   listTasks,
   listTasksForFolder,
   type ProjectTask,
-  projectsHoldingTask,
 } from "../../application/tasks/list-tasks.js";
+import { resolveTaskReference } from "../../application/tasks/task-reference.js";
 import { verifyTask } from "../../application/tasks/verify-task.js";
 import {
   enginePath,
@@ -30,22 +30,27 @@ const execFile = promisify(execFileCallback);
 // implementation and the MCP server both live in the application layer now.
 export { listTasks };
 
-// The project an id-based action works on: --project if given, else the cwd's project when it
-// holds the id, else the one project that does. Several holders is an error, never a guess.
-async function taskProject(
+// The live task an id-based action works on (resolution rules: resolveTaskReference). The
+// action uses the location's own id and project, never the id as typed.
+async function liveTask(
   id: string,
   explicitProject: string | undefined,
   cwdProject: string | null,
-): Promise<string> {
-  if (explicitProject) return explicitProject;
-  const holders = await projectsHoldingTask(id);
-  if (cwdProject && holders.includes(cwdProject)) return cwdProject;
-  if (holders.length === 1) return holders[0];
-  if (holders.length > 1)
-    throw new Error(
-      `${id} exists in ${holders.join(", ")}; pass --project <id>`,
-    );
-  throw new Error(`${id} is not a task in any project`);
+): Promise<{ owner: string; id: string; root: string }> {
+  const location = await resolveTaskReference(id, {
+    projectId: explicitProject ?? cwdProject ?? undefined,
+    explicit: Boolean(explicitProject),
+  });
+  if (location.archived) throw new Error(`${location.id} is archived`);
+  return {
+    owner: location.projectId,
+    id: location.id,
+    root: resolveWithin(
+      oceanPath(PROJECTS_DIR),
+      projectFolder(location.projectId),
+      "tasks",
+    ),
+  };
 }
 
 // `ocean tasks list --pretty`: one aligned row per task, for a person rather than a tool.
@@ -155,16 +160,12 @@ export async function runTasksCommand(
       throw new Error(
         "Usage: ocean tasks checkpoint <id> --note <text> [--next <text>] [--project <id>]",
       );
-    const owner = await taskProject(id, explicitProject, cwdProject);
-    const result = await checkpointTask(
-      id,
-      resolveWithin(oceanPath(PROJECTS_DIR), projectFolder(owner), "tasks"),
-      {
-        note: args[noteIndex + 1],
-        next: nextIndex >= 0 ? args[nextIndex + 1] : undefined,
-      },
-    );
-    console.log(JSON.stringify({ ...result, project: owner }, null, 2));
+    const task = await liveTask(id, explicitProject, cwdProject);
+    const result = await checkpointTask(task.id, task.root, {
+      note: args[noteIndex + 1],
+      next: nextIndex >= 0 ? args[nextIndex + 1] : undefined,
+    });
+    console.log(JSON.stringify({ ...result, project: task.owner }, null, 2));
     return;
   }
   if (action === "verify") {
@@ -174,14 +175,8 @@ export async function runTasksCommand(
       process.exitCode = 1;
       return;
     }
-    const outcome = await verifyTask(
-      id,
-      resolveWithin(
-        oceanPath(PROJECTS_DIR),
-        projectFolder(await taskProject(id, explicitProject, cwdProject)),
-        "tasks",
-      ),
-    );
+    const task = await liveTask(id, explicitProject, cwdProject);
+    const outcome = await verifyTask(task.id, task.root);
     console.log(JSON.stringify(outcome, null, 2));
     if (!outcome.passed) process.exitCode = 1;
     return;
@@ -194,18 +189,12 @@ export async function runTasksCommand(
       return;
     }
     try {
-      const owner = await taskProject(id, explicitProject, cwdProject);
+      const task = await liveTask(id, explicitProject, cwdProject);
       console.log(
         JSON.stringify(
-          await completeTask(
-            id,
-            resolveWithin(
-              oceanPath(PROJECTS_DIR),
-              projectFolder(owner),
-              "tasks",
-            ),
-            { verify: !args.includes("--no-verify") },
-          ),
+          await completeTask(task.id, task.root, {
+            verify: !args.includes("--no-verify"),
+          }),
           null,
           2,
         ),

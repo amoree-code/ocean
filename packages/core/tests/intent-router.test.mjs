@@ -270,13 +270,22 @@ test("classification result exposes exactly the contracted fields, nothing extra
   ]);
 });
 
-test("intent-router.ts imports nothing — structurally no fs, no network, no MCP, no model call is possible", async () => {
+test("intent-router.ts imports only the pure task-id module — structurally no fs, no network, no MCP, no model call is possible", async () => {
   const { readFile } = await import("node:fs/promises");
   const source = await readFile(
     path.resolve("src/application/context/intent-router.ts"),
     "utf8",
   );
-  assert.doesNotMatch(source, /^import /m);
+  // The one allowed import is the pure task-id module (no I/O of its own).
+  const imports = [...source.matchAll(/^import .*?from "([^"]+)";?$/gm)].map(
+    (match) => match[1],
+  );
+  assert.deepEqual(imports, ["../../domain/tasks/task-id.js"]);
+  const taskId = await readFile(
+    path.resolve("src/domain/tasks/task-id.ts"),
+    "utf8",
+  );
+  assert.doesNotMatch(taskId, /^import /m);
 });
 
 test("'ocean intent classify' CLI is reusable client-neutrally: same output as the direct call, no fs writes", () => {
