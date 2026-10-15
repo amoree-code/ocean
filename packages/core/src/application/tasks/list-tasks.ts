@@ -73,3 +73,42 @@ export async function listTasks(
   }
   return records.sort((a, b) => a.id.localeCompare(b.id));
 }
+
+// Project folders under 04-projects that hold a tasks/ directory, sorted.
+export async function projectsWithTasks(): Promise<string[]> {
+  let entries: Dirent[];
+  try {
+    entries = await readdir(oceanPath(PROJECTS_DIR), { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const projects: string[] = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
+    try {
+      await readdir(path.join(oceanPath(PROJECTS_DIR), entry.name, "tasks"));
+      projects.push(entry.name);
+    } catch {
+      /* no tasks/ here */
+    }
+  }
+  return projects.sort();
+}
+
+// Projects whose live tasks/ holds this id. Ids are unique per project, not across projects.
+export async function projectsHoldingTask(id: string): Promise<string[]> {
+  if (!/^[A-Za-z][A-Za-z0-9]*-\d+$/.test(id)) return [];
+  const holders: string[] = [];
+  for (const project of await projectsWithTasks()) {
+    try {
+      await readFile(
+        path.join(oceanPath(PROJECTS_DIR), project, "tasks", id, "task.md"),
+        "utf8",
+      );
+      holders.push(project);
+    } catch {
+      /* not here */
+    }
+  }
+  return holders;
+}
