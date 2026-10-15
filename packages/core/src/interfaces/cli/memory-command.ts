@@ -13,7 +13,9 @@ import {
   readProfileFacts,
   writeProfileFact,
 } from "../../application/memory/profile-facts.js";
+import { folderProject } from "../../application/tasks/list-tasks.js";
 import { defaultBrainIndexPort } from "../../composition/runtime.js";
+import { isValidProjectId } from "../../domain/context/project-id.js";
 import { createOllamaEmbedder } from "../../infrastructure/providers/ollama-embedder.js";
 
 async function runReindex(args: string[]): Promise<void> {
@@ -37,17 +39,40 @@ async function runReindex(args: string[]): Promise<void> {
   console.log(JSON.stringify(result, null, 2));
 }
 
+const searchUsage =
+  "Usage: ocean memory search <query> [--project <id> | --all] [--json]";
+
 async function runSearch(args: string[]): Promise<void> {
-  const json = args.includes("--json");
-  const query = args.filter((arg) => !arg.startsWith("--")).join(" ");
-  if (!query) {
-    console.error("Usage: ocean memory search <query> [--json]");
+  let json = false;
+  let all = false;
+  let project: string | undefined;
+  const words: string[] = [];
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--json") json = true;
+    else if (arg === "--all") all = true;
+    else if (arg === "--project") {
+      project = args[index + 1];
+      index += 1;
+    } else if (!arg.startsWith("--")) words.push(arg);
+  }
+  const query = words.join(" ");
+  if (
+    !query ||
+    (project !== undefined && (all || !isValidProjectId(project)))
+  ) {
+    console.error(searchUsage);
     process.exitCode = 1;
     return;
   }
   try {
+    // Default: the cwd's project plus global records. --all is the explicit unscoped view.
+    const scope = all
+      ? undefined
+      : { project: project ?? (await folderProject(process.cwd())) };
     const result = await brainSearch({
       query,
+      scope,
       indexPort: defaultBrainIndexPort,
     });
     console.log(

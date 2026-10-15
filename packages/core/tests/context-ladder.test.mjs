@@ -11,7 +11,7 @@ import {
 } from "../dist/application/context/context-ladder.js";
 import { classifyIntent } from "../dist/application/context/intent-router.js";
 import { defaultBrainIndexPort } from "../dist/composition/runtime.js";
-import { PERSONAL_DIR, PROJECTS_DIR } from "../dist/paths.js";
+import { KNOWLEDGE_DIR, PERSONAL_DIR, PROJECTS_DIR } from "../dist/paths.js";
 
 const reindexBrain = (options) =>
   reindexBrainRaw({ indexPort: defaultBrainIndexPort, ...options });
@@ -361,6 +361,8 @@ test("context-ladder.ts imports only node:fs/promises, node:path, and the existi
     "./intent-router.js",
     "../brain/brain-service.js",
     "../../domain/ports/brain-index-port.js",
+    "../../domain/brain/record-scope.js",
+    "../../fs-utils.js",
     "../../domain/tasks/task-id.js",
     "../tasks/task-reference.js",
   ]);
@@ -441,6 +443,120 @@ test("ranked-references with no query is unaffected — still the fixed authorit
     const result = await planContextRead(classification, GOOD_BUDGET, root);
     assert.equal(result.rung, "ranked-references");
     assert.doesNotMatch(result.reason, /brain index/);
+  }));
+
+// --- project scope (T-256 phase 4a) ---
+
+async function withScopedRoot(fn) {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-ladder-scope-"));
+  const decisions = path.join(root, KNOWLEDGE_DIR, "decisions");
+  await mkdir(decisions, { recursive: true });
+  await mkdir(path.join(root, PERSONAL_DIR), { recursive: true });
+  const record = (name, scope) =>
+    writeFile(
+      path.join(decisions, `${name}.md`),
+      `---\nid: ${name}\ntitle: ${name}\n${scope === undefined ? "" : `scope: ${scope}\n`}---\n\n# ${name}\n\nzebrafood\n`,
+    );
+  await record("d-global", "global");
+  await record("d-none", undefined);
+  await record("d-a", "project:a");
+  await record("d-b", "project:b");
+  await record("d-bad", "ocean");
+  await writeFile(path.join(root, PERSONAL_DIR, "MEMORY.md"), "# personal\n");
+  await mkdir(path.join(root, PROJECTS_DIR, "a"), { recursive: true });
+  const previous = process.env.OCEAN_ROOT;
+  process.env.OCEAN_ROOT = root;
+  try {
+    return await fn(root);
+  } finally {
+    if (previous === undefined) delete process.env.OCEAN_ROOT;
+    else process.env.OCEAN_ROOT = previous;
+  }
+}
+
+const baseNames = (files) => files.map((file) => path.basename(file));
+
+test("memory-lookup lists personal MEMORY.md, then the bound project's, in order", () =>
+  withScopedRoot(async (root) => {
+    await writeFile(
+      path.join(root, PROJECTS_DIR, "a", "MEMORY.md"),
+      "# project a\n",
+    );
+    const classification = classifyIntent("what do you remember about goals");
+    const result = await planContextRead(
+      classification,
+      GOOD_BUDGET,
+      root,
+      "a",
+    );
+    assert.deepEqual(result.files, [
+      `${PERSONAL_DIR}/MEMORY.md`,
+      `${PROJECTS_DIR}/a/MEMORY.md`,
+    ]);
+  }));
+
+test("memory-lookup is personal only when unbound or the project has no MEMORY.md", () =>
+  withScopedRoot(async (root) => {
+    const classification = classifyIntent("what do you remember about goals");
+    for (const project of [null, "a", "missing"]) {
+      const result = await planContextRead(
+        classification,
+        GOOD_BUDGET,
+        root,
+        project,
+      );
+      assert.deepEqual(
+        result.files,
+        [`${PERSONAL_DIR}/MEMORY.md`],
+        String(project),
+      );
+    }
+  }));
+
+test("memory-lookup through the index leads with the MEMORY.md files, without duplicates", () =>
+  withScopedRoot(async (root) => {
+    await writeFile(
+      path.join(root, PROJECTS_DIR, "a", "MEMORY.md"),
+      "# project a\n",
+    );
+    await writeFile(
+      path.join(root, PERSONAL_DIR, "goals.md"),
+      "---\nid: goals\ntitle: Goals\nscope: project:b\n---\n\n# Goals\n\nzebrafood\n",
+    );
+    await reindexBrain({ root, embedder: null });
+    const classification = classifyIntent("what do you remember about goals");
+    const result = await planContextRead(
+      classification,
+      GOOD_BUDGET,
+      root,
+      "a",
+      {
+        query: "zebrafood",
+        indexPort: defaultBrainIndexPort,
+      },
+    );
+    assert.deepEqual(result.files.slice(0, 2), [
+      `${PERSONAL_DIR}/MEMORY.md`,
+      `${PROJECTS_DIR}/a/MEMORY.md`,
+    ]);
+    assert.equal(new Set(result.files).size, result.files.length);
+    assert.equal(
+      result.files.some((file) => file.endsWith("goals.md")),
+      false,
+    );
+  }));
+
+test("decision lookup without an index drops other projects' and malformed-scope records", () =>
+  withScopedRoot(async (root) => {
+    const classification = classifyIntent("what did we decide about auth");
+    assert.equal(classification.intent, "decision-lookup");
+    const files = async (project) =>
+      baseNames(
+        (await planContextRead(classification, GOOD_BUDGET, root, project))
+          .files,
+      );
+    assert.deepEqual(await files("a"), ["d-a.md", "d-global.md", "d-none.md"]);
+    assert.deepEqual(await files(null), ["d-global.md", "d-none.md"]);
   }));
 
 test("exact record: a prefixed id resolves inside its own project only", async () => {

@@ -1,11 +1,18 @@
 import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
+import {
+  normalizeScope,
+  scopeVisible,
+} from "../../domain/brain/record-scope.js";
 import type { BrainIndexPort } from "../../domain/ports/brain-index-port.js";
 import { parseTaskId } from "../../domain/tasks/task-id.js";
+import { readFrontmatterFile } from "../../fs-utils.js";
 import {
   KNOWLEDGE_DIR,
   oceanRoot,
   PERSONAL_DIR,
+  PROJECTS_DIR,
+  projectFolder,
   resolveStorePath,
   resolveWithin,
   storeRelativeToRoot,
@@ -20,7 +27,9 @@ import type { IntentClassification } from "./intent-router.js";
 // and no rung above "identity" is ever reached for a low-confidence, ambiguous, or unknown
 // classification (fail-closed). No rung here reads file content — it only validates a
 // budget and, for "exact-record", stats a single bounded, path-checked candidate file to
-// prove size before any later slice is allowed to read it. See T-198 slice 5.
+// prove size before any later slice is allowed to read it. One exception (T-256): the
+// no-index decision-lookup fallback reads a decision's frontmatter to drop records scoped to
+// another project. See T-198 slice 5.
 export type LadderRung =
   | "identity"
   | "project-metadata"
@@ -302,6 +311,8 @@ async function planRankedReferencesViaIndex(
   budget: ContextBudget,
   root: string,
   indexPort: BrainIndexPort,
+  projectId: string | null,
+  leading: string[],
 ): Promise<BoundedReadResult | null> {
   const rung: LadderRung = "ranked-references";
   let result: Awaited<ReturnType<typeof brainSearch>>;
@@ -310,6 +321,7 @@ async function planRankedReferencesViaIndex(
       query,
       root,
       limit: budget.maxFiles,
+      scope: { project: projectId },
       indexPort,
     });
   } catch {
@@ -317,12 +329,24 @@ async function planRankedReferencesViaIndex(
   }
   const files: string[] = [];
   let bytes = 0;
-  for (const hit of result.results) {
+  // MEMORY.md files are not in the index; they lead, then the ranked hits (deduped).
+  const entries = [
+    ...leading.map((relative) => ({
+      relative,
+      absolute: resolveWithin(root, relative),
+    })),
+    ...result.results.map((hit) => ({
+      relative: storeRelativeToRoot(hit.path),
+      absolute: resolveStorePath(root, hit.path),
+    })),
+  ];
+  for (const entry of entries) {
     if (files.length >= budget.maxFiles) break;
+    if (files.includes(entry.relative)) continue;
     try {
-      const size = (await stat(resolveStorePath(root, hit.path))).size;
+      const size = (await stat(entry.absolute)).size;
       if (bytes + size > budget.maxBytes) break;
-      files.push(storeRelativeToRoot(hit.path));
+      files.push(entry.relative);
       bytes += size;
     } catch {
       // A hit whose file vanished since the index was built is skipped, not fatal.
@@ -343,10 +367,34 @@ async function planRankedReferencesViaIndex(
   );
 }
 
+// 02-personal/MEMORY.md, then the bound project's MEMORY.md when it exists. An unbound
+// session (null) gets the personal file only.
+async function memoryFiles(
+  root: string,
+  projectId: string | null,
+): Promise<string[]> {
+  const files = [path.posix.join(PERSONAL_DIR, "MEMORY.md")];
+  if (projectId) {
+    const relative = path.posix.join(
+      PROJECTS_DIR,
+      projectFolder(projectId),
+      "MEMORY.md",
+    );
+    try {
+      if ((await stat(resolveWithin(root, relative))).isFile())
+        files.push(relative);
+    } catch {
+      // No project MEMORY.md is normal.
+    }
+  }
+  return files;
+}
+
 async function planRankedReferences(
   intent: string,
   budget: ContextBudget,
   root: string,
+  projectId: string | null,
   query?: string,
   indexPort?: BrainIndexPort,
 ): Promise<BoundedReadResult> {
@@ -359,18 +407,22 @@ async function planRankedReferences(
       "max-operation-cost-exceeded",
     );
   }
+  const memoryLookup = intent === "memory-lookup";
   if (query && indexPort) {
     const viaIndex = await planRankedReferencesViaIndex(
       query,
       budget,
       root,
       indexPort,
+      projectId,
+      memoryLookup ? await memoryFiles(root, projectId) : [],
     );
     if (viaIndex) return viaIndex;
     // No index built: fall through to the fixed authoritative files below, but say why.
   }
   const candidates: string[] = [];
-  if (intent === "memory-lookup" || intent === "work-style-lookup")
+  if (memoryLookup) candidates.push(...(await memoryFiles(root, projectId)));
+  if (intent === "work-style-lookup")
     candidates.push(path.posix.join(PERSONAL_DIR, "MEMORY.md"));
   if (intent === "knowledge-lookup")
     candidates.push(path.posix.join(KNOWLEDGE_DIR, "KNOWLEDGE.md"));
@@ -380,9 +432,22 @@ async function planRankedReferences(
       for (const entry of (await readdir(directory, { withFileTypes: true }))
         .filter((item) => item.isFile() && item.name.endsWith(".md"))
         .sort((a, b) => a.name.localeCompare(b.name))) {
-        candidates.push(
-          path.posix.join(KNOWLEDGE_DIR, "decisions", entry.name),
+        const relative = path.posix.join(
+          KNOWLEDGE_DIR,
+          "decisions",
+          entry.name,
         );
+        // Scope is read from the file itself: no index here to say whose record it is.
+        const meta = await readFrontmatterFile(
+          path.join(directory, entry.name),
+          4096,
+        );
+        if (
+          meta &&
+          !scopeVisible(normalizeScope(meta.fields.scope).scope, projectId)
+        )
+          continue;
+        candidates.push(relative);
       }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
@@ -426,7 +491,7 @@ export async function planContextRead(
   classification: IntentClassification,
   budget: unknown,
   root = oceanRoot(),
-  projectId = WORKSPACE_PROJECT_ID,
+  projectId: string | null = WORKSPACE_PROJECT_ID,
   options?: { query?: string; indexPort?: BrainIndexPort },
 ): Promise<BoundedReadResult> {
   const { rung, reason } = resolveLadderRung(classification);
@@ -450,13 +515,14 @@ export async function planContextRead(
       classification.identifier ?? "",
       bounded,
       root,
-      projectId,
+      projectId ?? WORKSPACE_PROJECT_ID,
     );
   if (rung === "project-metadata") return planProjectMetadata(bounded);
   return planRankedReferences(
     classification.intent,
     bounded,
     root,
+    projectId,
     options?.query,
     options?.indexPort,
   );

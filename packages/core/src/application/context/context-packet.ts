@@ -271,7 +271,8 @@ export async function buildContextPacket(
         classification,
         budget,
         oceanRoot(),
-        activeProject.projectId ?? WORKSPACE_PROJECT_ID,
+        // Nullable on purpose: an unbound session sees global memory only.
+        activeProject.projectId,
         options,
       )
     : null;

@@ -1,3 +1,4 @@
+import { stat } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import {
@@ -6,9 +7,35 @@ import {
   measureContextCost,
 } from "../../application/context/context-cost.js";
 import { resolveProject } from "../../application/context/project-resolution.js";
-import { BRAIN_RECORD_DIRS, PROJECTS_DIR, SYSTEM_DIR } from "../../paths.js";
+import {
+  BRAIN_RECORD_DIRS,
+  oceanRoot,
+  PERSONAL_DIR,
+  PROJECTS_DIR,
+  projectFolder,
+  SYSTEM_DIR,
+} from "../../paths.js";
 import { oceanVersion } from "../../version.js";
 import { listTasks } from "./tasks-command.js";
+
+// The MEMORY.md files a session in this project reads: the personal index, then the project's.
+async function existingMemoryFiles(project: string | null): Promise<string[]> {
+  const candidates = [path.posix.join(PERSONAL_DIR, "MEMORY.md")];
+  if (project)
+    candidates.push(
+      path.posix.join(PROJECTS_DIR, projectFolder(project), "MEMORY.md"),
+    );
+  const found: string[] = [];
+  for (const relative of candidates) {
+    try {
+      if ((await stat(path.join(oceanRoot(), relative))).isFile())
+        found.push(relative);
+    } catch {
+      // Missing is normal.
+    }
+  }
+  return found;
+}
 
 export async function runContextCommand(json = false): Promise<void> {
   const version = await oceanVersion();
@@ -24,6 +51,7 @@ export async function runContextCommand(json = false): Promise<void> {
     projectResolution: resolution,
     version,
     roots: [...BRAIN_RECORD_DIRS, PROJECTS_DIR, SYSTEM_DIR],
+    memory: await existingMemoryFiles(project),
     tasks,
   };
   if (json) {
@@ -41,6 +69,7 @@ export async function runContextCommand(json = false): Promise<void> {
     console.log(
       `project: ${resolution.projectId} (confidence: ${resolution.confidence})`,
     );
+  console.log(`memory: ${context.memory.join(", ") || "none"}`);
   if (!tasks.length) console.log("active tasks: none");
   else
     for (const task of tasks)

@@ -3,9 +3,11 @@ import { access, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { reindexBrain } from "../dist/application/brain/brain-reindex.js";
+import { defaultBrainIndexPort } from "../dist/composition/runtime.js";
 import { handleOceanMcpRequest } from "../dist/infrastructure/mcp/ocean-server.js";
 import { SessionStore } from "../dist/infrastructure/persistence/session-store.js";
-import { PROJECTS_DIR, SYSTEM_DIR } from "../dist/paths.js";
+import { PROJECTS_DIR, STORE_DIR, SYSTEM_DIR } from "../dist/paths.js";
 
 test("Ocean MCP exposes provider-neutral read-only tools without Obsidian", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ocean-mcp-no-obsidian-"));
@@ -94,6 +96,80 @@ test("ocean_task_get reads a task from the named project, by prefix or by old id
       (await get({ taskId: "LB-001", project: "ocean" })).error,
       /belongs to lab/,
     );
+  } finally {
+    if (previous === undefined) delete process.env.OCEAN_ROOT;
+    else process.env.OCEAN_ROOT = previous;
+  }
+});
+
+test("brain_search and brain_neighbors take project/cwd and show only that project's memory", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-mcp-scope-"));
+  const repoA = await mkdtemp(path.join(os.tmpdir(), "ocean-mcp-repo-a-"));
+  const previous = process.env.OCEAN_ROOT;
+  process.env.OCEAN_ROOT = root;
+  try {
+    await mkdir(path.join(root, PROJECTS_DIR, "a"), { recursive: true });
+    await writeFile(
+      path.join(root, PROJECTS_DIR, "a", "project.json"),
+      JSON.stringify({ name: "a", paths: [repoA] }),
+    );
+    const store = path.join(root, STORE_DIR.memory);
+    await mkdir(store, { recursive: true });
+    for (const [name, scope] of [
+      ["g", "global"],
+      ["a", "project:a"],
+      ["b", "project:b"],
+    ])
+      await writeFile(
+        path.join(store, `${name}.md`),
+        `---\nid: rec-${name}\ntitle: Rec ${name}\nscope: ${scope}\n---\n\nzebrafood [[g]] [[a]] [[b]]\n`,
+      );
+    await reindexBrain({ root, indexPort: defaultBrainIndexPort });
+    const listed = await handleOceanMcpRequest({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/list",
+    });
+    for (const name of ["brain_search", "brain_neighbors"]) {
+      const schema = listed.result.tools.find(
+        (tool) => tool.name === name,
+      ).inputSchema;
+      assert.equal(schema.properties.project.type, "string");
+      assert.equal(schema.properties.cwd.type, "string");
+      assert.equal(schema.additionalProperties, false);
+    }
+    const call = async (name, args) => {
+      const response = await handleOceanMcpRequest({
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/call",
+        params: { name, arguments: args },
+      });
+      return response.error
+        ? { error: response.error.message }
+        : JSON.parse(response.result.content[0].text);
+    };
+    const hits = async (args) =>
+      (await call("brain_search", { query: "zebrafood", ...args })).results
+        .map((hit) => hit.id)
+        .sort();
+    assert.deepEqual(await hits({ cwd: repoA }), ["rec-a", "rec-g"]);
+    assert.deepEqual(await hits({ project: "b" }), ["rec-b", "rec-g"]);
+    assert.deepEqual(await hits({ project: "a", cwd: repoA }), [
+      "rec-a",
+      "rec-g",
+    ]);
+    // An unbound cwd sees global only.
+    assert.deepEqual(await hits({ cwd: os.tmpdir() }), ["rec-g"]);
+    assert.match(
+      (await call("brain_search", { query: "x", project: "../x" })).error,
+      /invalid project id/,
+    );
+    const neighbors = await call("brain_neighbors", {
+      id: "rec-g",
+      cwd: repoA,
+    });
+    assert.deepEqual(neighbors.neighbors.map((n) => n.id).sort(), ["rec-a"]);
   } finally {
     if (previous === undefined) delete process.env.OCEAN_ROOT;
     else process.env.OCEAN_ROOT = previous;

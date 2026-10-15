@@ -15,12 +15,16 @@ import {
   listHandoffs,
 } from "../../application/handoff/handoff-service.js";
 import { promoteSessionToKnowledge } from "../../application/memory/session-promotion.js";
-import { listTasksForFolder } from "../../application/tasks/list-tasks.js";
+import {
+  folderProject,
+  listTasksForFolder,
+} from "../../application/tasks/list-tasks.js";
 import {
   defaultBrainIndexPort,
   defaultSessionStoreFactory,
   defaultWrapperManager,
 } from "../../composition/runtime.js";
+import { isValidProjectId } from "../../domain/context/project-id.js";
 import {
   actionFingerprint,
   mcpApprovalSchema,
@@ -189,7 +193,7 @@ const tools = [
   {
     name: "brain_search",
     description:
-      "Search the markdown memory/knowledge index (hybrid FTS + vector when available).",
+      "Search the markdown memory/knowledge index (hybrid FTS + vector when available). Shows global records plus the project (`project`, else the one bound to `cwd`); unbound sessions see global only.",
     annotations: { readOnlyHint: true },
     inputSchema: {
       type: "object",
@@ -197,6 +201,8 @@ const tools = [
         query: { type: "string" },
         limit: { type: "number" },
         types: { type: "array", items: { type: "string" } },
+        project: { type: "string" },
+        cwd: { type: "string" },
       },
       required: ["query"],
       additionalProperties: false,
@@ -227,6 +233,8 @@ const tools = [
         depth: { type: "number" },
         direction: { type: "string", enum: ["out", "in", "both"] },
         limit: { type: "number" },
+        project: { type: "string" },
+        cwd: { type: "string" },
       },
       required: ["id"],
       additionalProperties: false,
@@ -418,6 +426,7 @@ async function callTool(
   }
   if (name === "brain_search")
     return brainSearch({
+      scope: await scopeFor(args),
       query: requiredArgument(args, "query"),
       limit:
         typeof args.limit === "number"
@@ -447,6 +456,7 @@ async function callTool(
   }
   if (name === "brain_neighbors")
     return brainNeighbors({
+      scope: await scopeFor(args),
       idOrPath: requiredArgument(args, "id"),
       depth: args.depth === 2 ? 2 : 1,
       direction:
@@ -460,6 +470,20 @@ async function callTool(
       indexPort: defaultBrainIndexPort,
     });
   throw new Error(`Unknown MCP tool: ${name}`);
+}
+
+// Memory visibility for a tool call: an explicit project, else the one bound to the cwd.
+async function scopeFor(
+  args: Record<string, unknown>,
+): Promise<{ project: string | null }> {
+  if (typeof args.project === "string" && args.project) {
+    if (!isValidProjectId(args.project))
+      throw new Error(`invalid project id '${args.project}'`);
+    return { project: args.project };
+  }
+  const cwd =
+    typeof args.cwd === "string" && args.cwd ? args.cwd : process.cwd();
+  return { project: await folderProject(cwd) };
 }
 
 async function readResource(
