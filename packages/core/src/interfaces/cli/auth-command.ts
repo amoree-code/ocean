@@ -3,6 +3,7 @@ import {
   authLogin,
   authStatus,
 } from "../../application/auth/auth-orchestrator.js";
+import { sessionProjectId } from "../../application/sessions/session-projects.js";
 import { defaultAuthDeps } from "../../composition/runtime.js";
 import { validateSessionEntryContract } from "../../domain/sessions/entry-contract.js";
 import { openSessionStore } from "../../infrastructure/persistence/session-store.js";
@@ -26,6 +27,7 @@ export async function runAuthCommand(
     profile: `auth:${provider}`,
     profileIdentity: "",
     workingDirectory: process.cwd(),
+    projectId: await sessionProjectId(process.cwd()),
     resumeData: null,
   });
   store.appendEvent(

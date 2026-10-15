@@ -8,6 +8,7 @@ import type { SessionStorePort } from "../../domain/ports/session-store-port.js"
 import { validateSessionEntryContract } from "../../domain/sessions/entry-contract.js";
 import type { Session, SessionEvent } from "../../domain/sessions/session.js";
 import { oceanPath, oceanRoot, SYSTEM_DIR } from "../../paths.js";
+import { sessionProjectId } from "../sessions/session-projects.js";
 import type { BrowserService, ClickExpectation } from "./browser-service.js";
 
 type BrowserResumeData = BrowserLaunch & {
@@ -127,6 +128,7 @@ export class BrowserSessionManager {
       profile: "browser",
       profileIdentity: "browser-v1",
       workingDirectory: oceanRoot(),
+      projectId: await sessionProjectId(oceanRoot()),
       resumeData: null,
     });
     this.store.appendEvent(
