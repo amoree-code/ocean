@@ -4,6 +4,7 @@ import type {
   BrainRecord,
 } from "../../domain/brain/brain-record.js";
 import { validateBrainRecord } from "../../domain/brain/brain-record.js";
+import { normalizeScope } from "../../domain/brain/record-scope.js";
 import { parseFrontmatter } from "../../fs-utils.js";
 
 // Pure markdown layer for T-228: turns one markdown file's raw text into a canonical
@@ -55,6 +56,8 @@ export type NormalizedRecord = {
   record: BrainRecord;
   conformance: BrainConformance;
   body: string;
+  // The scope as written, so reindex can name what was invalid (record.scope says only "invalid").
+  rawScope: string | undefined;
 };
 
 // relPath is the record's identity of last resort: `<store-relative path, no .md>`.
@@ -115,6 +118,9 @@ export function normalizeRecord(
     "last_verified",
   );
 
+  const scopeField = declaredOrAliased("scope");
+  const scope = normalizeScope(scopeField.value);
+
   const record = validateBrainRecord({
     id,
     title,
@@ -125,6 +131,7 @@ export function normalizeRecord(
     created: createdField.value ?? null,
     updated: updatedField.value ?? null,
     lastConfirmedAt: lastConfirmedField.value ?? null,
+    scope: scope.scope,
   });
 
   const conformance: BrainConformance = {
@@ -137,9 +144,11 @@ export function normalizeRecord(
     created: createdField.state,
     updated: updatedField.state,
     lastConfirmedAt: lastConfirmedField.state,
+    // An invalid scope is counted by reindex's invalidScopes, not as a conformance state.
+    scope: scope.state === "defaulted" ? "defaulted" : "declared",
   };
 
-  return { record, conformance, body };
+  return { record, conformance, body, rawScope: scopeField.value };
 }
 
 export type Wikilink = {

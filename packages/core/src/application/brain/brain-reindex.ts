@@ -86,6 +86,7 @@ type WalkedDoc = {
   store: (typeof STORES)[number];
   record: ReturnType<typeof normalizeRecord>["record"];
   conformance: BrainConformance;
+  rawScope: string | undefined;
   body: string;
   contentHash: string;
   bytes: number;
@@ -105,6 +106,8 @@ export type ReindexResult = {
   danglingLinks: Array<{ source: string; target: string }>;
   ambiguousLinks: Array<{ source: string; target: string }>;
   conformance: Record<string, { aliased: number; defaulted: number }>;
+  scopes: Record<string, number>;
+  invalidScopes: Array<{ path: string; scope: string }>;
   legacyIndexPresent: boolean;
   vectors: boolean;
   outFile: string;
@@ -157,7 +160,10 @@ export async function reindexBrain(
         );
       const relative = `${store}/${path.relative(storeRoot, file).split(path.sep).join("/")}`;
       const source = await readFile(file, "utf8");
-      const { record, conformance, body } = normalizeRecord(relative, source);
+      const { record, conformance, body, rawScope } = normalizeRecord(
+        relative,
+        source,
+      );
       const links = extractWikilinks(body).map((link) => ({
         targetRaw: link.target,
         heading: link.heading,
@@ -168,6 +174,7 @@ export async function reindexBrain(
         store,
         record,
         conformance,
+        rawScope,
         body,
         contentHash: createHash("sha256").update(source).digest("hex"),
         bytes: Buffer.byteLength(source, "utf8"),
@@ -209,9 +216,14 @@ export async function reindexBrain(
     string,
     { aliased: number; defaulted: number }
   > = {};
+  const scopeTally: Record<string, number> = {};
+  const invalidScopes: Array<{ path: string; scope: string }> = [];
   let chunkCount = 0;
 
   for (const doc of walked) {
+    scopeTally[doc.record.scope] = (scopeTally[doc.record.scope] ?? 0) + 1;
+    if (doc.record.scope === "invalid")
+      invalidScopes.push({ path: doc.storePath, scope: doc.rawScope ?? "" });
     for (const [field, state] of Object.entries(doc.conformance)) {
       conformanceTally[field] ??= { aliased: 0, defaulted: 0 };
       if (state === "aliased") conformanceTally[field].aliased += 1;
@@ -226,6 +238,7 @@ export async function reindexBrain(
       summary: doc.record.summary,
       tags: doc.record.tags,
       type: doc.record.type,
+      scope: doc.record.scope,
       confidence: doc.record.confidence,
       created: doc.record.created,
       updated: doc.record.updated,
@@ -291,6 +304,8 @@ export async function reindexBrain(
     danglingLinks,
     ambiguousLinks,
     conformance: conformanceTally,
+    scopes: scopeTally,
+    invalidScopes,
     legacyIndexPresent,
     vectors: Boolean(embedder),
     outFile,
