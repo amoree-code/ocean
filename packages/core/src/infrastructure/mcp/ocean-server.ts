@@ -97,7 +97,11 @@ const tools = [
     annotations: { readOnlyHint: true },
     inputSchema: {
       type: "object",
-      properties: { taskId: { type: "string" } },
+      properties: {
+        taskId: { type: "string" },
+        project: { type: "string" },
+        cwd: { type: "string" },
+      },
       required: ["taskId"],
       additionalProperties: false,
     },
@@ -322,7 +326,11 @@ async function callTool(
     });
   }
   if (name === "ocean_task_get")
-    return await getTask(requiredArgument(args, "taskId"));
+    return await getTask(requiredArgument(args, "taskId"), {
+      projectId: typeof args.project === "string" ? args.project : undefined,
+      explicit: typeof args.project === "string",
+      cwd: typeof args.cwd === "string" ? args.cwd : undefined,
+    });
   if (name === "ocean_handoffs_list")
     return {
       handoffs: await listHandoffs(

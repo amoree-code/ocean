@@ -10,6 +10,7 @@ import { oceanRoot } from "../../paths.js";
 import { resolveLadderRung } from "./context-ladder.js";
 import { buildContextPacket } from "./context-packet.js";
 import { classifyIntent } from "./intent-router.js";
+import { knownTaskPrefixes } from "./project-resolution.js";
 
 // Lean context for headless runs: the prompt carries references (path + why), never file
 // bodies. The provider is an agentic CLI with file access and reads a reference only if the
@@ -119,7 +120,7 @@ export async function selectPacketReferences(
   const references: ContextReference[] = [];
   const omitted: string[] = [];
   try {
-    const classification = classifyIntent(prompt);
+    const classification = classifyIntent(prompt, await knownTaskPrefixes());
     if (resolveLadderRung(classification).rung !== "exact-record")
       return { references, omitted };
     const packet = await buildContextPacket(

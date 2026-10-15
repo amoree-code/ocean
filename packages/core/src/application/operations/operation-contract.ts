@@ -1,4 +1,5 @@
 import path from "node:path";
+import { TASK_ID } from "../../domain/tasks/task-id.js";
 import { engineRoot, oceanRoot, resolveWithin } from "../../paths.js";
 import { validateBudget } from "../context/context-ladder.js";
 import type {
@@ -103,7 +104,6 @@ export function operationResult(
 
 // --- identifier and path validation -------------------------------------------------
 
-const TASK_ID_SHAPE = /^T-\d+$/;
 // Record slugs and project names: conservative allow-list, no dots that could build "..",
 // no separators, no shell syntax, no whitespace.
 const SLUG_SHAPE = /^[a-z0-9][a-z0-9-]{0,63}$/i;
@@ -115,10 +115,10 @@ export function validateTaskIdentifier(
     return { valid: false, reason: "task identifier is missing" };
   if (identifier.includes("\0"))
     return { valid: false, reason: "task identifier contains a null byte" };
-  if (!TASK_ID_SHAPE.test(identifier))
+  if (!TASK_ID.test(identifier))
     return {
       valid: false,
-      reason: `task identifier '${identifier}' does not match the required T-<digits> shape`,
+      reason: `task identifier '${identifier}' does not match the required <PREFIX>-<digits> shape, expected <PREFIX>-<digits>`,
     };
   return { valid: true, value: identifier };
 }

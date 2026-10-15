@@ -34,7 +34,7 @@ const field = (source: string, name: string): string =>
 
 // Archive namespace per project; the workspace project archives under "Ocean".
 const WORKSPACE_ARCHIVE_NAMESPACE = "Ocean";
-const projectArchiveName = (project: string): string =>
+export const projectArchiveName = (project: string): string =>
   isWorkspaceProject(project) ? WORKSPACE_ARCHIVE_NAMESPACE : project;
 
 function setState(source: string, state: string): string {

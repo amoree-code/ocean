@@ -11,13 +11,15 @@ import {
   type Handoff,
   validateHandoff,
 } from "../../domain/sessions/handoff.js";
-import { engineRoot, resolveWithin, workspaceTasksRoot } from "../../paths.js";
+import { engineRoot } from "../../paths.js";
+import { resolveTaskReference } from "../tasks/task-reference.js";
 
 const execFile = promisify(execFileCallback);
 const maxContentBytes = 16_000;
 
 export type Task = {
   id: string;
+  project: string;
   title: string;
   state: string;
   goal: string;
@@ -41,10 +43,9 @@ export async function createHandoff(
   },
   openStore: SessionStoreFactory,
 ): Promise<Handoff> {
-  const task = input.taskId ? await getTask(input.taskId) : null;
   const store = await openStore();
   try {
-    return await createHandoffWithStore(store, { ...input, task });
+    return await createHandoffWithStore(store, input);
   } finally {
     store.close();
   }
@@ -66,13 +67,16 @@ export async function createHandoffWithStore(
     task?: Task | null;
   },
 ): Promise<Handoff> {
-  const task =
-    input.task === undefined && input.taskId
-      ? await getTask(input.taskId)
-      : (input.task ?? null);
   const session = input.sessionId ? store.get(input.sessionId) : null;
   if (input.sessionId && !session)
     throw new Error(`Session not found: ${input.sessionId}`);
+  // The task is found from where the session worked: its folder decides the project.
+  const task =
+    input.task === undefined && input.taskId
+      ? await getTask(input.taskId, {
+          cwd: session?.workingDirectory ?? process.cwd(),
+        })
+      : (input.task ?? null);
   const commit = await currentCommit();
   const now = new Date().toISOString();
   const content = (task?.body ?? "").slice(0, maxContentBytes);
@@ -153,22 +157,12 @@ export async function listHandoffs(
   }
 }
 
-export async function getTask(id: string): Promise<Task> {
-  const tasksRoot = workspaceTasksRoot();
-  const candidates = [
-    resolveWithin(tasksRoot, id, "task.md"),
-    resolveWithin(tasksRoot, "archive", "Ocean", id, "task.md"),
-  ];
-  let file = "";
-  for (const candidate of candidates) {
-    try {
-      file = await readFile(candidate, "utf8");
-      break;
-    } catch {
-      /* try the archived authority */
-    }
-  }
-  if (!file) throw new Error(`Task not found: ${id}`);
+export async function getTask(
+  id: string,
+  scope: { projectId?: string; cwd?: string; explicit?: boolean } = {},
+): Promise<Task> {
+  const location = await resolveTaskReference(id, scope);
+  const file = await readFile(location.file, "utf8");
   const end = file.indexOf("\n---", 4);
   const frontmatter = file
     .slice(0, end < 0 ? 0 : end)
@@ -187,8 +181,9 @@ export async function getTask(id: string): Promise<Task> {
     body.match(/(?:^|\n)## Objective\n\n([\s\S]*?)(?=\n## |$)/)?.[1]?.trim() ??
     "";
   return {
-    id: fields.id ?? id,
-    title: fields.title ?? id,
+    id: fields.id ?? location.id,
+    project: location.projectId,
+    title: fields.title ?? location.id,
     state: fields.state ?? "unknown",
     goal: objective || fields.goal || "",
     objective: objective || fields.requirement || fields.goal || "",

@@ -361,6 +361,8 @@ test("context-ladder.ts imports only node:fs/promises, node:path, and the existi
     "./intent-router.js",
     "../brain/brain-service.js",
     "../../domain/ports/brain-index-port.js",
+    "../../domain/tasks/task-id.js",
+    "../tasks/task-reference.js",
   ]);
   for (const specifier of imports)
     assert.ok(allowed.has(specifier), `unexpected import: ${specifier}`);
@@ -440,3 +442,36 @@ test("ranked-references with no query is unaffected — still the fixed authorit
     assert.equal(result.rung, "ranked-references");
     assert.doesNotMatch(result.reason, /brain index/);
   }));
+
+test("exact record: a prefixed id resolves inside its own project only", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-ladder-prefix-"));
+  const previous = process.env.OCEAN_ROOT;
+  process.env.OCEAN_ROOT = root;
+  try {
+    const lab = path.join(root, PROJECTS_DIR, "lab");
+    await mkdir(path.join(lab, "tasks", "OL-001"), { recursive: true });
+    await writeFile(
+      path.join(lab, "project.json"),
+      JSON.stringify({ name: "lab", paths: [], prefix: "OL", nextTask: 2 }),
+    );
+    await writeFile(
+      path.join(lab, "tasks", "OL-001", "task.md"),
+      "---\nid: OL-001\nstate: active\n---\n",
+    );
+    const classification = classifyIntent("show OL-001", ["T", "OL"]);
+    const own = await planContextRead(classification, GOOD_BUDGET, root, "lab");
+    assert.equal(own.allowed, true, own.reason);
+    assert.deepEqual(own.files, ["04-projects/lab/tasks/OL-001/task.md"]);
+    const other = await planContextRead(
+      classification,
+      GOOD_BUDGET,
+      root,
+      "ocean",
+    );
+    assert.equal(other.allowed, false);
+    assert.match(other.reason, /was not found/);
+  } finally {
+    if (previous === undefined) delete process.env.OCEAN_ROOT;
+    else process.env.OCEAN_ROOT = previous;
+  }
+});

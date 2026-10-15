@@ -72,6 +72,9 @@ test("the first session in an unregistered repo registers it as a project", asyn
       await readFile(path.join(folder(root, "my-app"), "project.json"), "utf8"),
     );
     assert.equal(manifest.autoRegistered, true);
+    // A new project starts its own task namespace.
+    assert.equal(manifest.prefix, "MA");
+    assert.equal(manifest.nextTask, 1);
     assert.ok(
       (await stat(path.join(folder(root, "my-app"), "tasks"))).isDirectory(),
     );

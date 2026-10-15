@@ -14,7 +14,10 @@ import path from "node:path";
 import test from "node:test";
 import { reindexBrain as reindexBrainRaw } from "../dist/application/brain/brain-reindex.js";
 import { classifyIntent } from "../dist/application/context/intent-router.js";
-import { bindProject } from "../dist/application/context/project-resolution.js";
+import {
+  bindProject,
+  peekNextTaskId,
+} from "../dist/application/context/project-resolution.js";
 import {
   operationForIntent,
   validateTaskIdentifier,
@@ -138,7 +141,7 @@ test("task.create requires explicit title and approval, then creates the next bo
       PROJECTS_DIR,
       "ocean",
       "tasks",
-      "T-3",
+      await peekNextTaskId("ocean"),
       "task.md",
     );
     const scope = {
@@ -161,6 +164,38 @@ test("task.create requires explicit title and approval, then creates the next bo
     assert.equal(decision.allowed, true, decision.reason);
     assert.equal(result.ok, true, result.reason);
     assert.match(await readFile(target, "utf8"), /title: Improve onboarding/);
+    assert.match(target, /T-003/);
+    assert.match(
+      await readFile(target, "utf8"),
+      /^---\nid: T-003\n/,
+      "the next id is zero padded",
+    );
+  });
+});
+
+test("task.create refuses an approval for an id another create already took, and consumes nothing", async () => {
+  await withFixture(async (root) => {
+    await bindProject("ocean", root);
+    const classification = classifyIntent("create a new task called Race");
+    const predicted = await peekNextTaskId("ocean");
+    const stale = path.join(
+      root,
+      PROJECTS_DIR,
+      "ocean",
+      "tasks",
+      "T-099",
+      "task.md",
+    );
+    // An approval granted for an id that is no longer the next one.
+    const result = await runOperation("task.create", classification, BUDGET, {
+      cwd: root,
+      approval: approval("task.create", stale),
+    });
+    assert.equal(result.ok, false);
+    assert.match(result.reason, new RegExp(`the next id is now ${predicted}`));
+    assert.match(result.reason, /request a new approval/);
+    assert.equal(await peekNextTaskId("ocean"), predicted);
+    await assert.rejects(readFile(stale, "utf8"));
   });
 });
 
@@ -327,7 +362,8 @@ test("valid and invalid task identifiers are separated deterministically", () =>
   for (const bad of [
     "",
     "T1",
-    "TASK-1",
+    "TOOLONGX-1",
+    "t-1",
     "T-",
     "t-1x",
     "T-1/../etc",
@@ -1127,3 +1163,52 @@ test("memory.search without a built brain index falls back to substring matching
       ),
     );
   }));
+
+test("task.create in a project with a prefix issues PREFIX-nnn and advances its counter", async () => {
+  await withFixture(async (root) => {
+    const repo = await mkdtemp(path.join(os.tmpdir(), "ocean-prefixed-repo-"));
+    await bindProject("lab", repo);
+    const first = await peekNextTaskId("lab");
+    assert.equal(first, "LAB-001");
+    const classification = classifyIntent("create a new task called First");
+    const target = path.join(
+      root,
+      PROJECTS_DIR,
+      "lab",
+      "tasks",
+      first,
+      "task.md",
+    );
+    const result = await runOperation("task.create", classification, BUDGET, {
+      cwd: repo,
+      approval: approval("task.create", target),
+    });
+    assert.equal(result.ok, true, result.reason);
+    assert.match(await readFile(target, "utf8"), /^---\nid: LAB-001\n/);
+    assert.equal(await peekNextTaskId("lab"), "LAB-002");
+    const manifest = JSON.parse(
+      await readFile(
+        path.join(root, PROJECTS_DIR, "lab", "project.json"),
+        "utf8",
+      ),
+    );
+    assert.equal(manifest.nextTask, 2);
+    // The new task is readable by its prefixed id, and refused from another project.
+    const get = await runOperation(
+      "task.get",
+      classifyIntent("show LAB-001", ["T", "LAB"]),
+      BUDGET,
+      { cwd: repo },
+    );
+    assert.equal(get.ok, true, get.reason);
+    assert.equal(get.records[0].identifier, "LAB-001");
+    const foreign = await runOperation(
+      "task.get",
+      classifyIntent("show LAB-001", ["T", "LAB"]),
+      BUDGET,
+      { cwd: root },
+    );
+    assert.equal(foreign.ok, false);
+    assert.match(foreign.reason, /cross-project request refused/);
+  });
+});

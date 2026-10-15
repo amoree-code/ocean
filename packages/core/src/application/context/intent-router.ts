@@ -3,6 +3,8 @@
 // knows what Ocean operation — if any — a request maps to, without guessing an identifier or
 // a project when the request does not name one clearly. See T-198 slice 4.
 
+import { extractTaskIds, LEGACY_PREFIX } from "../../domain/tasks/task-id.js";
+
 type IntentCategory =
   | "task-lookup"
   | "task-create"
@@ -49,14 +51,6 @@ export type IntentClassification = {
   confidence: IntentConfidence;
   ambiguityReason: string | null;
 };
-
-const TASK_ID_PATTERN = /\bT-(\d+)\b/gi;
-
-function extractTaskIds(text: string): string[] {
-  const ids = new Set<string>();
-  for (const match of text.matchAll(TASK_ID_PATTERN)) ids.add(`T-${match[1]}`);
-  return [...ids];
-}
 
 function matchesAny(text: string, patterns: RegExp[]): boolean {
   return patterns.some((pattern) => pattern.test(text));
@@ -146,11 +140,16 @@ function safeResult(ambiguityReason: string): IntentClassification {
   };
 }
 
-export function classifyIntent(rawText: string): IntentClassification {
+// taskPrefixes: the registered per-project prefixes, so "OL-001" is an id but "UTF-8" is not.
+// The caller supplies them (the router stays pure and sync); the default is the legacy T.
+export function classifyIntent(
+  rawText: string,
+  taskPrefixes: readonly string[] = [LEGACY_PREFIX],
+): IntentClassification {
   const text = (rawText ?? "").trim();
   if (!text) return safeResult("empty request");
 
-  const taskIds = extractTaskIds(text);
+  const taskIds = extractTaskIds(text, taskPrefixes);
   if (taskIds.length > 1) {
     return safeResult(
       `multiple task identifiers found (${taskIds.join(", ")}); specify exactly one`,

@@ -1,16 +1,17 @@
 import type { Dirent } from "node:fs";
 import { mkdir, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
+import { TASK_ID } from "../../domain/tasks/task-id.js";
 import { atomicWrite } from "../../fs-utils.js";
-import {
-  oceanPath,
-  PROJECTS_DIR,
-  projectFolder,
-  resolveWithin,
-} from "../../paths.js";
+import { PROJECTS_DIR, projectFolder } from "../../paths.js";
 import type { ContextBudget } from "../context/context-ladder.js";
 import type { IntentClassification } from "../context/intent-router.js";
+import { withNextTaskId } from "../context/project-resolution.js";
 import { completeTask } from "../tasks/archive-tasks.js";
+import {
+  resolveTaskReference,
+  type TaskLocation,
+} from "../tasks/task-reference.js";
 import {
   approvalMatchesTarget,
   type OperationRecord,
@@ -36,7 +37,6 @@ import {
 } from "./record-io.js";
 
 const TASK_FIELDS = ["id", "title", "state", "goal", "priority", "updated_at"];
-const TASK_ID_LIST_SHAPE = /^T-\d+$/;
 const MUTABLE_TASK_FIELDS = [
   "state",
   "goal",
@@ -56,19 +56,9 @@ export async function taskGet(
   const project = await crossProjectGuard(options, cwd);
   if (!project.ok) return operationResult("task.get", project.reason);
 
-  let file: string;
-  try {
-    file = resolveWithin(
-      taskRoot(project.projectId),
-      identifier.value,
-      "task.md",
-    );
-  } catch {
-    return operationResult(
-      "task.get",
-      "resolved task path escapes the project task root",
-    );
-  }
+  const resolved = await activeTask(identifier.value, project.projectId);
+  if (!resolved.ok) return operationResult("task.get", resolved.reason);
+  const file = resolved.location.file;
 
   const record = await readFrontmatterFile(file);
   if (!record)
@@ -129,7 +119,7 @@ export async function taskList(
   let bytes = 0;
   for (const entry of entries) {
     if (!entry.isDirectory() || entry.name === "archive") continue;
-    if (!TASK_ID_LIST_SHAPE.test(entry.name)) continue;
+    if (!TASK_ID.test(entry.name)) continue;
     const file = path.join(root, entry.name, "task.md");
     const record = await readFrontmatterFile(file);
     if (!record) continue;
@@ -163,25 +153,37 @@ export async function taskList(
   };
 }
 
-async function nextTaskId(root: string): Promise<string> {
-  const ids: number[] = [];
-  const collect = async (directory: string): Promise<void> => {
-    let entries: Dirent[];
-    try {
-      entries = await readdir(directory, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      const match = TASK_ID_LIST_SHAPE.exec(entry.name);
-      if (match) ids.push(Number(entry.name.slice(2)));
-      if (entry.name === "archive")
-        await collect(path.join(directory, entry.name));
-    }
-  };
-  await collect(root);
-  return `T-${(ids.length ? Math.max(...ids) : 0) + 1}`;
+// Resolves the task inside the active project only. A prefix that belongs to another project
+// gets the same refusal as any cross-project request.
+async function activeTask(
+  id: string,
+  projectId: string,
+): Promise<
+  { ok: true; location: TaskLocation } | { ok: false; reason: string }
+> {
+  try {
+    return {
+      ok: true,
+      location: await resolveTaskReference(id, {
+        projectId,
+        acrossProjects: false,
+      }),
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const foreign = /^\S+ belongs to (\S+),/.exec(message);
+    if (foreign)
+      return {
+        ok: false,
+        reason: `cross-project request refused: active project is '${projectId}', request targeted '${foreign[1]}'`,
+      };
+    return {
+      ok: false,
+      reason: /is not a task in|no project uses prefix/.test(message)
+        ? `task ${id} was not found in project '${projectId}'`
+        : message,
+    };
+  }
 }
 
 export async function taskCreate(
@@ -197,47 +199,53 @@ export async function taskCreate(
       "task.create",
       "write refused: an explicit single-line task title is required",
     );
-  // Resolve the folder once so the id scan and the write target can never disagree.
+  // Resolve the folder once so the id and the write target can never disagree.
   const folder = projectFolder(project.projectId);
-  const root = oceanPath(PROJECTS_DIR, folder, "tasks");
-  const id = await nextTaskId(root);
-  const target = validateWriteTarget(
-    PROJECTS_DIR,
-    folder,
-    "tasks",
-    id,
-    "task.md",
-  );
-  if (!target.valid) return operationResult("task.create", target.reason);
-  const approvalCheck = approvalMatchesTarget(
-    options.approval as WriteApproval,
-    target.value,
-  );
-  if (!approvalCheck.ok)
-    return operationResult("task.create", approvalCheck.reason);
-  const absent = await requireAbsentTarget(target.value);
-  if (!absent.ok) return operationResult("task.create", absent.reason);
   const today = new Date().toISOString().slice(0, 10);
   const objective = (options.content ?? title).trim().replace(/[\r\n]+/g, " ");
-  const source = `---\nid: ${id}\ntitle: ${title}\nstate: active\nproject: ${project.projectId}\nopened: ${today}\nupdated: ${today}\nartifacts: []\nclass: medium\nexpected_context: medium\n---\n\n## Objective\n\n${objective}\n\n## Definition of done\n\nThe requested outcome is implemented and its verification passes.\n\n## Next action\n\nInspect the project and define the first implementation slice.\n\n## Verification\n\nPending.\n\n## Blockers\n\nNone.\n\n## Log\n\n- ${today} — Task created.\n`;
-  try {
-    await mkdir(path.dirname(target.value), { recursive: true });
-    const bytes = await atomicWrite(target.value, source);
-    return {
-      operation: "task.create",
-      ok: true,
-      reason: `${id} created for project '${project.projectId}'`,
-      records: [],
-      violations: [],
-      written: { sourcePath: relativeToOcean(target.value), bytes },
-      packet: null,
-    };
-  } catch (error) {
-    return operationResult(
-      "task.create",
-      `task creation failed atomically, no partial content left: ${error instanceof Error ? error.message : String(error)}`,
+  // The approval is bound to the path of the id that was predicted when it was granted. The id
+  // is issued under the projects lock, so a creator that lost the race is refused (and consumes
+  // nothing) instead of writing under an id nobody approved.
+  return withNextTaskId(project.projectId, async (id) => {
+    const target = validateWriteTarget(
+      PROJECTS_DIR,
+      folder,
+      "tasks",
+      id,
+      "task.md",
     );
-  }
+    if (!target.valid) return operationResult("task.create", target.reason);
+    const approvalCheck = approvalMatchesTarget(
+      options.approval as WriteApproval,
+      target.value,
+    );
+    if (!approvalCheck.ok)
+      return operationResult(
+        "task.create",
+        `write refused: the next id is now ${id}; the approval covered ${options.approval?.target} — request a new approval`,
+      );
+    const absent = await requireAbsentTarget(target.value);
+    if (!absent.ok) return operationResult("task.create", absent.reason);
+    const source = `---\nid: ${id}\ntitle: ${title}\nstate: active\nproject: ${project.projectId}\nopened: ${today}\nupdated: ${today}\nartifacts: []\nclass: medium\nexpected_context: medium\n---\n\n## Objective\n\n${objective}\n\n## Definition of done\n\nThe requested outcome is implemented and its verification passes.\n\n## Next action\n\nInspect the project and define the first implementation slice.\n\n## Verification\n\nPending.\n\n## Blockers\n\nNone.\n\n## Log\n\n- ${today} — Task created.\n`;
+    try {
+      await mkdir(path.dirname(target.value), { recursive: true });
+      const bytes = await atomicWrite(target.value, source);
+      return {
+        operation: "task.create",
+        ok: true,
+        reason: `${id} created for project '${project.projectId}'`,
+        records: [],
+        violations: [],
+        written: { sourcePath: relativeToOcean(target.value), bytes },
+        packet: null,
+      } satisfies OperationResult;
+    } catch (error) {
+      return operationResult(
+        "task.create",
+        `task creation failed atomically, no partial content left: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  });
 }
 
 export async function taskUpdate(
@@ -267,11 +275,19 @@ export async function taskUpdate(
       `write refused: field '${unknownField}' is not an updatable task field`,
     );
 
+  const resolved = await activeTask(identifier.value, project.projectId);
+  if (!resolved.ok || resolved.location.archived)
+    return operationResult(
+      "task.update",
+      resolved.ok
+        ? `task ${identifier.value} was not found in project '${project.projectId}'`
+        : resolved.reason,
+    );
   const target = validateWriteTarget(
     PROJECTS_DIR,
     projectFolder(project.projectId),
     "tasks",
-    identifier.value,
+    resolved.location.id,
     "task.md",
   );
   if (!target.valid) return operationResult("task.update", target.reason);
@@ -341,11 +357,19 @@ export async function taskCompleteOperation(
   const project = await crossProjectGuard(options, cwd);
   if (!project.ok) return operationResult("task.complete", project.reason);
 
+  const resolved = await activeTask(identifier.value, project.projectId);
+  if (!resolved.ok || resolved.location.archived)
+    return operationResult(
+      "task.complete",
+      resolved.ok
+        ? `task ${identifier.value} was not found in project '${project.projectId}'`
+        : resolved.reason,
+    );
   const target = validateWriteTarget(
     PROJECTS_DIR,
     projectFolder(project.projectId),
     "tasks",
-    identifier.value,
+    resolved.location.id,
     "task.md",
   );
   if (!target.valid) return operationResult("task.complete", target.reason);
@@ -359,7 +383,7 @@ export async function taskCompleteOperation(
   try {
     // Reuses the existing governed completion path: it refuses a task with unchecked work.
     const result = await completeTask(
-      identifier.value,
+      resolved.location.id,
       taskRoot(project.projectId),
     );
     return {

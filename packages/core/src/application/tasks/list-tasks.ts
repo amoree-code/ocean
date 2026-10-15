@@ -1,6 +1,7 @@
 import type { Dirent } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
+import { parseTaskId, taskIdSpellings } from "../../domain/tasks/task-id.js";
 import {
   oceanPath,
   PROJECTS_DIR,
@@ -96,19 +97,29 @@ export async function projectsWithTasks(): Promise<string[]> {
   return projects.sort();
 }
 
-// Projects whose live tasks/ holds this id. Ids are unique per project, not across projects.
+// Projects whose live tasks/ holds this id (T-3 and T-003 are one task). Ids are unique per
+// project, not across projects.
 export async function projectsHoldingTask(id: string): Promise<string[]> {
-  if (!/^[A-Za-z][A-Za-z0-9]*-\d+$/.test(id)) return [];
+  if (!parseTaskId(id)) return [];
   const holders: string[] = [];
   for (const project of await projectsWithTasks()) {
-    try {
-      await readFile(
-        path.join(oceanPath(PROJECTS_DIR), project, "tasks", id, "task.md"),
-        "utf8",
-      );
-      holders.push(project);
-    } catch {
-      /* not here */
+    for (const spelling of taskIdSpellings(id)) {
+      try {
+        await readFile(
+          path.join(
+            oceanPath(PROJECTS_DIR),
+            project,
+            "tasks",
+            spelling,
+            "task.md",
+          ),
+          "utf8",
+        );
+        holders.push(project);
+        break;
+      } catch {
+        /* not here */
+      }
     }
   }
   return holders;

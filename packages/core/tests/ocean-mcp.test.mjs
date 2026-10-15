@@ -55,6 +55,50 @@ test("Ocean MCP exposes provider-neutral read-only tools without Obsidian", asyn
   }
 });
 
+test("ocean_task_get reads a task from the named project, by prefix or by old id", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-mcp-task-project-"));
+  const previous = process.env.OCEAN_ROOT;
+  process.env.OCEAN_ROOT = root;
+  try {
+    const lab = path.join(root, PROJECTS_DIR, "lab");
+    await mkdir(path.join(lab, "tasks", "LB-001"), { recursive: true });
+    await writeFile(
+      path.join(lab, "project.json"),
+      JSON.stringify({ name: "lab", paths: [], prefix: "LB", nextTask: 2 }),
+    );
+    await writeFile(
+      path.join(lab, "tasks", "LB-001", "task.md"),
+      "---\nid: LB-001\nlegacyId: T-300\ntitle: Lab task\nstate: active\n---\n\n## Objective\n\nDo it.\n",
+    );
+    const get = async (args) => {
+      const response = await handleOceanMcpRequest({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "ocean_task_get", arguments: args },
+      });
+      return response.error
+        ? { error: response.error.message }
+        : JSON.parse(response.result.content[0].text);
+    };
+    const byPrefix = await get({ taskId: "LB-001" });
+    assert.equal(byPrefix.id, "LB-001");
+    assert.equal(byPrefix.project, "lab");
+    assert.equal((await get({ taskId: "T-300", project: "lab" })).id, "LB-001");
+    assert.match(
+      (await get({ taskId: "T-300", project: "ocean" })).error,
+      /not a task/,
+    );
+    assert.match(
+      (await get({ taskId: "LB-001", project: "ocean" })).error,
+      /belongs to lab/,
+    );
+  } finally {
+    if (previous === undefined) delete process.env.OCEAN_ROOT;
+    else process.env.OCEAN_ROOT = previous;
+  }
+});
+
 test("read-only session tools do not initialize a missing session database", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ocean-mcp-readonly-"));
   const previous = process.env.OCEAN_ROOT;

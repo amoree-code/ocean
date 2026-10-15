@@ -283,3 +283,67 @@ test("tasks list --pretty prints a table", async () => {
   assert.match(lines[1], /^shop\s+T-101\s+active\s+shop T-101$/);
   assert.equal(lines.length, 3);
 });
+
+test("an id-based action finds a renumbered task by its old id", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-legacy-id-"));
+  const dir = path.join(root, PROJECTS_DIR, "lab", "tasks", "LB-001");
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    path.join(root, PROJECTS_DIR, "lab", "project.json"),
+    JSON.stringify({ name: "lab", paths: [], prefix: "LB", nextTask: 2 }),
+  );
+  await writeFile(
+    path.join(dir, "task.md"),
+    "---\nid: LB-001\nlegacyId: T-300\nstate: active\nproject: lab\n---\n\n## Log\n\n## Next action\n\nx\n",
+  );
+  const run = (...args) =>
+    spawnSync(
+      process.execPath,
+      [path.resolve("dist/main.js"), "tasks", ...args],
+      {
+        cwd: root,
+        env: { ...process.env, OCEAN_ROOT: root },
+        encoding: "utf8",
+      },
+    );
+  for (const id of ["T-300", "LB-001", "lb-1"]) {
+    const result = run("checkpoint", id, "--note", `via ${id}`);
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout), {
+      checkpointed: "LB-001",
+      project: "lab",
+    });
+  }
+  const text = await readFile(path.join(dir, "task.md"), "utf8");
+  assert.match(text, /via T-300/);
+  assert.match(text, /via lb-1/);
+  const foreign = run(
+    "checkpoint",
+    "LB-001",
+    "--note",
+    "x",
+    "--project",
+    "ocean",
+  );
+  assert.notEqual(foreign.status, 0);
+  assert.match(foreign.stderr, /LB-001 belongs to lab/);
+});
+
+test("task validator accepts prefixed ids and references to a legacyId", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-tasks-prefixed-"));
+  const write = async (id, extra, references) => {
+    await mkdir(path.join(root, id), { recursive: true });
+    await writeFile(
+      path.join(root, id, "task.md"),
+      `---\nid: ${id}\n${extra}title: Test\nstate: active\nproject: test\ngoal: Test\nreferences: [${references}]\n---\n\nchecklist:\n  - "[ ] work"\n`,
+    );
+  };
+  await write("OL-001", "legacyId: T-300\n", "OL-002, T-301");
+  await write("OL-002", "legacyId: T-301\n", "T-300, UTF-8");
+  const broken = await validate(root);
+  assert.notEqual(broken.code, 0);
+  assert.match(broken.stderr, /broken reference UTF-8/);
+  assert.doesNotMatch(broken.stderr, /broken reference T-30/);
+  await write("OL-002", "legacyId: T-301\n", "T-300");
+  assert.equal((await validate(root)).code, 0);
+});
