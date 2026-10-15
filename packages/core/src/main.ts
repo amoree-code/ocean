@@ -15,7 +15,15 @@ if (command === "--version" || command === "-v") {
 } else {
   const handler = commandRegistry[command];
   if (handler) {
-    await handler();
+    // A failed command prints one line; OCEAN_DEBUG=1 keeps the stack for debugging.
+    try {
+      await handler();
+    } catch (error) {
+      if (process.env.OCEAN_DEBUG === "1" || !(error instanceof Error))
+        throw error;
+      console.error(`Error: ${error.message}`);
+      process.exitCode = 1;
+    }
   } else {
     console.error(`Unknown command: ${command}`);
     process.exitCode = 1;

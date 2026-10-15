@@ -1,5 +1,5 @@
 import type { Dirent } from "node:fs";
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import {
   oceanPath,
@@ -141,12 +141,25 @@ export async function listTasksForFolder(options: {
   const { state } = options;
   const label = (project: string, tasks: TaskSummary[]): ProjectTask[] =>
     tasks.map((task) => ({ ...task, project }));
-  if (options.project)
+  if (options.project) {
+    // A mistyped id would otherwise read as a project with no tasks.
+    // resolveWithin throws on its own for an id that escapes the projects root.
+    const folder = resolveWithin(
+      oceanPath(PROJECTS_DIR),
+      projectFolder(options.project),
+    );
+    const isProject = await stat(folder).then(
+      (entry) => entry.isDirectory(),
+      () => false,
+    );
+    if (!isProject)
+      throw new Error(`No project ${options.project} in ${PROJECTS_DIR}`);
     return {
       scope: "project",
       project: options.project,
       tasks: label(options.project, await listTasks(state, options.project)),
     };
+  }
   const project = await folderProject(options.cwd);
   if (project) {
     const own = await listTasks(state, project);

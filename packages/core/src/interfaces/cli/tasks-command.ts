@@ -11,6 +11,7 @@ import {
   folderProject,
   listTasks,
   listTasksForFolder,
+  type ProjectTask,
   projectsHoldingTask,
 } from "../../application/tasks/list-tasks.js";
 import { verifyTask } from "../../application/tasks/verify-task.js";
@@ -47,6 +48,29 @@ async function taskProject(
   throw new Error(`${id} is not a task in any project`);
 }
 
+// `ocean tasks list --pretty`: one aligned row per task, for a person rather than a tool.
+function taskTable(tasks: ProjectTask[]): string {
+  if (!tasks.length) return "No tasks.\n";
+  const rows = [
+    ["PROJECT", "ID", "STATE", "TITLE"],
+    ...tasks.map((task) => [task.project, task.id, task.state, task.title]),
+  ];
+  const widths = [0, 1, 2].map((column) =>
+    Math.max(...rows.map((row) => row[column].length)),
+  );
+  return rows
+    .map((row) =>
+      row
+        .map((cell, column) =>
+          column < 3 ? cell.padEnd(widths[column]) : cell,
+        )
+        .join("  ")
+        .trimEnd(),
+    )
+    .join("\n")
+    .concat("\n");
+}
+
 export async function runTasksCommand(
   action: string,
   args: string[],
@@ -74,7 +98,8 @@ export async function runTasksCommand(
       state,
     });
     if (found.note) console.error(found.note);
-    console.log(JSON.stringify(found.tasks, null, 2));
+    if (args.includes("--pretty")) process.stdout.write(taskTable(found.tasks));
+    else console.log(JSON.stringify(found.tasks, null, 2));
     return;
   }
   if (action === "doctor") {
@@ -193,7 +218,7 @@ export async function runTasksCommand(
   }
   if (action !== "archive") {
     console.error(
-      "Usage: ocean tasks list [state] [--project <id>]|doctor|index [--write]|checkpoint <id> --note <text> [--next <text>]|verify <id>|complete <id>|archive [--apply|--auto]",
+      "Usage: ocean tasks list [state] [--project <id>] [--pretty]|doctor|index [--write]|checkpoint <id> --note <text> [--next <text>]|verify <id>|complete <id>|archive [--apply|--auto]",
     );
     process.exitCode = 1;
     return;
