@@ -1,5 +1,13 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -55,6 +63,21 @@ test("core skill sync copies canonical skills and preserves non-core skills", as
         ?.status,
       "drifted",
     );
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+test("core skill sync replaces a dangling skill link instead of throwing ENOENT", async () => {
+  const home = await mkdtemp(path.join(os.tmpdir(), "ocean-skills-"));
+  try {
+    const root = path.join(home, ".hermes", "skills");
+    await mkdir(root, { recursive: true });
+    await symlink(path.join(home, "moved-away"), path.join(root, "verification"), "dir");
+
+    await syncCoreSkills(home);
+
+    await stat(path.join(root, "verification", "SKILL.md"));
   } finally {
     await rm(home, { recursive: true, force: true });
   }
