@@ -2,13 +2,16 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { classifyIntent } from "../../application/context/intent-router.js";
 import {
+  autoRegisterProject,
   bindProject,
   findGitRoot,
   listProjectBindings,
   migrateProjectBindings,
+  renameProject,
   renderProjectIndex,
   resolveProject,
   scanProjectManifests,
+  unbindProjectPath,
   writeProjectIndex,
 } from "../../application/context/project-resolution.js";
 import {
@@ -592,6 +595,35 @@ async function commandProject(): Promise<void> {
     }));
     console.log(JSON.stringify(bindings, null, 2));
     if (errors.length) process.exitCode = 2;
+  } else if (action === "register") {
+    const result = await autoRegisterProject(process.argv[4] ?? process.cwd(), {
+      explicit: true,
+    });
+    console.log(JSON.stringify(result, null, 2));
+    if (result.status !== "registered") process.exitCode = 2;
+  } else if (action === "unbind") {
+    const target = process.argv[4];
+    if (!target) {
+      console.error("Usage: ocean project unbind <path>");
+      process.exitCode = 1;
+    } else {
+      const result = await unbindProjectPath(target);
+      console.log(JSON.stringify(result, null, 2));
+      if (!result.removed) process.exitCode = 2;
+    }
+  } else if (action === "rename") {
+    const [from, to] = process.argv.slice(4);
+    if (!from || !to) {
+      console.error("Usage: ocean project rename <id> <new-id>");
+      process.exitCode = 1;
+    } else {
+      try {
+        console.log(JSON.stringify(await renameProject(from, to), null, 2));
+      } catch (error) {
+        console.error(error instanceof Error ? error.message : String(error));
+        process.exitCode = 2;
+      }
+    }
   } else if (action === "migrate") {
     const result = await migrateProjectBindings(
       process.argv.includes("--write"),
@@ -603,7 +635,7 @@ async function commandProject(): Promise<void> {
     else console.log(await renderProjectIndex());
   } else {
     console.error(
-      "Usage: ocean project resolve [path]|bind <name> <path> [--add]|list|migrate [--write]|index [--write]",
+      "Usage: ocean project resolve [path]|bind <name> <path> [--add]|register [path]|unbind <path>|rename <id> <new-id>|list|migrate [--write]|index [--write]",
     );
     process.exitCode = 1;
   }
