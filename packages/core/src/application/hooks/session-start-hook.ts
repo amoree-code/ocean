@@ -11,6 +11,7 @@ import {
   projectRules,
   readProjectManifest,
   resolveProject,
+  scanProjectManifests,
 } from "../context/project-resolution.js";
 import { buildOceanBootstrap } from "../context/resource-injection.js";
 
@@ -107,14 +108,38 @@ async function registerIfUnbound(
   }
 }
 
-// The bound project's rules, read best-effort: a broken manifest costs the session its rules,
-// never its bootstrap (the same contract as the registry above).
+// The bound project's manifest, read best-effort: a broken manifest costs the session its
+// rules, never its bootstrap (the same contract as the registry above) — and says so.
 export async function boundProjectManifest(
   project: ProjectResolution,
-): Promise<ProjectManifest | null> {
-  if (project.status !== "bound") return null;
+): Promise<{ manifest: ProjectManifest | null; problem: string | null }> {
+  if (project.status !== "bound") return { manifest: null, problem: null };
   try {
-    return await readProjectManifest(project.projectId);
+    return {
+      manifest: await readProjectManifest(project.projectId),
+      problem: null,
+    };
+  } catch (error) {
+    return {
+      manifest: null,
+      problem: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+// An unbound session may be unbound only because its project's manifest does not parse; its
+// rules would then vanish without a word. Name the unreadable manifests (at most three).
+async function unreadableManifestsWarning(): Promise<string | null> {
+  try {
+    const { errors } = await scanProjectManifests();
+    if (!errors.length) return null;
+    const named = errors
+      .slice(0, 3)
+      .map(
+        ({ file, error }) => `${path.relative(oceanRoot(), file)} (${error})`,
+      )
+      .join("; ");
+    return `Ocean: ${errors.length} project manifest(s) unreadable, those projects are unbound and their rules not loaded: ${named}`;
   } catch {
     return null;
   }
@@ -147,9 +172,9 @@ export async function claudeSessionStartHook(
     oceanWorktreeWarning(cwd),
   ]);
   const project = await registerIfUnbound(cwd, resolved);
-  const manifest = await boundProjectManifest(project);
+  const { manifest, problem } = await boundProjectManifest(project);
   let rules: string[] = [];
-  let rulesProblem: string | null = null;
+  let rulesProblem: string | null = problem;
   if (manifest)
     try {
       rules = projectRules(manifest);
@@ -165,6 +190,10 @@ export async function claudeSessionStartHook(
     parts.push(
       `Project rules (${project.projectId}) unreadable: ${rulesProblem} — fix 04-projects/${project.projectId}/project.json`,
     );
+  if (project.status !== "bound") {
+    const unreadable = await unreadableManifestsWarning();
+    if (unreadable) parts.push(unreadable);
+  }
   if (warning) parts.push(warning);
   return {
     hookSpecificOutput: {

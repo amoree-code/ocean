@@ -49,7 +49,7 @@ export type InterceptOptions = {
 async function rulesCount(
   project: Awaited<ReturnType<typeof resolveProject>>,
 ): Promise<number> {
-  const manifest = await boundProjectManifest(project);
+  const { manifest } = await boundProjectManifest(project);
   try {
     return manifest ? projectRules(manifest).length : 0;
   } catch {

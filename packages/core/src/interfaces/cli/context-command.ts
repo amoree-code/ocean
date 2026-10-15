@@ -52,10 +52,13 @@ export async function runContextCommand(json = false): Promise<void> {
       )
     : [];
   // Unreadable rules are shown as such, never as an empty list.
-  const manifest = project
-    ? await readProjectManifest(project).catch(() => null)
-    : null;
   const problems: string[] = [];
+  const manifest = project
+    ? await readProjectManifest(project).catch((error: unknown) => {
+        problems.push(error instanceof Error ? error.message : String(error));
+        return null;
+      })
+    : null;
   const read = (load: (m: NonNullable<typeof manifest>) => string[]) => {
     try {
       return manifest ? load(manifest) : [];

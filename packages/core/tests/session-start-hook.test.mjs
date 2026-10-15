@@ -482,13 +482,18 @@ test("no rules means no token and no block", async () => {
   });
 });
 
-test("a corrupt manifest still yields a bootstrap and no rules", async () => {
+test("a corrupt manifest still yields a bootstrap, and says its project is unbound", async () => {
   const { root, repo } = await boundProjectFixture("{bad");
   await withRoot(root, async () => {
     const text = (await claudeSessionStartHook({ cwd: repo }))
       .hookSpecificOutput.additionalContext;
     assert.match(text, /^ocean=1 project=/);
-    assert.doesNotMatch(text, /Project rules/);
+    assert.doesNotMatch(text, /Project rules \(/);
+    // Fail visible: the session is unbound because the manifest does not parse.
+    assert.match(
+      text,
+      /Ocean: 1 project manifest\(s\) unreadable, those projects are unbound and their rules not loaded: 04-projects\/lab\/project\.json/,
+    );
   });
   const invalid = await boundProjectFixture({ rules: "not a list" });
   await withRoot(invalid.root, async () => {
