@@ -91,7 +91,7 @@ export async function createHandoffWithStore(
     profileId: input.profileId ?? session?.profile ?? "",
     profileIdentity: session?.profileIdentity ?? "",
     sourceSessionId: session?.sessionId ?? null,
-    projectId: session?.projectId ?? null,
+    projectId: task?.project ?? session?.projectId ?? null,
     provider: input.provider ?? session?.provider ?? "",
     parentSessionId: session?.parentSessionId ?? null,
     decisions: [],
