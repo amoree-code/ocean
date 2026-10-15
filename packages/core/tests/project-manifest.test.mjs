@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { realpathSync } from "node:fs";
 import {
   mkdir,
@@ -19,8 +20,12 @@ import {
   listProjectManifests,
   migrateProjectBindings,
   portablePath,
+  readProjectManifest,
+  renameProject,
   resolveProject,
   scanProjectManifests,
+  unbindProjectPath,
+  withNextTaskId,
   writeProjectIndex,
 } from "../dist/application/context/project-resolution.js";
 import { PROJECTS_DIR, SYSTEM_DIR } from "../dist/paths.js";
@@ -396,5 +401,145 @@ test("a repo bound through a symlink resolves from its real path, and back", asy
       "linked",
     );
     assert.equal((await resolveProject(link)).projectId, "linked");
+  });
+});
+
+async function writeRaw(root, folder, body) {
+  await mkdir(path.join(projects(root), folder), { recursive: true });
+  await writeFile(
+    path.join(projects(root), folder, "project.json"),
+    JSON.stringify({ name: folder, paths: [], ...body }),
+  );
+}
+
+test("valid rules and verify parse, trimmed", async () => {
+  await withRoot(async (root) => {
+    await writeRaw(root, "lab", {
+      rules: ["  .env points at production  ", "never run migrations"],
+      verify: ["pnpm test"],
+    });
+    const manifest = await readProjectManifest("lab");
+    assert.deepEqual(manifest.rules, [
+      ".env points at production",
+      "never run migrations",
+    ]);
+    assert.deepEqual(manifest.verify, ["pnpm test"]);
+    assert.equal(await readProjectManifest("missing"), null);
+  });
+});
+
+test("each invalid rules/verify shape is a scan error naming the field", async () => {
+  await withRoot(async (root) => {
+    const bad = {
+      "bare-rules": [{ rules: "no" }, /rules must be a list/],
+      "many-rules": [
+        { rules: Array.from({ length: 11 }, (_, i) => `r${i}`) },
+        /rules holds at most 10/,
+      ],
+      "empty-rule": [{ rules: ["  "] }, /rules\[0\]/],
+      "number-rule": [{ rules: [3] }, /rules\[0\]/],
+      "multi-rule": [{ rules: ["a\nb"] }, /rules\[0\] must be a single line/],
+      "long-rule": [
+        { rules: ["é".repeat(101)] },
+        /rules\[0\] exceeds 200 bytes/,
+      ],
+      "bare-verify": [{ verify: "pnpm test" }, /verify must be a list/],
+      "many-verify": [
+        { verify: ["a", "b", "c", "d", "e", "f"] },
+        /verify holds at most 5/,
+      ],
+      "long-verify": [
+        { verify: ["x".repeat(301)] },
+        /verify\[0\] exceeds 300 bytes/,
+      ],
+      "multi-verify": [
+        { verify: ["a\rb"] },
+        /verify\[0\] must be a single line/,
+      ],
+    };
+    for (const [folder, [body]] of Object.entries(bad))
+      await writeRaw(root, folder, body);
+    const scan = await scanProjectManifests();
+    assert.deepEqual(scan.manifests, []);
+    for (const entry of scan.errors) {
+      const folder = path.basename(path.dirname(entry.file));
+      assert.match(entry.error, bad[folder][1], folder);
+    }
+    assert.equal(scan.errors.length, Object.keys(bad).length);
+    await assert.rejects(readProjectManifest("bare-rules"), /rules must be/);
+  });
+});
+
+test("rules and verify survive bind --add, unbind, rename, withNextTaskId and renumber", async () => {
+  await withRoot(async (root) => {
+    const repos = await mkdtemp(path.join(os.tmpdir(), "ocean-repos-"));
+    const a = path.join(repos, "a");
+    const b = path.join(repos, "b");
+    await mkdir(a);
+    await mkdir(b);
+    await bindProject("lab", a);
+    const file = path.join(projects(root), "lab", "project.json");
+    const manifest = JSON.parse(await readFile(file, "utf8"));
+    await writeFile(
+      file,
+      JSON.stringify({
+        ...manifest,
+        rules: ["keep me"],
+        verify: ["pnpm test"],
+      }),
+    );
+    const keeps = async (label) => {
+      const now = await manifestOf(root, label);
+      assert.deepEqual(now.rules, ["keep me"], label);
+      assert.deepEqual(now.verify, ["pnpm test"], label);
+    };
+    await bindProject("lab", b, { addPath: true });
+    await keeps("lab");
+    await unbindProjectPath(b);
+    await keeps("lab");
+    await withNextTaskId("lab", async () => ({ ok: true }));
+    await keeps("lab");
+    await renameProject("lab", "lab2");
+    await keeps("lab2");
+  });
+});
+
+test("tasks renumber --write keeps rules and verify", async () => {
+  await withRoot(async (root) => {
+    const dir = path.join(projects(root), "lab", "tasks", "T-5");
+    await mkdir(dir, { recursive: true });
+    await writeFile(
+      path.join(dir, "task.md"),
+      "---\nid: T-5\ntitle: t\nstate: active\nproject: lab\n---\n",
+    );
+    await mkdir(path.join(projects(root), "ocean"), { recursive: true });
+    await writeFile(
+      path.join(projects(root), "ocean", "project.json"),
+      JSON.stringify({ name: "ocean", paths: [] }),
+    );
+    await writeRaw(root, "lab", { rules: ["keep me"], verify: ["pnpm test"] });
+    const result = spawnSync(
+      process.execPath,
+      [
+        path.resolve("dist/main.js"),
+        "tasks",
+        "renumber",
+        "--project",
+        "lab",
+        "--prefix",
+        "LB",
+        "--write",
+      ],
+      {
+        cwd: root,
+        env: { ...process.env, OCEAN_ROOT: root },
+        encoding: "utf8",
+      },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    const now = await manifestOf(root, "lab");
+    assert.equal(now.prefix, "LB");
+    assert.deepEqual(now.rules, ["keep me"]);
+    assert.deepEqual(now.verify, ["pnpm test"]);
   });
 });

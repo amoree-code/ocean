@@ -10,6 +10,7 @@ import {
   bootstrapEnvironment,
   buildOceanBootstrap,
 } from "../../application/context/resource-injection.js";
+import { boundProjectManifest } from "../../application/hooks/session-start-hook.js";
 import { finalizeSession } from "../../application/memory/session-closeout.js";
 import { authorizeRun } from "../../application/runs/run-authorization.js";
 import { defaultAuthDeps } from "../../composition/runtime.js";
@@ -72,7 +73,11 @@ export async function intercept(
   const store = await openSessionStore();
   const workingDirectory = path.resolve(process.cwd());
   const projectResolution = await resolveProject(workingDirectory);
-  const bootstrap = buildOceanBootstrap(projectResolution);
+  // The env bootstrap carries only the rules count; the rules themselves reach the client
+  // through its own session-start hook.
+  const bootstrap = buildOceanBootstrap(projectResolution, {
+    rules: (await boundProjectManifest(projectResolution))?.rules?.length,
+  });
   const runId = randomUUID();
   const contract = validateRunContract({
     runId,

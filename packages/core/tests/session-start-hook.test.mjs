@@ -9,9 +9,10 @@ import {
   claudeNativeHookStatus,
   claudeSessionStartHook,
   oceanWorktreeWarning,
+  sessionStartHookForClient,
   WORKTREE_WARNING_MAX_BYTES,
 } from "../dist/application/hooks/session-start-hook.js";
-import { SYSTEM_DIR } from "../dist/paths.js";
+import { PROJECTS_DIR, SYSTEM_DIR } from "../dist/paths.js";
 
 test("claudeSessionStartHook returns the documented Claude Code hookSpecificOutput shape", async () => {
   const outside = await mkdtemp(path.join(os.tmpdir(), "ocean-hook-outside-"));
@@ -409,4 +410,91 @@ test("oceanWorktreeWarning is silent outside the Ocean root and in a root that i
     else process.env.OCEAN_ROOT = previous;
     await rm(plain, { recursive: true, force: true });
   }
+});
+
+async function boundProjectFixture(manifest) {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-hook-rules-"));
+  const repo = await mkdtemp(path.join(os.tmpdir(), "ocean-hook-repo-"));
+  await mkdir(path.join(root, PROJECTS_DIR, "lab"), { recursive: true });
+  await writeFile(
+    path.join(root, PROJECTS_DIR, "lab", "project.json"),
+    typeof manifest === "string"
+      ? manifest
+      : JSON.stringify({ name: "lab", paths: [repo], ...manifest }),
+  );
+  return { root, repo };
+}
+
+async function withRoot(root, run) {
+  const previous = process.env.OCEAN_ROOT;
+  process.env.OCEAN_ROOT = root;
+  try {
+    return await run();
+  } finally {
+    if (previous === undefined) delete process.env.OCEAN_ROOT;
+    else process.env.OCEAN_ROOT = previous;
+  }
+}
+
+test("a bound project with rules gets rules=N and the bounded rules block", async () => {
+  const { root, repo } = await boundProjectFixture({
+    rules: [".env points at production", "never run migrations"],
+  });
+  await withRoot(root, async () => {
+    for (const client of ["claude", "codex", "hermes"]) {
+      const result = await sessionStartHookForClient(client, { cwd: repo });
+      const text =
+        client === "hermes"
+          ? result.context
+          : result.hookSpecificOutput.additionalContext;
+      const [bootstrap, ...rest] = text.split("\n");
+      assert.match(bootstrap, /project=lab .* rules=2 ops=/, client);
+      assert.ok(Buffer.byteLength(bootstrap) <= OCEAN_BOOTSTRAP_MAX_BYTES);
+      assert.equal(
+        rest.join("\n"),
+        "Project rules (lab):\n- .env points at production\n- never run migrations",
+        client,
+      );
+    }
+  });
+});
+
+test("the rules block stays bounded at the manifest limits", async () => {
+  const rule = "x".repeat(200);
+  const { root, repo } = await boundProjectFixture({
+    rules: Array.from({ length: 10 }, () => rule),
+  });
+  await withRoot(root, async () => {
+    const result = await claudeSessionStartHook({ cwd: repo });
+    const text = result.hookSpecificOutput.additionalContext;
+    assert.ok(Buffer.byteLength(text) <= OCEAN_BOOTSTRAP_MAX_BYTES + 2_400);
+  });
+});
+
+test("no rules means no token and no block", async () => {
+  const { root, repo } = await boundProjectFixture({});
+  await withRoot(root, async () => {
+    const text = (await claudeSessionStartHook({ cwd: repo }))
+      .hookSpecificOutput.additionalContext;
+    assert.match(text, /project=lab/);
+    assert.doesNotMatch(text, /rules=|Project rules/);
+    assert.ok(Buffer.byteLength(text) <= OCEAN_BOOTSTRAP_MAX_BYTES);
+  });
+});
+
+test("a corrupt manifest still yields a bootstrap and no rules", async () => {
+  const { root, repo } = await boundProjectFixture("{bad");
+  await withRoot(root, async () => {
+    const text = (await claudeSessionStartHook({ cwd: repo }))
+      .hookSpecificOutput.additionalContext;
+    assert.match(text, /^ocean=1 project=/);
+    assert.doesNotMatch(text, /Project rules/);
+  });
+  const invalid = await boundProjectFixture({ rules: "not a list" });
+  await withRoot(invalid.root, async () => {
+    const text = (await claudeSessionStartHook({ cwd: invalid.repo }))
+      .hookSpecificOutput.additionalContext;
+    assert.match(text, /^ocean=1 project=/);
+    assert.doesNotMatch(text, /Project rules/);
+  });
 });

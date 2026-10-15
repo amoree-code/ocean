@@ -6,7 +6,9 @@ import { oceanRoot, SYSTEM_DIR } from "../../paths.js";
 import {
   autoRegisterProject,
   gitChangedFiles,
+  type ProjectManifest,
   type ProjectResolution,
+  readProjectManifest,
   resolveProject,
 } from "../context/project-resolution.js";
 import { buildOceanBootstrap } from "../context/resource-injection.js";
@@ -104,6 +106,28 @@ async function registerIfUnbound(
   }
 }
 
+// The bound project's rules, read best-effort: a broken manifest costs the session its rules,
+// never its bootstrap (the same contract as the registry above).
+export async function boundProjectManifest(
+  project: ProjectResolution,
+): Promise<ProjectManifest | null> {
+  if (project.status !== "bound") return null;
+  try {
+    return await readProjectManifest(project.projectId);
+  } catch {
+    return null;
+  }
+}
+
+// Hard constraints must hold from turn one, so the rules themselves ride beside the bootstrap
+// (at most 10 lines of 200 bytes), not just a count.
+export function projectRulesBlock(
+  projectId: string,
+  rules: readonly string[],
+): string {
+  return `Project rules (${projectId}):\n${rules.map((rule) => `- ${rule}`).join("\n")}`;
+}
+
 export async function claudeSessionStartHook(
   payload: ClaudeSessionStartPayload,
 ): Promise<ClaudeSessionStartResult> {
@@ -122,13 +146,16 @@ export async function claudeSessionStartHook(
     oceanWorktreeWarning(cwd),
   ]);
   const project = await registerIfUnbound(cwd, resolved);
-  const bootstrap = buildOceanBootstrap(project);
+  const rules = (await boundProjectManifest(project))?.rules ?? [];
+  const bootstrap = buildOceanBootstrap(project, { rules: rules.length });
+  const parts = [bootstrap.content];
+  if (project.status === "bound" && rules.length)
+    parts.push(projectRulesBlock(project.projectId, rules));
+  if (warning) parts.push(warning);
   return {
     hookSpecificOutput: {
       hookEventName: "SessionStart",
-      additionalContext: warning
-        ? `${bootstrap.content}\n${warning}`
-        : bootstrap.content,
+      additionalContext: parts.join("\n"),
     },
   };
 }
