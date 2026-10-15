@@ -11,7 +11,8 @@ import {
 import { PROJECTS_DIR } from "../dist/paths.js";
 
 const task = (id, state = "done", checklist = "[x]") =>
-  `---\nid: ${id}\nproject: ocean\nstate: ${state}\n---\n\nchecklist:\n  - "${checklist} work"\n`;
+  `---\nid: ${id}\nproject: ocean\nstate: ${state}\n---\n\n## Definition of done\n\n- ${checklist} acceptance criterion\n\n## Verification\n\n- \`pnpm test\`\n\n## Blockers\n\nNone.\n`;
+const passingCheck = async () => ({ exitCode: 0 });
 
 test("archives verified done tasks and leaves other states live", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ocean-task-archive-"));
@@ -34,7 +35,7 @@ test("archives verified done tasks and leaves other states live", async () => {
   assert.equal(preview.moved.length, 0);
   await access(path.join(root, "T-001", "task.md"));
 
-  const applied = await archiveDoneTasks(root, true);
+  const applied = await archiveDoneTasks(root, true, { run: passingCheck });
   assert.deepEqual(applied.moved, ["T-001"]);
   assert.equal(
     await readFile(
@@ -67,7 +68,7 @@ test("archives cancelled tasks alongside done ones", async () => {
   const preview = await archiveDoneTasks(root);
   assert.deepEqual(preview.candidates, ["T-009"]);
 
-  const applied = await archiveDoneTasks(root, true);
+  const applied = await archiveDoneTasks(root, true, { run: passingCheck });
   assert.deepEqual(applied.moved, ["T-009"]);
   assert.equal(
     await readFile(
@@ -95,7 +96,7 @@ test("repairs artifacts left by the old task-only archiver", async () => {
     "legacy artifact",
   );
 
-  const repaired = await archiveDoneTasks(root, true);
+  const repaired = await archiveDoneTasks(root, true, { run: passingCheck });
   assert.deepEqual(repaired.repaired, ["T-004"]);
   assert.equal(
     await readFile(
@@ -113,7 +114,7 @@ test("completes and archives a task in one governed transition", async () => {
   await writeFile(path.join(root, "T-005", "task.md"), task("T-005", "active"));
   await writeFile(path.join(root, "T-005", "notes.md"), "preserve me");
 
-  const result = await completeTask("T-005", root);
+  const result = await completeTask("T-005", root, { run: passingCheck });
   assert.deepEqual(result.moved, ["T-005"]);
   assert.equal(
     await readFile(
@@ -140,11 +141,133 @@ test("completion refuses an unchecked task without changing it", async () => {
   const source = task("T-006", "active", "[ ]");
   await writeFile(path.join(root, "T-006", "task.md"), source);
 
-  await assert.rejects(completeTask("T-006", root), /unchecked work/);
+  await assert.rejects(
+    completeTask("T-006", root, { run: passingCheck }),
+    /unchecked acceptance criteria/,
+  );
   assert.equal(
     await readFile(path.join(root, "T-006", "task.md"), "utf8"),
     source,
   );
+});
+
+test("completion refuses unresolved blockers without changing task state", async () => {
+  const root = await mkdtemp(
+    path.join(os.tmpdir(), "ocean-task-complete-blockers-"),
+  );
+  await mkdir(path.join(root, "T-010"), { recursive: true });
+  const source = task("T-010", "active").replace(
+    "None.",
+    "None.\n- historical session paths still need an owner mapping",
+  );
+  await writeFile(path.join(root, "T-010", "task.md"), source);
+
+  await assert.rejects(
+    completeTask("T-010", root, { run: passingCheck }),
+    /unresolved blockers/,
+  );
+  assert.equal(
+    await readFile(path.join(root, "T-010", "task.md"), "utf8"),
+    source,
+  );
+  await access(path.join(root, "T-010", "task.md"));
+});
+
+test("completion refuses prose criteria that have not been explicitly checked", async () => {
+  const root = await mkdtemp(
+    path.join(os.tmpdir(), "ocean-task-complete-criteria-"),
+  );
+  await mkdir(path.join(root, "T-011"), { recursive: true });
+  const source = task("T-011", "active").replace(
+    "- [x] acceptance criterion",
+    "- Acceptance criteria are described but not checked.",
+  );
+  await writeFile(path.join(root, "T-011", "task.md"), source);
+
+  await assert.rejects(
+    completeTask("T-011", root, { run: passingCheck }),
+    /acceptance criteria must use checked boxes/,
+  );
+  assert.equal(
+    await readFile(path.join(root, "T-011", "task.md"), "utf8"),
+    source,
+  );
+  await access(path.join(root, "T-011", "task.md"));
+});
+
+test("completion checks every acceptance criterion", async () => {
+  const root = await mkdtemp(
+    path.join(os.tmpdir(), "ocean-task-complete-multiple-criteria-"),
+  );
+  await mkdir(path.join(root, "T-014"), { recursive: true });
+  const source = task("T-014", "active").replace(
+    "- [x] acceptance criterion",
+    "- [x] first criterion\n- [ ] second criterion",
+  );
+  await writeFile(path.join(root, "T-014", "task.md"), source);
+
+  await assert.rejects(
+    completeTask("T-014", root, { run: passingCheck }),
+    /unchecked acceptance criteria/,
+  );
+  assert.equal(
+    await readFile(path.join(root, "T-014", "task.md"), "utf8"),
+    source,
+  );
+});
+
+test("archive --apply cannot bypass blockers on a task already marked done", async () => {
+  const root = await mkdtemp(
+    path.join(os.tmpdir(), "ocean-task-archive-blocked-"),
+  );
+  await mkdir(path.join(root, "T-012"), { recursive: true });
+  await writeFile(
+    path.join(root, "T-012", "task.md"),
+    task("T-012").replace("None.", "Open integration issue."),
+  );
+
+  const result = await archiveDoneTasks(root, true, { run: passingCheck });
+  assert.deepEqual(result.moved, []);
+  assert.match(result.skipped[0].reason, /unresolved blockers/);
+  await access(path.join(root, "T-012", "task.md"));
+});
+
+test("archive dry run reports completion gates without changing the task", async () => {
+  const root = await mkdtemp(
+    path.join(os.tmpdir(), "ocean-task-archive-preview-gates-"),
+  );
+  await mkdir(path.join(root, "T-015"), { recursive: true });
+  const source = task("T-015").replace(
+    "None.",
+    "Unresolved integration issue.",
+  );
+  await writeFile(path.join(root, "T-015", "task.md"), source);
+
+  const result = await archiveDoneTasks(root);
+
+  assert.deepEqual(result.candidates, []);
+  assert.deepEqual(result.skipped, [
+    { id: "T-015", reason: "unresolved blockers" },
+  ]);
+  assert.equal(
+    await readFile(path.join(root, "T-015", "task.md"), "utf8"),
+    source,
+  );
+});
+
+test("archive --apply reruns verification for done tasks", async () => {
+  const root = await mkdtemp(
+    path.join(os.tmpdir(), "ocean-task-archive-verification-"),
+  );
+  await mkdir(path.join(root, "T-013"), { recursive: true });
+  await writeFile(path.join(root, "T-013", "task.md"), task("T-013"));
+
+  const result = await archiveDoneTasks(root, true, {
+    run: async () => ({ exitCode: 1 }),
+  });
+  assert.deepEqual(result.moved, []);
+  assert.match(result.skipped[0].reason, /verification failed/);
+  await access(path.join(root, "T-013", "task.md"));
 });
 
 test("rejects traversal in task reads and archive metadata", async () => {
@@ -165,7 +288,7 @@ test("rejects traversal in task reads and archive metadata", async () => {
     task("../../outside"),
   );
   await assert.rejects(
-    archiveDoneTasks(tasksRoot, true),
+    archiveDoneTasks(tasksRoot, true, { run: passingCheck }),
     /Path escapes its allowed root/,
   );
 
@@ -175,7 +298,7 @@ test("rejects traversal in task reads and archive metadata", async () => {
     task("T-008").replace("project: ocean", "project: ../../outside"),
   );
   await assert.rejects(
-    archiveDoneTasks(tasksRoot, true),
+    archiveDoneTasks(tasksRoot, true, { run: passingCheck }),
     /Path escapes its allowed root/,
   );
 });
@@ -192,7 +315,7 @@ test("a task whose project field says ocean archives under Ocean, other projects
       task(id).replace(/^project:.*$/m, `project: ${project}`),
     );
   }
-  const result = await archiveDoneTasks(root, true);
+  const result = await archiveDoneTasks(root, true, { run: passingCheck });
   assert.deepEqual(result.moved.sort(), ["T-300", "T-301"]);
   await access(path.join(root, "archive", "Ocean", "T-300", "task.md"));
   await access(

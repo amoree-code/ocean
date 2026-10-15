@@ -189,16 +189,15 @@ export async function runTasksCommand(
       process.exitCode = 1;
       return;
     }
+    if (args.includes("--no-verify")) {
+      console.error("Task completion verification cannot be skipped.");
+      process.exitCode = 1;
+      return;
+    }
     try {
       const task = await liveTask(id, explicitProject, cwdProject);
       console.log(
-        JSON.stringify(
-          await completeTask(task.id, task.root, {
-            verify: !args.includes("--no-verify"),
-          }),
-          null,
-          2,
-        ),
+        JSON.stringify(await completeTask(task.id, task.root), null, 2),
       );
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));
@@ -239,4 +238,5 @@ export async function runTasksCommand(
     apply,
   );
   console.log(JSON.stringify({ dryRun: !apply, ...result }, null, 2));
+  if (apply && result.skipped.length) process.exitCode = 1;
 }

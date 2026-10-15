@@ -29,10 +29,18 @@ project: ocean
 
 Prove the verifier gates completion.
 
+## Definition of done
+
+- [x] A fixture criterion is satisfied.
+
 ## Verification
 
 - \`pnpm build && pnpm test\` green.
 - Deliberately break a step and confirm the loop does not report "done".
+
+## Blockers
+
+None.
 `;
 
 test("extractVerificationCommands keeps only allowlisted command spans", () => {
@@ -118,7 +126,6 @@ test("completeTask with verify refuses when the independent check fails", async 
     await writeTask(root, "T-900", taskBody("active"));
     await assert.rejects(
       completeTask("T-900", root, {
-        verify: true,
         run: async () => ({ exitCode: 1 }),
       }),
       /Cannot complete T-900/,
@@ -133,7 +140,6 @@ test("completeTask with verify succeeds when the independent check passes", asyn
   try {
     await writeTask(root, "T-900", taskBody("active"));
     const result = await completeTask("T-900", root, {
-      verify: true,
       run: async () => ({ exitCode: 0 }),
     });
     assert.equal(result.state, "done");
