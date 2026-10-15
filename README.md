@@ -24,7 +24,7 @@ git clone https://github.com/amoree-code/ocean.git ocean
 cd ocean
 pnpm install
 pnpm build
-node packages/core/dist/main.js setup
+node packages/harness/dist/main.js setup
 ```
 
 Connect an Obsidian vault during setup, or connect it later:
@@ -56,7 +56,7 @@ approval inside its policy boundary.
 
 By default, `setup` creates the Ocean workspace as a private sibling directory next to
 this repository (e.g. `ocean/` next to `ocean/kernel/`), not inside it, and installs
-user-level startup integration pointed at this repository's `packages/core/dist/main.js`.
+user-level startup integration pointed at this repository's `packages/harness/dist/main.js`.
 Later logins
 start the local runtime automatically. Set `OCEAN_ROOT` to use a different workspace
 location instead.
@@ -64,7 +64,7 @@ location instead.
 Run an agent:
 
 ```bash
-node packages/core/dist/main.js run --profile default --prompt "Review this project"
+node packages/harness/dist/main.js run --profile default --prompt "Review this project"
 ```
 
 Open a provider through Ocean's managed PTY boundary when interactive use is
@@ -83,10 +83,10 @@ control level. See [entry-point contract](docs/entry-points.md).
 Inspect or resume a saved session:
 
 ```bash
-node packages/core/dist/main.js session list
-node packages/core/dist/main.js session show <session-id>
-node packages/core/dist/main.js session resume <session-id> "Continue the review"
-node packages/core/dist/main.js session promote <session-id> knowledge/results --approve
+node packages/harness/dist/main.js session list
+node packages/harness/dist/main.js session show <session-id>
+node packages/harness/dist/main.js session resume <session-id> "Continue the review"
+node packages/harness/dist/main.js session promote <session-id> knowledge/results --approve
 ```
 
 Promotion is explicit: it copies a bounded, redacted provider result into private Ocean
@@ -148,7 +148,7 @@ private workspace and are not part of it.
 
 The workspace root resolves to the parent directory by default; set `OCEAN_ROOT` to choose
 another. Startup entries execute the engine from
-`kernel/packages/core/dist/main.js` while using the private workspace as their working
+`kernel/packages/harness/dist/main.js` while using the private workspace as their working
 directory.
 
 ## Development
@@ -174,7 +174,7 @@ remain on the host and are not included in the image.
 
 ## Agent skills
 
-Ocean ships a small set of provider-neutral Agent Skills under `packages/core/skills/core/`,
+Ocean ships a small set of provider-neutral Agent Skills under `packages/harness/skills/core/`,
 invoked
 by name from any registered client:
 
@@ -213,7 +213,7 @@ flowchart LR
 - [Security](docs/security.md) — credentials, the workspace boundary, and access control
 - [Troubleshooting](docs/troubleshooting.md) — common errors and how to resolve them
 - [Migration](docs/migration.md) — what changes between versions and how to move a workspace
-- [Changelog](packages/core/CHANGELOG.md) — versioned release notes
+- [Changelog](packages/harness/CHANGELOG.md) — versioned release notes
 
 ## License
 

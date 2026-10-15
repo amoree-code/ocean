@@ -7,7 +7,7 @@ pre-commit:
     privacy:
       run: pnpm check:privacy
     skills:
-      glob: "packages/core/skills/**"
+      glob: "packages/harness/skills/**"
       run: pnpm check:skills
 
 pre-push:

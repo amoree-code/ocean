@@ -3,13 +3,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const corePackageRoot = path.join(root, "packages", "core");
+const oceanPackageRoot = path.join(root, "packages", "harness");
 const packageJson = JSON.parse(
-  await readFile(path.join(corePackageRoot, "package.json"), "utf8"),
+  await readFile(path.join(oceanPackageRoot, "package.json"), "utf8"),
 );
 const version = packageJson.version;
 const changelog = await readFile(
-  path.join(corePackageRoot, "CHANGELOG.md"),
+  path.join(oceanPackageRoot, "CHANGELOG.md"),
   "utf8",
 );
 const readme = await readFile(path.join(root, "README.md"), "utf8");
@@ -30,7 +30,7 @@ if (
 async function walk(directory) {
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     const relative = path.relative(
-      corePackageRoot,
+      oceanPackageRoot,
       path.join(directory, entry.name),
     );
     if (entry.isDirectory()) await walk(path.join(directory, entry.name));
@@ -45,7 +45,7 @@ async function walk(directory) {
 }
 
 for (const directory of ["dist", "templates", "skills"])
-  await walk(path.join(corePackageRoot, directory));
+  await walk(path.join(oceanPackageRoot, directory));
 if (findings.length) {
   console.error(findings.join("\n"));
   process.exitCode = 1;
