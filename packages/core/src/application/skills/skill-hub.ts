@@ -138,7 +138,12 @@ export type CopyAction = {
 
 // Clients that get the hub's skills as copies. Hermes manages its own bundle and curator,
 // so it is left alone unless asked for by name.
-export const COPY_CLIENTS: SkillClient[] = ["claude", "codex", "gemini"];
+export const COPY_CLIENTS: SkillClient[] = [
+  "claude",
+  "codex",
+  "gemini",
+  "hermes",
+];
 
 // Content hash of a whole skill directory: paths and bytes, so a changed script or reference
 // counts as drift, not only SKILL.md.

@@ -1,5 +1,13 @@
 import { createHash } from "node:crypto";
-import { cp, mkdir, readdir, readFile, stat } from "node:fs/promises";
+import {
+  cp,
+  lstat,
+  mkdir,
+  readdir,
+  readFile,
+  rm,
+  stat,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { enginePath } from "../../paths.js";
@@ -106,7 +114,14 @@ export async function syncCoreSkills(home = os.homedir()) {
     for (const name of names) {
       const source = path.join(enginePath("skills"), "core", name, "SKILL.md");
       const target = path.join(report.root, name, "SKILL.md");
-      await mkdir(path.dirname(target), { recursive: true });
+      // A link left behind by a moved source makes mkdir throw ENOENT; it holds nothing.
+      const skillDir = path.dirname(target);
+      if (
+        (await lstat(skillDir).catch(() => null))?.isSymbolicLink() &&
+        !(await stat(skillDir).catch(() => null))
+      )
+        await rm(skillDir);
+      await mkdir(skillDir, { recursive: true });
       const sourceBytes = await readFile(source);
       let current: Buffer | null = null;
       try {
