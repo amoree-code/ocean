@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -464,7 +464,7 @@ installed(
 
 installed(
   "CLI/direct-import parity: the shim and a direct engine call produce the same context packet",
-  async () => {
+  async (t) => {
     // The shim always execs the engine checkout it was installed against, while "direct"
     // runs whichever dist/main.js happens to be built in the invoking checkout. Both
     // resolve their project purely from OCEAN_ROOT and cwd, so pin those explicitly for
@@ -480,6 +480,18 @@ installed(
       "shims",
       "ocean",
     );
+    // Parity means the same code reached two ways. From any other checkout (a worktree, a
+    // branch ahead of the installed engine) the two runs are different versions, so skip.
+    const shimTarget = readFileSync(shim, "utf8").match(
+      /'([^']*main\.js)'/,
+    )?.[1];
+    if (
+      !shimTarget ||
+      realpathSync(shimTarget) !== realpathSync(path.resolve("dist/main.js"))
+    ) {
+      t.skip("the installed shim runs a different checkout");
+      return;
+    }
     const viaShim = spawnSync(shim, ["context", "--json"], {
       cwd: root,
       env,
