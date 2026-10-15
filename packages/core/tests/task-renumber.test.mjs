@@ -156,3 +156,37 @@ test("it refuses when a target folder already exists, before changing anything",
   assert.match(result.stderr, /already exists/);
   assert.deepEqual(await names("lab"), ["LB-001", "T-5", "T-7", "archive"]);
 });
+
+test("after a renumber, a third project still on T never reissues a moved number", async () => {
+  const { root, run, manifest } = await fixture();
+  await manifest("shop");
+  await mkdir(path.join(root, PROJECTS_DIR, "shop", "tasks", "T-3"), {
+    recursive: true,
+  });
+  assert.equal(run("--project", "lab", "--prefix", "LB", "--write").status, 0);
+  // T-7 now lives on only as LB-003's legacyId; the folder scan no longer sees it.
+  const peek = spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `const m = await import(${JSON.stringify(path.resolve("dist/application/context/project-resolution.js"))}); console.log(await m.peekNextTaskId("shop"));`,
+    ],
+    { env: { ...process.env, OCEAN_ROOT: root }, encoding: "utf8" },
+  );
+  assert.equal(peek.stdout.trim(), "T-008", peek.stderr);
+});
+
+test("a record without an id in its frontmatter refuses the run before any write", async () => {
+  const { root, run, json, names } = await fixture();
+  await writeFile(
+    path.join(root, PROJECTS_DIR, "lab", "tasks", "T-5", "task.md"),
+    "---\ntitle: no id\n---\n\nid: T-5 in the body\n",
+  );
+  const result = run("--project", "lab", "--prefix", "LB", "--write");
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /has no id in its frontmatter/);
+  assert.deepEqual(await names("lab"), ["T-5", "T-7", "archive"]);
+  assert.equal((await json("lab", "project.json")).prefix, undefined);
+  assert.equal((await json("ocean", "project.json")).nextTask, undefined);
+});

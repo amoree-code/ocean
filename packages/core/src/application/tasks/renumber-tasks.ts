@@ -155,21 +155,40 @@ export async function renumberTasks(options: {
     };
     if (!options.write) return result;
 
+    // Every record is rewritten in memory first, so one without an id in its frontmatter
+    // refuses the run before anything is written. Only the frontmatter changes.
+    const rewritten = moves.map((move) => {
+      const end = move.source.indexOf("\n---", 4);
+      if (
+        !move.source.startsWith("---\n") ||
+        end < 0 ||
+        !/^id:/m.test(move.source.slice(0, end))
+      )
+        throw new Error(
+          `${path.relative(oceanRoot(), move.file)} has no id in its frontmatter`,
+        );
+      let head = move.source
+        .slice(0, end)
+        .replace(/^id:.*$/m, `id: ${move.to}`);
+      if (!/^legacyId:/m.test(head))
+        head = head.replace(
+          /^id:.*$/m,
+          (line) => `${line}\nlegacyId: ${move.oldId}`,
+        );
+      return { move, source: head + move.source.slice(end) };
+    });
+
     // The T counter first: once these tasks leave the shared namespace the scan no longer sees
-    // their numbers, and the workspace project must not reissue them.
+    // their numbers, and no project on T may reissue them.
     const globalMax = await highestTaskNumber(LEGACY_PREFIX);
     await writeManifest({
       ...ocean,
       nextTask: Math.max(ocean.nextTask ?? 1, globalMax + 1),
     });
-    for (const move of moves) {
-      let source = move.source;
-      source = source.replace(/^id:.*$/m, `id: ${move.to}`);
-      if (!/^legacyId:/m.test(source))
-        source = source.replace(
-          /^id:.*$/m,
-          (line) => `${line}\nlegacyId: ${move.oldId}`,
-        );
+    // The prefix next, before any move: if a move fails, the ids already moved still resolve,
+    // and a rerun finishes the rest.
+    await writeManifest({ ...manifest, prefix, nextTask });
+    for (const { move, source } of rewritten) {
       await atomicWrite(move.file, source);
       if (move.to !== move.folder)
         await rename(
@@ -177,7 +196,6 @@ export async function renumberTasks(options: {
           path.join(path.dirname(path.dirname(move.file)), move.to),
         );
     }
-    await writeManifest({ ...manifest, prefix, nextTask });
     return result;
   });
 }

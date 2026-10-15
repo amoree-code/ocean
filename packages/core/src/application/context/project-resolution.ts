@@ -442,14 +442,21 @@ async function nextTaskNumber(
   projectId: string,
 ): Promise<{ prefix: string; number: number; manifest?: ProjectManifest }> {
   const folder = projectFolder(projectId);
-  const manifest = (await listProjectManifests()).find(
-    (candidate) => candidate.id === folder,
-  );
+  const manifests = await listProjectManifests();
+  const manifest = manifests.find((candidate) => candidate.id === folder);
   const prefix = manifest?.prefix ?? LEGACY_PREFIX;
-  const number = Math.max(
-    manifest?.nextTask ?? 1,
-    (await highestTaskNumber(prefix)) + 1,
-  );
+  // T is one namespace shared by every project without a prefix: each honours the highest
+  // counter among them, so numbers a renumber moved out of the scan are never reissued.
+  const floor =
+    prefix === LEGACY_PREFIX
+      ? Math.max(
+          1,
+          ...manifests
+            .filter((candidate) => !candidate.prefix)
+            .map((candidate) => candidate.nextTask ?? 1),
+        )
+      : (manifest?.nextTask ?? 1);
+  const number = Math.max(floor, (await highestTaskNumber(prefix)) + 1);
   return { prefix, number, manifest };
 }
 
