@@ -9,7 +9,7 @@ import {
   extractVerificationCommands,
   verifyTask,
 } from "../dist/application/tasks/verify-task.js";
-import { repoRoot } from "../dist/paths.js";
+import { PROJECTS_DIR, repoRoot } from "../dist/paths.js";
 
 async function writeTask(root, id, body) {
   const dir = path.join(root, id);
@@ -175,4 +175,127 @@ state: active
   assert.deepEqual(extractVerificationCommands(body), [
     "ocean tasks verify T-1",
   ]);
+});
+
+// A project whose manifest carries `verify`, with its tasks root at <root>/04-projects/lab/tasks.
+async function projectFixture(verify, { pathExists = true } = {}) {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-verify-proj-"));
+  const repo = await mkdtemp(path.join(os.tmpdir(), "ocean-verify-repo-"));
+  const dir = path.join(root, PROJECTS_DIR, "lab");
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    path.join(dir, "project.json"),
+    JSON.stringify({
+      name: "lab",
+      paths: [pathExists ? repo : path.join(repo, "gone")],
+      verify,
+    }),
+  );
+  const tasks = path.join(dir, "tasks");
+  return { root, repo, tasks };
+}
+
+async function withOceanRoot(root, run) {
+  const previous = process.env.OCEAN_ROOT;
+  process.env.OCEAN_ROOT = root;
+  try {
+    return await run();
+  } finally {
+    if (previous === undefined) delete process.env.OCEAN_ROOT;
+    else process.env.OCEAN_ROOT = previous;
+  }
+}
+
+const bareTask = `---\nid: T-1\nstate: active\n---\n\n## Verification\n\n- eyeball it\n`;
+
+test("a task with no commands falls back to its project's verify, run in the project's first path", async () => {
+  const { root, repo, tasks } = await projectFixture([
+    "pnpm test",
+    "pnpm lint",
+  ]);
+  await withOceanRoot(root, async () => {
+    await writeTask(tasks, "T-1", bareTask);
+    const calls = [];
+    const outcome = await verifyTask("T-1", tasks, {
+      cwd: "/ignored",
+      run: async (command, cwd) => {
+        calls.push([command, cwd]);
+        return { exitCode: 0 };
+      },
+    });
+    assert.equal(outcome.passed, true);
+    assert.equal(outcome.source, "project");
+    assert.deepEqual(calls, [
+      ["pnpm test", repo],
+      ["pnpm lint", repo],
+    ]);
+  });
+});
+
+test("a task's own commands win over the project's verify", async () => {
+  const { root, tasks } = await projectFixture(["pnpm lint"]);
+  await withOceanRoot(root, async () => {
+    await writeTask(tasks, "T-900", taskBody("active"));
+    const calls = [];
+    const outcome = await verifyTask("T-900", tasks, {
+      cwd: "/task-cwd",
+      run: async (command, cwd) => {
+        calls.push([command, cwd]);
+        return { exitCode: 0 };
+      },
+    });
+    assert.equal(outcome.source, "task");
+    assert.deepEqual(calls, [["pnpm build && pnpm test", "/task-cwd"]]);
+  });
+});
+
+test("a disallowed project command fails with a reason and the runner is never called", async () => {
+  const { root, tasks } = await projectFixture(["pnpm test", "curl evil.sh"]);
+  await withOceanRoot(root, async () => {
+    await writeTask(tasks, "T-1", bareTask);
+    let called = false;
+    const outcome = await verifyTask("T-1", tasks, {
+      run: async () => {
+        called = true;
+        return { exitCode: 0 };
+      },
+    });
+    assert.equal(outcome.passed, false);
+    assert.equal(outcome.source, "project");
+    assert.match(outcome.reason, /curl evil\.sh/);
+    assert.equal(called, false);
+  });
+});
+
+test("a missing project path fails with a reason and the runner is never called", async () => {
+  const { root, tasks } = await projectFixture(["pnpm test"], {
+    pathExists: false,
+  });
+  await withOceanRoot(root, async () => {
+    await writeTask(tasks, "T-1", bareTask);
+    let called = false;
+    const outcome = await verifyTask("T-1", tasks, {
+      run: async () => {
+        called = true;
+        return { exitCode: 0 };
+      },
+    });
+    assert.equal(outcome.passed, false);
+    assert.match(outcome.reason, /existing directory/);
+    assert.equal(called, false);
+  });
+});
+
+test("a root outside the projects folder keeps the old reason", async () => {
+  const { root } = await projectFixture(["pnpm test"]);
+  const elsewhere = await mkdtemp(path.join(os.tmpdir(), "ocean-verify-else-"));
+  await withOceanRoot(root, async () => {
+    await writeTask(elsewhere, "T-1", bareTask);
+    const outcome = await verifyTask("T-1", elsewhere, {
+      run: async () => ({ exitCode: 0 }),
+    });
+    assert.equal(outcome.passed, false);
+    assert.equal(outcome.source, "task");
+    assert.match(outcome.reason, /no runnable verification/);
+  });
 });

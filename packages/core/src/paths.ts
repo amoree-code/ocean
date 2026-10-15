@@ -1,6 +1,7 @@
 import { realpathSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { isValidProjectId } from "./domain/context/project-id.js";
 
 const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
 
@@ -119,6 +120,18 @@ function isDirectory(target: string): boolean {
 // The folder name to use under PROJECTS_DIR for a project id.
 export function projectFolder(projectId: string): string {
   return isWorkspaceProject(projectId) ? WORKSPACE_PROJECT_ID : projectId;
+}
+
+// Inverse of a project's tasks root (`<ocean>/04-projects/<id>/tasks`): the project id, or
+// null for any other directory.
+export function projectOfTasksRoot(root: string): string | null {
+  const resolved = path.resolve(root);
+  if (path.basename(resolved) !== "tasks") return null;
+  const folder = path.dirname(resolved);
+  if (path.dirname(folder) !== path.resolve(oceanPath(PROJECTS_DIR)))
+    return null;
+  const id = path.basename(folder);
+  return isValidProjectId(id) ? id : null;
 }
 
 export function workspaceTasksRoot(root: string = oceanRoot()): string {

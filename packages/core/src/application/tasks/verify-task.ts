@@ -1,7 +1,17 @@
 import { execFile as execFileCallback } from "node:child_process";
+import { statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
-import { repoRoot, resolveWithin, workspaceTasksRoot } from "../../paths.js";
+import {
+  projectOfTasksRoot,
+  repoRoot,
+  resolveWithin,
+  workspaceTasksRoot,
+} from "../../paths.js";
+import {
+  expandHome,
+  readProjectManifest,
+} from "../context/project-resolution.js";
 
 const execFile = promisify(execFileCallback);
 
@@ -41,6 +51,8 @@ export type VerificationOutcome = {
   passed: boolean;
   reason: string;
   checks: VerificationCheck[];
+  // Where the commands came from: the task's own declaration, or its project's `verify`.
+  source: "task" | "project";
 };
 
 export type CommandRunner = (
@@ -108,6 +120,14 @@ export function extractVerificationCommands(source: string): string[] {
 const UNSAFE_METACHARACTERS = /[`$><]/;
 const CHAIN_SEPARATOR = /\s*(?:&&|\|\||;|\|)\s*/;
 
+function isDirectory(target: string): boolean {
+  try {
+    return statSync(target).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 function isAllowedCommand(command: string): boolean {
   if (UNSAFE_METACHARACTERS.test(command)) return false;
   const links = command
@@ -131,17 +151,53 @@ export async function verifyTask(
 ): Promise<VerificationOutcome> {
   const taskFile = resolveWithin(root, id, "task.md");
   const source = await readFile(taskFile, "utf8");
-  const commands = extractVerificationCommands(source);
-  if (commands.length === 0)
-    return {
-      id,
-      passed: false,
-      reason:
-        "no runnable verification commands declared; cannot self-certify done",
-      checks: [],
-    };
+  const taskCommands = extractVerificationCommands(source);
+  const fail = (
+    reason: string,
+    from: VerificationOutcome["source"],
+  ): VerificationOutcome => ({
+    id,
+    passed: false,
+    reason,
+    checks: [],
+    source: from,
+  });
+  const noCommands = () =>
+    fail(
+      "no runnable verification commands declared; cannot self-certify done",
+      "task",
+    );
+  let commands = taskCommands;
+  let cwd = options.cwd ?? repoRoot();
+  let from: VerificationOutcome["source"] = "task";
+  if (taskCommands.length === 0) {
+    const project = projectOfTasksRoot(root);
+    let manifest: Awaited<ReturnType<typeof readProjectManifest>> = null;
+    try {
+      manifest = project ? await readProjectManifest(project) : null;
+    } catch (error) {
+      return fail(
+        `project manifest is unreadable: ${error instanceof Error ? error.message : String(error)}`,
+        "project",
+      );
+    }
+    if (!manifest?.verify?.length) return noCommands();
+    from = "project";
+    const rejected = manifest.verify.find(
+      (command) => !isAllowedCommand(command),
+    );
+    if (rejected)
+      return fail(`project verify command is not allowed: ${rejected}`, from);
+    const dir = manifest.paths[0] ? expandHome(manifest.paths[0]) : "";
+    if (!dir || !isDirectory(dir))
+      return fail(
+        `project verify needs the project's first path to be an existing directory: ${dir || "(none)"}`,
+        from,
+      );
+    commands = manifest.verify;
+    cwd = dir;
+  }
   const run = options.run ?? defaultRunner;
-  const cwd = options.cwd ?? repoRoot();
   const checks: VerificationCheck[] = [];
   for (const command of commands) {
     const { exitCode } = await run(command, cwd);
@@ -158,5 +214,6 @@ export async function verifyTask(
           .map((check) => check.command)
           .join(", ")}`,
     checks,
+    source: from,
   };
 }
