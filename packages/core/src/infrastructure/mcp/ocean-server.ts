@@ -15,7 +15,7 @@ import {
   listHandoffs,
 } from "../../application/handoff/handoff-service.js";
 import { promoteSessionToKnowledge } from "../../application/memory/session-promotion.js";
-import { listTasks } from "../../application/tasks/list-tasks.js";
+import { listTasksForFolder } from "../../application/tasks/list-tasks.js";
 import {
   defaultBrainIndexPort,
   defaultSessionStoreFactory,
@@ -74,11 +74,20 @@ const tools = [
   },
   {
     name: "ocean_tasks_list",
-    description: "List Ocean tasks, optionally filtered by state.",
+    description:
+      "List Ocean tasks for the folder being worked in: that project's tasks, or every project's (labelled) when it has none or the folder is no project. Optionally filtered by state.",
     annotations: { readOnlyHint: true },
     inputSchema: {
       type: "object",
-      properties: { state: { type: "string" } },
+      properties: {
+        state: { type: "string" },
+        project: { type: "string" },
+        cwd: {
+          type: "string",
+          description:
+            "The folder the user is working in; defaults to the server's working directory.",
+        },
+      },
       additionalProperties: false,
     },
   },
@@ -303,12 +312,15 @@ async function callTool(
     };
   }
   if (name === "ocean_profiles_list") return { profiles: await profiles() };
-  if (name === "ocean_tasks_list")
-    return {
-      tasks: await listTasks(
-        typeof args.state === "string" ? args.state : undefined,
-      ),
-    };
+  if (name === "ocean_tasks_list") {
+    const text = (key: string) =>
+      typeof args[key] === "string" && args[key] ? args[key] : undefined;
+    return await listTasksForFolder({
+      cwd: text("cwd") ?? process.cwd(),
+      project: text("project"),
+      state: text("state"),
+    });
+  }
   if (name === "ocean_task_get")
     return await getTask(requiredArgument(args, "taskId"));
   if (name === "ocean_handoffs_list")
@@ -454,7 +466,8 @@ async function readResource(
       findings: report.findings,
     };
   } else if (resource === "profiles") value = { profiles: await profiles() };
-  else if (resource === "tasks") value = { tasks: await listTasks() };
+  else if (resource === "tasks")
+    value = await listTasksForFolder({ cwd: process.cwd() });
   else if (resource === "handoffs")
     value = { handoffs: await listHandoffs(defaultSessionStoreFactory) };
   else throw new Error(`Unknown Ocean resource: ${uri}`);

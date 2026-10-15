@@ -8,6 +8,7 @@ import {
   resolveWithin,
   WORKSPACE_PROJECT_ID,
 } from "../../paths.js";
+import { resolveProject } from "../context/project-resolution.js";
 
 export type TaskSummary = {
   id: string;
@@ -111,4 +112,57 @@ export async function projectsHoldingTask(id: string): Promise<string[]> {
     }
   }
   return holders;
+}
+
+// The project a folder belongs to, or null when it belongs to none. A registry that cannot be
+// read throws: no guessing which project a folder is.
+export async function folderProject(cwd: string): Promise<string | null> {
+  const resolution = await resolveProject(cwd);
+  return resolution.status === "bound" ? resolution.projectId : null;
+}
+
+export type ProjectTask = TaskSummary & { project: string };
+
+export type FolderTasks = {
+  // "project": one project's tasks; "all": every project's, because there was nothing narrower.
+  scope: "project" | "all";
+  project: string | null;
+  tasks: ProjectTask[];
+  note?: string;
+};
+
+// "What tasks do I have" from a folder (T-256): --project wins; else the folder's project when
+// it has matching tasks; else every project's, labelled, with a note saying why.
+export async function listTasksForFolder(options: {
+  cwd: string;
+  project?: string;
+  state?: string;
+}): Promise<FolderTasks> {
+  const { state } = options;
+  const label = (project: string, tasks: TaskSummary[]): ProjectTask[] =>
+    tasks.map((task) => ({ ...task, project }));
+  if (options.project)
+    return {
+      scope: "project",
+      project: options.project,
+      tasks: label(options.project, await listTasks(state, options.project)),
+    };
+  const project = await folderProject(options.cwd);
+  if (project) {
+    const own = await listTasks(state, project);
+    if (own.length)
+      return { scope: "project", project, tasks: label(project, own) };
+  }
+  const tasks: ProjectTask[] = [];
+  for (const each of await projectsWithTasks())
+    tasks.push(...label(each, await listTasks(state, each)));
+  const which = state ? `${state} ` : "";
+  return {
+    scope: "all",
+    project,
+    tasks,
+    note: project
+      ? `No ${which}tasks in ${project}; showing every project.`
+      : `This folder is not an Ocean project; showing every project's ${which}tasks.`,
+  };
 }

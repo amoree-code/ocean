@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { access, mkdtemp } from "node:fs/promises";
+import { access, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { handleOceanMcpRequest } from "../dist/infrastructure/mcp/ocean-server.js";
-import { SYSTEM_DIR } from "../dist/paths.js";
+import { PROJECTS_DIR, SYSTEM_DIR } from "../dist/paths.js";
 
 test("Ocean MCP exposes provider-neutral read-only tools without Obsidian", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ocean-mcp-no-obsidian-"));
@@ -143,4 +143,50 @@ test("Ocean MCP exposes bounded resources and prompt templates", async () => {
     params: { name: "ocean_review_task", arguments: { task: "T-1" } },
   });
   assert.match(prompt.result.messages[0].content.text, /T-1/);
+});
+
+test("ocean_tasks_list follows the folder it is given, else lists every project", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-mcp-tasks-"));
+  const repo = await mkdtemp(path.join(os.tmpdir(), "ocean-mcp-shop-repo-"));
+  const task = async (project, id) => {
+    const dir = path.join(root, PROJECTS_DIR, project, "tasks", id);
+    await mkdir(dir, { recursive: true });
+    await writeFile(
+      path.join(dir, "task.md"),
+      `---\nid: ${id}\ntitle: ${project} ${id}\nstate: active\n---\n`,
+    );
+  };
+  await task("ocean", "T-001");
+  await task("shop", "T-101");
+  await writeFile(
+    path.join(root, PROJECTS_DIR, "shop", "project.json"),
+    JSON.stringify({ name: "shop", paths: [repo] }),
+  );
+  const previous = process.env.OCEAN_ROOT;
+  process.env.OCEAN_ROOT = root;
+  const call = async (args) => {
+    const response = await handleOceanMcpRequest({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: { name: "ocean_tasks_list", arguments: args },
+    });
+    return JSON.parse(response.result.content[0].text);
+  };
+  const ids = (found) => found.tasks.map((t) => `${t.project}/${t.id}`);
+  try {
+    const own = await call({ cwd: repo });
+    assert.equal(own.scope, "project");
+    assert.deepEqual(ids(own), ["shop/T-101"]);
+    const elsewhere = await call({
+      cwd: await mkdtemp(path.join(os.tmpdir(), "ocean-mcp-nowhere-")),
+    });
+    assert.equal(elsewhere.scope, "all");
+    assert.deepEqual(ids(elsewhere), ["ocean/T-001", "shop/T-101"]);
+    assert.match(elsewhere.note, /not an Ocean project/);
+    assert.deepEqual(ids(await call({ project: "ocean" })), ["ocean/T-001"]);
+  } finally {
+    if (previous === undefined) delete process.env.OCEAN_ROOT;
+    else process.env.OCEAN_ROOT = previous;
+  }
 });
