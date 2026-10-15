@@ -37,6 +37,7 @@ import {
   readProfileFacts,
 } from "../memory/profile-facts.js";
 import { finalizeSession } from "../memory/session-closeout.js";
+import { sessionProjectId } from "../sessions/session-projects.js";
 import { loadPromotedSkills } from "../skills/skill-curation.js";
 import {
   assemblePrompt,
@@ -121,6 +122,7 @@ export async function runAgent(
     profileIdentity: profileIdentity(profile),
     workingDirectory: request.cwd,
     resumeData: null,
+    projectId: await sessionProjectId(request.cwd),
   });
 
   if (request.runContract) {

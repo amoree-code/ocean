@@ -1,4 +1,5 @@
 import { access } from "node:fs/promises";
+import { backfillSessionProjects } from "../../application/sessions/session-projects.js";
 import { openSessionStore } from "../../infrastructure/persistence/session-store.js";
 import { oceanPath, SYSTEM_DIR } from "../../paths.js";
 
@@ -25,9 +26,10 @@ export async function runMigrateCommand(apply: boolean): Promise<void> {
   }
   const store = await openSessionStore();
   try {
+    const projects = await backfillSessionProjects(store);
     console.log(
       JSON.stringify(
-        { migrated: true, integrity: store.integrityCheck() },
+        { migrated: true, integrity: store.integrityCheck(), projects },
         null,
         2,
       ),

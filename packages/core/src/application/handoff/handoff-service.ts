@@ -91,6 +91,7 @@ export async function createHandoffWithStore(
     profileId: input.profileId ?? session?.profile ?? "",
     profileIdentity: session?.profileIdentity ?? "",
     sourceSessionId: session?.sessionId ?? null,
+    projectId: session?.projectId ?? null,
     provider: input.provider ?? session?.provider ?? "",
     parentSessionId: session?.parentSessionId ?? null,
     decisions: [],
@@ -146,11 +147,12 @@ export async function getHandoff(
 export async function listHandoffs(
   openStore: SessionStoreFactory,
   taskId?: string,
+  projectId?: string,
 ): Promise<Array<Record<string, unknown>>> {
   const store = await openStore();
   try {
     return store
-      .listHandoffs(taskId)
+      .listHandoffs(taskId, projectId)
       .map(({ content: _content, ...handoff }) => handoff);
   } finally {
     store.close();

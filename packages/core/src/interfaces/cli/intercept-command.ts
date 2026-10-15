@@ -102,6 +102,8 @@ export async function intercept(
     profileIdentity: profileIdentity(profile),
     workingDirectory,
     resumeData: null,
+    projectId:
+      projectResolution.status === "bound" ? projectResolution.projectId : null,
   });
   store.appendEvent(
     sessionId,

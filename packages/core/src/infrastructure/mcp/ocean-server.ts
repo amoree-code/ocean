@@ -112,7 +112,7 @@ const tools = [
     annotations: { readOnlyHint: true },
     inputSchema: {
       type: "object",
-      properties: { taskId: { type: "string" } },
+      properties: { taskId: { type: "string" }, project: { type: "string" } },
       additionalProperties: false,
     },
   },
@@ -336,6 +336,9 @@ async function callTool(
       handoffs: await listHandoffs(
         defaultSessionStoreFactory,
         typeof args.taskId === "string" ? args.taskId : undefined,
+        typeof args.project === "string" && args.project
+          ? args.project
+          : undefined,
       ),
     };
   if (name === "ocean_handoff_get")
