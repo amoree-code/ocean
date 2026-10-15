@@ -122,6 +122,15 @@ const MEMORY_LOOKUP = [
   /تتذكر|ذاكرة/,
 ];
 
+// "what tasks we have" / "check the tasks" / "what the next task": a list request with no id.
+// Needs a task noun AND a list cue so "update all tasks" is not read as a list. Includes the
+// typos seen in real requests (taks, tsks) and Arabic/Iraqi wording (شنو عدنه تكتات).
+const TASK_NOUN = [/\b(tasks?|taks|tsks|tasts)\b/i, /تكت|تاسك|مهام|مهمة/];
+const TASK_LIST_CUE = [
+  /\b(what|which|show|list|check|have|next|status|remaining|left|incomplete)\b/i,
+  /شنو|اي |اكو|عدن+ه?|باقي|الجاي|التالي|وين/,
+];
+
 const EXECUTE = [
   /\b(run|execute|deploy|launch)\b/i,
   /\bbuild\b/i,
@@ -282,6 +291,24 @@ export function classifyIntent(
       action: "search",
       confidence: "high",
       ambiguityReason: null,
+    };
+  }
+
+  // No digit anywhere: "show me task 123" / "show TASK-123" name a malformed id, and the
+  // fail-closed rule says never to turn that into a list.
+  if (
+    !/\d/.test(text) &&
+    matchesAny(text, TASK_NOUN) &&
+    matchesAny(text, TASK_LIST_CUE)
+  ) {
+    return {
+      intent: "task-lookup",
+      entityType: "task",
+      identifier: null,
+      action: "list",
+      confidence: "medium",
+      ambiguityReason:
+        "task list request without an explicit task id; list the project's tasks, do not guess one",
     };
   }
 
