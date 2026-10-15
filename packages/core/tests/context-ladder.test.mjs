@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -365,6 +365,7 @@ test("context-ladder.ts imports only node:fs/promises, node:path, and the existi
     "../../fs-utils.js",
     "../../domain/tasks/task-id.js",
     "../tasks/task-reference.js",
+    "./project-resolution.js",
   ]);
   for (const specifier of imports)
     assert.ok(allowed.has(specifier), `unexpected import: ${specifier}`);
@@ -591,3 +592,29 @@ test("exact record: a prefixed id resolves inside its own project only", async (
     else process.env.OCEAN_ROOT = previous;
   }
 });
+
+test("an exact-record read carries the project's rules, and a corrupt manifest rejects it", () =>
+  withTempTask(10, async (root) => {
+    const manifest = path.join(root, PROJECTS_DIR, "ocean", "project.json");
+    await writeFile(
+      manifest,
+      JSON.stringify({ name: "ocean", paths: [], rules: ["no prod writes"] }),
+    );
+    const classification = classifyIntent("show T-1");
+    const result = await planContextRead(classification, GOOD_BUDGET);
+    assert.equal(result.allowed, true);
+    assert.deepEqual(result.rules, {
+      project: "ocean",
+      rules: ["no prod writes"],
+    });
+
+    await writeFile(manifest, JSON.stringify({ paths: [], rules: "bare" }));
+    const rejected = await planContextRead(classification, GOOD_BUDGET);
+    assert.equal(rejected.allowed, false);
+    assert.match(rejected.reason, /rules are unreadable.*rules must be/);
+
+    await rm(manifest);
+    const plain = await planContextRead(classification, GOOD_BUDGET);
+    assert.equal(plain.allowed, true);
+    assert.equal("rules" in plain, false);
+  }));

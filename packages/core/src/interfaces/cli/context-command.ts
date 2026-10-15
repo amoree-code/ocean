@@ -6,7 +6,10 @@ import {
   DEFAULT_CONTEXT_BUDGET,
   measureContextCost,
 } from "../../application/context/context-cost.js";
-import { resolveProject } from "../../application/context/project-resolution.js";
+import {
+  readProjectManifest,
+  resolveProject,
+} from "../../application/context/project-resolution.js";
 import {
   BRAIN_RECORD_DIRS,
   oceanRoot,
@@ -46,9 +49,17 @@ export async function runContextCommand(json = false): Promise<void> {
         (task) => task.state === "active" || task.state === "blocked",
       )
     : [];
+  // A manifest that does not parse shows no rules here; `ocean project list` reports why.
+  const manifest = project
+    ? await readProjectManifest(project).catch(() => null)
+    : null;
+  const rules = manifest?.rules ?? [];
+  const verify = manifest?.verify ?? [];
   const context = {
     project,
     projectResolution: resolution,
+    rules,
+    verify,
     version,
     roots: [...BRAIN_RECORD_DIRS, PROJECTS_DIR, SYSTEM_DIR],
     memory: await existingMemoryFiles(project),
@@ -68,6 +79,12 @@ export async function runContextCommand(json = false): Promise<void> {
   else
     console.log(
       `project: ${resolution.projectId} (confidence: ${resolution.confidence})`,
+    );
+  if (rules.length)
+    console.log(`rules:\n${rules.map((rule) => `- ${rule}`).join("\n")}`);
+  if (verify.length)
+    console.log(
+      `verify:\n${verify.map((command) => `- ${command}`).join("\n")}`,
     );
   console.log(`memory: ${context.memory.join(", ") || "none"}`);
   if (!tasks.length) console.log("active tasks: none");

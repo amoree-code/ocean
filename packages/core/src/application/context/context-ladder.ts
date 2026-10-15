@@ -21,6 +21,7 @@ import {
 import { BrainIndexStaleError, brainSearch } from "../brain/brain-service.js";
 import { resolveTaskReference } from "../tasks/task-reference.js";
 import type { IntentClassification } from "./intent-router.js";
+import { readProjectManifest } from "./project-resolution.js";
 
 // Context ladder: startup identity only -> project metadata -> ranked references -> exact
 // record by id. Each rung is resolved deterministically from a slice-4 IntentClassification,
@@ -68,6 +69,9 @@ export type BoundedReadResult = {
   files: string[];
   bytes: number;
   truncated: boolean;
+  // The project's hard constraints, carried with the exact-record rung and counted by the
+  // character budget. Omitted when the project has none.
+  rules?: { project: string; rules: string[] };
 };
 
 function isBoundedPositiveInteger(value: unknown, ceiling: number): boolean {
@@ -264,10 +268,22 @@ async function planExactTaskRecord(
     );
   }
   const relative = path.relative(root, resolvedPath).split(path.sep).join("/");
+  // Fail closed: a manifest that does not parse rejects the read rather than dropping rules.
+  let rules: string[] = [];
+  try {
+    rules = (await readProjectManifest(projectId, root))?.rules ?? [];
+  } catch (error) {
+    return budgetRejection(
+      rung,
+      `project ${projectId} rules are unreadable: ${error instanceof Error ? error.message : String(error)}`,
+      null,
+    );
+  }
   return withinCharBudget(
     {
       rung,
       files: [relative],
+      ...(rules.length ? { rules: { project: projectId, rules } } : {}),
       bytes: size,
       truncated: false,
       reason: `task ${normalized} is within budget (${size}/${budget.maxBytes} bytes)`,

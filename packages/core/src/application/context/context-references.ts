@@ -116,7 +116,11 @@ export async function selectPacketReferences(
   prompt: string,
   cwd: string,
   allowedPaths: string[],
-): Promise<{ references: ContextReference[]; omitted: string[] }> {
+): Promise<{
+  references: ContextReference[];
+  omitted: string[];
+  rules?: { project: string; rules: string[] };
+}> {
   const references: ContextReference[] = [];
   const omitted: string[] = [];
   try {
@@ -146,7 +150,11 @@ export async function selectPacketReferences(
         bytes: await sizeOf(canonicalPath),
       });
     }
-    return { references, omitted };
+    return {
+      references,
+      omitted,
+      ...(packet.projectRules ? { rules: packet.projectRules } : {}),
+    };
   } catch {
     return { references: [], omitted: [] };
   }
@@ -209,6 +217,16 @@ function renderReference(reference: ContextReference): string {
   return `- ${target} (${reference.recordType}, ${bytes} B): ${reason}`;
 }
 
+function renderProjectRules(rules: {
+  project: string;
+  rules: string[];
+}): string {
+  return [
+    `## Project rules (${rules.project})`,
+    ...rules.rules.map((rule) => `- ${rule}`),
+  ].join("\n");
+}
+
 export async function buildContextReferences(options: {
   profile: Pick<Profile, "contextSources" | "allowedPaths" | "memory">;
   prompt: string;
@@ -222,7 +240,12 @@ export async function buildContextReferences(options: {
   const sources = await resolveContextSources(profile, cwd);
   const packet = profile.memory.enabled
     ? await selectPacketReferences(prompt, cwd, profile.allowedPaths)
-    : { references: [], omitted: [] };
+    : { references: [], omitted: [], rules: undefined };
+  const rulesBlock = packet.rules ? renderProjectRules(packet.rules) : "";
+  // The rules come first and are never squeezed out; the references fit in what is left.
+  const referenceBudget = rulesBlock
+    ? CONTEXT_REFERENCE_MAX_BYTES - Buffer.byteLength(rulesBlock) - 2
+    : CONTEXT_REFERENCE_MAX_BYTES;
   const seen = new Set<string>();
   const candidates = [...sources.references, ...packet.references].filter(
     (reference) => {
@@ -240,10 +263,7 @@ export async function buildContextReferences(options: {
   for (const reference of candidates) {
     const line = renderReference(reference);
     const next = [SECTION_HEADER, ...lines, line].join("\n");
-    if (
-      overflow.length === 0 &&
-      Buffer.byteLength(next) <= CONTEXT_REFERENCE_MAX_BYTES
-    ) {
+    if (overflow.length === 0 && Buffer.byteLength(next) <= referenceBudget) {
       lines.push(line);
       references.push(reference);
     } else {
@@ -258,7 +278,7 @@ export async function buildContextReferences(options: {
       lines.length &&
       Buffer.byteLength(
         [SECTION_HEADER, ...lines, note(overflow.length)].join("\n"),
-      ) > CONTEXT_REFERENCE_MAX_BYTES
+      ) > referenceBudget
     ) {
       lines.pop();
       const dropped = references.pop();
@@ -268,7 +288,10 @@ export async function buildContextReferences(options: {
     omitted.push(...overflow.map((reference) => reference.path));
   }
 
-  const content = lines.length ? [SECTION_HEADER, ...lines].join("\n") : "";
+  const referencesBlock = lines.length
+    ? [SECTION_HEADER, ...lines].join("\n")
+    : "";
+  const content = [rulesBlock, referencesBlock].filter(Boolean).join("\n\n");
   return {
     content,
     readDirectories: await referenceReadDirectories(

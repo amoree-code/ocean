@@ -65,6 +65,8 @@ export type ContextPacket = {
   selectionReason: string;
   budget: BudgetSummary;
   violations: string[];
+  // The project's hard constraints, present only when the exact-record read carried some.
+  projectRules?: { project: string; rules: string[] };
 };
 
 // A file older than this is "stale", not "current" — a fixed, deterministic threshold, not
@@ -310,6 +312,9 @@ export async function buildContextPacket(
     selectionReason: readPlan ? readPlan.reason : rungReason,
     budget: budgetSummary,
     violations,
+    ...(readPlan?.allowed && readPlan.rules
+      ? { projectRules: readPlan.rules }
+      : {}),
   };
 
   if (JSON.stringify(packet).length > PACKET_CHAR_BOUND) {

@@ -1,13 +1,17 @@
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { buildContextReferences } from "../dist/application/context/context-references.js";
+import {
+  buildContextReferences,
+  CONTEXT_REFERENCE_MAX_BYTES,
+} from "../dist/application/context/context-references.js";
 import { validateContextManifest } from "../dist/domain/context/context-validator.js";
 import { selectProfileClient } from "../dist/domain/profiles/profile.js";
 import { executionPolicy } from "../dist/domain/profiles/profile-policy.js";
 import { validateProfile } from "../dist/domain/profiles/profile-validator.js";
+import { PROJECTS_DIR } from "../dist/paths.js";
 
 test("validates a profile and bounds context to allowed files", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ocean-context-"));
@@ -227,4 +231,43 @@ test("accepts an allowed provider and rejects empty allowed-paths policy", () =>
     () => executionPolicy(restricted, "/tmp/project"),
     /without allowed paths/,
   );
+});
+
+test("headless context starts with the project's rules, and references fit what is left", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-rules-"));
+  const taskDir = path.join(root, PROJECTS_DIR, "ocean", "tasks", "T-1");
+  await mkdir(taskDir, { recursive: true });
+  await writeFile(path.join(taskDir, "task.md"), "task body");
+  const rules = Array.from(
+    { length: 10 },
+    (_, i) => `rule ${i} ${"x".repeat(190)}`,
+  );
+  await writeFile(
+    path.join(root, PROJECTS_DIR, "ocean", "project.json"),
+    JSON.stringify({ name: "ocean", paths: [], rules }),
+  );
+  const previous = process.env.OCEAN_ROOT;
+  process.env.OCEAN_ROOT = root;
+  try {
+    const profile = validateProfile({
+      name: "worker",
+      provider: "claude",
+      model: "sonnet",
+      role: "work",
+      allowedPaths: [root],
+    });
+    const result = await buildContextReferences({
+      profile,
+      prompt: "show T-1",
+      cwd: root,
+    });
+    assert.ok(result.content.startsWith("## Project rules (ocean)\n- rule 0"));
+    assert.match(result.content, /\n\n## Context references\n/);
+    assert.match(result.content, /T-1\/task\.md/);
+    assert.ok(Buffer.byteLength(result.content) <= CONTEXT_REFERENCE_MAX_BYTES);
+    assert.equal(result.manifest.bytes, Buffer.byteLength(result.content));
+  } finally {
+    if (previous === undefined) delete process.env.OCEAN_ROOT;
+    else process.env.OCEAN_ROOT = previous;
+  }
 });
