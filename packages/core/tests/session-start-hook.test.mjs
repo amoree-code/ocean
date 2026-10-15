@@ -494,7 +494,11 @@ test("a corrupt manifest still yields a bootstrap and no rules", async () => {
   await withRoot(invalid.root, async () => {
     const text = (await claudeSessionStartHook({ cwd: invalid.repo }))
       .hookSpecificOutput.additionalContext;
-    assert.match(text, /^ocean=1 project=/);
-    assert.doesNotMatch(text, /Project rules/);
+    assert.match(text, /^ocean=1 project=lab /);
+    assert.doesNotMatch(text, /rules=\d/);
+    assert.match(
+      text,
+      /Project rules \(lab\) unreadable: rules must be a list of strings — fix 04-projects\/lab\/project\.json/,
+    );
   });
 });

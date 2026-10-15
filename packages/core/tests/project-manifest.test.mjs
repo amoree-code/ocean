@@ -20,6 +20,8 @@ import {
   listProjectManifests,
   migrateProjectBindings,
   portablePath,
+  projectRules,
+  projectVerify,
   readProjectManifest,
   renameProject,
   resolveProject,
@@ -419,16 +421,16 @@ test("valid rules and verify parse, trimmed", async () => {
       verify: ["pnpm test"],
     });
     const manifest = await readProjectManifest("lab");
-    assert.deepEqual(manifest.rules, [
+    assert.deepEqual(projectRules(manifest), [
       ".env points at production",
       "never run migrations",
     ]);
-    assert.deepEqual(manifest.verify, ["pnpm test"]);
+    assert.deepEqual(projectVerify(manifest), ["pnpm test"]);
     assert.equal(await readProjectManifest("missing"), null);
   });
 });
 
-test("each invalid rules/verify shape is a scan error naming the field", async () => {
+test("an invalid rules/verify shape never unbinds the project; the accessor names the field", async () => {
   await withRoot(async (root) => {
     const bad = {
       "bare-rules": [{ rules: "no" }, /rules must be a list/],
@@ -439,6 +441,11 @@ test("each invalid rules/verify shape is a scan error naming the field", async (
       "empty-rule": [{ rules: ["  "] }, /rules\[0\]/],
       "number-rule": [{ rules: [3] }, /rules\[0\]/],
       "multi-rule": [{ rules: ["a\nb"] }, /rules\[0\] must be a single line/],
+      "bell-rule": [
+        { rules: ["a\u0007b"] },
+        /rules\[0\] must be a single line/,
+      ],
+      "ls-rule": [{ rules: ["a\u2028b"] }, /rules\[0\] must be a single line/],
       "long-rule": [
         { rules: ["é".repeat(101)] },
         /rules\[0\] exceeds 200 bytes/,
@@ -460,13 +467,15 @@ test("each invalid rules/verify shape is a scan error naming the field", async (
     for (const [folder, [body]] of Object.entries(bad))
       await writeRaw(root, folder, body);
     const scan = await scanProjectManifests();
-    assert.deepEqual(scan.manifests, []);
-    for (const entry of scan.errors) {
-      const folder = path.basename(path.dirname(entry.file));
-      assert.match(entry.error, bad[folder][1], folder);
+    assert.deepEqual(scan.errors, []);
+    assert.equal(scan.manifests.length, Object.keys(bad).length);
+    for (const manifest of scan.manifests) {
+      const [, pattern] = bad[manifest.id];
+      const accessor = manifest.id.includes("verify")
+        ? projectVerify
+        : projectRules;
+      assert.throws(() => accessor(manifest), pattern, manifest.id);
     }
-    assert.equal(scan.errors.length, Object.keys(bad).length);
-    await assert.rejects(readProjectManifest("bare-rules"), /rules must be/);
   });
 });
 

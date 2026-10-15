@@ -21,7 +21,7 @@ import {
 import { BrainIndexStaleError, brainSearch } from "../brain/brain-service.js";
 import { resolveTaskReference } from "../tasks/task-reference.js";
 import type { IntentClassification } from "./intent-router.js";
-import { readProjectManifest } from "./project-resolution.js";
+import { projectRules, readProjectManifest } from "./project-resolution.js";
 
 // Context ladder: startup identity only -> project metadata -> ranked references -> exact
 // record by id. Each rung is resolved deterministically from a slice-4 IntentClassification,
@@ -207,6 +207,8 @@ async function planExactTaskRecord(
   budget: ContextBudget,
   root = oceanRoot(),
   projectId = WORKSPACE_PROJECT_ID,
+  // Only a bound project's rules are shown: the workspace fallback above finds tasks, not rules.
+  rulesProject: string | null = null,
 ): Promise<BoundedReadResult> {
   const rung: LadderRung = "exact-record";
   const parsed = parseTaskId(identifier);
@@ -271,11 +273,14 @@ async function planExactTaskRecord(
   // Fail closed: a manifest that does not parse rejects the read rather than dropping rules.
   let rules: string[] = [];
   try {
-    rules = (await readProjectManifest(projectId, root))?.rules ?? [];
+    const manifest = rulesProject
+      ? await readProjectManifest(rulesProject, root)
+      : null;
+    rules = manifest ? projectRules(manifest) : [];
   } catch (error) {
     return budgetRejection(
       rung,
-      `project ${projectId} rules are unreadable: ${error instanceof Error ? error.message : String(error)}`,
+      `project ${rulesProject} rules are unreadable: ${error instanceof Error ? error.message : String(error)}`,
       null,
     );
   }
@@ -283,7 +288,9 @@ async function planExactTaskRecord(
     {
       rung,
       files: [relative],
-      ...(rules.length ? { rules: { project: projectId, rules } } : {}),
+      ...(rulesProject && rules.length
+        ? { rules: { project: rulesProject, rules } }
+        : {}),
       bytes: size,
       truncated: false,
       reason: `task ${normalized} is within budget (${size}/${budget.maxBytes} bytes)`,
@@ -538,6 +545,7 @@ export async function planContextRead(
       bounded,
       root,
       projectId ?? WORKSPACE_PROJECT_ID,
+      projectId,
     );
   if (rung === "project-metadata") return planProjectMetadata(bounded);
   return planRankedReferences(

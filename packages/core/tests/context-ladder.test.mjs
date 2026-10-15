@@ -618,3 +618,19 @@ test("an exact-record read carries the project's rules, and a corrupt manifest r
     assert.equal(plain.allowed, true);
     assert.equal("rules" in plain, false);
   }));
+
+test("an unbound exact-record read never shows the workspace project's rules", () =>
+  withTempTask(10, async (root) => {
+    await writeFile(
+      path.join(root, PROJECTS_DIR, "ocean", "project.json"),
+      JSON.stringify({ name: "ocean", paths: [], rules: ["no prod writes"] }),
+    );
+    const result = await planContextRead(
+      classifyIntent("show T-1"),
+      GOOD_BUDGET,
+      root,
+      null,
+    );
+    assert.equal(result.allowed, true);
+    assert.equal("rules" in result, false);
+  }));
