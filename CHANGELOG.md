@@ -13,6 +13,9 @@ Docs-only or CI-only PRs may add the `skip-changelog` label instead.
 - refactor(T-222): `paths`, `fs-utils`, project resolution and task lookup move into `@ocean/core/shared`; the CLI registers its package root with core at startup so every root resolves as before
 - refactor(T-222): break the import cycles blocking the package split — project resolution and task lookup move to `src/shared/` (core layer), session closeout moves to `sessions/`, the MCP server gets its ports injected; `check:deps` now runs with no baseline
 - chore(T-222): `pnpm check:deps` — dependency-cruiser enforces the package layering (core ← market ← brain ← context ← loop ← services ← harness) and no cycles, in `pnpm check` and CI; today's 8 violations are a known baseline
+- fix(T-270): the session-start dirty-workspace warning points at `ocean tasks claim` instead of `git worktree add` (#177)
+- feat(T-270): `ocean tasks claim` / `release` record which session works on a task and refuse a second owner (#173)
+- feat(T-270): `ocean tasks doctor` validates task claims (`claimed_by`, `claimed_at`, `claimed_paths`) (#171)
 - test(T-255): unattended /ship push and PR check
 - feat(router): task-list requests ("what tasks we have", "شنو عدننه تكتات") route to `task-lookup`/`list` instead of `unknown` (#160)
 - test: three tests no longer fail on Windows (path separators, `file://` import URL) (#161)
