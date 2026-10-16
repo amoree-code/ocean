@@ -4,11 +4,11 @@ import { createInterface } from "node:readline/promises";
 import type { Session } from "@ocean/core/domain/sessions/session.js";
 import { withFileLock } from "@ocean/core/shared/fs-utils.js";
 import { DAILY_DIR, oceanPath } from "@ocean/core/shared/paths.js";
+import { openSessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
 import {
   listObservations,
   reviewObservation,
 } from "@ocean/market/skills/task-observer.js";
-import { openSessionStore } from "../../infrastructure/persistence/session-store.js";
 import { listTasks } from "./tasks-command.js";
 
 /**

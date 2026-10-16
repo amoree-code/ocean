@@ -9,14 +9,7 @@ const LAYERS = [
   ["market", ["^packages/market/src/"]],
   ["brain", ["^packages/brain/src/"]],
   ["context", ["^packages/context/src/"]],
-  [
-    "loop",
-    [
-      "^packages/loop/src/",
-      `${H}application/(tasks|handoff|runs|loops|sessions|operations|hooks)/`,
-      `${H}infrastructure/persistence/`,
-    ],
-  ],
+  ["loop", ["^packages/loop/src/"]],
   [
     "services",
     [
@@ -59,6 +52,18 @@ module.exports = {
       severity: "error",
       from: {},
       to: { couldNotResolve: true },
+    },
+    {
+      name: "application-not-to-infrastructure",
+      comment:
+        "application code reaches infrastructure through domain ports; only the composition root and the interfaces wire concretes (T-218)",
+      severity: "error",
+      from: {
+        path: "^packages/[^/]+/src/",
+        pathNot:
+          "^packages/[^/]+/src/(infrastructure|composition|interfaces)/|^packages/harness/src/(main|engine-root)\\.ts$",
+      },
+      to: { path: "^packages/[^/]+/src/infrastructure/" },
     },
     ...upward,
     {

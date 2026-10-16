@@ -6,13 +6,13 @@ import path from "node:path";
 import test from "node:test";
 import { classifyIntent } from "@ocean/context/context/intent-router.js";
 import { SYSTEM_DIR } from "@ocean/core/shared/paths.js";
+import { openSessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
 import {
   buildSessionPointer,
   planSessionResume,
   validateParentSession,
   validateSessionIdentifier,
-} from "../dist/application/sessions/session-pointer.js";
-import { openSessionStore } from "../dist/infrastructure/persistence/session-store.js";
+} from "@ocean/loop/sessions/session-pointer.js";
 
 const BUDGET = {
   maxFiles: 10,
@@ -411,7 +411,7 @@ test("sequential plans for different sessions do not leak state between calls", 
 
 test("session-pointer.ts imports no provider, network, or MCP module and invokes no provider", async () => {
   const source = await readFile(
-    path.resolve("src/application/sessions/session-pointer.ts"),
+    path.resolve("../loop/src/sessions/session-pointer.ts"),
     "utf8",
   );
   const imports = [...source.matchAll(/^import .*?from "([^"]+)";?$/gm)].map(

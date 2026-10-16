@@ -17,16 +17,16 @@ import type { SessionStoreFactory } from "@ocean/core/domain/ports/session-store
 import { oceanPath, oceanRoot, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import { folderProject } from "@ocean/core/shared/project-resolution.js";
 import {
-  hasFailures,
-  workspaceReport,
-} from "../../application/doctor/workspace-doctor.js";
-import {
   getHandoff,
   getTask,
   listHandoffs,
-} from "../../application/handoff/handoff-service.js";
-import { listTasksForFolder } from "../../application/tasks/list-tasks.js";
-import { openSessionStoreReadOnly } from "../persistence/session-store.js";
+} from "@ocean/loop/handoff/handoff-service.js";
+import { openSessionStoreReadOnly } from "@ocean/loop/infrastructure/persistence/session-store.js";
+import { listTasksForFolder } from "@ocean/loop/tasks/list-tasks.js";
+import {
+  hasFailures,
+  workspaceReport,
+} from "../../application/doctor/workspace-doctor.js";
 
 type Request = {
   jsonrpc?: string;

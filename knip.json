@@ -21,6 +21,9 @@
     },
     "packages/context": {
       "project": ["src/**/*.ts"]
+    },
+    "packages/loop": {
+      "project": ["src/**/*.ts"]
     }
   }
 }

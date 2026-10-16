@@ -5,8 +5,8 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { PROJECTS_DIR, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
-import { backfillSessionProjects } from "../dist/application/sessions/session-projects.js";
-import { SessionStore } from "../dist/infrastructure/persistence/session-store.js";
+import { SessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
+import { backfillSessionProjects } from "@ocean/loop/sessions/session-projects.js";
 
 const OLD_SESSIONS = `CREATE TABLE sessions (
   session_id TEXT PRIMARY KEY, title TEXT NOT NULL DEFAULT '', task_id TEXT, handoff_id TEXT,

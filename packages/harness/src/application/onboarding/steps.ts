@@ -1,16 +1,10 @@
 import { writeFile } from "node:fs/promises";
+import type { ProviderRecord } from "@ocean/core/domain/providers/provider.js";
 import { oceanPath, PERSONAL_DIR } from "@ocean/core/shared/paths.js";
 import {
   copyClientSkills,
   populateSkillHub,
 } from "@ocean/market/skills/skill-hub.js";
-import {
-  installShellIntegration,
-  setProviderEnabled,
-  syncProviderWrappers,
-  wrapperDoctor,
-  wrapperStatus,
-} from "../../infrastructure/wrappers/wrapper-manager.js";
 import { connectObsidianVault } from "../obsidian/vault-discovery.js";
 
 // Bump when a step is added; completed steps stay completed, only new ids run.
@@ -30,8 +24,19 @@ export type OnboardingStep = {
   run(io: OnboardingIO): Promise<"done" | "skipped">;
 };
 
+// The wrapper operations the steps run. The CLI passes the wrapper manager's, so this
+// application module never imports an infrastructure concrete (T-218).
+export type OnboardingWrappers = {
+  wrapperStatus(): Promise<ProviderRecord[]>;
+  setProviderEnabled(id: string, enabled: boolean): Promise<unknown>;
+  syncProviderWrappers(): Promise<unknown>;
+  installShellIntegration(): Promise<string>;
+  wrapperDoctor(): Promise<string[]>;
+};
+
 export type StepDependencies = {
   setup(): Promise<void>;
+  wrappers: OnboardingWrappers;
 };
 
 async function yes(io: OnboardingIO, question: string): Promise<boolean> {
@@ -97,15 +102,15 @@ export function buildSteps(deps: StepDependencies): OnboardingStep[] {
       title: "AI clients (which CLIs Ocean observes)",
       optional: false,
       async run(io) {
-        for (const client of await wrapperStatus()) {
+        for (const client of await deps.wrappers.wrapperStatus()) {
           const state = client.enabled ? "enabled" : "disabled";
           io.say(`  ${client.id.padEnd(12)} ${state}`);
           if (!io.interactive) continue;
           const enable = await yes(io, `  Observe ${client.id}?`);
           if (enable !== client.enabled)
-            await setProviderEnabled(client.id, enable);
+            await deps.wrappers.setProviderEnabled(client.id, enable);
         }
-        await syncProviderWrappers();
+        await deps.wrappers.syncProviderWrappers();
         return "done";
       },
     },
@@ -143,7 +148,7 @@ export function buildSteps(deps: StepDependencies): OnboardingStep[] {
       optional: false,
       async run(io) {
         io.say(
-          `  Shim directory on PATH via ${await installShellIntegration()}`,
+          `  Shim directory on PATH via ${await deps.wrappers.installShellIntegration()}`,
         );
         return "done";
       },
@@ -183,7 +188,7 @@ export function buildSteps(deps: StepDependencies): OnboardingStep[] {
       title: "Verify",
       optional: false,
       async run(io) {
-        const findings = await wrapperDoctor();
+        const findings = await deps.wrappers.wrapperDoctor();
         // PATH is read from this process, which predates the profile edit made in the
         // shell step, so that one finding only means "open a new terminal".
         const pathNote = findings.filter((finding) =>

@@ -15,17 +15,17 @@ import {
   projectRules,
   resolveProject,
 } from "@ocean/core/shared/project-resolution.js";
+import { boundProjectManifest } from "@ocean/loop/hooks/session-start-hook.js";
+import { openSessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
+import { authorizeRun } from "@ocean/loop/runs/run-authorization.js";
+import { finalizeSession } from "@ocean/loop/sessions/session-closeout.js";
 import {
   authAdapter,
   authLogin,
   authStatus,
 } from "../../application/auth/auth-orchestrator.js";
-import { boundProjectManifest } from "../../application/hooks/session-start-hook.js";
-import { authorizeRun } from "../../application/runs/run-authorization.js";
-import { finalizeSession } from "../../application/sessions/session-closeout.js";
 import { defaultAuthDeps } from "../../composition/runtime.js";
 import { redactRuntimeText } from "../../infrastructure/observability/runtime-logger.js";
-import { openSessionStore } from "../../infrastructure/persistence/session-store.js";
 import {
   type InteractiveProcessResult,
   runInteractive,

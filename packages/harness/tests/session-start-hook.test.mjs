@@ -12,7 +12,7 @@ import {
   oceanWorktreeWarning,
   sessionStartHookForClient,
   WORKTREE_WARNING_MAX_BYTES,
-} from "../dist/application/hooks/session-start-hook.js";
+} from "@ocean/loop/hooks/session-start-hook.js";
 
 test("claudeSessionStartHook returns the documented Claude Code hookSpecificOutput shape", async () => {
   const outside = await mkdtemp(path.join(os.tmpdir(), "ocean-hook-outside-"));
@@ -171,7 +171,7 @@ test("ocean hook session-start rejects an unknown or missing --client value", ()
 
 test("readBoundedStdin rejects a payload larger than its bound instead of buffering it unbounded", async () => {
   const { readBoundedStdin } = await import(
-    "../dist/application/hooks/session-start-hook.js"
+    "@ocean/loop/hooks/session-start-hook.js"
   );
   const { Readable } = await import("node:stream");
   const oversized = Readable.from([Buffer.alloc(200, "x")]);

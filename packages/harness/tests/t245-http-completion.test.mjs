@@ -9,9 +9,9 @@ import test from "node:test";
 import { writeProfileFact } from "@ocean/brain/memory/profile-facts.js";
 import { validateProfile } from "@ocean/core/domain/profiles/profile-validator.js";
 import { SYSTEM_DIR } from "@ocean/core/shared/paths.js";
-import { runAgent } from "../dist/application/runs/run-agent.js";
+import { SessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
+import { runAgent } from "@ocean/loop/runs/run-agent.js";
 import { createAgentRuntime } from "../dist/composition/runtime.js";
-import { SessionStore } from "../dist/infrastructure/persistence/session-store.js";
 import {
   createChatTransport,
   createCompletionExecutor,

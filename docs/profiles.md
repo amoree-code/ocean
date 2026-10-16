@@ -69,7 +69,7 @@ A profile file can be edited after a session has already been created from it, s
 session records more than the profile's name: `profileIdentity(profile)`
 (`src/domain/profiles/profile.ts`) hashes every field of a `Profile` (sha256 of a fixed-key
 JSON encoding, including `version`) into one deterministic string. `runAgent`
-(`src/application/runs/run-agent.ts`) computes this hash when it creates a session and
+(`packages/loop/src/runs/run-agent.ts`) computes this hash when it creates a session and
 stores it as `Session.profileIdentity` (persisted as the `profile_identity` column in
 `sessions.sqlite`, see [sessions.md](sessions.md)).
 

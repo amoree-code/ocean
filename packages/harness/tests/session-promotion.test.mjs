@@ -5,8 +5,8 @@ import path from "node:path";
 import test from "node:test";
 import { promoteSessionToKnowledge } from "@ocean/brain/memory/session-promotion.js";
 import { KNOWLEDGE_DIR, PERSONAL_DIR } from "@ocean/core/shared/paths.js";
+import { openSessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
 import { defaultSessionStoreFactory } from "../dist/composition/runtime.js";
-import { openSessionStore } from "../dist/infrastructure/persistence/session-store.js";
 
 test("promotes an approved completed session into knowledge and rejects missing approval", async () => {
   const root = await mkdtemp(

@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { PROJECTS_DIR, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
+import { openSessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
 import {
   addSkillCandidate,
   learnSkillFromSession,
@@ -18,7 +19,6 @@ import {
   loadSkill,
   loadSkillIndex,
 } from "../dist/infrastructure/filesystem/skill-loader.js";
-import { openSessionStore } from "../dist/infrastructure/persistence/session-store.js";
 
 test("lists the public core skill catalog without loading full instructions", async () => {
   const skills = await listSkills();

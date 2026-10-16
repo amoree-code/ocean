@@ -7,9 +7,9 @@ import { INBOX_DIR, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import {
   claudeSessionEndHook,
   readTranscriptEvents,
-} from "../dist/application/hooks/session-end-hook.js";
+} from "@ocean/loop/hooks/session-end-hook.js";
+import { openSessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
 import { defaultSessionStoreFactory } from "../dist/composition/runtime.js";
-import { openSessionStore } from "../dist/infrastructure/persistence/session-store.js";
 
 test("readTranscriptEvents extracts bounded user/assistant text turns and skips everything else", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "ocean-transcript-"));

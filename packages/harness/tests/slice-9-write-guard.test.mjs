@@ -11,7 +11,7 @@ import {
   PERSONAL_DIR,
   PROJECTS_DIR,
 } from "@ocean/core/shared/paths.js";
-import { runOperation } from "../dist/application/operations/record-operations.js";
+import { runOperation } from "@ocean/loop/operations/record-operations.js";
 import {
   computeScopeHash,
   consentStateOf,
@@ -20,7 +20,7 @@ import {
   evaluateGuard,
   guardedRunOperation,
   revokeGrant,
-} from "../dist/application/operations/write-guard.js";
+} from "@ocean/loop/operations/write-guard.js";
 
 const BUDGET = {
   maxFiles: 10,
@@ -565,9 +565,7 @@ test("CLI bypass: no shipped CLI command performs a durable record write without
 });
 
 test("helper bypass: exported helpers alone cannot produce an approval", async () => {
-  const contract = await import(
-    "../dist/application/operations/operation-contract.js"
-  );
+  const contract = await import("@ocean/loop/operations/operation-contract.js");
   assert.equal(typeof contract.gateOperation, "function");
   const gate = contract.gateOperation(
     "memory.write",

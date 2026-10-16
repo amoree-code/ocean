@@ -1,7 +1,7 @@
 import { access } from "node:fs/promises";
 import { oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
-import { backfillSessionProjects } from "../../application/sessions/session-projects.js";
-import { openSessionStore } from "../../infrastructure/persistence/session-store.js";
+import { openSessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
+import { backfillSessionProjects } from "@ocean/loop/sessions/session-projects.js";
 
 export async function runMigrateCommand(apply: boolean): Promise<void> {
   const database = oceanPath(SYSTEM_DIR, "sessions", "sessions.sqlite");

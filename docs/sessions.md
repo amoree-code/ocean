@@ -7,7 +7,7 @@ inspected, or resumed later.
 
 ## Storage
 
-`SessionStore` (`src/infrastructure/persistence/session-store.ts`) opens
+`SessionStore` (`packages/loop/src/infrastructure/persistence/session-store.ts`) opens
 `<workspace>/bridge/sessions/sessions.sqlite` (via `oceanPath(SYSTEM_DIR, "sessions", "sessions.sqlite")`,
 see [workspace.md](workspace.md)) with `node:sqlite`, in WAL mode, and creates three tables
 if absent:

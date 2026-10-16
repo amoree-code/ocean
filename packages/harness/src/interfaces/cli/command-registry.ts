@@ -23,6 +23,28 @@ import {
   unbindProjectPath,
   writeProjectIndex,
 } from "@ocean/core/shared/project-resolution.js";
+import { claudeSessionEndHook } from "@ocean/loop/hooks/session-end-hook.js";
+import {
+  isSessionStartClient,
+  readBoundedStdin,
+  SESSION_START_CLIENTS,
+  sessionStartHookForClient,
+} from "@ocean/loop/hooks/session-start-hook.js";
+import { openSessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
+import {
+  listTaskLoops,
+  runTaskLoopsOnce,
+  runTaskLoopWorker,
+  startTaskLoop,
+  stopTaskLoop,
+} from "@ocean/loop/loops/task-loop.js";
+import { resumeAgent, runAgent } from "@ocean/loop/runs/run-agent.js";
+import {
+  applyRetention,
+  DEFAULT_KEEP_DAYS,
+  planRetention,
+  simulateRetention,
+} from "@ocean/loop/sessions/session-retention.js";
 import {
   oceanMcpConfig,
   playwrightMcpConfig,
@@ -53,13 +75,6 @@ import {
   workspaceReport,
 } from "../../application/doctor/workspace-doctor.js";
 import { createWebhookGateway } from "../../application/gateway/webhook-gateway.js";
-import { claudeSessionEndHook } from "../../application/hooks/session-end-hook.js";
-import {
-  isSessionStartClient,
-  readBoundedStdin,
-  SESSION_START_CLIENTS,
-  sessionStartHookForClient,
-} from "../../application/hooks/session-start-hook.js";
 import {
   findInstallSpec,
   installPlan,
@@ -69,13 +84,6 @@ import {
   updateProvider,
 } from "../../application/install/provider-installer.js";
 import { configureClaudeCodeWrapper } from "../../application/integrations/claude-vscode.js";
-import {
-  listTaskLoops,
-  runTaskLoopsOnce,
-  runTaskLoopWorker,
-  startTaskLoop,
-  stopTaskLoop,
-} from "../../application/loops/task-loop.js";
 import {
   parseConflictSide,
   resolveConflict,
@@ -94,7 +102,6 @@ import {
   watchObsidianVault,
 } from "../../application/obsidian/vault-sync.js";
 import { writeObsidianNote } from "../../application/obsidian/vault-writer.js";
-import { resumeAgent, runAgent } from "../../application/runs/run-agent.js";
 import {
   listSchedules,
   runDueSchedules,
@@ -104,12 +111,6 @@ import {
   saveSchedule,
   setScheduleEnabled,
 } from "../../application/scheduler/local-scheduler.js";
-import {
-  applyRetention,
-  DEFAULT_KEEP_DAYS,
-  planRetention,
-  simulateRetention,
-} from "../../application/sessions/session-retention.js";
 import {
   defaultAgentRuntime,
   defaultBrainIndexPort,
@@ -121,7 +122,6 @@ import {
 import { loadRuntimeConfig } from "../../infrastructure/filesystem/runtime-config-loader.js";
 import { runObsidianMcpServer } from "../../infrastructure/mcp/obsidian-server.js";
 import { runOceanMcpServer } from "../../infrastructure/mcp/ocean-server.js";
-import { openSessionStore } from "../../infrastructure/persistence/session-store.js";
 import { runService } from "../../infrastructure/process/service.js";
 import { loadProviderRegistry } from "../../infrastructure/providers/provider-registry.js";
 import {

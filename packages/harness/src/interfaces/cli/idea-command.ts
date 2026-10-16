@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { openSessionStore } from "../../infrastructure/persistence/session-store.js";
+import { openSessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
 
 export async function runIdeaCommand(
   action: string,

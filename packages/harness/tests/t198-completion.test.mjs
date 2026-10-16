@@ -8,12 +8,12 @@ import test from "node:test";
 import { classifyIntent } from "@ocean/context/context/intent-router.js";
 import { PERSONAL_DIR, PROJECTS_DIR } from "@ocean/core/shared/paths.js";
 import { projectConfirmationQuestion } from "@ocean/core/shared/project-resolution.js";
-import { runOperation } from "../dist/application/operations/record-operations.js";
-import { rankTaskCandidates } from "../dist/application/operations/task-linker.js";
+import { runOperation } from "@ocean/loop/operations/record-operations.js";
+import { rankTaskCandidates } from "@ocean/loop/operations/task-linker.js";
 import {
   createGrant,
   guardedRunOperation,
-} from "../dist/application/operations/write-guard.js";
+} from "@ocean/loop/operations/write-guard.js";
 
 const BUDGET = {
   maxFiles: 10,

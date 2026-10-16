@@ -16,10 +16,10 @@ import { selectProfileClient } from "@ocean/core/domain/profiles/profile.js";
 import { validateProfile } from "@ocean/core/domain/profiles/profile-validator.js";
 import { buildExecutionPlan } from "@ocean/core/domain/runs/execution-plan.js";
 import { SYSTEM_DIR } from "@ocean/core/shared/paths.js";
-import { runAgent } from "../dist/application/runs/run-agent.js";
-import { runToolLoop } from "../dist/application/runs/tool-loop.js";
+import { SessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
+import { runAgent } from "@ocean/loop/runs/run-agent.js";
+import { runToolLoop } from "@ocean/loop/runs/tool-loop.js";
 import { createAgentRuntime } from "../dist/composition/runtime.js";
-import { SessionStore } from "../dist/infrastructure/persistence/session-store.js";
 import { executeAgentTool } from "../dist/infrastructure/process/agent-tool-executor.js";
 
 const unixOnly = process.platform === "win32" ? test.skip : test;

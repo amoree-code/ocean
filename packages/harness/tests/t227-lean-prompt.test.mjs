@@ -20,6 +20,7 @@ import {
   PROJECTS_DIR,
   SYSTEM_DIR,
 } from "@ocean/core/shared/paths.js";
+import { SessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
 import {
   assemblePrompt,
   formatProfileContract,
@@ -27,10 +28,9 @@ import {
   formatSkillIndex,
   PROMPT_SECTIONS,
   readDirectoriesOutside,
-} from "../dist/application/runs/prompt-assembly.js";
-import { resumeAgent, runAgent } from "../dist/application/runs/run-agent.js";
+} from "@ocean/loop/runs/prompt-assembly.js";
+import { resumeAgent, runAgent } from "@ocean/loop/runs/run-agent.js";
 import { createAgentRuntime } from "../dist/composition/runtime.js";
-import { SessionStore } from "../dist/infrastructure/persistence/session-store.js";
 import { buildProviderInvocation } from "../dist/infrastructure/providers/providers.js";
 
 const SKILLS = ["alpha-lean", "beta-lean", "gamma-lean"];

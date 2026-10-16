@@ -30,12 +30,12 @@ import {
   operationForIntent,
   validateTaskIdentifier,
   validateWriteTarget,
-} from "../dist/application/operations/operation-contract.js";
-import { runOperation } from "../dist/application/operations/record-operations.js";
+} from "@ocean/loop/operations/operation-contract.js";
+import { runOperation } from "@ocean/loop/operations/record-operations.js";
 import {
   createGrant,
   guardedRunOperation,
-} from "../dist/application/operations/write-guard.js";
+} from "@ocean/loop/operations/write-guard.js";
 import { defaultBrainIndexPort } from "../dist/composition/runtime.js";
 
 const reindexBrain = (options) =>

@@ -4,12 +4,12 @@ import { knownTaskPrefixes } from "@ocean/core/shared/project-resolution.js";
 import {
   type OperationName,
   operationForIntent,
-} from "../../application/operations/operation-contract.js";
-import { runOperation } from "../../application/operations/record-operations.js";
+} from "@ocean/loop/operations/operation-contract.js";
+import { runOperation } from "@ocean/loop/operations/record-operations.js";
 import {
   type GuardScope,
   guardedRunOperation,
-} from "../../application/operations/write-guard.js";
+} from "@ocean/loop/operations/write-guard.js";
 import { defaultBrainIndexPort } from "../../composition/runtime.js";
 
 const OPERATION_BUDGET = {

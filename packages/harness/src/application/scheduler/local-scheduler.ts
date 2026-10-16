@@ -9,7 +9,7 @@ import {
 import path from "node:path";
 import type { AgentRuntimeDeps } from "@ocean/core/domain/ports/runtime-ports.js";
 import { oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
-import { runAgent } from "../runs/run-agent.js";
+import { runAgent } from "@ocean/loop/runs/run-agent.js";
 
 export type Schedule = {
   id: string;

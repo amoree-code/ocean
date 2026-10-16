@@ -4,8 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { DAILY_DIR, INBOX_DIR, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
-import { finalizeSession } from "../dist/application/sessions/session-closeout.js";
-import { SessionStore } from "../dist/infrastructure/persistence/session-store.js";
+import { SessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
+import { finalizeSession } from "@ocean/loop/sessions/session-closeout.js";
 
 // Each test uses a fresh temp OCEAN_ROOT, so at most one brain-dump file
 // exists at a time — no need to match by session id, which (deliberately)
