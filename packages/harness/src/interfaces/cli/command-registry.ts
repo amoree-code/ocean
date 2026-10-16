@@ -143,6 +143,7 @@ import { runHandoffCommand } from "./handoff-command.js";
 import { runIdeaCommand } from "./idea-command.js";
 import { intercept } from "./intercept-command.js";
 import { runLayoutCommand } from "./layout-command.js";
+import { runMarketCommand } from "./market-command.js";
 import { runMemoryCommand } from "./memory-command.js";
 import { runMigrateCommand } from "./migrate-command.js";
 import { runObserveCommand } from "./observe-command.js";
@@ -365,6 +366,15 @@ async function commandTasks(): Promise<void> {
 async function commandPolicy(): Promise<void> {
   try {
     await runPolicyCommand(process.argv[3] ?? "list");
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  }
+}
+
+async function commandMarket(): Promise<void> {
+  try {
+    await runMarketCommand(process.argv[3] ?? "", process.argv.slice(4));
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
@@ -1353,6 +1363,7 @@ export const commandRegistry: Record<string, CommandHandler> = {
   layout: commandLayout,
   memory: commandMemory,
   mcp: commandMcp,
+  market: commandMarket,
   obsidian: commandObsidian,
   capture: commandCapture,
   handoff: commandHandoff,
