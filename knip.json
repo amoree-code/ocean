@@ -12,6 +12,9 @@
     },
     "packages/core": {
       "project": ["src/**/*.ts"]
+    },
+    "packages/market": {
+      "project": ["src/**/*.ts"]
     }
   }
 }

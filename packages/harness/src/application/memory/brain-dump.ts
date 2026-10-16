@@ -7,7 +7,7 @@ import type {
 } from "@ocean/core/domain/sessions/session.js";
 import { INBOX_DIR, oceanPath, oceanRoot } from "@ocean/core/shared/paths.js";
 import { findGitRoot } from "@ocean/core/shared/project-resolution.js";
-import type { TaskObservation } from "../skills/task-observer.js";
+import type { TaskObservation } from "@ocean/market/skills/task-observer.js";
 import type { ModelNarrative } from "./model-narrative.js";
 
 // Same fallback title stamped on a session with no explicit title (see

@@ -14,7 +14,7 @@ import test from "node:test";
 import {
   coreSkillReports,
   syncCoreSkills,
-} from "../dist/application/skills/core-skill-sync.js";
+} from "@ocean/market/skills/core-skill-sync.js";
 
 test("core skill sync copies canonical skills and preserves non-core skills", async () => {
   const home = await mkdtemp(path.join(os.tmpdir(), "ocean-skills-"));

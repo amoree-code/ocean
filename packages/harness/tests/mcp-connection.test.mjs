@@ -3,7 +3,7 @@ import test from "node:test";
 import {
   obsidianMcpConfig,
   playwrightMcpConfig,
-} from "../dist/application/mcp/mcp-connection.js";
+} from "@ocean/market/mcp/mcp-connection.js";
 
 test("generates one provider-neutral stdio MCP config", () => {
   const config = obsidianMcpConfig();

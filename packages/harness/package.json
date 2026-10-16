@@ -30,7 +30,8 @@
     "playwright-core": "^1.48.0",
     "sqlite-vec": "0.1.9",
     "zod": "^4.6.5",
-    "@ocean/core": "workspace:*"
+    "@ocean/core": "workspace:*",
+    "@ocean/market": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

@@ -2,7 +2,7 @@ import path from "node:path";
 import type { Profile } from "@ocean/core/domain/profiles/profile.js";
 import type { SkillIndexEntry } from "@ocean/core/domain/skills/skill.js";
 import { truncateUtf8 } from "@ocean/core/shared/fs-utils.js";
-import type { PromotedSkill } from "../skills/skill-curation.js";
+import type { PromotedSkill } from "@ocean/market/skills/skill-curation.js";
 
 // Pure formatting for the headless runAgent prompt: every section is text built from data
 // the caller already loaded, and each section's byte size is measured so the context_cost

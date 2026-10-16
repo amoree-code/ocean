@@ -8,7 +8,7 @@ import type {
 import { atomicWrite, withFileLock } from "@ocean/core/shared/fs-utils.js";
 import { DAILY_DIR, oceanPath } from "@ocean/core/shared/paths.js";
 import { findGitRoot } from "@ocean/core/shared/project-resolution.js";
-import type { TaskObservation } from "../skills/task-observer.js";
+import type { TaskObservation } from "@ocean/market/skills/task-observer.js";
 import type { ModelNarrative } from "./model-narrative.js";
 
 const dailyTemplate = (date: string): string =>

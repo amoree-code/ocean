@@ -21,6 +21,30 @@ import {
   unbindProjectPath,
   writeProjectIndex,
 } from "@ocean/core/shared/project-resolution.js";
+import {
+  oceanMcpConfig,
+  playwrightMcpConfig,
+} from "@ocean/market/mcp/mcp-connection.js";
+import {
+  coreSkillReports,
+  syncCoreSkills,
+} from "@ocean/market/skills/core-skill-sync.js";
+import {
+  addSkillCandidate,
+  learnSkillFromSession,
+  listSkillCandidates,
+  reviewSkillCandidate,
+} from "@ocean/market/skills/skill-curation.js";
+import {
+  copyClientSkills,
+  linkClientSkills,
+  populateSkillHub,
+} from "@ocean/market/skills/skill-hub.js";
+import {
+  listObservations,
+  observeSession,
+  reviewObservation,
+} from "@ocean/market/skills/task-observer.js";
 import { classifyIntent } from "../../application/context/intent-router.js";
 import {
   hasFailures,
@@ -51,10 +75,6 @@ import {
   startTaskLoop,
   stopTaskLoop,
 } from "../../application/loops/task-loop.js";
-import {
-  oceanMcpConfig,
-  playwrightMcpConfig,
-} from "../../application/mcp/mcp-connection.js";
 import { promoteSessionToKnowledge } from "../../application/memory/session-promotion.js";
 import {
   parseConflictSide,
@@ -90,26 +110,6 @@ import {
   planRetention,
   simulateRetention,
 } from "../../application/sessions/session-retention.js";
-import {
-  coreSkillReports,
-  syncCoreSkills,
-} from "../../application/skills/core-skill-sync.js";
-import {
-  addSkillCandidate,
-  learnSkillFromSession,
-  listSkillCandidates,
-  reviewSkillCandidate,
-} from "../../application/skills/skill-curation.js";
-import {
-  copyClientSkills,
-  linkClientSkills,
-  populateSkillHub,
-} from "../../application/skills/skill-hub.js";
-import {
-  listObservations,
-  observeSession,
-  reviewObservation,
-} from "../../application/skills/task-observer.js";
 import {
   defaultAgentRuntime,
   defaultBrainIndexPort,

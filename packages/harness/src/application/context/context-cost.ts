@@ -4,7 +4,7 @@ import path from "node:path";
 import {
   clientSkillRoots,
   type SkillClient,
-} from "../skills/core-skill-sync.js";
+} from "@ocean/market/skills/core-skill-sync.js";
 
 // Read-only measurement of each client's always-on context: the text an interactive client
 // loads on every request before the user types anything (global rules, an auto-loaded memory

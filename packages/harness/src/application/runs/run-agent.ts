@@ -25,6 +25,7 @@ import type { RunContract } from "@ocean/core/domain/runs/run-contract.js";
 import { validateSessionEntryContract } from "@ocean/core/domain/sessions/entry-contract.js";
 import type { Session } from "@ocean/core/domain/sessions/session.js";
 import type { SkillIndexEntry } from "@ocean/core/domain/skills/skill.js";
+import { loadPromotedSkills } from "@ocean/market/skills/skill-curation.js";
 import {
   buildContextReferences,
   referenceReadDirectories,
@@ -38,7 +39,6 @@ import {
 } from "../memory/profile-facts.js";
 import { finalizeSession } from "../sessions/session-closeout.js";
 import { sessionProjectId } from "../sessions/session-projects.js";
-import { loadPromotedSkills } from "../skills/skill-curation.js";
 import {
   assemblePrompt,
   formatProfileContract,

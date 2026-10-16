@@ -6,10 +6,10 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "pnpm --filter @ocean/core run build && pnpm --filter ocean run build",
-    "dev": "pnpm --filter @ocean/core run build && pnpm --filter ocean run dev",
+    "build": "pnpm --filter \"ocean...\" run build",
+    "dev": "pnpm --filter \"ocean^...\" run build && pnpm --filter ocean run dev",
     "start": "pnpm build && pnpm --filter ocean run start",
-    "typecheck": "pnpm --filter @ocean/core run build && pnpm --filter ocean run typecheck",
+    "typecheck": "pnpm --filter \"ocean^...\" run build && pnpm --filter ocean run typecheck",
     "typecheck:watch": "pnpm --filter ocean run typecheck:watch",
     "check:skills": "pnpm --filter ocean run check:skills",
     "generate:skills": "pnpm --filter ocean run generate:skills",

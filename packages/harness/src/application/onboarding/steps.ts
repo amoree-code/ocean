@@ -1,6 +1,10 @@
 import { writeFile } from "node:fs/promises";
 import { oceanPath, PERSONAL_DIR } from "@ocean/core/shared/paths.js";
 import {
+  copyClientSkills,
+  populateSkillHub,
+} from "@ocean/market/skills/skill-hub.js";
+import {
   installShellIntegration,
   setProviderEnabled,
   syncProviderWrappers,
@@ -8,7 +12,6 @@ import {
   wrapperStatus,
 } from "../../infrastructure/wrappers/wrapper-manager.js";
 import { connectObsidianVault } from "../obsidian/vault-discovery.js";
-import { copyClientSkills, populateSkillHub } from "../skills/skill-hub.js";
 
 // Bump when a step is added; completed steps stay completed, only new ids run.
 export const ONBOARDING_VERSION = 2;

@@ -7,7 +7,7 @@ import { DAILY_DIR, oceanPath } from "@ocean/core/shared/paths.js";
 import {
   listObservations,
   reviewObservation,
-} from "../../application/skills/task-observer.js";
+} from "@ocean/market/skills/task-observer.js";
 import { openSessionStore } from "../../infrastructure/persistence/session-store.js";
 import { listTasks } from "./tasks-command.js";
 
