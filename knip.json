@@ -15,6 +15,9 @@
     },
     "packages/market": {
       "project": ["src/**/*.ts"]
+    },
+    "packages/brain": {
+      "project": ["src/**/*.ts"]
     }
   }
 }

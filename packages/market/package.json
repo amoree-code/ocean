@@ -9,6 +9,7 @@
   "exports": {
     "./*.js": {
       "types": "./dist/*.d.ts",
+      "source": "./src/*.ts",
       "import": "./dist/*.js"
     }
   },

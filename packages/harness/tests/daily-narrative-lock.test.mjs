@@ -12,16 +12,13 @@ import {
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { withFileLock } from "@ocean/core/shared/fs-utils.js";
 import {
   appendDailyNarrative,
   appendObservations,
-} from "../dist/application/memory/daily-narrative.js";
+} from "@ocean/brain/memory/daily-narrative.js";
+import { withFileLock } from "@ocean/core/shared/fs-utils.js";
 
-const moduleUrl = new URL(
-  "../dist/application/memory/daily-narrative.js",
-  import.meta.url,
-).href;
+const moduleUrl = import.meta.resolve("@ocean/brain/memory/daily-narrative.js");
 
 function session(title, workingDirectory) {
   return {

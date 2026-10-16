@@ -3,6 +3,7 @@
 // application layer depends on. Dependencies point inward everywhere else —
 // application → domain ports, never application → infrastructure.
 
+import { brainIndexPort } from "@ocean/brain/infrastructure/brain/brain-index.js";
 import type { BrainIndexPort } from "@ocean/core/domain/ports/brain-index-port.js";
 import type {
   ProviderRegistryPort,
@@ -14,7 +15,6 @@ import type {
   SessionStoreOpener,
 } from "@ocean/core/domain/ports/session-store-port.js";
 import type { AuthDeps } from "../application/auth/auth-orchestrator.js";
-import { brainIndexPort } from "../infrastructure/brain/brain-index.js";
 import { loadProfile } from "../infrastructure/filesystem/profile-loader.js";
 import { loadSkillIndex } from "../infrastructure/filesystem/skill-loader.js";
 import { appendRuntimeLog } from "../infrastructure/observability/runtime-logger.js";

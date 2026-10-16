@@ -1,5 +1,10 @@
 import { mkdir, stat } from "node:fs/promises";
 import path from "node:path";
+import { brainIndexPath } from "@ocean/brain/brain/brain-reindex.js";
+import {
+  BrainIndexStaleError,
+  brainSearch,
+} from "@ocean/brain/brain/brain-service.js";
 import {
   normalizeScope,
   scopeVisible,
@@ -17,8 +22,6 @@ import {
   STORE_DIR,
 } from "@ocean/core/shared/paths.js";
 import { resolveProject } from "@ocean/core/shared/project-resolution.js";
-import { brainIndexPath } from "../brain/brain-reindex.js";
-import { BrainIndexStaleError, brainSearch } from "../brain/brain-service.js";
 import type { ContextBudget } from "../context/context-ladder.js";
 import type { RecordType } from "../context/context-packet.js";
 import type { IntentClassification } from "../context/intent-router.js";

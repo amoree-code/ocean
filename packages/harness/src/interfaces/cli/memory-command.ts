@@ -1,20 +1,20 @@
-import { isValidProjectId } from "@ocean/core/domain/context/project-id.js";
-import { folderProject } from "@ocean/core/shared/project-resolution.js";
-import { reindexBrain } from "../../application/brain/brain-reindex.js";
+import { reindexBrain } from "@ocean/brain/brain/brain-reindex.js";
 import {
   brainNeighbors,
   brainRead,
   brainSearch,
-} from "../../application/brain/brain-service.js";
+} from "@ocean/brain/brain/brain-service.js";
 import {
   doctorMemoryIndexes,
   syncMemoryIndexes,
-} from "../../application/memory/index-sync.js";
+} from "@ocean/brain/memory/index-sync.js";
 import {
   deleteProfileFact,
   readProfileFacts,
   writeProfileFact,
-} from "../../application/memory/profile-facts.js";
+} from "@ocean/brain/memory/profile-facts.js";
+import { isValidProjectId } from "@ocean/core/domain/context/project-id.js";
+import { folderProject } from "@ocean/core/shared/project-resolution.js";
 import { defaultBrainIndexPort } from "../../composition/runtime.js";
 import { createOllamaEmbedder } from "../../infrastructure/providers/ollama-embedder.js";
 

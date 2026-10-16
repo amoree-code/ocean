@@ -5,6 +5,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { writeProfileFact } from "@ocean/brain/memory/profile-facts.js";
 import {
   profileIdentity,
   selectProfileClient,
@@ -15,7 +16,6 @@ import {
   executionPlanIdentity,
 } from "@ocean/core/domain/runs/execution-plan.js";
 import { SYSTEM_DIR } from "@ocean/core/shared/paths.js";
-import { writeProfileFact } from "../dist/application/memory/profile-facts.js";
 import { resumeAgent, runAgent } from "../dist/application/runs/run-agent.js";
 import { createAgentRuntime } from "../dist/composition/runtime.js";
 import { SessionStore } from "../dist/infrastructure/persistence/session-store.js";
@@ -541,7 +541,7 @@ test("a v1 profile with memory disabled gets no facts in its prompt", async () =
 
 test("a non-string profile name is never coerced into a namespace", async () => {
   const { profileFactsFile } = await import(
-    "../dist/application/memory/profile-facts.js"
+    "@ocean/brain/memory/profile-facts.js"
   );
   for (const bad of [null, undefined, 42])
     assert.throws(() => profileFactsFile(bad), /Invalid profile name/);

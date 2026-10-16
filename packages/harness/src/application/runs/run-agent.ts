@@ -1,4 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
+import {
+  buildProfileFactsDigest,
+  profileFactsFile,
+  readProfileFacts,
+} from "@ocean/brain/memory/profile-facts.js";
 import type { ContextReference } from "@ocean/core/domain/context/context.js";
 import { validateContextManifest } from "@ocean/core/domain/context/context-validator.js";
 import type { AgentRuntimeDeps } from "@ocean/core/domain/ports/runtime-ports.js";
@@ -32,11 +37,6 @@ import {
 } from "../context/context-references.js";
 import { getHandoff } from "../handoff/handoff-service.js";
 import { emitHook } from "../hooks/lifecycle-hooks.js";
-import {
-  buildProfileFactsDigest,
-  profileFactsFile,
-  readProfileFacts,
-} from "../memory/profile-facts.js";
 import { finalizeSession } from "../sessions/session-closeout.js";
 import { sessionProjectId } from "../sessions/session-projects.js";
 import {

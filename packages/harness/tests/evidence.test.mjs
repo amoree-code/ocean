@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { buildVerificationReport } from "@ocean/brain/evidence/verification-report.js";
 import { validateEvidence } from "@ocean/core/domain/evidence/evidence.js";
-import { buildVerificationReport } from "../dist/application/evidence/verification-report.js";
 
 const record = (result, id = "e1") =>
   validateEvidence({

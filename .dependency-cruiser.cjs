@@ -7,14 +7,7 @@ const H = "^packages/harness/src/";
 const LAYERS = [
   ["core", ["^packages/core/src/"]],
   ["market", ["^packages/market/src/"]],
-  [
-    "brain",
-    [
-      "^packages/brain/src/",
-      `${H}application/(brain|memory|evidence|capture)/`,
-      `${H}infrastructure/brain/`,
-    ],
-  ],
+  ["brain", ["^packages/brain/src/"]],
   ["context", ["^packages/context/src/", `${H}application/context/`]],
   [
     "loop",
@@ -59,6 +52,14 @@ module.exports = {
       from: {},
       to: { circular: true },
     },
+    {
+      name: "not-to-unresolvable",
+      comment:
+        "an import that does not resolve — e.g. a package reaching one it does not declare — would hide from the layer rules",
+      severity: "error",
+      from: {},
+      to: { couldNotResolve: true },
+    },
     ...upward,
     {
       name: "nothing-imports-harness",
@@ -74,5 +75,11 @@ module.exports = {
     exclude: { path: "(^|/)(dist|node_modules)/" },
     tsPreCompilationDeps: true,
     combinedDependencies: true,
+    // Each @ocean/* package exports a "source" condition pointing at src/*.ts, so
+    // imports between packages resolve to source and the layer rules see them.
+    enhancedResolveOptions: {
+      exportsFields: ["exports"],
+      conditionNames: ["source", "import", "node", "default"],
+    },
   },
 };

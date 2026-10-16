@@ -3,12 +3,12 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { reindexBrain as reindexBrainRaw } from "@ocean/brain/brain/brain-reindex.js";
 import {
   KNOWLEDGE_DIR,
   PERSONAL_DIR,
   PROJECTS_DIR,
 } from "@ocean/core/shared/paths.js";
-import { reindexBrain as reindexBrainRaw } from "../dist/application/brain/brain-reindex.js";
 import {
   planContextRead,
   resolveLadderRung,

@@ -19,17 +19,17 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
+  deleteProfileFact,
+  profileFactsFile,
+  readProfileFacts,
+  writeProfileFact,
+} from "@ocean/brain/memory/profile-facts.js";
+import {
   profileIdentity,
   selectProfileClient,
 } from "@ocean/core/domain/profiles/profile.js";
 import { validateProfile } from "@ocean/core/domain/profiles/profile-validator.js";
 import { SYSTEM_DIR } from "@ocean/core/shared/paths.js";
-import {
-  deleteProfileFact,
-  profileFactsFile,
-  readProfileFacts,
-  writeProfileFact,
-} from "../dist/application/memory/profile-facts.js";
 import { loadProfile } from "../dist/infrastructure/filesystem/profile-loader.js";
 import { completionEndpoints } from "../dist/infrastructure/providers/openai-compatible.js";
 import {

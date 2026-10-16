@@ -1,5 +1,11 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
+import {
+  brainNeighbors,
+  brainRead,
+  brainSearch,
+} from "@ocean/brain/brain/brain-service.js";
+import { promoteSessionToKnowledge } from "@ocean/brain/memory/session-promotion.js";
 import { isValidProjectId } from "@ocean/core/domain/context/project-id.js";
 import {
   actionFingerprint,
@@ -11,11 +17,6 @@ import type { SessionStoreFactory } from "@ocean/core/domain/ports/session-store
 import { oceanPath, oceanRoot, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import { folderProject } from "@ocean/core/shared/project-resolution.js";
 import {
-  brainNeighbors,
-  brainRead,
-  brainSearch,
-} from "../../application/brain/brain-service.js";
-import {
   hasFailures,
   workspaceReport,
 } from "../../application/doctor/workspace-doctor.js";
@@ -24,7 +25,6 @@ import {
   getTask,
   listHandoffs,
 } from "../../application/handoff/handoff-service.js";
-import { promoteSessionToKnowledge } from "../../application/memory/session-promotion.js";
 import { listTasksForFolder } from "../../application/tasks/list-tasks.js";
 import { openSessionStoreReadOnly } from "../persistence/session-store.js";
 
