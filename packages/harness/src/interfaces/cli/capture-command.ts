@@ -12,9 +12,9 @@ import {
   PROJECTS_DIR,
   WORKSPACE_PROJECT_ID,
 } from "@ocean/core/shared/paths.js";
-import { sessionProjectId } from "../../application/sessions/session-projects.js";
+import { openSessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
+import { sessionProjectId } from "@ocean/loop/sessions/session-projects.js";
 import { redactRuntimeText } from "../../infrastructure/observability/runtime-logger.js";
-import { openSessionStore } from "../../infrastructure/persistence/session-store.js";
 
 export async function runCaptureCommand(
   action: string,

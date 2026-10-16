@@ -6,12 +6,12 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { SYSTEM_DIR } from "@ocean/core/shared/paths.js";
+import { SessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
 import {
   applyRetention,
   planRetention,
   simulateRetention,
-} from "../dist/application/sessions/session-retention.js";
-import { SessionStore } from "../dist/infrastructure/persistence/session-store.js";
+} from "@ocean/loop/sessions/session-retention.js";
 
 const openStore = (file) => new SessionStore(file);
 

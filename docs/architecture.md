@@ -26,13 +26,13 @@ boundary and returns a content hash.
 - **Interfaces** — `src/main.ts` performs top-level dispatch, while focused handlers and the
   canonical help catalog live under `src/interfaces/cli/`. Run `ocean --help` for the complete
   current command surface.
-- **Application** — `src/application/runs/run-agent.ts` (`runAgent` / `resumeAgent`, the orchestration
+- **Application** — `packages/loop/src/runs/run-agent.ts` (`runAgent` / `resumeAgent`, the orchestration
   entry points) and `src/infrastructure/process/service.ts` (long-running process for startup integration).
 - **Domain** — `src/domain/profiles/`, `src/domain/sessions/`, `src/domain/context/`:
   the `Profile`, `Session`, and `ContextManifest` types and their Zod validators.
 - **Infrastructure** — `src/infrastructure/providers/providers.ts` (builds provider CLI invocations),
   `src/infrastructure/process/cli-process.ts` (spawns and streams a child process), and
-  `src/infrastructure/persistence/session-store.ts` (SQLite persistence via `node:sqlite`).
+  `packages/loop/src/infrastructure/persistence/session-store.ts` (SQLite persistence via `node:sqlite`).
 
 ```mermaid
 flowchart TB
@@ -42,7 +42,7 @@ flowchart TB
     end
 
     subgraph Application
-        AgentRun["application/runs/run-agent.ts\n(runAgent / resumeAgent)"]
+        AgentRun["loop: runs/run-agent.ts\n(runAgent / resumeAgent)"]
         Service["infrastructure/process/service.ts"]
     end
 
@@ -55,7 +55,7 @@ flowchart TB
     subgraph Infrastructure
         Providers["infrastructure/providers/providers.ts"]
         Headless["infrastructure/process/cli-process.ts"]
-        Store["infrastructure/persistence/session-store.ts\n(SQLite)"]
+        Store["loop: infrastructure/persistence/session-store.ts\n(SQLite)"]
     end
 
     Main --> AgentRun

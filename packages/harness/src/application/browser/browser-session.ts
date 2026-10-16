@@ -11,7 +11,7 @@ import type {
   SessionEvent,
 } from "@ocean/core/domain/sessions/session.js";
 import { oceanPath, oceanRoot, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
-import { sessionProjectId } from "../sessions/session-projects.js";
+import { sessionProjectId } from "@ocean/loop/sessions/session-projects.js";
 import type { BrowserService, ClickExpectation } from "./browser-service.js";
 
 type BrowserResumeData = BrowserLaunch & {

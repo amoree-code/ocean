@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { checkpointTask } from "../dist/application/tasks/checkpoint-task.js";
+import { checkpointTask } from "@ocean/loop/tasks/checkpoint-task.js";
 
 test("checkpointTask writes a durable log entry and next action to the task file", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ocean-checkpoint-"));

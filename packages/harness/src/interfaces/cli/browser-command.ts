@@ -1,3 +1,4 @@
+import { openSessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
 import {
   BrowserService,
   type ClickExpectation,
@@ -7,7 +8,6 @@ import {
   browserDownloadsPath,
 } from "../../application/browser/browser-session.js";
 import { BrowserTaskRunner } from "../../application/browser/browser-task-runner.js";
-import { openSessionStore } from "../../infrastructure/persistence/session-store.js";
 import { PlaywrightBrowserProvider } from "../../infrastructure/providers/playwright-browser-provider.js";
 
 export async function runBrowserCommand(

@@ -7,7 +7,7 @@ import {
   listTaskLoops,
   startTaskLoop,
   stopTaskLoop,
-} from "../dist/application/loops/task-loop.js";
+} from "@ocean/loop/loops/task-loop.js";
 
 test("task loop persists bounded state and stops explicitly", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ocean-loop-"));
@@ -36,9 +36,7 @@ test("task loop persists bounded state and stops explicitly", async () => {
 
 test("a task loop remembers its project and works a task outside the workspace project", async () => {
   const { mkdir, readFile, writeFile } = await import("node:fs/promises");
-  const { runTaskLoopsOnce } = await import(
-    "../dist/application/loops/task-loop.js"
-  );
+  const { runTaskLoopsOnce } = await import("@ocean/loop/loops/task-loop.js");
   const { createAgentRuntime } = await import("../dist/composition/runtime.js");
   const { PROJECTS_DIR, SYSTEM_DIR } = await import(
     "@ocean/core/shared/paths.js"

@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { validateSessionEntryContract } from "@ocean/core/domain/sessions/entry-contract.js";
-import { openSessionStore } from "../dist/infrastructure/persistence/session-store.js";
+import { openSessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
 import { runClientTestCommand } from "../dist/interfaces/cli/client-test-command.js";
 
 test("validates the full-head entry contract", () => {

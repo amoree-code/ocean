@@ -12,7 +12,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { SYSTEM_DIR } from "@ocean/core/shared/paths.js";
-import { openSessionStore } from "../dist/infrastructure/persistence/session-store.js";
+import { openSessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
 import {
   resolveOriginalExecutable,
   resolveOriginalExecutable as resolveProviderExecutable,

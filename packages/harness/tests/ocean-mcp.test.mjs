@@ -9,13 +9,13 @@ import {
   STORE_DIR,
   SYSTEM_DIR,
 } from "@ocean/core/shared/paths.js";
+import { SessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
 import {
   defaultBrainIndexPort,
   defaultSessionStoreFactory,
   defaultWrapperManager,
 } from "../dist/composition/runtime.js";
 import { handleOceanMcpRequest } from "../dist/infrastructure/mcp/ocean-server.js";
-import { SessionStore } from "../dist/infrastructure/persistence/session-store.js";
 
 const handle = (request) =>
   handleOceanMcpRequest(request, {

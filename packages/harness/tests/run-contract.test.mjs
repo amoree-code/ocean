@@ -7,8 +7,8 @@ import {
   assertRunCanStart,
   validateRunContract,
 } from "@ocean/core/domain/runs/run-contract.js";
-import { authorizeRun } from "../dist/application/runs/run-authorization.js";
-import { SessionStore } from "../dist/infrastructure/persistence/session-store.js";
+import { SessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
+import { authorizeRun } from "@ocean/loop/runs/run-authorization.js";
 
 const contract = (overrides = {}) =>
   validateRunContract({

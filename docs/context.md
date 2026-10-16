@@ -1,10 +1,10 @@
 # Context
 
 A headless run (`ocean run`, the scheduler, the task loop, the gateway) sends the provider one
-prompt assembled by `runAgent` (`src/application/runs/run-agent.ts`). Every supported provider
+prompt assembled by `runAgent` (`packages/loop/src/runs/run-agent.ts`). Every supported provider
 is an agentic CLI with file access, so the prompt carries **references, not bodies**: the
 provider reads a file only when the request needs it. Formatting lives in
-`src/application/runs/prompt-assembly.ts`; context references in
+`packages/loop/src/runs/prompt-assembly.ts`; context references in
 `packages/context/src/context/context-references.ts`.
 
 ## Prompt sections

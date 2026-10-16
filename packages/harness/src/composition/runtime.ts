@@ -14,14 +14,14 @@ import type {
   SessionStoreFactory,
   SessionStoreOpener,
 } from "@ocean/core/domain/ports/session-store-port.js";
+import {
+  openSessionStore,
+  SessionStore,
+} from "@ocean/loop/infrastructure/persistence/session-store.js";
 import type { AuthDeps } from "../application/auth/auth-orchestrator.js";
 import { loadProfile } from "../infrastructure/filesystem/profile-loader.js";
 import { loadSkillIndex } from "../infrastructure/filesystem/skill-loader.js";
 import { appendRuntimeLog } from "../infrastructure/observability/runtime-logger.js";
-import {
-  openSessionStore,
-  SessionStore,
-} from "../infrastructure/persistence/session-store.js";
 import { executeAgentTool } from "../infrastructure/process/agent-tool-executor.js";
 import { runHeadless } from "../infrastructure/process/cli-process.js";
 import { runInteractive } from "../infrastructure/process/interactive-process.js";

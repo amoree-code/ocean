@@ -4,13 +4,13 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { browserContracts } from "@ocean/core/domain/capabilities/browser-contract.js";
+import { SessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
 import {
   BrowserApprovalRequiredError,
   BrowserService,
 } from "../dist/application/browser/browser-service.js";
 import { BrowserSessionManager } from "../dist/application/browser/browser-session.js";
 import { BrowserTaskRunner } from "../dist/application/browser/browser-task-runner.js";
-import { SessionStore } from "../dist/infrastructure/persistence/session-store.js";
 import { FakeBrowserProvider } from "../dist/infrastructure/providers/fake-browser-provider.js";
 import {
   resolveDownloadPath,

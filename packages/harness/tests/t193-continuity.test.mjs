@@ -11,13 +11,13 @@ import {
 import {
   createHandoff,
   getHandoff,
-} from "../dist/application/handoff/handoff-service.js";
-import { runAgent as runAgentRaw } from "../dist/application/runs/run-agent.js";
+} from "@ocean/loop/handoff/handoff-service.js";
+import { SessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
+import { runAgent as runAgentRaw } from "@ocean/loop/runs/run-agent.js";
 import {
   createAgentRuntime,
   defaultSessionStoreFactory,
 } from "../dist/composition/runtime.js";
-import { SessionStore } from "../dist/infrastructure/persistence/session-store.js";
 
 const runAgent = (request, execute) =>
   runAgentRaw(

@@ -249,6 +249,9 @@ importers:
       '@ocean/core':
         specifier: workspace:*
         version: link:../core
+      '@ocean/loop':
+        specifier: workspace:*
+        version: link:../loop
       '@ocean/market':
         specifier: workspace:*
         version: link:../market
@@ -268,6 +271,28 @@ importers:
       tsx:
         specifier: ^4.19.0
         version: 4.23.13
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+
+  packages/loop:
+    dependencies:
+      '@ocean/brain':
+        specifier: workspace:*
+        version: link:../brain
+      '@ocean/context':
+        specifier: workspace:*
+        version: link:../context
+      '@ocean/core':
+        specifier: workspace:*
+        version: link:../core
+      '@ocean/market':
+        specifier: workspace:*
+        version: link:../market
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.1
       typescript:
         specifier: ^7.0.2
         version: 7.0.2

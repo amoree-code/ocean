@@ -4,17 +4,14 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { SYSTEM_DIR } from "@ocean/core/shared/paths.js";
-import {
-  clearHooks,
-  registerHook,
-} from "../dist/application/hooks/lifecycle-hooks.js";
+import { clearHooks, registerHook } from "@ocean/loop/hooks/lifecycle-hooks.js";
+import { SessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
 import {
   isValidProviderSessionId,
   resumeAgent as resumeAgentRaw,
   runAgent as runAgentRaw,
-} from "../dist/application/runs/run-agent.js";
+} from "@ocean/loop/runs/run-agent.js";
 import { createAgentRuntime } from "../dist/composition/runtime.js";
-import { SessionStore } from "../dist/infrastructure/persistence/session-store.js";
 
 // Test shim: the real runAgent/resumeAgent take an AgentRuntimeDeps bag; these
 // wrap a bare provider-executor into a runtime with the real deps otherwise, so

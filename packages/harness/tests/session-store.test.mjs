@@ -5,8 +5,8 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { assertValidStatusTransition } from "@ocean/core/domain/sessions/session.js";
-import { SessionStore } from "../dist/infrastructure/persistence/session-store.js";
-import { validateSession } from "../dist/infrastructure/persistence/session-validator.js";
+import { SessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
+import { validateSession } from "@ocean/loop/infrastructure/persistence/session-validator.js";
 
 async function openStore() {
   const directory = await mkdtemp(path.join(os.tmpdir(), "ocean-session-"));

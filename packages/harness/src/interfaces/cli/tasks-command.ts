@@ -15,16 +15,16 @@ import { resolveTaskReference } from "@ocean/core/shared/task-reference.js";
 import {
   archiveDoneTasks,
   completeTask,
-} from "../../application/tasks/archive-tasks.js";
-import { checkpointTask } from "../../application/tasks/checkpoint-task.js";
-import { claimTask, releaseTask } from "../../application/tasks/claim-task.js";
+} from "@ocean/loop/tasks/archive-tasks.js";
+import { checkpointTask } from "@ocean/loop/tasks/checkpoint-task.js";
+import { claimTask, releaseTask } from "@ocean/loop/tasks/claim-task.js";
 import {
   listTasks,
   listTasksForFolder,
   type ProjectTask,
-} from "../../application/tasks/list-tasks.js";
-import { renumberTasks } from "../../application/tasks/renumber-tasks.js";
-import { verifyTask } from "../../application/tasks/verify-task.js";
+} from "@ocean/loop/tasks/list-tasks.js";
+import { renumberTasks } from "@ocean/loop/tasks/renumber-tasks.js";
+import { verifyTask } from "@ocean/loop/tasks/verify-task.js";
 
 const execFile = promisify(execFileCallback);
 

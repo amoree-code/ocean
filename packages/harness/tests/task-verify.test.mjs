@@ -5,11 +5,11 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { PROJECTS_DIR, repoRoot } from "@ocean/core/shared/paths.js";
-import { completeTask } from "../dist/application/tasks/archive-tasks.js";
+import { completeTask } from "@ocean/loop/tasks/archive-tasks.js";
 import {
   extractVerificationCommands,
   verifyTask,
-} from "../dist/application/tasks/verify-task.js";
+} from "@ocean/loop/tasks/verify-task.js";
 
 async function writeTask(root, id, body) {
   const dir = path.join(root, id);

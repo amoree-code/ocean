@@ -6,7 +6,7 @@ Ocean provides an explicit, local migration command. Preview the operation with
 
 ## SQLite schema
 
-`SessionStore` (`src/infrastructure/persistence/session-store.ts`) creates missing tables
+`SessionStore` (`packages/loop/src/infrastructure/persistence/session-store.ts`) creates missing tables
 and applies additive column migrations. `ocean migrate --apply` is the explicit upgrade
 boundary. Back up `<workspace>/bridge/sessions/sessions.sqlite` before upgrading if you
 want a rollback point (see [sessions.md](sessions.md)).

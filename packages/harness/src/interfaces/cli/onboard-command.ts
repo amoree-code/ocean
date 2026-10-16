@@ -10,7 +10,25 @@ import {
   type OnboardingIO,
   type OnboardingStep,
 } from "../../application/onboarding/steps.js";
+import {
+  installShellIntegration,
+  setProviderEnabled,
+  syncProviderWrappers,
+  wrapperDoctor,
+  wrapperStatus,
+} from "../../infrastructure/wrappers/wrapper-manager.js";
 import { setup } from "./setup-command.js";
+
+const stepDependencies = () => ({
+  setup: () => setup(),
+  wrappers: {
+    wrapperStatus,
+    setProviderEnabled,
+    syncProviderWrappers,
+    installShellIntegration,
+    wrapperDoctor: () => wrapperDoctor(),
+  },
+});
 
 export type OnboardOptions = {
   yes?: boolean;
@@ -44,7 +62,7 @@ export async function onboard(options: OnboardOptions = {}): Promise<void> {
     !options.yes && Boolean(process.stdin.isTTY && process.stdout.isTTY);
   const terminal = options.io ? undefined : terminalIO(interactive);
   const io = options.io ?? (terminal as { io: OnboardingIO }).io;
-  const steps = options.steps ?? buildSteps({ setup: () => setup() });
+  const steps = options.steps ?? buildSteps(stepDependencies());
   try {
     const state: OnboardingState = await loadOnboardingState();
     if (options.reset) {
@@ -95,7 +113,7 @@ export async function onboardStatus(
 
 // Re-runs just the clients step (enable/disable + sync), independent of onboarding state.
 export async function manageClients(): Promise<void> {
-  const step = buildSteps({ setup: () => setup() }).find(
+  const step = buildSteps(stepDependencies()).find(
     (candidate) => candidate.id === "clients",
   );
   const terminal = terminalIO(
@@ -110,7 +128,7 @@ export async function manageClients(): Promise<void> {
 
 export async function runOnboardCommand(argv: string[]): Promise<void> {
   if (argv.includes("--status")) {
-    await onboardStatus(buildSteps({ setup: () => setup() }));
+    await onboardStatus(buildSteps(stepDependencies()));
     return;
   }
   const resetIndex = argv.indexOf("--reset");

@@ -2,7 +2,7 @@ import {
   createHandoff,
   getHandoff,
   listHandoffs,
-} from "../../application/handoff/handoff-service.js";
+} from "@ocean/loop/handoff/handoff-service.js";
 import { defaultSessionStoreFactory } from "../../composition/runtime.js";
 
 export async function runHandoffCommand(

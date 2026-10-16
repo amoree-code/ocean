@@ -6,7 +6,7 @@ import {
 } from "node:http";
 import { actionFingerprint } from "@ocean/core/domain/mcp/mcp-contract.js";
 import type { AgentRuntimeDeps } from "@ocean/core/domain/ports/runtime-ports.js";
-import { runAgent } from "../runs/run-agent.js";
+import { runAgent } from "@ocean/loop/runs/run-agent.js";
 
 type GatewayRequest = {
   profile: string;

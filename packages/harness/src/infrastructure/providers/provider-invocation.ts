@@ -3,7 +3,7 @@ import {
   evaluateGuard,
   type GuardDecision,
   type GuardRequest,
-} from "../../application/operations/write-guard.js";
+} from "@ocean/loop/operations/write-guard.js";
 import { redactRuntimeText } from "../observability/runtime-logger.js";
 import { resolveOriginalExecutable } from "./provider-registry.js";
 

@@ -6,6 +6,7 @@ Docs-only or CI-only PRs may add the `skip-changelog` label instead.
 
 ## Unreleased
 
+- refactor(T-222): new `@ocean/loop` package — tasks, handoff, runs, loops, sessions, operations, hooks, session store; `check:deps` enforces "application code never imports an infrastructure concrete" in every package, which caught onboarding importing the wrapper manager (now injected)
 - refactor(T-222): new `@ocean/context` package — context ladder, packet, intent router, resource injection, references, cost, compression
 - refactor(T-222): new `@ocean/brain` package — brain index/service, memory, evidence, capture; `check:deps` now follows imports between packages (a `source` export condition) and fails on any import it cannot resolve
 - refactor(T-222): new `@ocean/market` package — skills (catalog, curation, hub, observer, core-skill sync) and MCP connection wiring; the root build now follows the workspace graph (`ocean...`)

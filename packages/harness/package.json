@@ -32,7 +32,8 @@
     "@ocean/core": "workspace:*",
     "@ocean/market": "workspace:*",
     "@ocean/brain": "workspace:*",
-    "@ocean/context": "workspace:*"
+    "@ocean/context": "workspace:*",
+    "@ocean/loop": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

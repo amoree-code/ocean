@@ -13,7 +13,7 @@ import {
   resolveProject,
   unbindProjectPath,
 } from "@ocean/core/shared/project-resolution.js";
-import { claudeSessionStartHook } from "../dist/application/hooks/session-start-hook.js";
+import { claudeSessionStartHook } from "@ocean/loop/hooks/session-start-hook.js";
 
 // OCEAN_ROOT and one code root, both throwaway. A repo is a folder with a .git entry.
 async function withWorkspace(run) {

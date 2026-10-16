@@ -9,7 +9,7 @@ import {
   claimTask,
   isStale,
   releaseTask,
-} from "../dist/application/tasks/claim-task.js";
+} from "@ocean/loop/tasks/claim-task.js";
 
 const task = (id, state = "active") =>
   `---\nid: ${id}\ntitle: t\nstate: ${state}\nproject: ocean\nopened: 2026-10-07\nupdated: 2026-10-07\nartifacts: []\n---\n\n## Objective\n\n## Definition of done\n\n## Next action\n\n## Verification\n\n## Blockers\n\n## Log\n`;

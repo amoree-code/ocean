@@ -8,8 +8,8 @@ import path from "node:path";
 import test from "node:test";
 import { classifyIntent } from "@ocean/context/context/intent-router.js";
 import { SYSTEM_DIR } from "@ocean/core/shared/paths.js";
-import { claudeNativeHookStatus } from "../dist/application/hooks/session-start-hook.js";
-import { createGrant } from "../dist/application/operations/write-guard.js";
+import { claudeNativeHookStatus } from "@ocean/loop/hooks/session-start-hook.js";
+import { createGrant } from "@ocean/loop/operations/write-guard.js";
 import {
   invokeProviderHeadless,
   PROVIDER_HEADLESS,

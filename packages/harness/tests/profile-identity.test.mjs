@@ -5,7 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { profileIdentity } from "@ocean/core/domain/profiles/profile.js";
 import { validateProfile } from "@ocean/core/domain/profiles/profile-validator.js";
-import { SessionStore } from "../dist/infrastructure/persistence/session-store.js";
+import { SessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
 
 test("defaults description to empty string and version to 1.0.0", () => {
   const profile = validateProfile({
