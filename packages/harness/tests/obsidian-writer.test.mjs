@@ -4,7 +4,7 @@ import { access, mkdtemp, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { writeObsidianNote } from "../dist/application/obsidian/vault-writer.js";
+import { writeObsidianNote } from "@ocean/services/obsidian/vault-writer.js";
 
 const digest = (content) => createHash("sha256").update(content).digest("hex");
 

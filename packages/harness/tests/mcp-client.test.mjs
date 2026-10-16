@@ -3,7 +3,7 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { McpClient } from "../dist/infrastructure/mcp/mcp-client.js";
+import { McpClient } from "@ocean/services/infrastructure/mcp/mcp-client.js";
 
 test("discovers, filters, and approval-gates MCP tools", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ocean-mcp-"));

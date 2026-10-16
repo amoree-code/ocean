@@ -255,6 +255,9 @@ importers:
       '@ocean/market':
         specifier: workspace:*
         version: link:../market
+      '@ocean/services':
+        specifier: workspace:*
+        version: link:../services
       node-pty:
         specifier: ^1.1.0
         version: 1.1.0
@@ -302,6 +305,25 @@ importers:
       '@ocean/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.1
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+
+  packages/services:
+    dependencies:
+      '@ocean/brain':
+        specifier: workspace:*
+        version: link:../brain
+      '@ocean/core':
+        specifier: workspace:*
+        version: link:../core
+      '@ocean/loop':
+        specifier: workspace:*
+        version: link:../loop
     devDependencies:
       '@types/node':
         specifier: ^22.0.0

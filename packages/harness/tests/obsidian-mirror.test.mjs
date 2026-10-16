@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { PROJECTS_DIR } from "@ocean/core/shared/paths.js";
-import { ingestVaultChanges } from "../dist/application/obsidian/vault-ingestion.js";
+import { ingestVaultChanges } from "@ocean/services/obsidian/vault-ingestion.js";
 
 async function fixture(projectFolder) {
   const root = await mkdtemp(path.join(os.tmpdir(), "ocean-mirror-root-"));

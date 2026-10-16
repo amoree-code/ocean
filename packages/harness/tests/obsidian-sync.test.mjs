@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { syncObsidianVault } from "../dist/application/obsidian/vault-sync.js";
+import { syncObsidianVault } from "@ocean/services/obsidian/vault-sync.js";
 
 test("syncs Obsidian hashes and reports additions, changes, and removals without copying note content", async () => {
   const vaultPath = await mkdtemp(

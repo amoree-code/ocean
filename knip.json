@@ -24,6 +24,9 @@
     },
     "packages/loop": {
       "project": ["src/**/*.ts"]
+    },
+    "packages/services": {
+      "project": ["src/**/*.ts"]
     }
   }
 }

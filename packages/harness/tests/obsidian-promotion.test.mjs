@@ -6,7 +6,7 @@ import test from "node:test";
 import {
   listInboxCandidates,
   promoteInboxNote,
-} from "../dist/application/obsidian/inbox-promotion.js";
+} from "@ocean/services/obsidian/inbox-promotion.js";
 
 test("plans and explicitly applies safe Obsidian inbox promotion", async () => {
   const vaultPath = await mkdtemp(
