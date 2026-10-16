@@ -19,7 +19,10 @@ const LEAK = `${"pass"}${"word"} = ${"hunter2".repeat(2)}\n`;
 function scan(root) {
   const run = spawnSync(process.execPath, [script, root], { encoding: "utf8" });
   const findings = run.status ? JSON.parse(run.stderr).findings : [];
-  return { code: run.status, paths: findings.map((f) => f.path).sort() };
+  return {
+    code: run.status, // The scan reports platform separators; compare with forward slashes (Windows CI).
+    paths: findings.map((f) => f.path.replaceAll("\\", "/")).sort(),
+  };
 }
 function repo(setup, { git = true } = {}) {
   const root = mkdtempSync(path.join(os.tmpdir(), "ocean-scan-"));
