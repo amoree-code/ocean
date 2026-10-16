@@ -21,6 +21,25 @@ boundary and returns a content hash.
 4. Add denied, timeout, and post-condition tests before exposing the operation through MCP.
 5. Record evidence from the independent verification result, not from the provider response.
 
+## Packages
+
+The kernel is a pnpm workspace of seven packages. Each may import only the packages below
+it, and nothing may form a cycle — `pnpm check:deps` enforces both (rules in
+`.dependency-cruiser.cjs`), plus "application code never imports an infrastructure
+concrete" in every package.
+
+| package | holds |
+| --- | --- |
+| `ocean` (`packages/harness`) | CLI (`src/main.ts`, `src/interfaces/`), composition root, providers, wrappers, process, auth, install, profiles, gateway, scheduler, onboarding |
+| `@ocean/services` | browser, Obsidian, workspace doctor, the Ocean and Obsidian MCP servers |
+| `@ocean/loop` | tasks, handoff, runs (`runAgent`), loops, sessions, operations, hooks, the SQLite session store |
+| `@ocean/context` | context ladder, packet, intent router, resource injection, references, cost |
+| `@ocean/brain` | brain index and service, memory, evidence, capture |
+| `@ocean/market` | skills (catalog, curation, hub, observer) and MCP connection wiring |
+| `@ocean/core` | domain types and ports, and `shared/` — paths, fs-utils, project resolution, task lookup |
+
+The paths below that start with `src/` are inside `packages/harness`.
+
 ## Layers
 
 - **Interfaces** — `src/main.ts` performs top-level dispatch, while focused handlers and the

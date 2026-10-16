@@ -23,10 +23,7 @@ import {
 } from "@ocean/loop/handoff/handoff-service.js";
 import { openSessionStoreReadOnly } from "@ocean/loop/infrastructure/persistence/session-store.js";
 import { listTasksForFolder } from "@ocean/loop/tasks/list-tasks.js";
-import {
-  hasFailures,
-  workspaceReport,
-} from "../../application/doctor/workspace-doctor.js";
+import { hasFailures, workspaceReport } from "../../doctor/workspace-doctor.js";
 
 type Request = {
   jsonrpc?: string;

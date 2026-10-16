@@ -8,9 +8,9 @@ import { SessionStore } from "@ocean/loop/infrastructure/persistence/session-sto
 import {
   BrowserApprovalRequiredError,
   BrowserService,
-} from "../dist/application/browser/browser-service.js";
-import { BrowserSessionManager } from "../dist/application/browser/browser-session.js";
-import { BrowserTaskRunner } from "../dist/application/browser/browser-task-runner.js";
+} from "@ocean/services/browser/browser-service.js";
+import { BrowserSessionManager } from "@ocean/services/browser/browser-session.js";
+import { BrowserTaskRunner } from "@ocean/services/browser/browser-task-runner.js";
 import { FakeBrowserProvider } from "../dist/infrastructure/providers/fake-browser-provider.js";
 import {
   resolveDownloadPath,

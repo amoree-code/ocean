@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { discoverObsidianVault } from "../dist/application/obsidian/vault-discovery.js";
+import { discoverObsidianVault } from "@ocean/services/obsidian/vault-discovery.js";
 
 test("discovers an Obsidian vault read-only without indexing hidden metadata", async () => {
   const vaultPath = await mkdtemp(

@@ -17,7 +17,7 @@ import {
   TEMPLATES_DIR,
   WORKSPACE_PROJECT_ID,
 } from "@ocean/core/shared/paths.js";
-import { connectObsidianVault } from "../../application/obsidian/vault-discovery.js";
+import { connectObsidianVault } from "@ocean/services/obsidian/vault-discovery.js";
 import {
   installShellIntegration,
   syncProviderWrappers,

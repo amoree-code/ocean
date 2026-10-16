@@ -73,7 +73,27 @@ import {
   hasFailures,
   repairWorkspace,
   workspaceReport,
-} from "../../application/doctor/workspace-doctor.js";
+} from "@ocean/services/doctor/workspace-doctor.js";
+import { runObsidianMcpServer } from "@ocean/services/infrastructure/mcp/obsidian-server.js";
+import { runOceanMcpServer } from "@ocean/services/infrastructure/mcp/ocean-server.js";
+import {
+  parseConflictSide,
+  resolveConflict,
+} from "@ocean/services/obsidian/conflict-log.js";
+import {
+  listInboxCandidates,
+  promoteInboxNote,
+} from "@ocean/services/obsidian/inbox-promotion.js";
+import {
+  connectObsidianVault,
+  discoverObsidianVault,
+  loadObsidianConnection,
+} from "@ocean/services/obsidian/vault-discovery.js";
+import {
+  syncObsidianVault,
+  watchObsidianVault,
+} from "@ocean/services/obsidian/vault-sync.js";
+import { writeObsidianNote } from "@ocean/services/obsidian/vault-writer.js";
 import { createWebhookGateway } from "../../application/gateway/webhook-gateway.js";
 import {
   findInstallSpec,
@@ -84,24 +104,6 @@ import {
   updateProvider,
 } from "../../application/install/provider-installer.js";
 import { configureClaudeCodeWrapper } from "../../application/integrations/claude-vscode.js";
-import {
-  parseConflictSide,
-  resolveConflict,
-} from "../../application/obsidian/conflict-log.js";
-import {
-  listInboxCandidates,
-  promoteInboxNote,
-} from "../../application/obsidian/inbox-promotion.js";
-import {
-  connectObsidianVault,
-  discoverObsidianVault,
-  loadObsidianConnection,
-} from "../../application/obsidian/vault-discovery.js";
-import {
-  syncObsidianVault,
-  watchObsidianVault,
-} from "../../application/obsidian/vault-sync.js";
-import { writeObsidianNote } from "../../application/obsidian/vault-writer.js";
 import {
   listSchedules,
   runDueSchedules,
@@ -120,8 +122,6 @@ import {
   defaultWrapperManager,
 } from "../../composition/runtime.js";
 import { loadRuntimeConfig } from "../../infrastructure/filesystem/runtime-config-loader.js";
-import { runObsidianMcpServer } from "../../infrastructure/mcp/obsidian-server.js";
-import { runOceanMcpServer } from "../../infrastructure/mcp/ocean-server.js";
 import { runService } from "../../infrastructure/process/service.js";
 import { loadProviderRegistry } from "../../infrastructure/providers/provider-registry.js";
 import {

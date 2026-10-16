@@ -37,7 +37,7 @@ test("no application/* file imports an infrastructure/* concrete", async () => {
 
 test("the MCP server does not import the CLI layer", async () => {
   const source = await readFile(
-    path.resolve("src/infrastructure/mcp/ocean-server.ts"),
+    path.resolve("../services/src/infrastructure/mcp/ocean-server.ts"),
     "utf8",
   );
   for (const match of source.matchAll(IMPORT))

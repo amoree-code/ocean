@@ -1,5 +1,5 @@
-import { loadObsidianConnection } from "../../application/obsidian/vault-discovery.js";
-import { watchObsidianVault } from "../../application/obsidian/vault-sync.js";
+import { loadObsidianConnection } from "@ocean/services/obsidian/vault-discovery.js";
+import { watchObsidianVault } from "@ocean/services/obsidian/vault-sync.js";
 
 export async function runService(shutdownAfterMs?: number): Promise<void> {
   const controller = new AbortController();

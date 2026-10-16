@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { SYSTEM_DIR } from "@ocean/core/shared/paths.js";
-import { connectObsidianVault } from "../dist/application/obsidian/vault-discovery.js";
+import { connectObsidianVault } from "@ocean/services/obsidian/vault-discovery.js";
 
 test("connects an Obsidian vault with read-only default", async () => {
   const vaultPath = await mkdtemp(

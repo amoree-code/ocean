@@ -5,8 +5,8 @@ import path from "node:path";
 import test from "node:test";
 import { actionFingerprint } from "@ocean/core/domain/mcp/mcp-contract.js";
 import { SYSTEM_DIR } from "@ocean/core/shared/paths.js";
-import { McpClient } from "../dist/infrastructure/mcp/mcp-client.js";
-import { handleObsidianMcpRequest } from "../dist/infrastructure/mcp/obsidian-server.js";
+import { McpClient } from "@ocean/services/infrastructure/mcp/mcp-client.js";
+import { handleObsidianMcpRequest } from "@ocean/services/infrastructure/mcp/obsidian-server.js";
 
 test("Obsidian MCP exposes bounded tools and requires approval for writes", async () => {
   const vaultPath = await mkdtemp(

@@ -5,7 +5,7 @@ import {
   copyClientSkills,
   populateSkillHub,
 } from "@ocean/market/skills/skill-hub.js";
-import { connectObsidianVault } from "../obsidian/vault-discovery.js";
+import { connectObsidianVault } from "@ocean/services/obsidian/vault-discovery.js";
 
 // Bump when a step is added; completed steps stay completed, only new ids run.
 export const ONBOARDING_VERSION = 2;

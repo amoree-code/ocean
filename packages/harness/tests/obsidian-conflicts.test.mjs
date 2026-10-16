@@ -8,7 +8,7 @@ import {
   parseConflictSide,
   readConflictRecord,
   resolveConflict,
-} from "../dist/application/obsidian/conflict-log.js";
+} from "@ocean/services/obsidian/conflict-log.js";
 
 test("a conflict side is vault or ocean, and nothing else", () => {
   assert.equal(parseConflictSide("vault"), "vault");

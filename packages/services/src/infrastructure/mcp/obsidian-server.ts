@@ -7,18 +7,18 @@ import { oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import {
   listInboxCandidates,
   promoteInboxNote,
-} from "../../application/obsidian/inbox-promotion.js";
+} from "../../obsidian/inbox-promotion.js";
 import {
   discoverObsidianVault,
   loadObsidianConnection,
   type ObsidianConnection,
   validateObsidianVault,
-} from "../../application/obsidian/vault-discovery.js";
-import { syncObsidianVault } from "../../application/obsidian/vault-sync.js";
+} from "../../obsidian/vault-discovery.js";
+import { syncObsidianVault } from "../../obsidian/vault-sync.js";
 import {
   resolveObsidianNotePath,
   writeObsidianNote,
-} from "../../application/obsidian/vault-writer.js";
+} from "../../obsidian/vault-writer.js";
 
 type Request = {
   jsonrpc?: string;
