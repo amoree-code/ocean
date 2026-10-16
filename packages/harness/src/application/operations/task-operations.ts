@@ -1,6 +1,8 @@
 import type { Dirent } from "node:fs";
 import { mkdir, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
+import type { ContextBudget } from "@ocean/context/context/context-ladder.js";
+import type { IntentClassification } from "@ocean/context/context/intent-router.js";
 import { TASK_ID } from "@ocean/core/domain/tasks/task-id.js";
 import {
   atomicWrite,
@@ -12,8 +14,6 @@ import {
   resolveTaskReference,
   type TaskLocation,
 } from "@ocean/core/shared/task-reference.js";
-import type { ContextBudget } from "../context/context-ladder.js";
-import type { IntentClassification } from "../context/intent-router.js";
 import { completeTask } from "../tasks/archive-tasks.js";
 import {
   approvalMatchesTarget,

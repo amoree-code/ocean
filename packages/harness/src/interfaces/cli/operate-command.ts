@@ -1,6 +1,6 @@
+import { classifyIntent } from "@ocean/context/context/intent-router.js";
 import { oceanRoot } from "@ocean/core/shared/paths.js";
 import { knownTaskPrefixes } from "@ocean/core/shared/project-resolution.js";
-import { classifyIntent } from "../../application/context/intent-router.js";
 import {
   type OperationName,
   operationForIntent,

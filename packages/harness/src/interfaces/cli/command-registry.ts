@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { promoteSessionToKnowledge } from "@ocean/brain/memory/session-promotion.js";
+import { classifyIntent } from "@ocean/context/context/intent-router.js";
 import { resolveProfileName } from "@ocean/core/domain/profiles/runtime-config.js";
 import {
   oceanEnv,
@@ -46,7 +47,6 @@ import {
   observeSession,
   reviewObservation,
 } from "@ocean/market/skills/task-observer.js";
-import { classifyIntent } from "../../application/context/intent-router.js";
 import {
   hasFailures,
   repairWorkspace,

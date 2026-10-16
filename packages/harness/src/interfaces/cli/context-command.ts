@@ -1,6 +1,11 @@
 import { stat } from "node:fs/promises";
 import path from "node:path";
 import {
+  type ClientContextCost,
+  DEFAULT_CONTEXT_BUDGET,
+  measureContextCost,
+} from "@ocean/context/context/context-cost.js";
+import {
   BRAIN_RECORD_DIRS,
   oceanRoot,
   PERSONAL_DIR,
@@ -15,11 +20,6 @@ import {
   resolveProject,
 } from "@ocean/core/shared/project-resolution.js";
 import { z } from "zod";
-import {
-  type ClientContextCost,
-  DEFAULT_CONTEXT_BUDGET,
-  measureContextCost,
-} from "../../application/context/context-cost.js";
 import { oceanVersion } from "../../version.js";
 import { listTasks } from "./tasks-command.js";
 

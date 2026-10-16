@@ -11,6 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { buildProfileFactsDigest } from "@ocean/brain/memory/profile-facts.js";
+import { buildContextReferences } from "@ocean/context/context/context-references.js";
 import { validateProfile } from "@ocean/core/domain/profiles/profile-validator.js";
 import { truncateUtf8 } from "@ocean/core/shared/fs-utils.js";
 import {
@@ -19,7 +20,6 @@ import {
   PROJECTS_DIR,
   SYSTEM_DIR,
 } from "@ocean/core/shared/paths.js";
-import { buildContextReferences } from "../dist/application/context/context-references.js";
 import {
   assemblePrompt,
   formatProfileContract,

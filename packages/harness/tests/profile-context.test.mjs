@@ -3,15 +3,15 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import {
+  buildContextReferences,
+  CONTEXT_REFERENCE_MAX_BYTES,
+} from "@ocean/context/context/context-references.js";
 import { validateContextManifest } from "@ocean/core/domain/context/context-validator.js";
 import { selectProfileClient } from "@ocean/core/domain/profiles/profile.js";
 import { executionPolicy } from "@ocean/core/domain/profiles/profile-policy.js";
 import { validateProfile } from "@ocean/core/domain/profiles/profile-validator.js";
 import { PROJECTS_DIR } from "@ocean/core/shared/paths.js";
-import {
-  buildContextReferences,
-  CONTEXT_REFERENCE_MAX_BYTES,
-} from "../dist/application/context/context-references.js";
 
 test("validates a profile and bounds context to allowed files", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ocean-context-"));

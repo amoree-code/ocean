@@ -1,17 +1,17 @@
 import path from "node:path";
+import { validateBudget } from "@ocean/context/context/context-ladder.js";
+import type {
+  ContextPacket,
+  Freshness,
+  RecordType,
+} from "@ocean/context/context/context-packet.js";
+import type { IntentClassification } from "@ocean/context/context/intent-router.js";
 import { TASK_ID } from "@ocean/core/domain/tasks/task-id.js";
 import {
   engineRoot,
   oceanRoot,
   resolveWithin,
 } from "@ocean/core/shared/paths.js";
-import { validateBudget } from "../context/context-ladder.js";
-import type {
-  ContextPacket,
-  Freshness,
-  RecordType,
-} from "../context/context-packet.js";
-import type { IntentClassification } from "../context/intent-router.js";
 
 // Shared contract for T-198 slice 7 operations. Every operation — read or write — passes
 // through the same validation gate: explicit intent, explicit identifier or create target,

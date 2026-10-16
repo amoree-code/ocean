@@ -1,6 +1,6 @@
+import type { ContextBudget } from "@ocean/context/context/context-ladder.js";
+import type { IntentClassification } from "@ocean/context/context/intent-router.js";
 import { KNOWLEDGE_DIR, PERSONAL_DIR } from "@ocean/core/shared/paths.js";
-import type { ContextBudget } from "../context/context-ladder.js";
-import type { IntentClassification } from "../context/intent-router.js";
 import { searchRecords, writeRecord } from "./memory-knowledge-operations.js";
 import {
   gateOperation,

@@ -5,12 +5,12 @@ import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { classifyIntent } from "@ocean/context/context/intent-router.js";
 import {
   KNOWLEDGE_DIR,
   PERSONAL_DIR,
   PROJECTS_DIR,
 } from "@ocean/core/shared/paths.js";
-import { classifyIntent } from "../dist/application/context/intent-router.js";
 import { runOperation } from "../dist/application/operations/record-operations.js";
 import {
   computeScopeHash,

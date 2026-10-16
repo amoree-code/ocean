@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import test from "node:test";
-import { classifyIntent } from "../dist/application/context/intent-router.js";
+import { classifyIntent } from "@ocean/context/context/intent-router.js";
 
 // --- task lookup: get, show, explain, continue, update, complete ---
 
@@ -293,7 +293,7 @@ test("classification result exposes exactly the contracted fields, nothing extra
 test("intent-router.ts imports only the pure task-id module — structurally no fs, no network, no MCP, no model call is possible", async () => {
   const { readFile } = await import("node:fs/promises");
   const source = await readFile(
-    path.resolve("src/application/context/intent-router.ts"),
+    path.resolve("../context/src/context/intent-router.ts"),
     "utf8",
   );
   // The one allowed import is the pure task-id module (no I/O of its own).

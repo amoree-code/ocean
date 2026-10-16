@@ -4,8 +4,8 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { OCEAN_BOOTSTRAP_MAX_BYTES } from "@ocean/context/context/resource-injection.js";
 import { PROJECTS_DIR, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
-import { OCEAN_BOOTSTRAP_MAX_BYTES } from "../dist/application/context/resource-injection.js";
 import {
   claudeNativeHookStatus,
   claudeSessionStartHook,

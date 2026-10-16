@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { measureContextCost } from "../dist/application/context/context-cost.js";
+import { measureContextCost } from "@ocean/context/context/context-cost.js";
 
 const MARKER = "FIXTURE-BODY-TEXT";
 

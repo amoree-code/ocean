@@ -5,6 +5,9 @@ import {
   BrainIndexStaleError,
   brainSearch,
 } from "@ocean/brain/brain/brain-service.js";
+import type { ContextBudget } from "@ocean/context/context/context-ladder.js";
+import type { RecordType } from "@ocean/context/context/context-packet.js";
+import type { IntentClassification } from "@ocean/context/context/intent-router.js";
 import {
   normalizeScope,
   scopeVisible,
@@ -22,9 +25,6 @@ import {
   STORE_DIR,
 } from "@ocean/core/shared/paths.js";
 import { resolveProject } from "@ocean/core/shared/project-resolution.js";
-import type { ContextBudget } from "../context/context-ladder.js";
-import type { RecordType } from "../context/context-packet.js";
-import type { IntentClassification } from "../context/intent-router.js";
 import {
   approvalMatchesTarget,
   type OperationRecord,

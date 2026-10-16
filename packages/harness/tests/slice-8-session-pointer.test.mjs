@@ -4,8 +4,8 @@ import { mkdir, mkdtemp, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { classifyIntent } from "@ocean/context/context/intent-router.js";
 import { SYSTEM_DIR } from "@ocean/core/shared/paths.js";
-import { classifyIntent } from "../dist/application/context/intent-router.js";
 import {
   buildSessionPointer,
   planSessionResume,
@@ -421,7 +421,7 @@ test("session-pointer.ts imports no provider, network, or MCP module and invokes
     "node:path",
     "@ocean/core/domain/ports/session-store-port.js",
     "@ocean/core/domain/sessions/session.js",
-    "../context/context-ladder.js",
+    "@ocean/context/context/context-ladder.js",
     "@ocean/core/shared/project-resolution.js",
     // Pure path/project-id helpers (sameProject); no provider, network or MCP code.
     "@ocean/core/shared/paths.js",

@@ -5,7 +5,7 @@ prompt assembled by `runAgent` (`src/application/runs/run-agent.ts`). Every supp
 is an agentic CLI with file access, so the prompt carries **references, not bodies**: the
 provider reads a file only when the request needs it. Formatting lives in
 `src/application/runs/prompt-assembly.ts`; context references in
-`src/application/context/context-references.ts`.
+`packages/context/src/context/context-references.ts`.
 
 ## Prompt sections
 
@@ -80,7 +80,7 @@ Ocean does not scan all sessions, tasks, personal files, daily files, or transcr
 
 `contextCompression` stays in the profile schema and in the profile identity hash, but it has no
 effect on headless prompts now that no context body is inlined, and the profile contract does
-not mention it. `application/context/context-compression.ts` has no production caller; only its
+not mention it. `packages/context/src/context/context-compression.ts` has no production caller; only its
 unit tests exercise it.
 
 Read access: the prompt points the provider at files it must be able to open. `runAgent` passes
