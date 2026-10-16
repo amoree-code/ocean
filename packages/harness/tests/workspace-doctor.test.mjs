@@ -49,6 +49,41 @@ test("doctor reports missing roots and broken active links without mutating", as
   );
 });
 
+test("doctor skips links in generated session summaries and installed skill docs, not in authored files", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-doctor-links-"));
+  for (const dir of [PERSONAL_DIR, KNOWLEDGE_DIR, PROJECTS_DIR, SYSTEM_DIR])
+    await mkdir(path.join(root, dir), { recursive: true });
+  const broken = "[gone](nope.md)\n";
+  const put = async (file, text = broken) => {
+    await mkdir(path.dirname(path.join(root, file)), { recursive: true });
+    await writeFile(path.join(root, file), text);
+  };
+  await put(path.join(PERSONAL_DIR, "MEMORY.md"));
+  await put(path.join(SYSTEM_DIR, "sessions", "summaries", "s.md"));
+  await put(path.join(SYSTEM_DIR, "skills", "vendored", "README.md"));
+  await put(path.join(SYSTEM_DIR, "docs", "mine.md"));
+  const result = spawnSync(
+    process.execPath,
+    [path.resolve("dist/main.js"), "doctor", "--json"],
+    {
+      env: {
+        ...process.env,
+        OCEAN_ROOT: root,
+        OCEAN_SKIP_DEPENDENCY_AUDIT: "1",
+      },
+      encoding: "utf8",
+    },
+  );
+  const flagged = JSON.parse(result.stdout)
+    .findings.filter((finding) => finding.code === "BROKEN_LINK")
+    .map((finding) => finding.path.split(path.sep).join("/"))
+    .sort();
+  assert.deepEqual(flagged, [
+    `${PERSONAL_DIR}/MEMORY.md`,
+    `${SYSTEM_DIR}/docs/mine.md`,
+  ]);
+});
+
 test("policy doctor reads policy references written as `ocean policy` only", async () => {
   const { CHARTER_DIR, POLICIES_DIR } = await import("../dist/paths.js");
   const root = await mkdtemp(path.join(os.tmpdir(), "ocean-policy-doctor-"));
