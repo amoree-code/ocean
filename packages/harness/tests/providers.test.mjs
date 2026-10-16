@@ -4,13 +4,13 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { validateProfile } from "@ocean/core/domain/profiles/profile-validator.js";
+import { SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import { resolveClientHome } from "../dist/infrastructure/providers/client-home.js";
 import {
   buildProviderInvocation,
   providerAdapterRegistry,
   runProvider,
 } from "../dist/infrastructure/providers/providers.js";
-import { SYSTEM_DIR } from "../dist/paths.js";
 
 const unixOnly = process.platform === "win32" ? test.skip : test;
 

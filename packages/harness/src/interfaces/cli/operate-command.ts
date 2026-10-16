@@ -1,3 +1,5 @@
+import { oceanRoot } from "@ocean/core/shared/paths.js";
+import { knownTaskPrefixes } from "@ocean/core/shared/project-resolution.js";
 import { classifyIntent } from "../../application/context/intent-router.js";
 import {
   type OperationName,
@@ -9,8 +11,6 @@ import {
   guardedRunOperation,
 } from "../../application/operations/write-guard.js";
 import { defaultBrainIndexPort } from "../../composition/runtime.js";
-import { oceanRoot } from "../../paths.js";
-import { knownTaskPrefixes } from "../../shared/project-resolution.js";
 
 const OPERATION_BUDGET = {
   maxFiles: 20,

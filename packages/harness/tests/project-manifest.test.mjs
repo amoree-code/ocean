@@ -12,7 +12,7 @@ import {
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { PROJECTS_DIR, SYSTEM_DIR } from "../dist/paths.js";
+import { PROJECTS_DIR, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import {
   bindProject,
   canonicalPath,
@@ -30,7 +30,7 @@ import {
   unbindProjectPath,
   withNextTaskId,
   writeProjectIndex,
-} from "../dist/shared/project-resolution.js";
+} from "@ocean/core/shared/project-resolution.js";
 
 async function withRoot(run) {
   const root = await mkdtemp(path.join(os.tmpdir(), "ocean-manifest-"));

@@ -4,7 +4,7 @@ import {
   oceanPath,
   POLICIES_DIR,
   resolveWithin,
-} from "../../paths.js";
+} from "@ocean/core/shared/paths.js";
 
 const policyRoot = () => oceanPath(POLICIES_DIR);
 const rulesFile = () => oceanPath(CHARTER_DIR, "core.md");

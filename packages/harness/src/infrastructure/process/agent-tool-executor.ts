@@ -6,8 +6,11 @@ import type {
   ToolName,
 } from "@ocean/core/domain/runs/agent-tools.js";
 import type { ExecutionPlan } from "@ocean/core/domain/runs/execution-plan.js";
-import { atomicWrite } from "../../fs-utils.js";
-import { realDeepestExisting, resolveWithin } from "../../paths.js";
+import { atomicWrite } from "@ocean/core/shared/fs-utils.js";
+import {
+  realDeepestExisting,
+  resolveWithin,
+} from "@ocean/core/shared/paths.js";
 
 // Executes one already-validated file tool call for a tool-loop run (T-245 Phase 6).
 // Everything it touches is bounded to the plan's allowed paths under its cwd, judged and

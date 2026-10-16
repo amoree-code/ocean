@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import {
   clearHooks,
   registerHook,
@@ -14,7 +15,6 @@ import {
 } from "../dist/application/runs/run-agent.js";
 import { createAgentRuntime } from "../dist/composition/runtime.js";
 import { SessionStore } from "../dist/infrastructure/persistence/session-store.js";
-import { SYSTEM_DIR } from "../dist/paths.js";
 
 // Test shim: the real runAgent/resumeAgent take an AgentRuntimeDeps bag; these
 // wrap a bare provider-executor into a runtime with the real deps otherwise, so

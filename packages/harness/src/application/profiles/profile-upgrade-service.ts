@@ -2,8 +2,8 @@ import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { upgradeProfile } from "@ocean/core/domain/profiles/profile-upgrade.js";
-import { atomicWrite, withFileLock } from "../../fs-utils.js";
-import { oceanPath, SYSTEM_DIR } from "../../paths.js";
+import { atomicWrite, withFileLock } from "@ocean/core/shared/fs-utils.js";
+import { oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 
 // The current-profile upgrade (T-245 Phase 5): dry run → manifest, apply once with a
 // checksummed v1 copy of every file it replaces, rollback from that manifest. It works only

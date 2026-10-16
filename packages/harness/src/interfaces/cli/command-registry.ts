@@ -1,6 +1,26 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { resolveProfileName } from "@ocean/core/domain/profiles/runtime-config.js";
+import {
+  oceanEnv,
+  oceanPath,
+  oceanRoot,
+  SYSTEM_DIR,
+} from "@ocean/core/shared/paths.js";
+import {
+  autoRegisterProject,
+  bindProject,
+  findGitRoot,
+  knownTaskPrefixes,
+  listProjectBindings,
+  migrateProjectBindings,
+  renameProject,
+  renderProjectIndex,
+  resolveProject,
+  scanProjectManifests,
+  unbindProjectPath,
+  writeProjectIndex,
+} from "@ocean/core/shared/project-resolution.js";
 import { classifyIntent } from "../../application/context/intent-router.js";
 import {
   hasFailures,
@@ -112,21 +132,6 @@ import {
   wrapperDoctor,
   wrapperStatus,
 } from "../../infrastructure/wrappers/wrapper-manager.js";
-import { oceanEnv, oceanPath, oceanRoot, SYSTEM_DIR } from "../../paths.js";
-import {
-  autoRegisterProject,
-  bindProject,
-  findGitRoot,
-  knownTaskPrefixes,
-  listProjectBindings,
-  migrateProjectBindings,
-  renameProject,
-  renderProjectIndex,
-  resolveProject,
-  scanProjectManifests,
-  unbindProjectPath,
-  writeProjectIndex,
-} from "../../shared/project-resolution.js";
 import { runAuthCommand } from "./auth-command.js";
 import { runBrowserCommand } from "./browser-command.js";
 import { runCaptureCommand } from "./capture-command.js";

@@ -3,12 +3,12 @@ import { mkdir, mkdtemp, readFile, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { KNOWLEDGE_DIR, PROJECTS_DIR } from "@ocean/core/shared/paths.js";
 import {
   buildContextPacket,
   buildSelectedReferences,
 } from "../dist/application/context/context-packet.js";
 import { classifyIntent } from "../dist/application/context/intent-router.js";
-import { KNOWLEDGE_DIR, PROJECTS_DIR } from "../dist/paths.js";
 
 const GOOD_BUDGET = {
   maxFiles: 5,
@@ -533,10 +533,10 @@ test("context-packet.ts imports only existing local modules and node:fs/promises
   const allowed = new Set([
     "node:fs/promises",
     "node:path",
-    "../../paths.js",
+    "@ocean/core/shared/paths.js",
     "./intent-router.js",
     "./context-ladder.js",
-    "../../shared/project-resolution.js",
+    "@ocean/core/shared/project-resolution.js",
   ]);
   for (const specifier of imports)
     assert.ok(allowed.has(specifier), `unexpected import: ${specifier}`);

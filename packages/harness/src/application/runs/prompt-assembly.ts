@@ -1,7 +1,7 @@
 import path from "node:path";
 import type { Profile } from "@ocean/core/domain/profiles/profile.js";
 import type { SkillIndexEntry } from "@ocean/core/domain/skills/skill.js";
-import { truncateUtf8 } from "../../fs-utils.js";
+import { truncateUtf8 } from "@ocean/core/shared/fs-utils.js";
 import type { PromotedSkill } from "../skills/skill-curation.js";
 
 // Pure formatting for the headless runAgent prompt: every section is text built from data

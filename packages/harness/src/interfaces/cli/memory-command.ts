@@ -1,4 +1,5 @@
 import { isValidProjectId } from "@ocean/core/domain/context/project-id.js";
+import { folderProject } from "@ocean/core/shared/project-resolution.js";
 import { reindexBrain } from "../../application/brain/brain-reindex.js";
 import {
   brainNeighbors,
@@ -16,7 +17,6 @@ import {
 } from "../../application/memory/profile-facts.js";
 import { defaultBrainIndexPort } from "../../composition/runtime.js";
 import { createOllamaEmbedder } from "../../infrastructure/providers/ollama-embedder.js";
-import { folderProject } from "../../shared/project-resolution.js";
 
 async function runReindex(args: string[]): Promise<void> {
   const noVectors = args.includes("--no-vectors");

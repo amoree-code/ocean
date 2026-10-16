@@ -6,7 +6,7 @@ import type {
   SessionStorePort,
 } from "@ocean/core/domain/ports/session-store-port.js";
 import { redactRuntimeText } from "@ocean/core/domain/redaction/redaction.js";
-import { oceanPath, SYSTEM_DIR } from "../../paths.js";
+import { oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import { addSkillCandidate } from "./skill-curation.js";
 
 export type ObservationStatus =

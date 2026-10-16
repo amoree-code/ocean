@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { validateProfile } from "@ocean/core/domain/profiles/profile-validator.js";
+import { SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import { writeProfileFact } from "../dist/application/memory/profile-facts.js";
 import { runAgent } from "../dist/application/runs/run-agent.js";
 import { createAgentRuntime } from "../dist/composition/runtime.js";
@@ -15,7 +16,6 @@ import {
   createChatTransport,
   createCompletionExecutor,
 } from "../dist/infrastructure/providers/openai-compatible.js";
-import { SYSTEM_DIR } from "../dist/paths.js";
 
 const SECRET = "fake-credential-for-tests";
 

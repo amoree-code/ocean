@@ -6,8 +6,8 @@ import type {
   Session,
   SessionEvent,
 } from "@ocean/core/domain/sessions/session.js";
-import { safeJsonParse } from "../../fs-utils.js";
-import { oceanPath, oceanRoot, SYSTEM_DIR } from "../../paths.js";
+import { safeJsonParse } from "@ocean/core/shared/fs-utils.js";
+import { oceanPath, oceanRoot, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 
 const maxSummaryBytes = 12_000;
 

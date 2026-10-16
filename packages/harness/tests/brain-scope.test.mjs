@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
+import { INDEX_DIR, STORE_DIR } from "@ocean/core/shared/paths.js";
 import { reindexBrain } from "../dist/application/brain/brain-reindex.js";
 import {
   BrainIndexStaleError,
@@ -13,7 +14,6 @@ import {
   brainSearch,
 } from "../dist/application/brain/brain-service.js";
 import { defaultBrainIndexPort as indexPort } from "../dist/composition/runtime.js";
-import { INDEX_DIR, STORE_DIR } from "../dist/paths.js";
 
 const records = {
   "memory/g.md": ["global", "G"],

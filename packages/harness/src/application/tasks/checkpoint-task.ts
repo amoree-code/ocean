@@ -1,5 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises";
-import { resolveWithin, workspaceTasksRoot } from "../../paths.js";
+import { resolveWithin, workspaceTasksRoot } from "@ocean/core/shared/paths.js";
 
 export type CheckpointInput = {
   note: string;

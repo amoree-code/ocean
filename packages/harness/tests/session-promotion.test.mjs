@@ -3,10 +3,10 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { KNOWLEDGE_DIR, PERSONAL_DIR } from "@ocean/core/shared/paths.js";
 import { promoteSessionToKnowledge } from "../dist/application/memory/session-promotion.js";
 import { defaultSessionStoreFactory } from "../dist/composition/runtime.js";
 import { openSessionStore } from "../dist/infrastructure/persistence/session-store.js";
-import { KNOWLEDGE_DIR, PERSONAL_DIR } from "../dist/paths.js";
 
 test("promotes an approved completed session into knowledge and rejects missing approval", async () => {
   const root = await mkdtemp(

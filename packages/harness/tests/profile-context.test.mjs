@@ -7,11 +7,11 @@ import { validateContextManifest } from "@ocean/core/domain/context/context-vali
 import { selectProfileClient } from "@ocean/core/domain/profiles/profile.js";
 import { executionPolicy } from "@ocean/core/domain/profiles/profile-policy.js";
 import { validateProfile } from "@ocean/core/domain/profiles/profile-validator.js";
+import { PROJECTS_DIR } from "@ocean/core/shared/paths.js";
 import {
   buildContextReferences,
   CONTEXT_REFERENCE_MAX_BYTES,
 } from "../dist/application/context/context-references.js";
-import { PROJECTS_DIR } from "../dist/paths.js";
 
 test("validates a profile and bounds context to allowed files", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ocean-context-"));

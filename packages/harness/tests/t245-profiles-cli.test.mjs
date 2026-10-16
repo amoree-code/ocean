@@ -21,6 +21,7 @@ import {
   resolveProfileName,
   validateRuntimeConfig,
 } from "@ocean/core/domain/profiles/runtime-config.js";
+import { SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import {
   applyProfileUpgrade,
   planProfileUpgrade,
@@ -28,7 +29,6 @@ import {
 } from "../dist/application/profiles/profile-upgrade-service.js";
 import { loadProfile } from "../dist/infrastructure/filesystem/profile-loader.js";
 import { loadRuntimeConfig } from "../dist/infrastructure/filesystem/runtime-config-loader.js";
-import { SYSTEM_DIR } from "../dist/paths.js";
 
 const cli = path.resolve("dist/main.js");
 const unixOnly = process.platform === "win32" ? test.skip : test;

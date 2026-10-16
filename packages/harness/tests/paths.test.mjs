@@ -1,8 +1,17 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import {
+  copyFile,
+  mkdir,
+  mkdtemp,
+  realpath,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 import {
   enginePath,
   engineRoot,
@@ -12,12 +21,53 @@ import {
   PROJECTS_DIR,
   projectFolder,
   projectOfTasksRoot,
+  registerEngineRoot,
+  repoRoot,
   resolveWithin,
   sameProject,
-} from "../dist/paths.js";
+} from "@ocean/core/shared/paths.js";
 
 test("engineRoot resolves to the engine package directory, one level above this module", () => {
   assert.equal(engineRoot(), path.resolve(import.meta.dirname, ".."));
+});
+
+test("registerEngineRoot moves engineRoot; oceanRoot and repoRoot derive from it", () => {
+  const previous = engineRoot();
+  const previousRoot = process.env.OCEAN_ROOT;
+  delete process.env.OCEAN_ROOT;
+  try {
+    const elsewhere = path.join(os.tmpdir(), "a", "b", "c", "ocean");
+    registerEngineRoot(elsewhere);
+    assert.equal(engineRoot(), elsewhere);
+    assert.equal(oceanRoot(), path.join(os.tmpdir(), "a"));
+    assert.equal(repoRoot(), path.join(os.tmpdir(), "a", "b"));
+  } finally {
+    registerEngineRoot(previous);
+    if (previousRoot === undefined) delete process.env.OCEAN_ROOT;
+    else process.env.OCEAN_ROOT = previousRoot;
+  }
+});
+
+test("the CLI's engine-root module sets core's engineRoot from wherever the ocean package is installed", async () => {
+  // An installed ocean package is not a sibling of @ocean/core; copy engine-root.js elsewhere.
+  const installed = await mkdtemp(path.join(os.tmpdir(), "ocean-installed-"));
+  await mkdir(path.join(installed, "dist"));
+  await copyFile(
+    path.resolve("dist/engine-root.js"),
+    path.join(installed, "dist", "engine-root.js"),
+  );
+  const script = [
+    `await import(${JSON.stringify(pathToFileURL(path.join(installed, "dist", "engine-root.js")).href)});`,
+    `const paths = await import("@ocean/core/shared/paths.js");`,
+    "console.log(paths.engineRoot());",
+  ].join("\n");
+  const output = execFileSync(
+    process.execPath,
+    ["--input-type=module", "-e", script],
+    { encoding: "utf8" },
+  );
+  // Both sides through realpath: macOS /var vs /private/var, Windows 8.3 short names.
+  assert.equal(await realpath(output.trim()), await realpath(installed));
 });
 
 test("default oceanRoot resolves to the private workspace sibling of engine, not inside it", () => {

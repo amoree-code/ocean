@@ -1,11 +1,15 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
-import { oceanPath, PROJECTS_DIR, projectFolder } from "../../paths.js";
+import {
+  oceanPath,
+  PROJECTS_DIR,
+  projectFolder,
+} from "@ocean/core/shared/paths.js";
 import {
   bindProject,
   projectConfirmationQuestion,
   resolveProject,
-} from "../../shared/project-resolution.js";
+} from "@ocean/core/shared/project-resolution.js";
 import type { IntentClassification } from "../context/intent-router.js";
 import {
   approvalMatchesTarget,

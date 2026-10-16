@@ -9,12 +9,12 @@ import {
   projectFolder,
   resolveWithin,
   SYSTEM_DIR,
-} from "../../paths.js";
-import { folderProject } from "../../shared/project-resolution.js";
+} from "@ocean/core/shared/paths.js";
+import { folderProject } from "@ocean/core/shared/project-resolution.js";
 import {
   resolveTaskReference,
   type TaskLocation,
-} from "../../shared/task-reference.js";
+} from "@ocean/core/shared/task-reference.js";
 import { runAgent } from "../runs/run-agent.js";
 import { checkpointTask } from "../tasks/checkpoint-task.js";
 import { type CommandRunner, verifyTask } from "../tasks/verify-task.js";

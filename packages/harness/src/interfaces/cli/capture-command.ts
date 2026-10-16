@@ -2,11 +2,6 @@ import { randomUUID } from "node:crypto";
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { validateSessionEntryContract } from "@ocean/core/domain/sessions/entry-contract.js";
-import { syncCaptureInbox } from "../../application/capture/inbox-sync.js";
-import { syncMemoryIndexes } from "../../application/memory/index-sync.js";
-import { sessionProjectId } from "../../application/sessions/session-projects.js";
-import { redactRuntimeText } from "../../infrastructure/observability/runtime-logger.js";
-import { openSessionStore } from "../../infrastructure/persistence/session-store.js";
 import {
   KNOWLEDGE_DIR,
   oceanPath,
@@ -14,7 +9,12 @@ import {
   PERSONAL_DIR,
   PROJECTS_DIR,
   WORKSPACE_PROJECT_ID,
-} from "../../paths.js";
+} from "@ocean/core/shared/paths.js";
+import { syncCaptureInbox } from "../../application/capture/inbox-sync.js";
+import { syncMemoryIndexes } from "../../application/memory/index-sync.js";
+import { sessionProjectId } from "../../application/sessions/session-projects.js";
+import { redactRuntimeText } from "../../infrastructure/observability/runtime-logger.js";
+import { openSessionStore } from "../../infrastructure/persistence/session-store.js";
 
 export async function runCaptureCommand(
   action: string,

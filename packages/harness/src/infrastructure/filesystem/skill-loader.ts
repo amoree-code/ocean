@@ -13,7 +13,7 @@ import {
   oceanRoot,
   PROJECTS_DIR,
   SYSTEM_DIR,
-} from "../../paths.js";
+} from "@ocean/core/shared/paths.js";
 
 const catalogPath = enginePath("skills", "index.json");
 

@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { SessionStoreFactory } from "@ocean/core/domain/ports/session-store-port.js";
 import { redactRuntimeText } from "@ocean/core/domain/redaction/redaction.js";
-import { KNOWLEDGE_DIR, oceanPath } from "../../paths.js";
+import { KNOWLEDGE_DIR, oceanPath } from "@ocean/core/shared/paths.js";
 import { syncMemoryIndexes } from "./index-sync.js";
 
 const kinds = new Set([

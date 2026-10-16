@@ -9,7 +9,7 @@ import {
   PERSONAL_DIR,
   PROJECTS_DIR,
   SYSTEM_DIR,
-} from "../dist/paths.js";
+} from "@ocean/core/shared/paths.js";
 
 test("doctor reports missing roots and broken active links without mutating", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ocean-doctor-"));
@@ -85,7 +85,9 @@ test("doctor skips links in generated session summaries and installed skill docs
 });
 
 test("policy doctor reads policy references written as `ocean policy` only", async () => {
-  const { CHARTER_DIR, POLICIES_DIR } = await import("../dist/paths.js");
+  const { CHARTER_DIR, POLICIES_DIR } = await import(
+    "@ocean/core/shared/paths.js"
+  );
   const root = await mkdtemp(path.join(os.tmpdir(), "ocean-policy-doctor-"));
   await mkdir(path.join(root, POLICIES_DIR), { recursive: true });
   await writeFile(path.join(root, POLICIES_DIR, "task.md"), "# task\n");

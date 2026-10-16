@@ -13,7 +13,7 @@ import {
   type SessionEvent,
   type SessionStatus,
 } from "@ocean/core/domain/sessions/session.js";
-import { oceanPath, SYSTEM_DIR } from "../../paths.js";
+import { oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import { validateSession } from "./session-validator.js";
 
 export type {

@@ -3,6 +3,11 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import {
+  KNOWLEDGE_DIR,
+  PERSONAL_DIR,
+  PROJECTS_DIR,
+} from "@ocean/core/shared/paths.js";
 import { reindexBrain as reindexBrainRaw } from "../dist/application/brain/brain-reindex.js";
 import {
   planContextRead,
@@ -11,7 +16,6 @@ import {
 } from "../dist/application/context/context-ladder.js";
 import { classifyIntent } from "../dist/application/context/intent-router.js";
 import { defaultBrainIndexPort } from "../dist/composition/runtime.js";
-import { KNOWLEDGE_DIR, PERSONAL_DIR, PROJECTS_DIR } from "../dist/paths.js";
 
 const reindexBrain = (options) =>
   reindexBrainRaw({ indexPort: defaultBrainIndexPort, ...options });
@@ -357,15 +361,15 @@ test("context-ladder.ts imports only node:fs/promises, node:path, and the existi
   const allowed = new Set([
     "node:fs/promises",
     "node:path",
-    "../../paths.js",
+    "@ocean/core/shared/paths.js",
     "./intent-router.js",
     "../brain/brain-service.js",
     "@ocean/core/domain/ports/brain-index-port.js",
     "@ocean/core/domain/brain/record-scope.js",
-    "../../fs-utils.js",
+    "@ocean/core/shared/fs-utils.js",
     "@ocean/core/domain/tasks/task-id.js",
-    "../../shared/task-reference.js",
-    "../../shared/project-resolution.js",
+    "@ocean/core/shared/task-reference.js",
+    "@ocean/core/shared/project-resolution.js",
   ]);
   for (const specifier of imports)
     assert.ok(allowed.has(specifier), `unexpected import: ${specifier}`);

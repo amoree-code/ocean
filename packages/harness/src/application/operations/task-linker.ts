@@ -1,4 +1,4 @@
-import { sameProject } from "../../paths.js";
+import { sameProject } from "@ocean/core/shared/paths.js";
 export type TaskLinkCandidate = {
   id: string;
   projectId: string;

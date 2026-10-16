@@ -3,9 +3,9 @@ import { mkdir, mkdtemp, readdir, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { DAILY_DIR, INBOX_DIR, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import { finalizeSession } from "../dist/application/sessions/session-closeout.js";
 import { SessionStore } from "../dist/infrastructure/persistence/session-store.js";
-import { DAILY_DIR, INBOX_DIR, SYSTEM_DIR } from "../dist/paths.js";
 
 // Each test uses a fresh temp OCEAN_ROOT, so at most one brain-dump file
 // exists at a time — no need to match by session id, which (deliberately)

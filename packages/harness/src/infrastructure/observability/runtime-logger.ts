@@ -4,7 +4,7 @@ import {
   redactRuntimeText,
   redactSecrets,
 } from "@ocean/core/domain/redaction/redaction.js";
-import { oceanPath, SYSTEM_DIR } from "../../paths.js";
+import { oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 
 // Redaction is a pure domain transform; re-exported here so existing infrastructure
 // callers keep importing it from the logger without reaching into domain directly.

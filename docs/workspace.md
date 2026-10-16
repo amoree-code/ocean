@@ -29,11 +29,13 @@ the engine still reads that layout, see below.)
     └── archive/             private retained legacy history
 ```
 
-## Root resolution (`src/paths.ts`)
+## Root resolution (`packages/core/src/shared/paths.ts`)
 
-- `engineRoot()` / `enginePath(...)` — always the directory containing this package
-  (resolved from the running module, whether compiled under `dist/` or run under `tsx`
-  from `src/`).
+- `engineRoot()` / `enginePath(...)` — always the `ocean` package root
+  (`packages/harness`). The CLI registers it at startup from its own location
+  (`packages/harness/src/engine-root.ts`, under `dist/` or `tsx` from `src/`); a process
+  that never loaded the CLI entry, such as a test, falls back to the workspace sibling
+  `packages/harness`.
 - `oceanRoot()` — `OCEAN_ROOT` if set (resolved to an absolute path),
   otherwise three directories above `engineRoot()` (`kernel/packages/harness` → the workspace root). This is the default private-workspace
   location: `kernel/` is expected to sit inside the workspace root as a sibling of `bridge/`.

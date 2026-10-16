@@ -6,6 +6,7 @@ import { chmod, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import { classifyIntent } from "../dist/application/context/intent-router.js";
 import { claudeNativeHookStatus } from "../dist/application/hooks/session-start-hook.js";
 import { createGrant } from "../dist/application/operations/write-guard.js";
@@ -16,7 +17,6 @@ import {
   providerHeadlessSupport,
 } from "../dist/infrastructure/providers/provider-invocation.js";
 import { resolveOriginalExecutable } from "../dist/infrastructure/providers/provider-registry.js";
-import { SYSTEM_DIR } from "../dist/paths.js";
 
 const BUDGET = {
   maxFiles: 10,

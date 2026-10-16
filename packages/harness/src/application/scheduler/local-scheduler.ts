@@ -8,7 +8,7 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import type { AgentRuntimeDeps } from "@ocean/core/domain/ports/runtime-ports.js";
-import { oceanPath, SYSTEM_DIR } from "../../paths.js";
+import { oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import { runAgent } from "../runs/run-agent.js";
 
 export type Schedule = {

@@ -1,7 +1,7 @@
 import type { SessionStorePort } from "@ocean/core/domain/ports/session-store-port.js";
 import type { SessionEvent } from "@ocean/core/domain/sessions/session.js";
-import { safeJsonParse } from "../../fs-utils.js";
-import { gitChangedFiles } from "../../shared/project-resolution.js";
+import { safeJsonParse } from "@ocean/core/shared/fs-utils.js";
+import { gitChangedFiles } from "@ocean/core/shared/project-resolution.js";
 import { createHandoffWithStore } from "../handoff/handoff-service.js";
 import { writeBrainDump } from "../memory/brain-dump.js";
 import {

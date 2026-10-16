@@ -11,11 +11,11 @@ import {
   projectFolder,
   resolveWithin,
   WORKSPACE_PROJECT_ID,
-} from "../../paths.js";
+} from "@ocean/core/shared/paths.js";
 import {
   folderProject,
   projectsWithTasks,
-} from "../../shared/project-resolution.js";
+} from "@ocean/core/shared/project-resolution.js";
 
 export type TaskSummary = {
   id: string;

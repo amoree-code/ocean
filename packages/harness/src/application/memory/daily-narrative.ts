@@ -5,9 +5,9 @@ import type {
   Session,
   SessionEvent,
 } from "@ocean/core/domain/sessions/session.js";
-import { atomicWrite, withFileLock } from "../../fs-utils.js";
-import { DAILY_DIR, oceanPath } from "../../paths.js";
-import { findGitRoot } from "../../shared/project-resolution.js";
+import { atomicWrite, withFileLock } from "@ocean/core/shared/fs-utils.js";
+import { DAILY_DIR, oceanPath } from "@ocean/core/shared/paths.js";
+import { findGitRoot } from "@ocean/core/shared/project-resolution.js";
 import type { TaskObservation } from "../skills/task-observer.js";
 import type { ModelNarrative } from "./model-narrative.js";
 

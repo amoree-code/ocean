@@ -5,7 +5,11 @@ import {
   type Profile,
 } from "@ocean/core/domain/profiles/profile.js";
 import { validateProfile } from "@ocean/core/domain/profiles/profile-validator.js";
-import { oceanPath, resolveWithin, SYSTEM_DIR } from "../../paths.js";
+import {
+  oceanPath,
+  resolveWithin,
+  SYSTEM_DIR,
+} from "@ocean/core/shared/paths.js";
 
 function missingAsNull(error: unknown): null {
   if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;

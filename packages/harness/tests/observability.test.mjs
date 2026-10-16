@@ -3,11 +3,11 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import {
   appendRuntimeLog,
   redactRuntimeText,
 } from "../dist/infrastructure/observability/runtime-logger.js";
-import { SYSTEM_DIR } from "../dist/paths.js";
 
 test("redacts secrets and private paths while bounding payloads", () => {
   const safe = redactRuntimeText(

@@ -8,13 +8,13 @@ import {
   repoRoot,
   resolveWithin,
   workspaceTasksRoot,
-} from "../../paths.js";
+} from "@ocean/core/shared/paths.js";
 import {
   expandHome,
   hasControlCharacters,
   projectVerify,
   readProjectManifest,
-} from "../../shared/project-resolution.js";
+} from "@ocean/core/shared/project-resolution.js";
 
 const execFile = promisify(execFileCallback);
 

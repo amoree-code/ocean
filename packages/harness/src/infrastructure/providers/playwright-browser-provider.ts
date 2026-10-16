@@ -16,8 +16,8 @@ import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
+import { oceanEnv } from "@ocean/core/shared/paths.js";
 import type { Browser, BrowserContext, Page } from "playwright-core";
-import { oceanEnv } from "../../paths.js";
 import type {
   BrowserElement,
   BrowserHandle,

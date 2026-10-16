@@ -1,8 +1,12 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import {
+  oceanPath,
+  resolveWithin,
+  SYSTEM_DIR,
+} from "@ocean/core/shared/paths.js";
 import { redactSecrets } from "../../infrastructure/observability/runtime-logger.js";
-import { oceanPath, resolveWithin, SYSTEM_DIR } from "../../paths.js";
 
 type Observation = {
   id: string;

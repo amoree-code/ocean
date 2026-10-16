@@ -15,7 +15,7 @@ import {
   resolveStorePath,
   resolveWithin,
   STORE_DIR,
-} from "../../paths.js";
+} from "@ocean/core/shared/paths.js";
 import { normalizeForSearch, normalizeRecord } from "./brain-markdown.js";
 import {
   brainIndexPath,

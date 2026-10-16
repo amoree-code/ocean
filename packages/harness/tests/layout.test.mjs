@@ -12,7 +12,7 @@ function layoutOf(dirs) {
   try {
     for (const dir of dirs)
       mkdirSync(path.join(root, dir), { recursive: true });
-    const script = `import("./dist/paths.js").then((p) => console.log(JSON.stringify({ personal: p.PERSONAL_DIR, projects: p.PROJECTS_DIR, charter: p.CHARTER_DIR, policies: p.POLICIES_DIR, records: p.BRAIN_RECORD_DIRS, system: p.SYSTEM_DIR, registry: p.REGISTRY_DIR, tasks: path.relative(process.env.OCEAN_ROOT, p.workspaceTasksRoot()).split(path.sep).join("/") })))`;
+    const script = `import("@ocean/core/shared/paths.js").then((p) => console.log(JSON.stringify({ personal: p.PERSONAL_DIR, projects: p.PROJECTS_DIR, charter: p.CHARTER_DIR, policies: p.POLICIES_DIR, records: p.BRAIN_RECORD_DIRS, system: p.SYSTEM_DIR, registry: p.REGISTRY_DIR, tasks: path.relative(process.env.OCEAN_ROOT, p.workspaceTasksRoot()).split(path.sep).join("/") })))`;
     return JSON.parse(
       execFileSync(
         process.execPath,

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import test from "node:test";
-import { enginePath, oceanPath, SYSTEM_DIR } from "../dist/paths.js";
+import { enginePath, oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 
 // SYSTEM_DIR may itself contain a path separator (e.g. "kernel/bridge"), so each of
 // its own segments needs the same [\\/] class as the literal segments around it.

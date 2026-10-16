@@ -13,7 +13,7 @@ import {
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { enginePath, oceanPath, SYSTEM_DIR } from "../../paths.js";
+import { enginePath, oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import { clientSkillRoots, type SkillClient } from "./core-skill-sync.js";
 
 // The hub is the one place skills live inside Ocean. Clients hold symlinks into it, so

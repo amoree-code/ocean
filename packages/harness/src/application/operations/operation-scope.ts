@@ -4,8 +4,8 @@ import {
   PROJECTS_DIR,
   projectFolder,
   sameProject,
-} from "../../paths.js";
-import { resolveProject } from "../../shared/project-resolution.js";
+} from "@ocean/core/shared/paths.js";
+import { resolveProject } from "@ocean/core/shared/project-resolution.js";
 import type { OperationRecord, WriteApproval } from "./operation-contract.js";
 
 export type OperationOptions = {

@@ -6,6 +6,11 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import {
+  INDEX_DIR,
+  PERSONAL_DIR,
+  STORE_DIR,
+} from "@ocean/core/shared/paths.js";
 import { reindexBrain as reindexBrainRaw } from "../dist/application/brain/brain-reindex.js";
 import {
   brainNeighbors as brainNeighborsRaw,
@@ -18,7 +23,6 @@ import {
   createOllamaEmbedder,
   RemoteEmbedderRefusedError,
 } from "../dist/infrastructure/providers/ollama-embedder.js";
-import { INDEX_DIR, PERSONAL_DIR, STORE_DIR } from "../dist/paths.js";
 import { createFakeEmbedder } from "./fixtures/fake-embedder.mjs";
 
 // Every call below injects the concrete brain-index port from the composition root — the

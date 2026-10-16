@@ -10,6 +10,10 @@
     "./domain/*.js": {
       "types": "./dist/domain/*.d.ts",
       "import": "./dist/domain/*.js"
+    },
+    "./shared/*.js": {
+      "types": "./dist/shared/*.d.ts",
+      "import": "./dist/shared/*.js"
     }
   },
   "scripts": {

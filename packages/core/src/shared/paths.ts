@@ -1,34 +1,43 @@
 import { realpathSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { isValidProjectId } from "@ocean/core/domain/context/project-id.js";
+import { isValidProjectId } from "../domain/context/project-id.js";
 
-const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
+// The engine root is the `ocean` package root — skills/, templates/, dist/main.js. Core
+// cannot find it from its own location (in an installed tree the two packages can sit
+// anywhere), so the CLI publishes it under this global key before core loads
+// (packages/harness/src/engine-root.ts) — early enough for the module-level layout
+// constants below. Without it (tests, or core imported directly) it is the workspace
+// sibling packages/harness.
+const ENGINE_ROOT_KEY = Symbol.for("ocean.engineRoot");
+const workspaceEngineRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+  "..",
+  "harness",
+);
 
-// This module always lives one directory below the engine package root, whether it
-// runs compiled from dist/ or directly from src/ under tsx.
-const engineDirectory = path.resolve(moduleDirectory, "..");
-
-// The default runtime data root is the private workspace root, e.g.
-// ~/ocean/kernel/packages/harness (this package) sits three directories below ~/ocean
-// (kernel, packages, harness), which holds the record areas and the bridge
-// (see PERSONAL_DIR/PROJECTS_DIR/SYSTEM_DIR below).
-const defaultOceanRoot = path.resolve(engineDirectory, "..", "..", "..");
+export function registerEngineRoot(directory: string): void {
+  (globalThis as Record<symbol, unknown>)[ENGINE_ROOT_KEY] =
+    path.resolve(directory);
+}
 
 export function engineRoot(): string {
-  return engineDirectory;
+  const registered = (globalThis as Record<symbol, unknown>)[ENGINE_ROOT_KEY];
+  return typeof registered === "string" ? registered : workspaceEngineRoot;
 }
 
 export function enginePath(...parts: string[]): string {
   return path.join(engineRoot(), ...parts);
 }
 
-// The pnpm workspace root (engine/), two directories above this package
-// (packages/harness → packages → engine). Repo-wide tooling that lives outside any
+// The pnpm workspace root (kernel/), two directories above the engine root
+// (packages/harness → packages → kernel). Repo-wide tooling that lives outside any
 // workspace package (e.g. scripts/ shared across packages) is anchored here, not on
 // engineRoot(), which is this package's own root.
 export function repoRoot(): string {
-  return path.resolve(engineDirectory, "..", "..");
+  return path.resolve(engineRoot(), "..", "..");
 }
 
 export function repoPath(...parts: string[]): string {
@@ -188,7 +197,11 @@ export function oceanEnvPair(
 
 export function oceanRoot(): string {
   const root = oceanEnv("ROOT");
-  return root ? path.resolve(root) : defaultOceanRoot;
+  // The default runtime data root is the private workspace root: the engine root
+  // (~/ocean/kernel/packages/harness) sits three directories below ~/ocean.
+  return root
+    ? path.resolve(root)
+    : path.resolve(engineRoot(), "..", "..", "..");
 }
 
 export function oceanPath(...parts: string[]): string {

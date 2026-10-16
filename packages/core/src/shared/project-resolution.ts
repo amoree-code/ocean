@@ -22,8 +22,8 @@ import {
   formatTaskId,
   isValidPrefix,
   LEGACY_PREFIX,
-} from "@ocean/core/domain/tasks/task-id.js";
-import { atomicWrite, registryFile, withFileLock } from "../fs-utils.js";
+} from "../domain/tasks/task-id.js";
+import { atomicWrite, registryFile, withFileLock } from "./fs-utils.js";
 import {
   isWorkspaceProject,
   oceanEnv,
@@ -32,7 +32,7 @@ import {
   PROJECTS_DIR,
   projectFolder,
   WORKSPACE_PROJECT_ID,
-} from "../paths.js";
+} from "./paths.js";
 
 // Deterministic, local, metadata-first project resolution: no model call, no network round
 // trip. Bindings are a flat JSON registry (same pattern as kernel/bridge/registry/
@@ -178,7 +178,7 @@ export function portablePath(value: string): string {
   return resolved;
 }
 
-import { isValidProjectId } from "@ocean/core/domain/context/project-id.js";
+import { isValidProjectId } from "../domain/context/project-id.js";
 
 export { isValidProjectId };
 

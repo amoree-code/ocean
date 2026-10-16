@@ -4,8 +4,8 @@ import type {
   Session,
   SessionStatus,
 } from "@ocean/core/domain/sessions/session.js";
-import { sameProject } from "../../paths.js";
-import { resolveProject } from "../../shared/project-resolution.js";
+import { sameProject } from "@ocean/core/shared/paths.js";
+import { resolveProject } from "@ocean/core/shared/project-resolution.js";
 import { validateBudget } from "../context/context-ladder.js";
 
 // Session pointer and resume planning (T-198 slice 8). A pointer is a compact reference to

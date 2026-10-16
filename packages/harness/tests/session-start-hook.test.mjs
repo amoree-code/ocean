@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { PROJECTS_DIR, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import { OCEAN_BOOTSTRAP_MAX_BYTES } from "../dist/application/context/resource-injection.js";
 import {
   claudeNativeHookStatus,
@@ -12,7 +13,6 @@ import {
   sessionStartHookForClient,
   WORKTREE_WARNING_MAX_BYTES,
 } from "../dist/application/hooks/session-start-hook.js";
-import { PROJECTS_DIR, SYSTEM_DIR } from "../dist/paths.js";
 
 test("claudeSessionStartHook returns the documented Claude Code hookSpecificOutput shape", async () => {
   const outside = await mkdtemp(path.join(os.tmpdir(), "ocean-hook-outside-"));

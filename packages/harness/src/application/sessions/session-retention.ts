@@ -5,7 +5,7 @@ import type {
   SessionStoreOpener,
   SessionStorePort,
 } from "@ocean/core/domain/ports/session-store-port.js";
-import { oceanPath, SYSTEM_DIR } from "../../paths.js";
+import { oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import { writeSessionSummary } from "../memory/session-summary.js";
 
 // Session retention (T-228): summarize finished, unsummarized sessions to markdown, then

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { oceanPath, STORE_DIR } from "../../paths.js";
+import { oceanPath, STORE_DIR } from "@ocean/core/shared/paths.js";
 
 type Store = "memory" | "knowledge";
 const generatedStart = "## Records (generated)";
