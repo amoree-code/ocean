@@ -6,6 +6,7 @@ Docs-only or CI-only PRs may add the `skip-changelog` label instead.
 
 ## Unreleased
 
+- test(T-255): unattended /ship push and PR check
 - feat(router): task-list requests ("what tasks we have", "شنو عدننه تكتات") route to `task-lookup`/`list` instead of `unknown` (#160)
 - test: three tests no longer fail on Windows (path separators, `file://` import URL) (#161)
 - refactor(T-222): the runtime and `ocean` CLI move to `packages/harness`; shared domain contracts and ports live in the new `@ocean/core` (#162)
