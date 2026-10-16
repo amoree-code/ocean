@@ -1,5 +1,5 @@
 import { readdir, readFile, writeFile } from "node:fs/promises";
-import { resolveWithin } from "../../paths.js";
+import { resolveWithin } from "@ocean/core/shared/paths.js";
 
 // Keep equal to CLAIM_TTL_MS in scripts/validate-tasks.mjs (a test pins the two together).
 export const CLAIM_TTL_MS = 2 * 60 * 60 * 1000;
