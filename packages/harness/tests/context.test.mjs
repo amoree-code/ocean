@@ -4,16 +4,16 @@ import { mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import {
+  buildContextReferences,
+  resolveContextSources,
+} from "@ocean/context/context/context-references.js";
 import { validateProfile } from "@ocean/core/domain/profiles/profile-validator.js";
 import {
   BRAIN_RECORD_DIRS,
   PROJECTS_DIR,
   SYSTEM_DIR,
 } from "@ocean/core/shared/paths.js";
-import {
-  buildContextReferences,
-  resolveContextSources,
-} from "../dist/application/context/context-references.js";
 
 test("context returns a compact JSON packet without loading task bodies", async () => {
   const result = spawnSync(

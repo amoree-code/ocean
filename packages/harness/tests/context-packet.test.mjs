@@ -3,12 +3,12 @@ import { mkdir, mkdtemp, readFile, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { KNOWLEDGE_DIR, PROJECTS_DIR } from "@ocean/core/shared/paths.js";
 import {
   buildContextPacket,
   buildSelectedReferences,
-} from "../dist/application/context/context-packet.js";
-import { classifyIntent } from "../dist/application/context/intent-router.js";
+} from "@ocean/context/context/context-packet.js";
+import { classifyIntent } from "@ocean/context/context/intent-router.js";
+import { KNOWLEDGE_DIR, PROJECTS_DIR } from "@ocean/core/shared/paths.js";
 
 const GOOD_BUDGET = {
   maxFiles: 5,
@@ -524,7 +524,7 @@ test("buildContextPacket does not embed unrequested user content — only identi
 
 test("context-packet.ts imports only existing local modules and node:fs/promises, node:path — no network, provider, or MCP module", async () => {
   const source = await readFile(
-    path.resolve("src/application/context/context-packet.ts"),
+    path.resolve("../context/src/context/context-packet.ts"),
     "utf8",
   );
   const imports = [...source.matchAll(/^import .*?from "([^"]+)";?$/gm)].map(

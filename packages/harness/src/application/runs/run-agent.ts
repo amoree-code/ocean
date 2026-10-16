@@ -4,6 +4,10 @@ import {
   profileFactsFile,
   readProfileFacts,
 } from "@ocean/brain/memory/profile-facts.js";
+import {
+  buildContextReferences,
+  referenceReadDirectories,
+} from "@ocean/context/context/context-references.js";
 import type { ContextReference } from "@ocean/core/domain/context/context.js";
 import { validateContextManifest } from "@ocean/core/domain/context/context-validator.js";
 import type { AgentRuntimeDeps } from "@ocean/core/domain/ports/runtime-ports.js";
@@ -31,10 +35,6 @@ import { validateSessionEntryContract } from "@ocean/core/domain/sessions/entry-
 import type { Session } from "@ocean/core/domain/sessions/session.js";
 import type { SkillIndexEntry } from "@ocean/core/domain/skills/skill.js";
 import { loadPromotedSkills } from "@ocean/market/skills/skill-curation.js";
-import {
-  buildContextReferences,
-  referenceReadDirectories,
-} from "../context/context-references.js";
 import { getHandoff } from "../handoff/handoff-service.js";
 import { emitHook } from "../hooks/lifecycle-hooks.js";
 import { finalizeSession } from "../sessions/session-closeout.js";

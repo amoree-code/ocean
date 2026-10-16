@@ -1,4 +1,5 @@
 import path from "node:path";
+import { validateBudget } from "@ocean/context/context/context-ladder.js";
 import type { SessionStorePort } from "@ocean/core/domain/ports/session-store-port.js";
 import type {
   Session,
@@ -6,7 +7,6 @@ import type {
 } from "@ocean/core/domain/sessions/session.js";
 import { sameProject } from "@ocean/core/shared/paths.js";
 import { resolveProject } from "@ocean/core/shared/project-resolution.js";
-import { validateBudget } from "../context/context-ladder.js";
 
 // Session pointer and resume planning (T-198 slice 8). A pointer is a compact reference to
 // an existing session — ids, project, status, and a checkpoint *reference* — never the

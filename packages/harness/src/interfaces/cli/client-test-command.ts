@@ -1,9 +1,9 @@
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { buildOceanBootstrap } from "@ocean/context/context/resource-injection.js";
 import { enginePath, oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import { resolveProject } from "@ocean/core/shared/project-resolution.js";
-import { buildOceanBootstrap } from "../../application/context/resource-injection.js";
 import { claudeNativeHookStatus } from "../../application/hooks/session-start-hook.js";
 import { openSessionStore } from "../../infrastructure/persistence/session-store.js";
 import {

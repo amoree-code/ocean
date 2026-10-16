@@ -1,12 +1,12 @@
 import type { Dirent } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
+import type { Freshness } from "@ocean/context/context/context-packet.js";
 import {
   FRONTMATTER_READ_BYTES,
   readFrontmatterFile as readFrontmatterFileWithLimit,
 } from "@ocean/core/shared/fs-utils.js";
 import { oceanRoot } from "@ocean/core/shared/paths.js";
-import type { Freshness } from "../context/context-packet.js";
 
 // Bounded, deterministic Ocean record I/O (T-198 slice 7). Every read is scoped to a
 // specific record directory and capped by the caller's budget — there is no repository-wide

@@ -31,7 +31,8 @@
     "zod": "^4.6.5",
     "@ocean/core": "workspace:*",
     "@ocean/market": "workspace:*",
-    "@ocean/brain": "workspace:*"
+    "@ocean/brain": "workspace:*",
+    "@ocean/context": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

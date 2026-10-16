@@ -18,6 +18,9 @@
     },
     "packages/brain": {
       "project": ["src/**/*.ts"]
+    },
+    "packages/context": {
+      "project": ["src/**/*.ts"]
     }
   }
 }

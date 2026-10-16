@@ -206,6 +206,25 @@ importers:
         specifier: ^7.0.2
         version: 7.0.2
 
+  packages/context:
+    dependencies:
+      '@ocean/brain':
+        specifier: workspace:*
+        version: link:../brain
+      '@ocean/core':
+        specifier: workspace:*
+        version: link:../core
+      '@ocean/market':
+        specifier: workspace:*
+        version: link:../market
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.1
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+
   packages/core:
     dependencies:
       zod:
@@ -224,6 +243,9 @@ importers:
       '@ocean/brain':
         specifier: workspace:*
         version: link:../brain
+      '@ocean/context':
+        specifier: workspace:*
+        version: link:../context
       '@ocean/core':
         specifier: workspace:*
         version: link:../core

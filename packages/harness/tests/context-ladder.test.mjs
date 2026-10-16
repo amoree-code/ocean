@@ -5,16 +5,16 @@ import path from "node:path";
 import test from "node:test";
 import { reindexBrain as reindexBrainRaw } from "@ocean/brain/brain/brain-reindex.js";
 import {
+  planContextRead,
+  resolveLadderRung,
+  validateBudget,
+} from "@ocean/context/context/context-ladder.js";
+import { classifyIntent } from "@ocean/context/context/intent-router.js";
+import {
   KNOWLEDGE_DIR,
   PERSONAL_DIR,
   PROJECTS_DIR,
 } from "@ocean/core/shared/paths.js";
-import {
-  planContextRead,
-  resolveLadderRung,
-  validateBudget,
-} from "../dist/application/context/context-ladder.js";
-import { classifyIntent } from "../dist/application/context/intent-router.js";
 import { defaultBrainIndexPort } from "../dist/composition/runtime.js";
 
 const reindexBrain = (options) =>
@@ -352,7 +352,7 @@ test("planContextRead never writes any file (no persistence of user content or r
 
 test("context-ladder.ts imports only node:fs/promises, node:path, and the existing local paths/intent-router modules — no network, provider, or MCP module", async () => {
   const source = await readFile(
-    path.resolve("src/application/context/context-ladder.ts"),
+    path.resolve("../context/src/context/context-ladder.ts"),
     "utf8",
   );
   const imports = [...source.matchAll(/^import .*?from "([^"]+)";?$/gm)].map(
@@ -363,7 +363,7 @@ test("context-ladder.ts imports only node:fs/promises, node:path, and the existi
     "node:path",
     "@ocean/core/shared/paths.js",
     "./intent-router.js",
-    "../brain/brain-service.js",
+    "@ocean/brain/brain/brain-service.js",
     "@ocean/core/domain/ports/brain-index-port.js",
     "@ocean/core/domain/brain/record-scope.js",
     "@ocean/core/shared/fs-utils.js",

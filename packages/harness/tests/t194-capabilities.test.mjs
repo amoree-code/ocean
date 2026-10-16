@@ -3,6 +3,7 @@ import { mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { compressContext } from "@ocean/context/context/context-compression.js";
 import { defaultSkillNames } from "@ocean/core/domain/skills/default-skills.js";
 import { listSkillCandidates } from "@ocean/market/skills/skill-curation.js";
 import {
@@ -10,7 +11,6 @@ import {
   observeSession,
   reviewObservation,
 } from "@ocean/market/skills/task-observer.js";
-import { compressContext } from "../dist/application/context/context-compression.js";
 import { defaultSessionStoreFactory } from "../dist/composition/runtime.js";
 import { openSessionStore } from "../dist/infrastructure/persistence/session-store.js";
 

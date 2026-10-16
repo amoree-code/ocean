@@ -13,6 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { reindexBrain as reindexBrainRaw } from "@ocean/brain/brain/brain-reindex.js";
+import { classifyIntent } from "@ocean/context/context/intent-router.js";
 import {
   engineRoot,
   KNOWLEDGE_DIR,
@@ -25,7 +26,6 @@ import {
   bindProject,
   peekNextTaskId,
 } from "@ocean/core/shared/project-resolution.js";
-import { classifyIntent } from "../dist/application/context/intent-router.js";
 import {
   operationForIntent,
   validateTaskIdentifier,

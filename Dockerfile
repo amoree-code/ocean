@@ -11,6 +11,7 @@ COPY packages/harness/package.json ./packages/harness/package.json
 COPY packages/core/package.json ./packages/core/package.json
 COPY packages/market/package.json ./packages/market/package.json
 COPY packages/brain/package.json ./packages/brain/package.json
+COPY packages/context/package.json ./packages/context/package.json
 RUN mkdir -p scripts packages/harness/scripts packages/core
 COPY scripts/prepare-hooks.mjs ./scripts/
 COPY packages/harness/scripts/prepare-node-pty.mjs ./packages/harness/scripts/

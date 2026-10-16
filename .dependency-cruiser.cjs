@@ -8,7 +8,7 @@ const LAYERS = [
   ["core", ["^packages/core/src/"]],
   ["market", ["^packages/market/src/"]],
   ["brain", ["^packages/brain/src/"]],
-  ["context", ["^packages/context/src/", `${H}application/context/`]],
+  ["context", ["^packages/context/src/"]],
   [
     "loop",
     [
