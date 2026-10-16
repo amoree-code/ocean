@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { syncCaptureInbox } from "@ocean/brain/capture/inbox-sync.js";
+import { syncMemoryIndexes } from "@ocean/brain/memory/index-sync.js";
 import { validateSessionEntryContract } from "@ocean/core/domain/sessions/entry-contract.js";
 import {
   KNOWLEDGE_DIR,
@@ -10,8 +12,6 @@ import {
   PROJECTS_DIR,
   WORKSPACE_PROJECT_ID,
 } from "@ocean/core/shared/paths.js";
-import { syncCaptureInbox } from "../../application/capture/inbox-sync.js";
-import { syncMemoryIndexes } from "../../application/memory/index-sync.js";
 import { sessionProjectId } from "../../application/sessions/session-projects.js";
 import { redactRuntimeText } from "../../infrastructure/observability/runtime-logger.js";
 import { openSessionStore } from "../../infrastructure/persistence/session-store.js";

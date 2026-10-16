@@ -4,7 +4,7 @@ import {
   generateModelNarrative,
   isTrivialSession,
   parseResult,
-} from "../dist/application/memory/model-narrative.js";
+} from "@ocean/brain/memory/model-narrative.js";
 
 test("parseResult strips a trailing terminal control sequence after the JSON envelope", () => {
   const envelope = JSON.stringify({

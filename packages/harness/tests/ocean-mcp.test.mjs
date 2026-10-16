@@ -3,12 +3,12 @@ import { access, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { reindexBrain } from "@ocean/brain/brain/brain-reindex.js";
 import {
   PROJECTS_DIR,
   STORE_DIR,
   SYSTEM_DIR,
 } from "@ocean/core/shared/paths.js";
-import { reindexBrain } from "../dist/application/brain/brain-reindex.js";
 import {
   defaultBrainIndexPort,
   defaultSessionStoreFactory,

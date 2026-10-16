@@ -5,14 +5,14 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
-import { INDEX_DIR, STORE_DIR } from "@ocean/core/shared/paths.js";
-import { reindexBrain } from "../dist/application/brain/brain-reindex.js";
+import { reindexBrain } from "@ocean/brain/brain/brain-reindex.js";
 import {
   BrainIndexStaleError,
   brainNeighbors,
   brainRead,
   brainSearch,
-} from "../dist/application/brain/brain-service.js";
+} from "@ocean/brain/brain/brain-service.js";
+import { INDEX_DIR, STORE_DIR } from "@ocean/core/shared/paths.js";
 import { defaultBrainIndexPort as indexPort } from "../dist/composition/runtime.js";
 
 const records = {

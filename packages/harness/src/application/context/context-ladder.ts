@@ -1,6 +1,10 @@
 import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import {
+  BrainIndexStaleError,
+  brainSearch,
+} from "@ocean/brain/brain/brain-service.js";
+import {
   normalizeScope,
   scopeVisible,
 } from "@ocean/core/domain/brain/record-scope.js";
@@ -23,7 +27,6 @@ import {
   readProjectManifest,
 } from "@ocean/core/shared/project-resolution.js";
 import { resolveTaskReference } from "@ocean/core/shared/task-reference.js";
-import { BrainIndexStaleError, brainSearch } from "../brain/brain-service.js";
 import type { IntentClassification } from "./intent-router.js";
 
 // Context ladder: startup identity only -> project metadata -> ranked references -> exact

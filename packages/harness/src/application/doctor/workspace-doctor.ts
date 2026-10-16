@@ -11,6 +11,10 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
+import {
+  doctorMemoryIndexes,
+  syncMemoryIndexes,
+} from "@ocean/brain/memory/index-sync.js";
 import type { WrapperManagerPort } from "@ocean/core/domain/ports/platform-ports.js";
 import {
   BRAIN_RECORD_DIRS,
@@ -24,10 +28,6 @@ import {
   SYSTEM_DIR,
   workspaceTasksRoot,
 } from "@ocean/core/shared/paths.js";
-import {
-  doctorMemoryIndexes,
-  syncMemoryIndexes,
-} from "../memory/index-sync.js";
 
 const execFile = promisify(execFileCallback);
 

@@ -187,6 +187,25 @@ importers:
         specifier: ^2.1.14
         version: 2.1.14
 
+  packages/brain:
+    dependencies:
+      '@ocean/core':
+        specifier: workspace:*
+        version: link:../core
+      '@ocean/market':
+        specifier: workspace:*
+        version: link:../market
+      sqlite-vec:
+        specifier: 0.1.9
+        version: 0.1.9
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.1
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+
   packages/core:
     dependencies:
       zod:
@@ -202,6 +221,9 @@ importers:
 
   packages/harness:
     dependencies:
+      '@ocean/brain':
+        specifier: workspace:*
+        version: link:../brain
       '@ocean/core':
         specifier: workspace:*
         version: link:../core
@@ -214,9 +236,6 @@ importers:
       playwright-core:
         specifier: ^1.48.0
         version: 1.63.0
-      sqlite-vec:
-        specifier: 0.1.9
-        version: 0.1.9
       zod:
         specifier: ^4.6.5
         version: 4.6.5

@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { promoteSessionToKnowledge } from "@ocean/brain/memory/session-promotion.js";
 import { resolveProfileName } from "@ocean/core/domain/profiles/runtime-config.js";
 import {
   oceanEnv,
@@ -75,7 +76,6 @@ import {
   startTaskLoop,
   stopTaskLoop,
 } from "../../application/loops/task-loop.js";
-import { promoteSessionToKnowledge } from "../../application/memory/session-promotion.js";
 import {
   parseConflictSide,
   resolveConflict,

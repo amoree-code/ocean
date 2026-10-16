@@ -1,12 +1,12 @@
 import { createHash } from "node:crypto";
 import { mkdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
+import { writeSessionSummary } from "@ocean/brain/memory/session-summary.js";
 import type {
   SessionStoreOpener,
   SessionStorePort,
 } from "@ocean/core/domain/ports/session-store-port.js";
 import { oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
-import { writeSessionSummary } from "../memory/session-summary.js";
 
 // Session retention (T-228): summarize finished, unsummarized sessions to markdown, then
 // prune their raw provider_output/terminal_input events (never a session row, a handoff, an

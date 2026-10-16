@@ -9,10 +9,12 @@
   "exports": {
     "./domain/*.js": {
       "types": "./dist/domain/*.d.ts",
+      "source": "./src/domain/*.ts",
       "import": "./dist/domain/*.js"
     },
     "./shared/*.js": {
       "types": "./dist/shared/*.d.ts",
+      "source": "./src/shared/*.ts",
       "import": "./dist/shared/*.js"
     }
   },

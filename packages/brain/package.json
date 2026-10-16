@@ -1,0 +1,29 @@
+{
+  "name": "@ocean/brain",
+  "version": "0.3.7",
+  "private": false,
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    "./*.js": {
+      "types": "./dist/*.d.ts",
+      "source": "./src/*.ts",
+      "import": "./dist/*.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ocean/core": "workspace:*",
+    "@ocean/market": "workspace:*",
+    "sqlite-vec": "0.1.9"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^7.0.2"
+  }
+}

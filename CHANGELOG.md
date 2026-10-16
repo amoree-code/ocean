@@ -6,6 +6,7 @@ Docs-only or CI-only PRs may add the `skip-changelog` label instead.
 
 ## Unreleased
 
+- refactor(T-222): new `@ocean/brain` package — brain index/service, memory, evidence, capture; `check:deps` now follows imports between packages (a `source` export condition) and fails on any import it cannot resolve
 - refactor(T-222): new `@ocean/market` package — skills (catalog, curation, hub, observer, core-skill sync) and MCP connection wiring; the root build now follows the workspace graph (`ocean...`)
 - refactor(T-222): `paths`, `fs-utils`, project resolution and task lookup move into `@ocean/core/shared`; the CLI registers its package root with core at startup so every root resolves as before
 - refactor(T-222): break the import cycles blocking the package split — project resolution and task lookup move to `src/shared/` (core layer), session closeout moves to `sessions/`, the MCP server gets its ports injected; `check:deps` now runs with no baseline
