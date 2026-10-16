@@ -4,14 +4,14 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
-  bindProject,
-  resolveProject,
-} from "../dist/application/context/project-resolution.js";
-import {
   bootstrapEnvironment,
   buildOceanBootstrap,
   OCEAN_BOOTSTRAP_MAX_BYTES,
 } from "../dist/application/context/resource-injection.js";
+import {
+  bindProject,
+  resolveProject,
+} from "../dist/shared/project-resolution.js";
 
 async function withTempOceanRoot(fn) {
   const root = await mkdtemp(path.join(os.tmpdir(), "ocean-bootstrap-"));

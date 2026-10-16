@@ -1,19 +1,22 @@
 import type { SessionStorePort } from "@ocean/core/domain/ports/session-store-port.js";
 import type { SessionEvent } from "@ocean/core/domain/sessions/session.js";
 import { safeJsonParse } from "../../fs-utils.js";
-import { gitChangedFiles } from "../context/project-resolution.js";
+import { gitChangedFiles } from "../../shared/project-resolution.js";
 import { createHandoffWithStore } from "../handoff/handoff-service.js";
+import { writeBrainDump } from "../memory/brain-dump.js";
+import {
+  appendDailyNarrative,
+  appendObservations,
+} from "../memory/daily-narrative.js";
+import { generateModelNarrative } from "../memory/model-narrative.js";
+import {
+  type SessionSummaryResult,
+  writeSessionSummary,
+} from "../memory/session-summary.js";
 import {
   observeSessionWithStore,
   type TaskObservation,
 } from "../skills/task-observer.js";
-import { writeBrainDump } from "./brain-dump.js";
-import { appendDailyNarrative, appendObservations } from "./daily-narrative.js";
-import { generateModelNarrative } from "./model-narrative.js";
-import {
-  type SessionSummaryResult,
-  writeSessionSummary,
-} from "./session-summary.js";
 
 export type SessionCloseoutResult = SessionSummaryResult & {
   handoffId: string | null;

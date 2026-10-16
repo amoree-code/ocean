@@ -2,6 +2,10 @@ import { stat } from "node:fs/promises";
 import path from "node:path";
 import { oceanRoot, resolveWithin } from "../../paths.js";
 import {
+  type ProjectResolution,
+  resolveProject,
+} from "../../shared/project-resolution.js";
+import {
   planContextRead,
   resolveLadderRung,
   validateBudget,
@@ -10,10 +14,6 @@ import type {
   IntentClassification,
   IntentConfidence,
 } from "./intent-router.js";
-import {
-  type ProjectResolution,
-  resolveProject,
-} from "./project-resolution.js";
 
 // Compact context packet: the bounded, deterministic, provider-agnostic result a caller
 // gets after intent-router (slice 4) classifies a request and context-ladder (slice 5)

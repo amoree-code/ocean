@@ -18,10 +18,13 @@ import {
   storeRelativeToRoot,
   WORKSPACE_PROJECT_ID,
 } from "../../paths.js";
+import {
+  projectRules,
+  readProjectManifest,
+} from "../../shared/project-resolution.js";
+import { resolveTaskReference } from "../../shared/task-reference.js";
 import { BrainIndexStaleError, brainSearch } from "../brain/brain-service.js";
-import { resolveTaskReference } from "../tasks/task-reference.js";
 import type { IntentClassification } from "./intent-router.js";
-import { projectRules, readProjectManifest } from "./project-resolution.js";
 
 // Context ladder: startup identity only -> project metadata -> ranked references -> exact
 // record by id. Each rung is resolved deterministically from a slice-4 IntentClassification,

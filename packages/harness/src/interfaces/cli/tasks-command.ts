@@ -9,13 +9,11 @@ import {
 import { checkpointTask } from "../../application/tasks/checkpoint-task.js";
 import { claimTask, releaseTask } from "../../application/tasks/claim-task.js";
 import {
-  folderProject,
   listTasks,
   listTasksForFolder,
   type ProjectTask,
 } from "../../application/tasks/list-tasks.js";
 import { renumberTasks } from "../../application/tasks/renumber-tasks.js";
-import { resolveTaskReference } from "../../application/tasks/task-reference.js";
 import { verifyTask } from "../../application/tasks/verify-task.js";
 import {
   enginePath,
@@ -25,6 +23,8 @@ import {
   resolveWithin,
   WORKSPACE_PROJECT_ID,
 } from "../../paths.js";
+import { folderProject } from "../../shared/project-resolution.js";
+import { resolveTaskReference } from "../../shared/task-reference.js";
 
 const execFile = promisify(execFileCallback);
 

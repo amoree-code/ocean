@@ -171,7 +171,7 @@ test("after a renumber, a third project still on T never reissues a moved number
     [
       "--input-type=module",
       "-e",
-      `const m = await import(${JSON.stringify(pathToFileURL(path.resolve("dist/application/context/project-resolution.js")).href)}); console.log(await m.peekNextTaskId("shop"));`,
+      `const m = await import(${JSON.stringify(pathToFileURL(path.resolve("dist/shared/project-resolution.js")).href)}); console.log(await m.peekNextTaskId("shop"));`,
     ],
     { env: { ...process.env, OCEAN_ROOT: root }, encoding: "utf8" },
   );

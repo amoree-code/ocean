@@ -1,5 +1,4 @@
 import { classifyIntent } from "../../application/context/intent-router.js";
-import { knownTaskPrefixes } from "../../application/context/project-resolution.js";
 import {
   type OperationName,
   operationForIntent,
@@ -11,6 +10,7 @@ import {
 } from "../../application/operations/write-guard.js";
 import { defaultBrainIndexPort } from "../../composition/runtime.js";
 import { oceanRoot } from "../../paths.js";
+import { knownTaskPrefixes } from "../../shared/project-resolution.js";
 
 const OPERATION_BUDGET = {
   maxFiles: 20,

@@ -364,8 +364,8 @@ test("context-ladder.ts imports only node:fs/promises, node:path, and the existi
     "@ocean/core/domain/brain/record-scope.js",
     "../../fs-utils.js",
     "@ocean/core/domain/tasks/task-id.js",
-    "../tasks/task-reference.js",
-    "./project-resolution.js",
+    "../../shared/task-reference.js",
+    "../../shared/project-resolution.js",
   ]);
   for (const specifier of imports)
     assert.ok(allowed.has(specifier), `unexpected import: ${specifier}`);

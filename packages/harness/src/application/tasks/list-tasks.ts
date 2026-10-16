@@ -12,7 +12,10 @@ import {
   resolveWithin,
   WORKSPACE_PROJECT_ID,
 } from "../../paths.js";
-import { resolveProject } from "../context/project-resolution.js";
+import {
+  folderProject,
+  projectsWithTasks,
+} from "../../shared/project-resolution.js";
 
 export type TaskSummary = {
   id: string;
@@ -79,27 +82,6 @@ export async function listTasks(
   return records.sort((a, b) => a.id.localeCompare(b.id));
 }
 
-// Project folders under 04-projects that hold a tasks/ directory, sorted.
-export async function projectsWithTasks(): Promise<string[]> {
-  let entries: Dirent[];
-  try {
-    entries = await readdir(oceanPath(PROJECTS_DIR), { withFileTypes: true });
-  } catch {
-    return [];
-  }
-  const projects: string[] = [];
-  for (const entry of entries) {
-    if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
-    try {
-      await readdir(path.join(oceanPath(PROJECTS_DIR), entry.name, "tasks"));
-      projects.push(entry.name);
-    } catch {
-      /* no tasks/ here */
-    }
-  }
-  return projects.sort();
-}
-
 // Projects whose live tasks/ holds this id (T-3 and T-003 are one task). Ids are unique per
 // project, not across projects.
 export async function projectsHoldingTask(id: string): Promise<string[]> {
@@ -126,13 +108,6 @@ export async function projectsHoldingTask(id: string): Promise<string[]> {
     }
   }
   return holders;
-}
-
-// The project a folder belongs to, or null when it belongs to none. A registry that cannot be
-// read throws: no guessing which project a folder is.
-export async function folderProject(cwd: string): Promise<string | null> {
-  const resolution = await resolveProject(cwd);
-  return resolution.status === "bound" ? resolution.projectId : null;
 }
 
 export type ProjectTask = TaskSummary & { project: string };

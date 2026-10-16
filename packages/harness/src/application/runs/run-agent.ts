@@ -36,7 +36,7 @@ import {
   profileFactsFile,
   readProfileFacts,
 } from "../memory/profile-facts.js";
-import { finalizeSession } from "../memory/session-closeout.js";
+import { finalizeSession } from "../sessions/session-closeout.js";
 import { sessionProjectId } from "../sessions/session-projects.js";
 import { loadPromotedSkills } from "../skills/skill-curation.js";
 import {

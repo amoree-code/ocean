@@ -5,7 +5,7 @@ import {
   projectFolder,
   sameProject,
 } from "../../paths.js";
-import { resolveProject } from "../context/project-resolution.js";
+import { resolveProject } from "../../shared/project-resolution.js";
 import type { OperationRecord, WriteApproval } from "./operation-contract.js";
 
 export type OperationOptions = {

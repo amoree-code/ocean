@@ -7,15 +7,15 @@ import type {
 import { validateContextManifest } from "@ocean/core/domain/context/context-validator.js";
 import type { Profile } from "@ocean/core/domain/profiles/profile.js";
 import { oceanRoot } from "../../paths.js";
-import { resolveLadderRung } from "./context-ladder.js";
-import { buildContextPacket } from "./context-packet.js";
-import { classifyIntent } from "./intent-router.js";
 import {
   knownTaskPrefixes,
   projectRules,
   readProjectManifest,
   resolveProject,
-} from "./project-resolution.js";
+} from "../../shared/project-resolution.js";
+import { resolveLadderRung } from "./context-ladder.js";
+import { buildContextPacket } from "./context-packet.js";
+import { classifyIntent } from "./intent-router.js";
 
 // Lean context for headless runs: the prompt carries references (path + why), never file
 // bodies. The provider is an agentic CLI with file access and reads a reference only if the

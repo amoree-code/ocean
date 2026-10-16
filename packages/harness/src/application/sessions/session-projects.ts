@@ -1,5 +1,5 @@
 import type { SessionStorePort } from "@ocean/core/domain/ports/session-store-port.js";
-import { folderProject } from "../tasks/list-tasks.js";
+import { folderProject } from "../../shared/project-resolution.js";
 
 export type SessionProjectBackfill = {
   sessions: number;

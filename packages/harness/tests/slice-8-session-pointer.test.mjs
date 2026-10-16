@@ -422,7 +422,7 @@ test("session-pointer.ts imports no provider, network, or MCP module and invokes
     "@ocean/core/domain/ports/session-store-port.js",
     "@ocean/core/domain/sessions/session.js",
     "../context/context-ladder.js",
-    "../context/project-resolution.js",
+    "../../shared/project-resolution.js",
     // Pure path/project-id helpers (sameProject); no provider, network or MCP code.
     "../../paths.js",
   ]);

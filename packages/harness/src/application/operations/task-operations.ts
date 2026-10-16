@@ -2,16 +2,16 @@ import type { Dirent } from "node:fs";
 import { mkdir, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { TASK_ID } from "@ocean/core/domain/tasks/task-id.js";
-import { atomicWrite } from "../../fs-utils.js";
+import { atomicWrite, FRONTMATTER_READ_BYTES } from "../../fs-utils.js";
 import { PROJECTS_DIR, projectFolder } from "../../paths.js";
-import type { ContextBudget } from "../context/context-ladder.js";
-import type { IntentClassification } from "../context/intent-router.js";
-import { withNextTaskId } from "../context/project-resolution.js";
-import { completeTask } from "../tasks/archive-tasks.js";
+import { withNextTaskId } from "../../shared/project-resolution.js";
 import {
   resolveTaskReference,
   type TaskLocation,
-} from "../tasks/task-reference.js";
+} from "../../shared/task-reference.js";
+import type { ContextBudget } from "../context/context-ladder.js";
+import type { IntentClassification } from "../context/intent-router.js";
+import { completeTask } from "../tasks/archive-tasks.js";
 import {
   approvalMatchesTarget,
   type OperationRecord,
@@ -29,7 +29,6 @@ import {
   taskRoot,
 } from "./operation-scope.js";
 import {
-  FRONTMATTER_READ_BYTES,
   freshnessFor,
   readFrontmatterFile,
   relativeToOcean,

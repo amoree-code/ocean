@@ -7,12 +7,6 @@ import {
   measureContextCost,
 } from "../../application/context/context-cost.js";
 import {
-  projectRules,
-  projectVerify,
-  readProjectManifest,
-  resolveProject,
-} from "../../application/context/project-resolution.js";
-import {
   BRAIN_RECORD_DIRS,
   oceanRoot,
   PERSONAL_DIR,
@@ -20,6 +14,12 @@ import {
   projectFolder,
   SYSTEM_DIR,
 } from "../../paths.js";
+import {
+  projectRules,
+  projectVerify,
+  readProjectManifest,
+  resolveProject,
+} from "../../shared/project-resolution.js";
 import { oceanVersion } from "../../version.js";
 import { listTasks } from "./tasks-command.js";
 

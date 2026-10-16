@@ -12,7 +12,7 @@ import {
   validateHandoff,
 } from "@ocean/core/domain/sessions/handoff.js";
 import { engineRoot } from "../../paths.js";
-import { resolveTaskReference } from "../tasks/task-reference.js";
+import { resolveTaskReference } from "../../shared/task-reference.js";
 
 const execFile = promisify(execFileCallback);
 const maxContentBytes = 16_000;

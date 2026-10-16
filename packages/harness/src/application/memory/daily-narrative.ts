@@ -7,7 +7,7 @@ import type {
 } from "@ocean/core/domain/sessions/session.js";
 import { atomicWrite, withFileLock } from "../../fs-utils.js";
 import { DAILY_DIR, oceanPath } from "../../paths.js";
-import { findGitRoot } from "../context/project-resolution.js";
+import { findGitRoot } from "../../shared/project-resolution.js";
 import type { TaskObservation } from "../skills/task-observer.js";
 import type { ModelNarrative } from "./model-narrative.js";
 

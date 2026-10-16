@@ -18,8 +18,8 @@ import {
   listProjectManifests,
   withProjectsLock,
   writeManifest,
-} from "../context/project-resolution.js";
-import { taskFolders } from "./task-reference.js";
+} from "../../shared/project-resolution.js";
+import { taskFolders } from "../../shared/task-reference.js";
 
 export type RenumberMove = { from: string; to: string; archived: boolean };
 

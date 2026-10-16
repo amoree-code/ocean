@@ -174,6 +174,9 @@ export function parseFrontmatter(source: string): Record<string, string> {
   return fields;
 }
 
+// Frontmatter of a record fits in its first 4 KiB; reads stop there.
+export const FRONTMATTER_READ_BYTES = 4_096;
+
 export async function readFrontmatterFile(
   file: string,
   readBytes: number,

@@ -10,13 +10,13 @@ import {
   resolveWithin,
   SYSTEM_DIR,
 } from "../../paths.js";
-import { runAgent } from "../runs/run-agent.js";
-import { checkpointTask } from "../tasks/checkpoint-task.js";
-import { folderProject } from "../tasks/list-tasks.js";
+import { folderProject } from "../../shared/project-resolution.js";
 import {
   resolveTaskReference,
   type TaskLocation,
-} from "../tasks/task-reference.js";
+} from "../../shared/task-reference.js";
+import { runAgent } from "../runs/run-agent.js";
+import { checkpointTask } from "../tasks/checkpoint-task.js";
 import { type CommandRunner, verifyTask } from "../tasks/verify-task.js";
 
 type TaskLoopStatus = "active" | "paused" | "completed" | "failed" | "stopped";

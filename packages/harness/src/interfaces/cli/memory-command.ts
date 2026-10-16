@@ -14,9 +14,9 @@ import {
   readProfileFacts,
   writeProfileFact,
 } from "../../application/memory/profile-facts.js";
-import { folderProject } from "../../application/tasks/list-tasks.js";
 import { defaultBrainIndexPort } from "../../composition/runtime.js";
 import { createOllamaEmbedder } from "../../infrastructure/providers/ollama-embedder.js";
+import { folderProject } from "../../shared/project-resolution.js";
 
 async function runReindex(args: string[]): Promise<void> {
   const noVectors = args.includes("--no-vectors");

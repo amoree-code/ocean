@@ -5,17 +5,24 @@ import {
   parseTaskId,
   taskIdSpellings,
 } from "@ocean/core/domain/tasks/task-id.js";
-import { readFrontmatterFile } from "../../fs-utils.js";
+import { FRONTMATTER_READ_BYTES, readFrontmatterFile } from "../fs-utils.js";
 import {
+  isWorkspaceProject,
   oceanRoot,
   PROJECTS_DIR,
   projectFolder,
   resolveWithin,
-} from "../../paths.js";
-import { projectForPrefix } from "../context/project-resolution.js";
-import { FRONTMATTER_READ_BYTES } from "../operations/record-io.js";
-import { projectArchiveName } from "./archive-tasks.js";
-import { folderProject, projectsWithTasks } from "./list-tasks.js";
+} from "../paths.js";
+import {
+  folderProject,
+  projectForPrefix,
+  projectsWithTasks,
+} from "./project-resolution.js";
+
+// Archive namespace per project; the workspace project archives under "Ocean".
+export const WORKSPACE_ARCHIVE_NAMESPACE = "Ocean";
+export const projectArchiveName = (project: string): string =>
+  isWorkspaceProject(project) ? WORKSPACE_ARCHIVE_NAMESPACE : project;
 
 export type TaskLocation = {
   projectId: string;

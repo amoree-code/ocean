@@ -23,7 +23,7 @@ import {
   isValidPrefix,
   LEGACY_PREFIX,
 } from "@ocean/core/domain/tasks/task-id.js";
-import { atomicWrite, registryFile, withFileLock } from "../../fs-utils.js";
+import { atomicWrite, registryFile, withFileLock } from "../fs-utils.js";
 import {
   isWorkspaceProject,
   oceanEnv,
@@ -32,7 +32,7 @@ import {
   PROJECTS_DIR,
   projectFolder,
   WORKSPACE_PROJECT_ID,
-} from "../../paths.js";
+} from "../paths.js";
 
 // Deterministic, local, metadata-first project resolution: no model call, no network round
 // trip. Bindings are a flat JSON registry (same pattern as kernel/bridge/registry/
@@ -1092,4 +1092,32 @@ export async function renameProject(
     );
     return { from, to };
   });
+}
+
+// Project folders under 04-projects that hold a tasks/ directory, sorted.
+export async function projectsWithTasks(): Promise<string[]> {
+  let entries: Dirent[];
+  try {
+    entries = await readdir(oceanPath(PROJECTS_DIR), { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const projects: string[] = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
+    try {
+      await readdir(path.join(oceanPath(PROJECTS_DIR), entry.name, "tasks"));
+      projects.push(entry.name);
+    } catch {
+      /* no tasks/ here */
+    }
+  }
+  return projects.sort();
+}
+
+// The project a folder belongs to, or null when it belongs to none. A registry that cannot be
+// read throws: no guessing which project a folder is.
+export async function folderProject(cwd: string): Promise<string | null> {
+  const resolution = await resolveProject(cwd);
+  return resolution.status === "bound" ? resolution.projectId : null;
 }

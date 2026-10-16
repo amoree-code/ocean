@@ -14,7 +14,7 @@ import {
   hasControlCharacters,
   projectVerify,
   readProjectManifest,
-} from "../context/project-resolution.js";
+} from "../../shared/project-resolution.js";
 
 const execFile = promisify(execFileCallback);
 

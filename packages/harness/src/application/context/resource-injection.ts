@@ -1,5 +1,5 @@
 import { oceanEnvPair } from "../../paths.js";
-import type { ProjectResolution } from "./project-resolution.js";
+import type { ProjectResolution } from "../../shared/project-resolution.js";
 
 // This module used to read Ocean files (memory, knowledge, inbox, README, governance rules)
 // and inject their full content into every provider launch. That bulk injection is removed
