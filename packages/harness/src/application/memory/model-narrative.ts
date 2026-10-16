@@ -5,7 +5,7 @@ import type {
   Session,
   SessionEvent,
 } from "@ocean/core/domain/sessions/session.js";
-import { oceanEnv, oceanEnvPair } from "../../paths.js";
+import { oceanEnv, oceanEnvPair } from "@ocean/core/shared/paths.js";
 
 const execFile = promisify(execFileCallback);
 

@@ -8,7 +8,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
-import { oceanPath, SYSTEM_DIR } from "../../paths.js";
+import { oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 
 const MAX_FILES = 10_000;
 const MAX_BYTES = 50 * 1024 * 1024;

@@ -12,6 +12,18 @@ import {
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import {
+  engineRoot,
+  KNOWLEDGE_DIR,
+  oceanRoot,
+  PERSONAL_DIR,
+  PROJECTS_DIR,
+  REGISTRY_DIR,
+} from "@ocean/core/shared/paths.js";
+import {
+  bindProject,
+  peekNextTaskId,
+} from "@ocean/core/shared/project-resolution.js";
 import { reindexBrain as reindexBrainRaw } from "../dist/application/brain/brain-reindex.js";
 import { classifyIntent } from "../dist/application/context/intent-router.js";
 import {
@@ -25,18 +37,6 @@ import {
   guardedRunOperation,
 } from "../dist/application/operations/write-guard.js";
 import { defaultBrainIndexPort } from "../dist/composition/runtime.js";
-import {
-  engineRoot,
-  KNOWLEDGE_DIR,
-  oceanRoot,
-  PERSONAL_DIR,
-  PROJECTS_DIR,
-  REGISTRY_DIR,
-} from "../dist/paths.js";
-import {
-  bindProject,
-  peekNextTaskId,
-} from "../dist/shared/project-resolution.js";
 
 const reindexBrain = (options) =>
   reindexBrainRaw({ indexPort: defaultBrainIndexPort, ...options });

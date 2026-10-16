@@ -8,6 +8,8 @@ import {
 import type { BrainIndexPort } from "@ocean/core/domain/ports/brain-index-port.js";
 import type { WrapperManagerPort } from "@ocean/core/domain/ports/platform-ports.js";
 import type { SessionStoreFactory } from "@ocean/core/domain/ports/session-store-port.js";
+import { oceanPath, oceanRoot, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
+import { folderProject } from "@ocean/core/shared/project-resolution.js";
 import {
   brainNeighbors,
   brainRead,
@@ -24,8 +26,6 @@ import {
 } from "../../application/handoff/handoff-service.js";
 import { promoteSessionToKnowledge } from "../../application/memory/session-promotion.js";
 import { listTasksForFolder } from "../../application/tasks/list-tasks.js";
-import { oceanPath, oceanRoot, SYSTEM_DIR } from "../../paths.js";
-import { folderProject } from "../../shared/project-resolution.js";
 import { openSessionStoreReadOnly } from "../persistence/session-store.js";
 
 type Request = {

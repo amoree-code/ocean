@@ -3,16 +3,16 @@ import { mkdtemp, readFile, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { loadProfile } from "../dist/infrastructure/filesystem/profile-loader.js";
-import { loadRuntimeConfig } from "../dist/infrastructure/filesystem/runtime-config-loader.js";
-import { setup } from "../dist/interfaces/cli/setup-command.js";
 import {
   enginePath,
   KNOWLEDGE_DIR,
   PERSONAL_DIR,
   PROJECTS_DIR,
   SYSTEM_DIR,
-} from "../dist/paths.js";
+} from "@ocean/core/shared/paths.js";
+import { loadProfile } from "../dist/infrastructure/filesystem/profile-loader.js";
+import { loadRuntimeConfig } from "../dist/infrastructure/filesystem/runtime-config-loader.js";
+import { setup } from "../dist/interfaces/cli/setup-command.js";
 
 function platformStartupFile(home) {
   if (process.platform === "darwin") {

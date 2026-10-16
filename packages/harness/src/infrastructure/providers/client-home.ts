@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { Profile } from "@ocean/core/domain/profiles/profile.js";
-import { oceanPath, SYSTEM_DIR } from "../../paths.js";
+import { oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 
 export function resolveClientHome(profile: Profile): string | undefined {
   const configured = profile.clients[profile.provider]?.home;

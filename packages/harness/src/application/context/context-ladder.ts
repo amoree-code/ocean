@@ -6,7 +6,7 @@ import {
 } from "@ocean/core/domain/brain/record-scope.js";
 import type { BrainIndexPort } from "@ocean/core/domain/ports/brain-index-port.js";
 import { parseTaskId } from "@ocean/core/domain/tasks/task-id.js";
-import { readFrontmatterFile } from "../../fs-utils.js";
+import { readFrontmatterFile } from "@ocean/core/shared/fs-utils.js";
 import {
   KNOWLEDGE_DIR,
   oceanRoot,
@@ -17,12 +17,12 @@ import {
   resolveWithin,
   storeRelativeToRoot,
   WORKSPACE_PROJECT_ID,
-} from "../../paths.js";
+} from "@ocean/core/shared/paths.js";
 import {
   projectRules,
   readProjectManifest,
-} from "../../shared/project-resolution.js";
-import { resolveTaskReference } from "../../shared/task-reference.js";
+} from "@ocean/core/shared/project-resolution.js";
+import { resolveTaskReference } from "@ocean/core/shared/task-reference.js";
 import { BrainIndexStaleError, brainSearch } from "../brain/brain-service.js";
 import type { IntentClassification } from "./intent-router.js";
 

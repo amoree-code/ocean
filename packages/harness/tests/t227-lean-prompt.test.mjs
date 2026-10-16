@@ -11,6 +11,13 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { validateProfile } from "@ocean/core/domain/profiles/profile-validator.js";
+import { truncateUtf8 } from "@ocean/core/shared/fs-utils.js";
+import {
+  KNOWLEDGE_DIR,
+  PERSONAL_DIR,
+  PROJECTS_DIR,
+  SYSTEM_DIR,
+} from "@ocean/core/shared/paths.js";
 import { buildContextReferences } from "../dist/application/context/context-references.js";
 import { buildProfileFactsDigest } from "../dist/application/memory/profile-facts.js";
 import {
@@ -23,15 +30,8 @@ import {
 } from "../dist/application/runs/prompt-assembly.js";
 import { resumeAgent, runAgent } from "../dist/application/runs/run-agent.js";
 import { createAgentRuntime } from "../dist/composition/runtime.js";
-import { truncateUtf8 } from "../dist/fs-utils.js";
 import { SessionStore } from "../dist/infrastructure/persistence/session-store.js";
 import { buildProviderInvocation } from "../dist/infrastructure/providers/providers.js";
-import {
-  KNOWLEDGE_DIR,
-  PERSONAL_DIR,
-  PROJECTS_DIR,
-  SYSTEM_DIR,
-} from "../dist/paths.js";
 
 const SKILLS = ["alpha-lean", "beta-lean", "gamma-lean"];
 

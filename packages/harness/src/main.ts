@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import "./engine-root.js";
 import { commandRegistry } from "./interfaces/cli/command-registry.js";
 import { renderHelp } from "./interfaces/cli/help-command.js";
 import { onboard } from "./interfaces/cli/onboard-command.js";

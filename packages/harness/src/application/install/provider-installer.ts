@@ -7,7 +7,7 @@ import type {
   WrapperManagerPort,
 } from "@ocean/core/domain/ports/platform-ports.js";
 import type { ProviderRecord } from "@ocean/core/domain/providers/provider.js";
-import { registryFile } from "../../fs-utils.js";
+import { registryFile } from "@ocean/core/shared/fs-utils.js";
 
 const execFileAsync = promisify(execFile);
 

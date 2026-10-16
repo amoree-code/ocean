@@ -12,11 +12,11 @@ import {
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { withFileLock } from "@ocean/core/shared/fs-utils.js";
 import {
   appendDailyNarrative,
   appendObservations,
 } from "../dist/application/memory/daily-narrative.js";
-import { withFileLock } from "../dist/fs-utils.js";
 
 const moduleUrl = new URL(
   "../dist/application/memory/daily-narrative.js",

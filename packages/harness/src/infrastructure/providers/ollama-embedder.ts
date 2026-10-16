@@ -1,5 +1,5 @@
 import type { EmbedderPort } from "@ocean/core/domain/ports/embedder-port.js";
-import { oceanEnv } from "../../paths.js";
+import { oceanEnv } from "@ocean/core/shared/paths.js";
 
 // Local-only embedder for the brain index (T-228). Talks to a local Ollama daemon over
 // loopback only — never a remote host, never a `:cloud` model (Ollama's proxy to

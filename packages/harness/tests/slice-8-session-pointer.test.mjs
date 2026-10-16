@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import { classifyIntent } from "../dist/application/context/intent-router.js";
 import {
   buildSessionPointer,
@@ -12,7 +13,6 @@ import {
   validateSessionIdentifier,
 } from "../dist/application/sessions/session-pointer.js";
 import { openSessionStore } from "../dist/infrastructure/persistence/session-store.js";
-import { SYSTEM_DIR } from "../dist/paths.js";
 
 const BUDGET = {
   maxFiles: 10,
@@ -422,9 +422,9 @@ test("session-pointer.ts imports no provider, network, or MCP module and invokes
     "@ocean/core/domain/ports/session-store-port.js",
     "@ocean/core/domain/sessions/session.js",
     "../context/context-ladder.js",
-    "../../shared/project-resolution.js",
+    "@ocean/core/shared/project-resolution.js",
     // Pure path/project-id helpers (sameProject); no provider, network or MCP code.
-    "../../paths.js",
+    "@ocean/core/shared/paths.js",
   ]);
   for (const specifier of imports)
     assert.ok(allowed.has(specifier), `unexpected import: ${specifier}`);

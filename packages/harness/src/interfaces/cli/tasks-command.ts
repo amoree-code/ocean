@@ -3,6 +3,16 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import {
+  enginePath,
+  oceanPath,
+  PROJECTS_DIR,
+  projectFolder,
+  resolveWithin,
+  WORKSPACE_PROJECT_ID,
+} from "@ocean/core/shared/paths.js";
+import { folderProject } from "@ocean/core/shared/project-resolution.js";
+import { resolveTaskReference } from "@ocean/core/shared/task-reference.js";
+import {
   archiveDoneTasks,
   completeTask,
 } from "../../application/tasks/archive-tasks.js";
@@ -14,16 +24,6 @@ import {
 } from "../../application/tasks/list-tasks.js";
 import { renumberTasks } from "../../application/tasks/renumber-tasks.js";
 import { verifyTask } from "../../application/tasks/verify-task.js";
-import {
-  enginePath,
-  oceanPath,
-  PROJECTS_DIR,
-  projectFolder,
-  resolveWithin,
-  WORKSPACE_PROJECT_ID,
-} from "../../paths.js";
-import { folderProject } from "../../shared/project-resolution.js";
-import { resolveTaskReference } from "../../shared/task-reference.js";
 
 const execFile = promisify(execFileCallback);
 

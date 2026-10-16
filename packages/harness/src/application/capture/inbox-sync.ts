@@ -1,6 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import type { SessionStorePort } from "@ocean/core/domain/ports/session-store-port.js";
-import { INBOX_DIR, oceanPath } from "../../paths.js";
+import { INBOX_DIR, oceanPath } from "@ocean/core/shared/paths.js";
 
 const marker = "## Capture candidates (generated)";
 

@@ -3,8 +3,8 @@ import { mkdtemp, readdir, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { INBOX_DIR } from "@ocean/core/shared/paths.js";
 import { writeBrainDump } from "../dist/application/memory/brain-dump.js";
-import { INBOX_DIR } from "../dist/paths.js";
 
 function baseSession(overrides = {}) {
   return {

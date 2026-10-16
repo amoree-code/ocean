@@ -10,7 +10,7 @@ import {
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { enginePath } from "../../paths.js";
+import { enginePath } from "@ocean/core/shared/paths.js";
 
 export type SkillClient =
   | "claude"

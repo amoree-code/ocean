@@ -3,7 +3,7 @@ import {
   type RuntimeConfig,
   validateRuntimeConfig,
 } from "@ocean/core/domain/profiles/runtime-config.js";
-import { oceanPath, SYSTEM_DIR } from "../../paths.js";
+import { oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 
 export function runtimeConfigFile(): string {
   return oceanPath(SYSTEM_DIR, "config", "runtime.json");

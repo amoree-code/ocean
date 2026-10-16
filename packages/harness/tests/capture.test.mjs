@@ -9,7 +9,7 @@ import {
   KNOWLEDGE_DIR,
   PERSONAL_DIR,
   PROJECTS_DIR,
-} from "../dist/paths.js";
+} from "@ocean/core/shared/paths.js";
 
 async function fixture() {
   const root = await mkdtemp(path.join(os.tmpdir(), "ocean-capture-cli-"));

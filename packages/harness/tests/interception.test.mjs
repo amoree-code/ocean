@@ -11,6 +11,7 @@ import {
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import { openSessionStore } from "../dist/infrastructure/persistence/session-store.js";
 import {
   resolveOriginalExecutable,
@@ -32,7 +33,6 @@ import {
   intercept,
   isUtilityInvocation,
 } from "../dist/interfaces/cli/intercept-command.js";
-import { SYSTEM_DIR } from "../dist/paths.js";
 
 const unixOnly = process.platform === "win32" ? test.skip : test;
 const oceanCliWrapper = (directory) =>

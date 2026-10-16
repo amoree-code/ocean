@@ -14,7 +14,7 @@ import {
   oceanRoot,
   resolveWithin,
   STORE_DIR,
-} from "../../paths.js";
+} from "@ocean/core/shared/paths.js";
 import {
   basenameStem,
   chunkBody,

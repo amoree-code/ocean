@@ -3,8 +3,7 @@ import { mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { claudeSessionStartHook } from "../dist/application/hooks/session-start-hook.js";
-import { PROJECTS_DIR, SYSTEM_DIR } from "../dist/paths.js";
+import { PROJECTS_DIR, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import {
   autoRegisterProject,
   bindProject,
@@ -13,7 +12,8 @@ import {
   renameProject,
   resolveProject,
   unbindProjectPath,
-} from "../dist/shared/project-resolution.js";
+} from "@ocean/core/shared/project-resolution.js";
+import { claudeSessionStartHook } from "../dist/application/hooks/session-start-hook.js";
 
 // OCEAN_ROOT and one code root, both throwaway. A repo is a folder with a .git entry.
 async function withWorkspace(run) {

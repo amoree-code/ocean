@@ -2,13 +2,16 @@ import type { Dirent } from "node:fs";
 import { mkdir, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { TASK_ID } from "@ocean/core/domain/tasks/task-id.js";
-import { atomicWrite, FRONTMATTER_READ_BYTES } from "../../fs-utils.js";
-import { PROJECTS_DIR, projectFolder } from "../../paths.js";
-import { withNextTaskId } from "../../shared/project-resolution.js";
+import {
+  atomicWrite,
+  FRONTMATTER_READ_BYTES,
+} from "@ocean/core/shared/fs-utils.js";
+import { PROJECTS_DIR, projectFolder } from "@ocean/core/shared/paths.js";
+import { withNextTaskId } from "@ocean/core/shared/project-resolution.js";
 import {
   resolveTaskReference,
   type TaskLocation,
-} from "../../shared/task-reference.js";
+} from "@ocean/core/shared/task-reference.js";
 import type { ContextBudget } from "../context/context-ladder.js";
 import type { IntentClassification } from "../context/intent-router.js";
 import { completeTask } from "../tasks/archive-tasks.js";

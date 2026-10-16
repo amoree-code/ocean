@@ -3,10 +3,10 @@ import { mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { registryFile } from "../dist/fs-utils.js";
+import { registryFile } from "@ocean/core/shared/fs-utils.js";
+import { SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import { loadProviderRegistry } from "../dist/infrastructure/providers/provider-registry.js";
 import { setup } from "../dist/interfaces/cli/setup-command.js";
-import { SYSTEM_DIR } from "../dist/paths.js";
 
 async function withRoot(run) {
   const root = await mkdtemp(path.join(os.tmpdir(), "ocean-registry-"));

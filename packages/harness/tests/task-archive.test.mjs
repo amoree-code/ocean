@@ -3,12 +3,12 @@ import { access, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { PROJECTS_DIR } from "@ocean/core/shared/paths.js";
 import { getTask } from "../dist/application/handoff/handoff-service.js";
 import {
   archiveDoneTasks,
   completeTask,
 } from "../dist/application/tasks/archive-tasks.js";
-import { PROJECTS_DIR } from "../dist/paths.js";
 
 const task = (id, state = "done", checklist = "[x]") =>
   `---\nid: ${id}\nproject: ocean\nstate: ${state}\n---\n\n## Definition of done\n\n- ${checklist} acceptance criterion\n\n## Verification\n\n- \`pnpm test\`\n\n## Blockers\n\nNone.\n`;

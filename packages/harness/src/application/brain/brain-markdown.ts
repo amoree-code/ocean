@@ -5,7 +5,7 @@ import type {
 } from "@ocean/core/domain/brain/brain-record.js";
 import { validateBrainRecord } from "@ocean/core/domain/brain/brain-record.js";
 import { normalizeScope } from "@ocean/core/domain/brain/record-scope.js";
-import { parseFrontmatter } from "../../fs-utils.js";
+import { parseFrontmatter } from "@ocean/core/shared/fs-utils.js";
 
 // Pure markdown layer for T-228: turns one markdown file's raw text into a canonical
 // BrainRecord plus a per-field conformance report, extracts its wikilinks, and chunks its

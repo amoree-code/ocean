@@ -5,7 +5,7 @@ import {
   PROJECTS_DIR,
   projectFolder,
   WORKSPACE_PROJECT_ID,
-} from "../../paths.js";
+} from "@ocean/core/shared/paths.js";
 import { appendConflict, contentHash } from "./conflict-log.js";
 import type { ObsidianConnection } from "./vault-discovery.js";
 

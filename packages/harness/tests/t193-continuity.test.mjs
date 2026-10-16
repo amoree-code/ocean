@@ -4,6 +4,11 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
+  INBOX_DIR,
+  PROJECTS_DIR,
+  SYSTEM_DIR,
+} from "@ocean/core/shared/paths.js";
+import {
   createHandoff,
   getHandoff,
 } from "../dist/application/handoff/handoff-service.js";
@@ -13,7 +18,6 @@ import {
   defaultSessionStoreFactory,
 } from "../dist/composition/runtime.js";
 import { SessionStore } from "../dist/infrastructure/persistence/session-store.js";
-import { INBOX_DIR, PROJECTS_DIR, SYSTEM_DIR } from "../dist/paths.js";
 
 const runAgent = (request, execute) =>
   runAgentRaw(

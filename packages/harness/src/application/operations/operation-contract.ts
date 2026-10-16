@@ -1,6 +1,10 @@
 import path from "node:path";
 import { TASK_ID } from "@ocean/core/domain/tasks/task-id.js";
-import { engineRoot, oceanRoot, resolveWithin } from "../../paths.js";
+import {
+  engineRoot,
+  oceanRoot,
+  resolveWithin,
+} from "@ocean/core/shared/paths.js";
 import { validateBudget } from "../context/context-ladder.js";
 import type {
   ContextPacket,

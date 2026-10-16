@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { PROJECTS_DIR } from "../dist/paths.js";
+import { PROJECTS_DIR } from "@ocean/core/shared/paths.js";
 import {
   bindProject,
   knownTaskPrefixes,
@@ -11,7 +11,7 @@ import {
   peekNextTaskId,
   projectForPrefix,
   withNextTaskId,
-} from "../dist/shared/project-resolution.js";
+} from "@ocean/core/shared/project-resolution.js";
 
 async function workspace() {
   const root = await mkdtemp(path.join(os.tmpdir(), "ocean-numbering-"));
@@ -163,7 +163,7 @@ test("a manifest with an invalid prefix or counter is reported, not trusted", as
   await writeManifest(root, "worse", { prefix: "AB", nextTask: 0 });
   await writeManifest(root, "good", { prefix: "GD", nextTask: 1 });
   const { scanProjectManifests } = await import(
-    "../dist/shared/project-resolution.js"
+    "@ocean/core/shared/project-resolution.js"
   );
   const scan = await scanProjectManifests();
   assert.deepEqual(

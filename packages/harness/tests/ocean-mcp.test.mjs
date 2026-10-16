@@ -3,6 +3,11 @@ import { access, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import {
+  PROJECTS_DIR,
+  STORE_DIR,
+  SYSTEM_DIR,
+} from "@ocean/core/shared/paths.js";
 import { reindexBrain } from "../dist/application/brain/brain-reindex.js";
 import {
   defaultBrainIndexPort,
@@ -11,7 +16,6 @@ import {
 } from "../dist/composition/runtime.js";
 import { handleOceanMcpRequest } from "../dist/infrastructure/mcp/ocean-server.js";
 import { SessionStore } from "../dist/infrastructure/persistence/session-store.js";
-import { PROJECTS_DIR, STORE_DIR, SYSTEM_DIR } from "../dist/paths.js";
 
 const handle = (request) =>
   handleOceanMcpRequest(request, {

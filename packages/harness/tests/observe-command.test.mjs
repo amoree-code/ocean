@@ -3,8 +3,8 @@ import { mkdtemp, readdir, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import { runObserveCommand } from "../dist/interfaces/cli/observe-command.js";
-import { SYSTEM_DIR } from "../dist/paths.js";
 
 async function withOceanRoot(fn) {
   const root = await mkdtemp(path.join(os.tmpdir(), "ocean-observe-"));

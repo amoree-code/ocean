@@ -3,6 +3,7 @@ import {
   actionFingerprint,
   mcpApprovalSchema,
 } from "@ocean/core/domain/mcp/mcp-contract.js";
+import { oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import {
   listInboxCandidates,
   promoteInboxNote,
@@ -18,7 +19,6 @@ import {
   resolveObsidianNotePath,
   writeObsidianNote,
 } from "../../application/obsidian/vault-writer.js";
-import { oceanPath, SYSTEM_DIR } from "../../paths.js";
 
 type Request = {
   jsonrpc?: string;

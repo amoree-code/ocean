@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { renameSync, writeFileSync } from "node:fs";
 import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
-import { oceanPath, SYSTEM_DIR } from "../../paths.js";
+import { oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import {
   discoverObsidianVault,
   type ObsidianConnection,

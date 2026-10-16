@@ -23,6 +23,7 @@ import {
   selectProfileClient,
 } from "@ocean/core/domain/profiles/profile.js";
 import { validateProfile } from "@ocean/core/domain/profiles/profile-validator.js";
+import { SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import {
   deleteProfileFact,
   profileFactsFile,
@@ -36,7 +37,6 @@ import {
   providerAdapterRegistry,
 } from "../dist/infrastructure/providers/providers.js";
 import { runMemoryCommand } from "../dist/interfaces/cli/memory-command.js";
-import { SYSTEM_DIR } from "../dist/paths.js";
 
 const unixOnly = process.platform === "win32" ? test.skip : test;
 

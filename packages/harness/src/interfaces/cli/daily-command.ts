@@ -2,13 +2,13 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createInterface } from "node:readline/promises";
 import type { Session } from "@ocean/core/domain/sessions/session.js";
+import { withFileLock } from "@ocean/core/shared/fs-utils.js";
+import { DAILY_DIR, oceanPath } from "@ocean/core/shared/paths.js";
 import {
   listObservations,
   reviewObservation,
 } from "../../application/skills/task-observer.js";
-import { withFileLock } from "../../fs-utils.js";
 import { openSessionStore } from "../../infrastructure/persistence/session-store.js";
-import { DAILY_DIR, oceanPath } from "../../paths.js";
 import { listTasks } from "./tasks-command.js";
 
 /**

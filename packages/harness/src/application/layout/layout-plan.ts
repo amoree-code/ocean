@@ -1,7 +1,7 @@
 import { lstat, readdir, readFile, readlink, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { workspaceLayout } from "../../paths.js";
+import { workspaceLayout } from "@ocean/core/shared/paths.js";
 
 // T-243 phase 6: the read-only half of `ocean layout`. It describes the move from the nested
 // layout (brain/<area>, kernel/bridge) to the flat one (<area>, bridge) without touching a file,

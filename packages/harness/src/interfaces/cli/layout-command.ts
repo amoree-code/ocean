@@ -1,9 +1,9 @@
+import { oceanRoot } from "@ocean/core/shared/paths.js";
 import {
   applyLayout,
   rollbackLayout,
 } from "../../application/layout/layout-apply.js";
 import { planLayout } from "../../application/layout/layout-plan.js";
-import { oceanRoot } from "../../paths.js";
 
 const USAGE = "Usage: ocean layout plan | apply --yes | rollback --yes";
 

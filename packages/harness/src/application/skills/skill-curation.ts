@@ -2,8 +2,8 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { SessionStoreFactory } from "@ocean/core/domain/ports/session-store-port.js";
 import { redactRuntimeText } from "@ocean/core/domain/redaction/redaction.js";
-import { truncateUtf8 } from "../../fs-utils.js";
-import { oceanPath, SYSTEM_DIR } from "../../paths.js";
+import { truncateUtf8 } from "@ocean/core/shared/fs-utils.js";
+import { oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 
 export type SkillCandidate = {
   id: string;

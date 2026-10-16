@@ -6,6 +6,11 @@ import {
 } from "@ocean/core/domain/profiles/profile.js";
 import { validateRunContract } from "@ocean/core/domain/runs/run-contract.js";
 import { validateSessionEntryContract } from "@ocean/core/domain/sessions/entry-contract.js";
+import { oceanEnvPair } from "@ocean/core/shared/paths.js";
+import {
+  projectRules,
+  resolveProject,
+} from "@ocean/core/shared/project-resolution.js";
 import {
   authAdapter,
   authLogin,
@@ -31,11 +36,6 @@ import {
   resolveOriginalExecutable,
   validateExplicitExecutable,
 } from "../../infrastructure/providers/provider-registry.js";
-import { oceanEnvPair } from "../../paths.js";
-import {
-  projectRules,
-  resolveProject,
-} from "../../shared/project-resolution.js";
 
 export type InterceptOptions = {
   entryPoint?: "terminal-shim" | "interactive-managed" | "desktop-wrapper";

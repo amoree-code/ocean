@@ -11,8 +11,13 @@ import {
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { atomicWrite } from "../../fs-utils.js";
-import { enginePath, oceanEnv, oceanPath, SYSTEM_DIR } from "../../paths.js";
+import { atomicWrite } from "@ocean/core/shared/fs-utils.js";
+import {
+  enginePath,
+  oceanEnv,
+  oceanPath,
+  SYSTEM_DIR,
+} from "@ocean/core/shared/paths.js";
 import {
   builtInProviderRecords,
   loadProviderRegistry,

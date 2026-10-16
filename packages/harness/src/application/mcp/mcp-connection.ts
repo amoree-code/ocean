@@ -1,5 +1,5 @@
 import path from "node:path";
-import { engineRoot } from "../../paths.js";
+import { engineRoot } from "@ocean/core/shared/paths.js";
 
 export type StdioMcpServer = {
   type: "stdio";

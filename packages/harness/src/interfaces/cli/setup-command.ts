@@ -1,12 +1,7 @@
 import { chmod, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { connectObsidianVault } from "../../application/obsidian/vault-discovery.js";
-import { registryFile } from "../../fs-utils.js";
-import {
-  installShellIntegration,
-  syncProviderWrappers,
-} from "../../infrastructure/wrappers/wrapper-manager.js";
+import { registryFile } from "@ocean/core/shared/fs-utils.js";
 import {
   DAILY_DIR,
   enginePath,
@@ -21,7 +16,12 @@ import {
   SYSTEM_DIR,
   TEMPLATES_DIR,
   WORKSPACE_PROJECT_ID,
-} from "../../paths.js";
+} from "@ocean/core/shared/paths.js";
+import { connectObsidianVault } from "../../application/obsidian/vault-discovery.js";
+import {
+  installShellIntegration,
+  syncProviderWrappers,
+} from "../../infrastructure/wrappers/wrapper-manager.js";
 
 const personalDirectories = [
   PERSONAL_DIR,

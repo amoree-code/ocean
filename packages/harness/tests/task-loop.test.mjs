@@ -40,7 +40,9 @@ test("a task loop remembers its project and works a task outside the workspace p
     "../dist/application/loops/task-loop.js"
   );
   const { createAgentRuntime } = await import("../dist/composition/runtime.js");
-  const { PROJECTS_DIR, SYSTEM_DIR } = await import("../dist/paths.js");
+  const { PROJECTS_DIR, SYSTEM_DIR } = await import(
+    "@ocean/core/shared/paths.js"
+  );
   const root = await mkdtemp(path.join(os.tmpdir(), "ocean-loop-project-"));
   const repo = await mkdtemp(path.join(os.tmpdir(), "ocean-loop-repo-"));
   const previous = process.env.OCEAN_ROOT;

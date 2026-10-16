@@ -1,6 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
-import { engineRoot, oceanRoot, resolveWithin } from "../../paths.js";
+import {
+  engineRoot,
+  oceanRoot,
+  resolveWithin,
+} from "@ocean/core/shared/paths.js";
 import { validateBudget } from "../context/context-ladder.js";
 import type { IntentClassification } from "../context/intent-router.js";
 import {

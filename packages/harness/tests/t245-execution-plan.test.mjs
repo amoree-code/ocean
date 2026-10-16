@@ -14,11 +14,11 @@ import {
   buildExecutionPlan,
   executionPlanIdentity,
 } from "@ocean/core/domain/runs/execution-plan.js";
+import { SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import { writeProfileFact } from "../dist/application/memory/profile-facts.js";
 import { resumeAgent, runAgent } from "../dist/application/runs/run-agent.js";
 import { createAgentRuntime } from "../dist/composition/runtime.js";
 import { SessionStore } from "../dist/infrastructure/persistence/session-store.js";
-import { SYSTEM_DIR } from "../dist/paths.js";
 
 const cli = {
   cwd: "/work",

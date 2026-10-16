@@ -4,8 +4,8 @@ import path from "node:path";
 import {
   FRONTMATTER_READ_BYTES,
   readFrontmatterFile as readFrontmatterFileWithLimit,
-} from "../../fs-utils.js";
-import { oceanRoot } from "../../paths.js";
+} from "@ocean/core/shared/fs-utils.js";
+import { oceanRoot } from "@ocean/core/shared/paths.js";
 import type { Freshness } from "../context/context-packet.js";
 
 // Bounded, deterministic Ocean record I/O (T-198 slice 7). Every read is scoped to a

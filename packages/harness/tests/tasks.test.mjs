@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { PROJECTS_DIR, SYSTEM_DIR } from "../dist/paths.js";
+import { PROJECTS_DIR, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 
 function validate(root) {
   return new Promise((resolve) => {

@@ -23,7 +23,7 @@ import {
   repoPath,
   SYSTEM_DIR,
   workspaceTasksRoot,
-} from "../../paths.js";
+} from "@ocean/core/shared/paths.js";
 import {
   doctorMemoryIndexes,
   syncMemoryIndexes,

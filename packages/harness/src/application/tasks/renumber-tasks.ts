@@ -6,20 +6,20 @@ import {
   LEGACY_PREFIX,
   parseTaskId,
 } from "@ocean/core/domain/tasks/task-id.js";
-import { atomicWrite } from "../../fs-utils.js";
+import { atomicWrite } from "@ocean/core/shared/fs-utils.js";
 import {
   isWorkspaceProject,
   oceanRoot,
   PROJECTS_DIR,
   WORKSPACE_PROJECT_ID,
-} from "../../paths.js";
+} from "@ocean/core/shared/paths.js";
 import {
   highestTaskNumber,
   listProjectManifests,
   withProjectsLock,
   writeManifest,
-} from "../../shared/project-resolution.js";
-import { taskFolders } from "../../shared/task-reference.js";
+} from "@ocean/core/shared/project-resolution.js";
+import { taskFolders } from "@ocean/core/shared/task-reference.js";
 
 export type RenumberMove = { from: string; to: string; archived: boolean };
 

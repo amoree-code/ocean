@@ -5,15 +5,18 @@ import {
   scopeVisible,
 } from "@ocean/core/domain/brain/record-scope.js";
 import type { BrainIndexPort } from "@ocean/core/domain/ports/brain-index-port.js";
-import { atomicWrite, FRONTMATTER_READ_BYTES } from "../../fs-utils.js";
+import {
+  atomicWrite,
+  FRONTMATTER_READ_BYTES,
+} from "@ocean/core/shared/fs-utils.js";
 import {
   KNOWLEDGE_DIR,
   oceanRoot,
   PERSONAL_DIR,
   resolveWithin,
   STORE_DIR,
-} from "../../paths.js";
-import { resolveProject } from "../../shared/project-resolution.js";
+} from "@ocean/core/shared/paths.js";
+import { resolveProject } from "@ocean/core/shared/project-resolution.js";
 import { brainIndexPath } from "../brain/brain-reindex.js";
 import { BrainIndexStaleError, brainSearch } from "../brain/brain-service.js";
 import type { ContextBudget } from "../context/context-ladder.js";

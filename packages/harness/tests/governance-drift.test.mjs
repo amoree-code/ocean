@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { CHARTER_DIR, POLICIES_DIR } from "../dist/paths.js";
+import { CHARTER_DIR, POLICIES_DIR } from "@ocean/core/shared/paths.js";
 
 // One doctor run costs ~10s, and the runner gives each test file 30s, so this lives in its
 // own file and runs the doctor exactly once.

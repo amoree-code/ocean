@@ -83,7 +83,7 @@ flowchart TB
 This repository (`engine/`) contains only source, tests, templates, and build output — no
 user data. Everything Ocean reads or writes at run time lives in a separate **workspace**
 root (see [workspace.md](workspace.md)). The two are joined only through paths resolved at
-startup (`src/paths.ts`) and are never mixed into the same directory tree or the same git
+startup (`packages/core/src/shared/paths.ts`) and are never mixed into the same directory tree or the same git
 history.
 
 ## Execution flow (`ocean run`)

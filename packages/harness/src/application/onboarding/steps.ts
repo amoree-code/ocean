@@ -1,4 +1,5 @@
 import { writeFile } from "node:fs/promises";
+import { oceanPath, PERSONAL_DIR } from "@ocean/core/shared/paths.js";
 import {
   installShellIntegration,
   setProviderEnabled,
@@ -6,7 +7,6 @@ import {
   wrapperDoctor,
   wrapperStatus,
 } from "../../infrastructure/wrappers/wrapper-manager.js";
-import { oceanPath, PERSONAL_DIR } from "../../paths.js";
 import { connectObsidianVault } from "../obsidian/vault-discovery.js";
 import { copyClientSkills, populateSkillHub } from "../skills/skill-hub.js";
 

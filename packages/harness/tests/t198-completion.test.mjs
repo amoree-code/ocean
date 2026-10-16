@@ -5,6 +5,8 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { PERSONAL_DIR, PROJECTS_DIR } from "@ocean/core/shared/paths.js";
+import { projectConfirmationQuestion } from "@ocean/core/shared/project-resolution.js";
 import { classifyIntent } from "../dist/application/context/intent-router.js";
 import { runOperation } from "../dist/application/operations/record-operations.js";
 import { rankTaskCandidates } from "../dist/application/operations/task-linker.js";
@@ -12,8 +14,6 @@ import {
   createGrant,
   guardedRunOperation,
 } from "../dist/application/operations/write-guard.js";
-import { PERSONAL_DIR, PROJECTS_DIR } from "../dist/paths.js";
-import { projectConfirmationQuestion } from "../dist/shared/project-resolution.js";
 
 const BUDGET = {
   maxFiles: 10,

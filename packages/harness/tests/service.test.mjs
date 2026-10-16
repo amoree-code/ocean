@@ -7,6 +7,7 @@ import process from "node:process";
 import test from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { actionFingerprint } from "@ocean/core/domain/mcp/mcp-contract.js";
+import { SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import {
   createWebhookGateway as createWebhookGatewayRaw,
   handleGatewayRequest as handleGatewayRequestRaw,
@@ -20,7 +21,6 @@ import {
   saveSchedule,
 } from "../dist/application/scheduler/local-scheduler.js";
 import { createAgentRuntime } from "../dist/composition/runtime.js";
-import { SYSTEM_DIR } from "../dist/paths.js";
 
 // Test shims: scheduler/gateway now take an AgentRuntimeDeps bag; wrap a bare
 // provider executor into a runtime so the test bodies keep passing an executor.

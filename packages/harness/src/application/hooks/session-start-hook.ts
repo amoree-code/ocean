@@ -1,8 +1,8 @@
 import { readFile, realpath } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { truncateUtf8 } from "../../fs-utils.js";
-import { oceanRoot, SYSTEM_DIR } from "../../paths.js";
+import { truncateUtf8 } from "@ocean/core/shared/fs-utils.js";
+import { oceanRoot, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import {
   autoRegisterProject,
   gitChangedFiles,
@@ -12,7 +12,7 @@ import {
   readProjectManifest,
   resolveProject,
   scanProjectManifests,
-} from "../../shared/project-resolution.js";
+} from "@ocean/core/shared/project-resolution.js";
 import { buildOceanBootstrap } from "../context/resource-injection.js";
 
 // The documented Claude Code SessionStart hook contract on this machine (verified against

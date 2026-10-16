@@ -10,7 +10,7 @@ import type {
   Session,
   SessionEvent,
 } from "@ocean/core/domain/sessions/session.js";
-import { oceanPath, oceanRoot, SYSTEM_DIR } from "../../paths.js";
+import { oceanPath, oceanRoot, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import { sessionProjectId } from "../sessions/session-projects.js";
 import type { BrowserService, ClickExpectation } from "./browser-service.js";
 

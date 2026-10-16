@@ -5,8 +5,8 @@ import type {
   Session,
   SessionEvent,
 } from "@ocean/core/domain/sessions/session.js";
-import { INBOX_DIR, oceanPath, oceanRoot } from "../../paths.js";
-import { findGitRoot } from "../../shared/project-resolution.js";
+import { INBOX_DIR, oceanPath, oceanRoot } from "@ocean/core/shared/paths.js";
+import { findGitRoot } from "@ocean/core/shared/project-resolution.js";
 import type { TaskObservation } from "../skills/task-observer.js";
 import type { ModelNarrative } from "./model-narrative.js";
 

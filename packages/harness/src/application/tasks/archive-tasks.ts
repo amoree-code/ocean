@@ -13,11 +13,11 @@ import {
   resolveWithin,
   WORKSPACE_PROJECT_ID,
   workspaceTasksRoot,
-} from "../../paths.js";
+} from "@ocean/core/shared/paths.js";
 import {
   projectArchiveName,
   WORKSPACE_ARCHIVE_NAMESPACE,
-} from "../../shared/task-reference.js";
+} from "@ocean/core/shared/task-reference.js";
 import { type CommandRunner, verifyTask } from "./verify-task.js";
 
 export type ArchiveResult = {

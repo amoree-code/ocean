@@ -1,18 +1,15 @@
 import type { Dirent } from "node:fs";
 import { access, readdir } from "node:fs/promises";
 import path from "node:path";
-import {
-  parseTaskId,
-  taskIdSpellings,
-} from "@ocean/core/domain/tasks/task-id.js";
-import { FRONTMATTER_READ_BYTES, readFrontmatterFile } from "../fs-utils.js";
+import { parseTaskId, taskIdSpellings } from "../domain/tasks/task-id.js";
+import { FRONTMATTER_READ_BYTES, readFrontmatterFile } from "./fs-utils.js";
 import {
   isWorkspaceProject,
   oceanRoot,
   PROJECTS_DIR,
   projectFolder,
   resolveWithin,
-} from "../paths.js";
+} from "./paths.js";
 import {
   folderProject,
   projectForPrefix,

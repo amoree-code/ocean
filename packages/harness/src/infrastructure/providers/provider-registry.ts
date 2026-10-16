@@ -2,8 +2,8 @@ import { accessSync, constants, existsSync, readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { ProviderRecord } from "@ocean/core/domain/providers/provider.js";
-import { registryFile } from "../../fs-utils.js";
-import { oceanEnv, oceanPath, SYSTEM_DIR } from "../../paths.js";
+import { registryFile } from "@ocean/core/shared/fs-utils.js";
+import { oceanEnv, oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 
 export type { ProviderRecord } from "@ocean/core/domain/providers/provider.js";
 

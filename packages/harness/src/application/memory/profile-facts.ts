@@ -1,8 +1,16 @@
 import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { assertProfileName } from "@ocean/core/domain/profiles/profile.js";
-import { atomicWrite, truncateUtf8, withFileLock } from "../../fs-utils.js";
-import { oceanPath, resolveWithin, SYSTEM_DIR } from "../../paths.js";
+import {
+  atomicWrite,
+  truncateUtf8,
+  withFileLock,
+} from "@ocean/core/shared/fs-utils.js";
+import {
+  oceanPath,
+  resolveWithin,
+  SYSTEM_DIR,
+} from "@ocean/core/shared/paths.js";
 
 const maxFacts = 100;
 const maxFactBytes = 2_000;
