@@ -111,10 +111,19 @@ async function checkStructure(): Promise<Finding[]> {
   return findings;
 }
 
+// Session summaries are machine-written records that quote links from past chats, and
+// bridge/skills holds installed third-party skill docs whose links are relative to their upstream
+// repo. Neither is authored here, so their links are not ours to fix.
+const UNCHECKED_LINK_DIRS = ["sessions", "skills"];
+
 async function checkLinks(): Promise<Finding[]> {
   const findings: Finding[] = [];
+  const unchecked = UNCHECKED_LINK_DIRS.map(
+    (name) => path.join(oceanPath(SYSTEM_DIR), name) + path.sep,
+  );
   for (const root of roots) {
     for (const file of await markdownFiles(oceanPath(root))) {
+      if (unchecked.some((prefix) => file.startsWith(prefix))) continue;
       const content = await readFile(file, "utf8");
       for (const link of links(content)) {
         const target = path.resolve(path.dirname(file), link);
