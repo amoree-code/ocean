@@ -22,6 +22,26 @@ else {
     }
   }
 }
+// A claim is advisory: `claimed_by` + `claimed_at` (+ optional `claimed_paths`) in a live task's
+// frontmatter say "a session is working on this". It goes stale after CLAIM_TTL_MS so a dead
+// session cannot hold a task forever. Keep this value equal to CLAIM_TTL_MS in
+// src/application/tasks/claim-task.ts.
+const CLAIM_TTL_MS = 2 * 60 * 60 * 1000;
+const unquote = (value) => value?.replace(/^['"]|['"]$/g, "");
+function parseClaimPaths(raw) {
+  const match = raw?.match(/^\[(.*)\]$/);
+  if (!match) return null;
+  return match[1]
+    .split(",")
+    .map((entry) =>
+      unquote(entry.trim()).replace(/^\.\//, "").replace(/\/+$/, ""),
+    )
+    .filter(Boolean);
+}
+const pathsOverlap = (a, b) =>
+  a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`);
+const claims = [];
+
 const records = [];
 const errors = [];
 
@@ -42,6 +62,34 @@ async function walk(directory, archived = false) {
       await walk(target, archived || entry.name === "archive");
     else if (entry.name === "task.md") await readTask(target, archived);
   }
+}
+function readClaim(file, fields) {
+  const by = unquote(fields.claimed_by);
+  const at = unquote(fields.claimed_at);
+  if (!by && !at && !fields.claimed_paths) return;
+  if (!by || !at)
+    return errors.push(`${file}: a claim needs both claimed_by and claimed_at`);
+  const claimedAt = /^\d{4}-\d\d-\d\dT/.test(at) ? Date.parse(at) : Number.NaN;
+  if (Number.isNaN(claimedAt))
+    return errors.push(`${file}: claimed_at is not an ISO-8601 timestamp`);
+  let paths = [];
+  if (fields.claimed_paths) {
+    const parsed = parseClaimPaths(fields.claimed_paths);
+    if (!parsed)
+      return errors.push(
+        `${file}: claimed_paths must be an inline list: [a, b]`,
+      );
+    paths = parsed;
+  }
+  if (["done", "cancelled"].includes(fields.state))
+    console.warn(
+      `${file}: ${fields.state} task still claimed by ${by} (release it)`,
+    );
+  else if (Date.now() - claimedAt > CLAIM_TTL_MS)
+    console.warn(
+      `${file}: stale claim by ${by} since ${at} (ocean tasks release)`,
+    );
+  else claims.push({ file, id: unquote(fields.id), by, paths });
 }
 async function readTask(file, archived) {
   const source = await readFile(file, "utf8");
@@ -79,6 +127,7 @@ async function readTask(file, archived) {
       )
     )
       errors.push(`${file}: invalid state`);
+    readClaim(file, fields);
     if (legacy) {
       const checklist = source.match(/- "\[[ x]\] .*"/g) ?? [];
       if (!checklist.length) errors.push(`${file}: missing checklist`);
@@ -130,6 +179,18 @@ for (const record of records) {
     if (!knownIds.has(ref))
       errors.push(`${record.file}: broken reference ${ref}`);
 }
+// Two live claims by different owners must not cover the same path (equal, or one inside the other).
+for (let i = 0; i < claims.length; i++)
+  for (let j = i + 1; j < claims.length; j++) {
+    const [a, b] = [claims[i], claims[j]];
+    if (a.by === b.by) continue;
+    for (const pa of a.paths)
+      for (const pb of b.paths)
+        if (pathsOverlap(pa, pb))
+          errors.push(
+            `claim conflict on ${pa}: ${a.id} (${a.by}) overlaps ${b.id} (${b.by}) on ${pb}`,
+          );
+  }
 // Nothing closes tasks on its own (no watcher): a `done` task left in the live tree needs
 // `ocean tasks archive --apply`. A warning, not an error, so a hand-edit never blocks a build.
 for (const record of live.filter((entry) => entry.fields.state === "done"))
