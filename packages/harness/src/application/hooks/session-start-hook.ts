@@ -59,7 +59,8 @@ export const WORKTREE_WARNING_MAX_BYTES = 200;
 // Sessions share the Ocean working tree, so one session's `git add -A` can capture another's
 // in-progress files (T-257). When a session starts inside the Ocean workspace and its repo
 // already has uncommitted changes, say so in one bounded line, beside — not inside — the
-// 256-byte bootstrap. Anything that goes wrong here means no warning, never a failed hook.
+// 256-byte bootstrap. The line points at `ocean tasks claim`, not at a worktree (owner decision
+// 2026-10-16: no worktrees; changes must stay visible in the one folder). Anything that goes wrong here means no warning, never a failed hook.
 export async function oceanWorktreeWarning(
   cwd: string,
 ): Promise<string | null> {
@@ -69,25 +70,10 @@ export async function oceanWorktreeWarning(
     if (here !== root && !here.startsWith(`${root}${path.sep}`)) return null;
     const changed = (await gitChangedFiles(here, 3_000)).length;
     if (!changed) return null;
-    // House convention: worktrees live beside the workspace, e.g. ~/ocean-worktrees/<slug>.
-    const home = os.homedir();
-    const worktrees = path.join(
-      path.dirname(root),
-      `${path.basename(root)}-worktrees`,
-    );
-    const shown = worktrees.startsWith(`${home}${path.sep}`)
-      ? `~${worktrees.slice(home.length)}`
-      : worktrees;
-    const line = (dir: string) =>
-      `ocean-dirty=${changed}: uncommitted changes already here. Change files in a worktree: git worktree add ${dir}${path.sep}<slug> -b <branch>`;
-    // Never cut the command in half: a path too long for the bound becomes a placeholder.
-    const full = line(shown);
-    return Buffer.byteLength(full) <= WORKTREE_WARNING_MAX_BYTES
-      ? full
-      : truncateUtf8(
-          line(`<${path.basename(root)}-worktrees>`),
-          WORKTREE_WARNING_MAX_BYTES,
-        );
+    // Those changes are another live session's: never stash, commit or `git add -A` them. The
+    // way to avoid colliding is to claim the task (and the dirs) before editing (T-270).
+    const line = `ocean-dirty=${changed}: other sessions' uncommitted changes here; never stash/commit/add -A them. Claim first: ocean tasks claim <ID> --by <you> --paths <dirs>`;
+    return truncateUtf8(line, WORKTREE_WARNING_MAX_BYTES);
   } catch {
     return null;
   }
