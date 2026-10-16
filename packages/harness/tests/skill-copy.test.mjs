@@ -12,7 +12,7 @@ import {
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { copyClientSkills } from "../dist/application/skills/skill-hub.js";
+import { copyClientSkills } from "@ocean/market/skills/skill-hub.js";
 
 async function skill(root, name, files) {
   for (const [file, body] of Object.entries(files)) {

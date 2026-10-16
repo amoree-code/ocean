@@ -2,6 +2,10 @@ import type { SessionStorePort } from "@ocean/core/domain/ports/session-store-po
 import type { SessionEvent } from "@ocean/core/domain/sessions/session.js";
 import { safeJsonParse } from "@ocean/core/shared/fs-utils.js";
 import { gitChangedFiles } from "@ocean/core/shared/project-resolution.js";
+import {
+  observeSessionWithStore,
+  type TaskObservation,
+} from "@ocean/market/skills/task-observer.js";
 import { createHandoffWithStore } from "../handoff/handoff-service.js";
 import { writeBrainDump } from "../memory/brain-dump.js";
 import {
@@ -13,10 +17,6 @@ import {
   type SessionSummaryResult,
   writeSessionSummary,
 } from "../memory/session-summary.js";
-import {
-  observeSessionWithStore,
-  type TaskObservation,
-} from "../skills/task-observer.js";
 
 export type SessionCloseoutResult = SessionSummaryResult & {
   handoffId: string | null;

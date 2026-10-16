@@ -13,7 +13,7 @@ import test from "node:test";
 import {
   linkClientSkills,
   populateSkillHub,
-} from "../dist/application/skills/skill-hub.js";
+} from "@ocean/market/skills/skill-hub.js";
 
 async function fixture() {
   const base = await mkdtemp(path.join(os.tmpdir(), "ocean-hub-"));

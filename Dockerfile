@@ -9,6 +9,7 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/harness/package.json ./packages/harness/package.json
 COPY packages/core/package.json ./packages/core/package.json
+COPY packages/market/package.json ./packages/market/package.json
 RUN mkdir -p scripts packages/harness/scripts packages/core
 COPY scripts/prepare-hooks.mjs ./scripts/
 COPY packages/harness/scripts/prepare-node-pty.mjs ./packages/harness/scripts/

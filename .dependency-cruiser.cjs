@@ -6,7 +6,7 @@ const H = "^packages/harness/src/";
 
 const LAYERS = [
   ["core", ["^packages/core/src/"]],
-  ["market", ["^packages/market/src/", `${H}application/(skills|mcp)/`]],
+  ["market", ["^packages/market/src/"]],
   [
     "brain",
     [

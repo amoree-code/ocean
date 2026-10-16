@@ -11,7 +11,7 @@ import {
   listSkillCandidates,
   loadPromotedSkills,
   reviewSkillCandidate,
-} from "../dist/application/skills/skill-curation.js";
+} from "@ocean/market/skills/skill-curation.js";
 import { defaultSessionStoreFactory } from "../dist/composition/runtime.js";
 import {
   listSkills,
