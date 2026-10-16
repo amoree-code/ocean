@@ -17,6 +17,7 @@ import {
   completeTask,
 } from "../../application/tasks/archive-tasks.js";
 import { checkpointTask } from "../../application/tasks/checkpoint-task.js";
+import { claimTask, releaseTask } from "../../application/tasks/claim-task.js";
 import {
   listTasks,
   listTasksForFolder,
@@ -205,6 +206,38 @@ export async function runTasksCommand(
     }
     return;
   }
+  if (action === "claim" || action === "release") {
+    const id = args[0];
+    const flag = (name: string) => {
+      const at = args.indexOf(name);
+      return at >= 0 ? args[at + 1] : undefined;
+    };
+    const by = flag("--by");
+    if (!id || id.startsWith("--") || (action === "claim" && !by)) {
+      console.error(
+        "Usage: ocean tasks claim <id> --by <name> [--paths a,b] [--force] [--project <id>] | ocean tasks release <id> [--by <name>] [--force]",
+      );
+      process.exitCode = 1;
+      return;
+    }
+    try {
+      const task = await liveTask(id, explicitProject, cwdProject);
+      const force = args.includes("--force");
+      const result =
+        action === "claim"
+          ? await claimTask(task.id, task.root, {
+              by: by as string,
+              paths: flag("--paths")?.split(",").filter(Boolean),
+              force,
+            })
+          : await releaseTask(task.id, task.root, { by, force });
+      console.log(JSON.stringify({ ...result, project: task.owner }, null, 2));
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exitCode = 1;
+    }
+    return;
+  }
   if (action === "renumber") {
     const prefixIndex = args.indexOf("--prefix");
     const prefix = prefixIndex >= 0 ? args[prefixIndex + 1] : undefined;
@@ -227,7 +260,7 @@ export async function runTasksCommand(
   }
   if (action !== "archive") {
     console.error(
-      "Usage: ocean tasks list [state] [--project <id>] [--pretty]|doctor|index [--write]|checkpoint <id> --note <text> [--next <text>]|verify <id>|complete <id>|archive [--apply|--auto]|renumber --project <id> --prefix <PREFIX> [--write]",
+      "Usage: ocean tasks list [state] [--project <id>] [--pretty]|doctor|index [--write]|checkpoint <id> --note <text> [--next <text>]|verify <id>|complete <id>|claim <id> --by <name> [--paths a,b] [--force]|release <id> [--by <name>] [--force]|archive [--apply|--auto]|renumber --project <id> --prefix <PREFIX> [--write]",
     );
     process.exitCode = 1;
     return;

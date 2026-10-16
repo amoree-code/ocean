@@ -365,7 +365,7 @@ test("oceanWorktreeWarning is silent for a clean Ocean repo", {
   });
 });
 
-test("oceanWorktreeWarning names the uncommitted changes and the worktree command, bounded", {
+test("oceanWorktreeWarning names the uncommitted changes and points at `ocean tasks claim`, bounded", {
   skip: noGit,
 }, async () => {
   await withGitOceanRoot(async (root) => {
@@ -374,12 +374,8 @@ test("oceanWorktreeWarning names the uncommitted changes and the worktree comman
     await writeFile(path.join(root, "b.md"), "b\n");
     const warning = await oceanWorktreeWarning(path.join(root, "01-daily"));
     assert.match(warning, /^ocean-dirty=2: /);
-    // A temp root's worktree path is too long for the bound, so it shows as a placeholder;
-    // the command is never cut in half.
-    assert.ok(
-      /git worktree add \S+-worktrees>?[\\/]<slug> -b <branch>$/.test(warning),
-      warning,
-    );
+    assert.match(warning, /ocean tasks claim <ID> --by <you> --paths <dirs>$/);
+    assert.doesNotMatch(warning, /worktree/);
     assert.ok(Buffer.byteLength(warning) <= WORKTREE_WARNING_MAX_BYTES);
 
     const result = await claudeSessionStartHook({ cwd: root });
