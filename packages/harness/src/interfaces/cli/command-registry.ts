@@ -3,20 +3,6 @@ import path from "node:path";
 import { resolveProfileName } from "@ocean/core/domain/profiles/runtime-config.js";
 import { classifyIntent } from "../../application/context/intent-router.js";
 import {
-  autoRegisterProject,
-  bindProject,
-  findGitRoot,
-  knownTaskPrefixes,
-  listProjectBindings,
-  migrateProjectBindings,
-  renameProject,
-  renderProjectIndex,
-  resolveProject,
-  scanProjectManifests,
-  unbindProjectPath,
-  writeProjectIndex,
-} from "../../application/context/project-resolution.js";
-import {
   hasFailures,
   repairWorkspace,
   workspaceReport,
@@ -106,6 +92,7 @@ import {
 } from "../../application/skills/task-observer.js";
 import {
   defaultAgentRuntime,
+  defaultBrainIndexPort,
   defaultProviderRegistry,
   defaultSessionStoreFactory,
   defaultSessionStoreOpener,
@@ -126,6 +113,20 @@ import {
   wrapperStatus,
 } from "../../infrastructure/wrappers/wrapper-manager.js";
 import { oceanEnv, oceanPath, oceanRoot, SYSTEM_DIR } from "../../paths.js";
+import {
+  autoRegisterProject,
+  bindProject,
+  findGitRoot,
+  knownTaskPrefixes,
+  listProjectBindings,
+  migrateProjectBindings,
+  renameProject,
+  renderProjectIndex,
+  resolveProject,
+  scanProjectManifests,
+  unbindProjectPath,
+  writeProjectIndex,
+} from "../../shared/project-resolution.js";
 import { runAuthCommand } from "./auth-command.js";
 import { runBrowserCommand } from "./browser-command.js";
 import { runCaptureCommand } from "./capture-command.js";
@@ -401,7 +402,12 @@ async function commandMcp(): Promise<void> {
     console.log(JSON.stringify(oceanMcpConfig(), null, 2));
   else if (action === "playwright-config")
     console.log(JSON.stringify(playwrightMcpConfig(), null, 2));
-  else if (action === "serve") await runOceanMcpServer();
+  else if (action === "serve")
+    await runOceanMcpServer({
+      brainIndex: defaultBrainIndexPort,
+      sessionStoreFactory: defaultSessionStoreFactory,
+      wrapperManager: defaultWrapperManager,
+    });
   else {
     console.error("Usage: ocean mcp config|playwright-config|serve");
     process.exitCode = 1;

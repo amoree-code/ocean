@@ -8,7 +8,13 @@ import {
 } from "../../paths.js";
 import { appendConflict, contentHash } from "./conflict-log.js";
 import type { ObsidianConnection } from "./vault-discovery.js";
-import type { ObsidianSyncResult } from "./vault-sync.js";
+
+// The note paths a sync pass found changed; vault-sync's result satisfies it.
+export type VaultChanges = {
+  added: string[];
+  changed: string[];
+  removed: string[];
+};
 
 export type VaultIngestionResult = {
   inbox: string[];
@@ -48,7 +54,7 @@ async function readOptional(file: string): Promise<string | undefined> {
 
 export async function ingestVaultChanges(
   connection: ObsidianConnection,
-  result: ObsidianSyncResult,
+  result: VaultChanges,
   stateFile?: string,
   baselineState?: Record<string, { sha256: string }>,
 ): Promise<VaultIngestionResult> {

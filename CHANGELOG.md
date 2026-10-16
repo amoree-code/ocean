@@ -6,6 +6,7 @@ Docs-only or CI-only PRs may add the `skip-changelog` label instead.
 
 ## Unreleased
 
+- refactor(T-222): break the import cycles blocking the package split — project resolution and task lookup move to `src/shared/` (core layer), session closeout moves to `sessions/`, the MCP server gets its ports injected; `check:deps` now runs with no baseline
 - chore(T-222): `pnpm check:deps` — dependency-cruiser enforces the package layering (core ← market ← brain ← context ← loop ← services ← harness) and no cycles, in `pnpm check` and CI; today's 8 violations are a known baseline
 - test(T-255): unattended /ship push and PR check
 - feat(router): task-list requests ("what tasks we have", "شنو عدننه تكتات") route to `task-lookup`/`list` instead of `unknown` (#160)

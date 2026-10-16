@@ -10,11 +10,14 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import {
-  isWorkspaceProject,
   resolveWithin,
   WORKSPACE_PROJECT_ID,
   workspaceTasksRoot,
 } from "../../paths.js";
+import {
+  projectArchiveName,
+  WORKSPACE_ARCHIVE_NAMESPACE,
+} from "../../shared/task-reference.js";
 import { type CommandRunner, verifyTask } from "./verify-task.js";
 
 export type ArchiveResult = {
@@ -40,11 +43,6 @@ const field = (source: string, name: string): string =>
     .match(new RegExp(`^${name}:\\s*(.+)$`, "m"))?.[1]
     ?.trim()
     .replace(/^['"]|['"]$/g, "") ?? "";
-
-// Archive namespace per project; the workspace project archives under "Ocean".
-const WORKSPACE_ARCHIVE_NAMESPACE = "Ocean";
-export const projectArchiveName = (project: string): string =>
-  isWorkspaceProject(project) ? WORKSPACE_ARCHIVE_NAMESPACE : project;
 
 function setState(source: string, state: string): string {
   return source.replace(/^state:\s*.+$/m, `state: ${state}`);

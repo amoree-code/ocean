@@ -21,7 +21,7 @@
     "check:providers": "node scripts/provider-smoke.mjs",
     "check:style": "biome check .",
     "check:unused": "knip --include files,dependencies,devDependencies,unlisted,binaries,unresolved",
-    "check:deps": "depcruise packages/*/src --config .dependency-cruiser.cjs --ignore-known --output-type err",
+    "check:deps": "depcruise packages/*/src --config .dependency-cruiser.cjs --output-type err",
     "check": "pnpm typecheck && pnpm check:style && pnpm check:unused && pnpm check:deps && pnpm check:privacy && pnpm check:skills && pnpm check:tasks && pnpm check:package && pnpm check:system",
     "test": "pnpm build && pnpm --filter ocean run test",
     "prepare": "node scripts/prepare-hooks.mjs",

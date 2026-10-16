@@ -1,7 +1,10 @@
 import type { Dirent } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
-import { readFrontmatterFile as readFrontmatterFileWithLimit } from "../../fs-utils.js";
+import {
+  FRONTMATTER_READ_BYTES,
+  readFrontmatterFile as readFrontmatterFileWithLimit,
+} from "../../fs-utils.js";
 import { oceanRoot } from "../../paths.js";
 import type { Freshness } from "../context/context-packet.js";
 
@@ -15,7 +18,6 @@ const STALE_AFTER_MS = 30 * 24 * 60 * 60 * 1000;
 // examine more than this, whatever budget is passed.
 const MAX_SCAN_ENTRIES = 200;
 const MAX_SCAN_DEPTH = 3;
-export const FRONTMATTER_READ_BYTES = 4_096;
 
 export function freshnessFor(mtimeMs: number): Freshness {
   return Date.now() - mtimeMs <= STALE_AFTER_MS ? "current" : "stale";

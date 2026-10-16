@@ -4,17 +4,28 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { reindexBrain } from "../dist/application/brain/brain-reindex.js";
-import { defaultBrainIndexPort } from "../dist/composition/runtime.js";
+import {
+  defaultBrainIndexPort,
+  defaultSessionStoreFactory,
+  defaultWrapperManager,
+} from "../dist/composition/runtime.js";
 import { handleOceanMcpRequest } from "../dist/infrastructure/mcp/ocean-server.js";
 import { SessionStore } from "../dist/infrastructure/persistence/session-store.js";
 import { PROJECTS_DIR, STORE_DIR, SYSTEM_DIR } from "../dist/paths.js";
+
+const handle = (request) =>
+  handleOceanMcpRequest(request, {
+    brainIndex: defaultBrainIndexPort,
+    sessionStoreFactory: defaultSessionStoreFactory,
+    wrapperManager: defaultWrapperManager,
+  });
 
 test("Ocean MCP exposes provider-neutral read-only tools without Obsidian", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ocean-mcp-no-obsidian-"));
   const previous = process.env.OCEAN_ROOT;
   process.env.OCEAN_ROOT = root;
   try {
-    const listed = await handleOceanMcpRequest({
+    const listed = await handle({
       jsonrpc: "2.0",
       id: 1,
       method: "tools/list",
@@ -38,14 +49,14 @@ test("Ocean MCP exposes provider-neutral read-only tools without Obsidian", asyn
         "brain_neighbors",
       ],
     );
-    const status = await handleOceanMcpRequest({
+    const status = await handle({
       jsonrpc: "2.0",
       id: 2,
       method: "tools/call",
       params: { name: "ocean_status", arguments: {} },
     });
     assert.match(status.result.content[0].text, /"name":"Ocean"/);
-    const retired = await handleOceanMcpRequest({
+    const retired = await handle({
       jsonrpc: "2.0",
       id: 3,
       method: "tools/call",
@@ -74,7 +85,7 @@ test("ocean_task_get reads a task from the named project, by prefix or by old id
       "---\nid: LB-001\nlegacyId: T-300\ntitle: Lab task\nstate: active\n---\n\n## Objective\n\nDo it.\n",
     );
     const get = async (args) => {
-      const response = await handleOceanMcpRequest({
+      const response = await handle({
         jsonrpc: "2.0",
         id: 1,
         method: "tools/call",
@@ -125,7 +136,7 @@ test("brain_search and brain_neighbors take project/cwd and show only that proje
         `---\nid: rec-${name}\ntitle: Rec ${name}\nscope: ${scope}\n---\n\nzebrafood [[g]] [[a]] [[b]]\n`,
       );
     await reindexBrain({ root, indexPort: defaultBrainIndexPort });
-    const listed = await handleOceanMcpRequest({
+    const listed = await handle({
       jsonrpc: "2.0",
       id: 1,
       method: "tools/list",
@@ -139,7 +150,7 @@ test("brain_search and brain_neighbors take project/cwd and show only that proje
       assert.equal(schema.additionalProperties, false);
     }
     const call = async (name, args) => {
-      const response = await handleOceanMcpRequest({
+      const response = await handle({
         jsonrpc: "2.0",
         id: 2,
         method: "tools/call",
@@ -181,7 +192,7 @@ test("read-only session tools do not initialize a missing session database", asy
   const previous = process.env.OCEAN_ROOT;
   process.env.OCEAN_ROOT = root;
   try {
-    const response = await handleOceanMcpRequest({
+    const response = await handle({
       jsonrpc: "2.0",
       id: 9,
       method: "tools/call",
@@ -201,7 +212,7 @@ test("read-only session tools do not initialize a missing session database", asy
 });
 
 test("Ocean MCP exposes bounded resources and prompt templates", async () => {
-  const listedResources = await handleOceanMcpRequest({
+  const listedResources = await handle({
     jsonrpc: "2.0",
     id: 3,
     method: "resources/list",
@@ -210,7 +221,7 @@ test("Ocean MCP exposes bounded resources and prompt templates", async () => {
     listedResources.result.resources.map((resource) => resource.uri),
     ["ocean://status", "ocean://profiles", "ocean://tasks", "ocean://handoffs"],
   );
-  const resource = await handleOceanMcpRequest({
+  const resource = await handle({
     jsonrpc: "2.0",
     id: 4,
     method: "resources/read",
@@ -218,7 +229,7 @@ test("Ocean MCP exposes bounded resources and prompt templates", async () => {
   });
   assert.match(resource.result.contents[0].text, /"name": "Ocean"/);
   for (const uri of ["ocean://tasks"]) {
-    const tasks = await handleOceanMcpRequest({
+    const tasks = await handle({
       jsonrpc: "2.0",
       id: 7,
       method: "resources/read",
@@ -228,27 +239,27 @@ test("Ocean MCP exposes bounded resources and prompt templates", async () => {
     assert.equal(tasks.result.contents[0].uri, uri);
     assert.ok(Array.isArray(JSON.parse(tasks.result.contents[0].text).tasks));
   }
-  const unknown = await handleOceanMcpRequest({
+  const unknown = await handle({
     jsonrpc: "2.0",
     id: 8,
     method: "resources/read",
     params: { uri: "tasks" },
   });
   assert.ok(unknown.error);
-  const retired = await handleOceanMcpRequest({
+  const retired = await handle({
     jsonrpc: "2.0",
     id: 10,
     method: "resources/read",
     params: { uri: "legacy://tasks" },
   });
   assert.ok(retired.error);
-  const init = await handleOceanMcpRequest({
+  const init = await handle({
     jsonrpc: "2.0",
     id: 9,
     method: "initialize",
   });
   assert.equal(init.result.serverInfo.name, "ocean");
-  const listedPrompts = await handleOceanMcpRequest({
+  const listedPrompts = await handle({
     jsonrpc: "2.0",
     id: 5,
     method: "prompts/list",
@@ -257,7 +268,7 @@ test("Ocean MCP exposes bounded resources and prompt templates", async () => {
     listedPrompts.result.prompts.map((prompt) => prompt.name),
     ["ocean_review_workspace", "ocean_review_task"],
   );
-  const prompt = await handleOceanMcpRequest({
+  const prompt = await handle({
     jsonrpc: "2.0",
     id: 6,
     method: "prompts/get",
@@ -286,7 +297,7 @@ test("ocean_tasks_list follows the folder it is given, else lists every project"
   const previous = process.env.OCEAN_ROOT;
   process.env.OCEAN_ROOT = root;
   const call = async (args) => {
-    const response = await handleOceanMcpRequest({
+    const response = await handle({
       jsonrpc: "2.0",
       id: 1,
       method: "tools/call",
@@ -334,7 +345,7 @@ test("ocean_handoffs_list filters by project", async () => {
       });
     store.close();
     const list = async (args) => {
-      const response = await handleOceanMcpRequest({
+      const response = await handle({
         jsonrpc: "2.0",
         id: 21,
         method: "tools/call",

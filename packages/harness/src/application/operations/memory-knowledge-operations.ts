@@ -5,7 +5,7 @@ import {
   scopeVisible,
 } from "@ocean/core/domain/brain/record-scope.js";
 import type { BrainIndexPort } from "@ocean/core/domain/ports/brain-index-port.js";
-import { atomicWrite } from "../../fs-utils.js";
+import { atomicWrite, FRONTMATTER_READ_BYTES } from "../../fs-utils.js";
 import {
   KNOWLEDGE_DIR,
   oceanRoot,
@@ -13,12 +13,12 @@ import {
   resolveWithin,
   STORE_DIR,
 } from "../../paths.js";
+import { resolveProject } from "../../shared/project-resolution.js";
 import { brainIndexPath } from "../brain/brain-reindex.js";
 import { BrainIndexStaleError, brainSearch } from "../brain/brain-service.js";
 import type { ContextBudget } from "../context/context-ladder.js";
 import type { RecordType } from "../context/context-packet.js";
 import type { IntentClassification } from "../context/intent-router.js";
-import { resolveProject } from "../context/project-resolution.js";
 import {
   approvalMatchesTarget,
   type OperationRecord,
@@ -32,7 +32,6 @@ import {
 } from "./operation-contract.js";
 import type { OperationOptions } from "./operation-scope.js";
 import {
-  FRONTMATTER_READ_BYTES,
   freshnessFor,
   listRecordFiles,
   readFrontmatterFile,

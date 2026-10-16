@@ -5,7 +5,10 @@
 const H = "^packages/harness/src/";
 
 const LAYERS = [
-  ["core", ["^packages/core/src/", `${H}(paths|fs-utils)\\.ts$`]],
+  [
+    "core",
+    ["^packages/core/src/", `${H}(paths|fs-utils)\\.ts$`, `${H}shared/`],
+  ],
   ["market", ["^packages/market/src/", `${H}application/(skills|mcp)/`]],
   [
     "brain",

@@ -15,10 +15,6 @@ import test from "node:test";
 import { reindexBrain as reindexBrainRaw } from "../dist/application/brain/brain-reindex.js";
 import { classifyIntent } from "../dist/application/context/intent-router.js";
 import {
-  bindProject,
-  peekNextTaskId,
-} from "../dist/application/context/project-resolution.js";
-import {
   operationForIntent,
   validateTaskIdentifier,
   validateWriteTarget,
@@ -37,6 +33,10 @@ import {
   PROJECTS_DIR,
   REGISTRY_DIR,
 } from "../dist/paths.js";
+import {
+  bindProject,
+  peekNextTaskId,
+} from "../dist/shared/project-resolution.js";
 
 const reindexBrain = (options) =>
   reindexBrainRaw({ indexPort: defaultBrainIndexPort, ...options });

@@ -3,8 +3,8 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { resolveTaskReference } from "../dist/application/tasks/task-reference.js";
 import { PROJECTS_DIR } from "../dist/paths.js";
+import { resolveTaskReference } from "../dist/shared/task-reference.js";
 
 // ocean: T-1 live, T-2 archived. shop: T-101, T-1 (also held by ocean). app (AP): AP-001.
 // lab (LB): LB-001 renamed from T-300, LB-002 archived and renamed from T-301.
@@ -79,9 +79,7 @@ test("a bare T id resolves in the current project first, live then archive", asy
 test("the current project can come from a folder", async () => {
   await fixture();
   const repo = await mkdtemp(path.join(os.tmpdir(), "ocean-reference-repo-"));
-  const { bindProject } = await import(
-    "../dist/application/context/project-resolution.js"
-  );
+  const { bindProject } = await import("../dist/shared/project-resolution.js");
   await bindProject("shop", repo);
   const hit = await resolveTaskReference("T-1", { cwd: repo });
   assert.equal(hit.projectId, "shop");

@@ -1,12 +1,12 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { oceanPath, PROJECTS_DIR, projectFolder } from "../../paths.js";
-import type { IntentClassification } from "../context/intent-router.js";
 import {
   bindProject,
   projectConfirmationQuestion,
   resolveProject,
-} from "../context/project-resolution.js";
+} from "../../shared/project-resolution.js";
+import type { IntentClassification } from "../context/intent-router.js";
 import {
   approvalMatchesTarget,
   type OperationRecord,

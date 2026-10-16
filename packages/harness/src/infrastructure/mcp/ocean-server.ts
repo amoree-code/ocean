@@ -5,6 +5,9 @@ import {
   actionFingerprint,
   mcpApprovalSchema,
 } from "@ocean/core/domain/mcp/mcp-contract.js";
+import type { BrainIndexPort } from "@ocean/core/domain/ports/brain-index-port.js";
+import type { WrapperManagerPort } from "@ocean/core/domain/ports/platform-ports.js";
+import type { SessionStoreFactory } from "@ocean/core/domain/ports/session-store-port.js";
 import {
   brainNeighbors,
   brainRead,
@@ -20,16 +23,9 @@ import {
   listHandoffs,
 } from "../../application/handoff/handoff-service.js";
 import { promoteSessionToKnowledge } from "../../application/memory/session-promotion.js";
-import {
-  folderProject,
-  listTasksForFolder,
-} from "../../application/tasks/list-tasks.js";
-import {
-  defaultBrainIndexPort,
-  defaultSessionStoreFactory,
-  defaultWrapperManager,
-} from "../../composition/runtime.js";
+import { listTasksForFolder } from "../../application/tasks/list-tasks.js";
 import { oceanPath, oceanRoot, SYSTEM_DIR } from "../../paths.js";
+import { folderProject } from "../../shared/project-resolution.js";
 import { openSessionStoreReadOnly } from "../persistence/session-store.js";
 
 type Request = {
@@ -281,6 +277,14 @@ const prompts = [
   },
 ];
 
+// The ports the server reaches infrastructure through. The CLI passes the
+// composition root's defaults, so this layer never imports composition.
+export type OceanMcpPorts = {
+  brainIndex: BrainIndexPort;
+  sessionStoreFactory: SessionStoreFactory;
+  wrapperManager: WrapperManagerPort;
+};
+
 function textResult(value: unknown): {
   content: [{ type: "text"; text: string }];
   structuredContent: unknown;
@@ -308,6 +312,7 @@ async function profiles(): Promise<string[]> {
 async function callTool(
   name: string,
   args: Record<string, unknown>,
+  ports: OceanMcpPorts,
 ): Promise<unknown> {
   if (name === "ocean_status")
     return {
@@ -317,7 +322,7 @@ async function callTool(
       mcp: "stdio",
     };
   if (name === "ocean_doctor") {
-    const report = await workspaceReport(defaultWrapperManager);
+    const report = await workspaceReport(ports.wrapperManager);
     return {
       healthy: !hasFailures(report.findings),
       findings: report.findings,
@@ -342,7 +347,7 @@ async function callTool(
   if (name === "ocean_handoffs_list")
     return {
       handoffs: await listHandoffs(
-        defaultSessionStoreFactory,
+        ports.sessionStoreFactory,
         typeof args.taskId === "string" ? args.taskId : undefined,
         typeof args.project === "string" && args.project
           ? args.project
@@ -352,7 +357,7 @@ async function callTool(
   if (name === "ocean_handoff_get")
     return await getHandoff(
       requiredArgument(args, "handoffId"),
-      defaultSessionStoreFactory,
+      ports.sessionStoreFactory,
       typeof args.maxBytes === "number"
         ? Math.min(16_000, Math.max(512, args.maxBytes))
         : 8_000,
@@ -419,7 +424,7 @@ async function callTool(
       );
     return promoteSessionToKnowledge(
       requiredArgument(args, "sessionId"),
-      defaultSessionStoreFactory,
+      ports.sessionStoreFactory,
       typeof args.target === "string" ? args.target : "knowledge/results",
       true,
     );
@@ -435,7 +440,7 @@ async function callTool(
       types: Array.isArray(args.types)
         ? args.types.filter((item): item is string => typeof item === "string")
         : undefined,
-      indexPort: defaultBrainIndexPort,
+      indexPort: ports.brainIndex,
     });
   if (name === "brain_read") {
     const idOrPath =
@@ -451,7 +456,7 @@ async function callTool(
         typeof args.maxBytes === "number"
           ? Math.min(16_000, Math.max(512, args.maxBytes))
           : undefined,
-      indexPort: defaultBrainIndexPort,
+      indexPort: ports.brainIndex,
     });
   }
   if (name === "brain_neighbors")
@@ -467,7 +472,7 @@ async function callTool(
         typeof args.limit === "number"
           ? Math.min(50, Math.max(1, args.limit))
           : undefined,
-      indexPort: defaultBrainIndexPort,
+      indexPort: ports.brainIndex,
     });
   throw new Error(`Unknown MCP tool: ${name}`);
 }
@@ -488,11 +493,12 @@ async function scopeFor(
 
 async function readResource(
   uri: string,
+  ports: OceanMcpPorts,
 ): Promise<{ uri: string; mimeType: string; text: string }> {
   let value: unknown;
   const resource = /^ocean:\/\/(.*)$/.exec(uri)?.[1];
   if (resource === "status") {
-    const report = await workspaceReport(defaultWrapperManager);
+    const report = await workspaceReport(ports.wrapperManager);
     value = {
       name: "Ocean",
       version: "0.3.6",
@@ -504,7 +510,7 @@ async function readResource(
   else if (resource === "tasks")
     value = await listTasksForFolder({ cwd: process.cwd() });
   else if (resource === "handoffs")
-    value = { handoffs: await listHandoffs(defaultSessionStoreFactory) };
+    value = { handoffs: await listHandoffs(ports.sessionStoreFactory) };
   else throw new Error(`Unknown Ocean resource: ${uri}`);
   return {
     uri,
@@ -557,6 +563,7 @@ async function getPrompt(
 
 export async function handleOceanMcpRequest(
   request: Request,
+  ports: OceanMcpPorts,
 ): Promise<Response | null> {
   if (request.method === "notifications/initialized") return null;
   if (request.method === "initialize")
@@ -579,7 +586,9 @@ export async function handleOceanMcpRequest(
         jsonrpc: "2.0",
         id: request.id,
         result: {
-          contents: [await readResource(String(request.params?.uri ?? ""))],
+          contents: [
+            await readResource(String(request.params?.uri ?? ""), ports),
+          ],
         },
       };
     } catch (error) {
@@ -640,6 +649,7 @@ export async function handleOceanMcpRequest(
         await callTool(
           name,
           (request.params?.arguments ?? {}) as Record<string, unknown>,
+          ports,
         ),
       ),
     };
@@ -655,7 +665,7 @@ export async function handleOceanMcpRequest(
   }
 }
 
-export async function runOceanMcpServer(): Promise<void> {
+export async function runOceanMcpServer(ports: OceanMcpPorts): Promise<void> {
   let buffer = "";
   process.stdin.setEncoding("utf8");
   process.stdin.on("data", async (chunk: string) => {
@@ -667,7 +677,7 @@ export async function runOceanMcpServer(): Promise<void> {
       buffer = buffer.slice(newline + 1);
       if (!line) continue;
       const request = JSON.parse(line) as Request;
-      const response = await handleOceanMcpRequest(request);
+      const response = await handleOceanMcpRequest(request, ports);
       if (!response) continue;
       process.stdout.write(`${JSON.stringify(response)}\n`);
     }

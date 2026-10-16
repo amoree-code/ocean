@@ -12,7 +12,7 @@ import {
   readProjectManifest,
   resolveProject,
   scanProjectManifests,
-} from "../context/project-resolution.js";
+} from "../../shared/project-resolution.js";
 import { buildOceanBootstrap } from "../context/resource-injection.js";
 
 // The documented Claude Code SessionStart hook contract on this machine (verified against

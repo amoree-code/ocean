@@ -12,16 +12,12 @@ import {
   authStatus,
 } from "../../application/auth/auth-orchestrator.js";
 import {
-  projectRules,
-  resolveProject,
-} from "../../application/context/project-resolution.js";
-import {
   bootstrapEnvironment,
   buildOceanBootstrap,
 } from "../../application/context/resource-injection.js";
 import { boundProjectManifest } from "../../application/hooks/session-start-hook.js";
-import { finalizeSession } from "../../application/memory/session-closeout.js";
 import { authorizeRun } from "../../application/runs/run-authorization.js";
+import { finalizeSession } from "../../application/sessions/session-closeout.js";
 import { defaultAuthDeps } from "../../composition/runtime.js";
 import { redactRuntimeText } from "../../infrastructure/observability/runtime-logger.js";
 import { openSessionStore } from "../../infrastructure/persistence/session-store.js";
@@ -36,6 +32,10 @@ import {
   validateExplicitExecutable,
 } from "../../infrastructure/providers/provider-registry.js";
 import { oceanEnvPair } from "../../paths.js";
+import {
+  projectRules,
+  resolveProject,
+} from "../../shared/project-resolution.js";
 
 export type InterceptOptions = {
   entryPoint?: "terminal-shim" | "interactive-managed" | "desktop-wrapper";

@@ -536,7 +536,7 @@ test("context-packet.ts imports only existing local modules and node:fs/promises
     "../../paths.js",
     "./intent-router.js",
     "./context-ladder.js",
-    "./project-resolution.js",
+    "../../shared/project-resolution.js",
   ]);
   for (const specifier of imports)
     assert.ok(allowed.has(specifier), `unexpected import: ${specifier}`);
