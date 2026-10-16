@@ -66,7 +66,8 @@ test("the CLI's engine-root module sets core's engineRoot from wherever the ocea
     ["--input-type=module", "-e", script],
     { encoding: "utf8" },
   );
-  assert.equal(output.trim(), await realpath(installed));
+  // Both sides through realpath: macOS /var vs /private/var, Windows 8.3 short names.
+  assert.equal(await realpath(output.trim()), await realpath(installed));
 });
 
 test("default oceanRoot resolves to the private workspace sibling of engine, not inside it", () => {
