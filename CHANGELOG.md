@@ -6,6 +6,7 @@ Docs-only or CI-only PRs may add the `skip-changelog` label instead.
 
 ## Unreleased
 
+- fix(T-271): the privacy scan lists files with one `git ls-files` call (12 s -> 0.1 s), so `ocean doctor`'s PRIVACY_BOUNDARY no longer times out on a busy machine (#179)
 - fix(T-270): the session-start dirty-workspace warning points at `ocean tasks claim` instead of `git worktree add` (#177)
 - feat(T-270): `ocean tasks claim` / `release` record which session works on a task and refuse a second owner (#173)
 - feat(T-270): `ocean tasks doctor` validates task claims (`claimed_by`, `claimed_at`, `claimed_paths`) (#171)
