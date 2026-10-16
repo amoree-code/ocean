@@ -29,6 +29,7 @@ jobs:
       - run: pnpm check:skills
       - run: pnpm check:privacy
       - run: pnpm check:tasks
+      - run: pnpm check:deps
       - run: pnpm build
       - run: pnpm check:package
       - name: Run full test suite

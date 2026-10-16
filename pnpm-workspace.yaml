@@ -5,3 +5,10 @@ allowBuilds:
   esbuild: true
   lefthook: true
   node-pty: true
+
+# dependency-cruiser parses .ts through the TypeScript JS API, which typescript@7
+# does not ship yet; give it its own 6.x without changing the build compiler.
+packageExtensions:
+  dependency-cruiser:
+    dependencies:
+      typescript: 6.0.3
