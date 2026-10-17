@@ -5,6 +5,7 @@ import type {
   ProviderRequest,
 } from "@ocean/core/domain/providers/provider.js";
 import { type HeadlessResult, runHeadless } from "../process/cli-process.js";
+import { explicitModel, runClaudeSdk } from "./claude-sdk.js";
 import { resolveOriginalExecutable } from "./provider-registry.js";
 
 // Provider contracts live in the domain layer; re-exported here for existing callers.
@@ -22,29 +23,19 @@ function repeatFlag(flag: string, values: string[] | undefined): string[] {
 // The model is enforced with each client's own flag, never only described in the prompt.
 // Flags verified against each installed CLI's --help on 2026-10-13.
 function modelFlag(flag: string, model: string | undefined): string[] {
-  return model && model !== "provider-managed" ? [flag, model] : [];
+  const chosen = explicitModel(model);
+  return chosen ? [flag, chosen] : [];
 }
 
 export const providerAdapterRegistry: Readonly<
   Record<HeadlessProvider, ProviderAdapter>
 > = {
+  // Claude runs through the Claude Agent SDK, which builds Claude Code's flags itself
+  // (claudeSdkOptions: resume, model, read-only, read grant).
   claude: {
     provider: "claude",
     capabilities: ["headless", "resume", "read-only"],
-    readOnlyArgs: ["--permission-mode", "plan", "--restricted"],
-    build: (request) => [
-      ...(request.resumeId ? ["--resume", request.resumeId] : []),
-      ...modelFlag("--model", request.model),
-      ...(request.readOnly
-        ? ["--permission-mode", "plan", "--restricted"]
-        : []),
-      ...repeatFlag("--add-dir", request.readDirectories),
-      "-p",
-      request.prompt,
-      "--verbose",
-      "--output-format",
-      "stream-json",
-    ],
+    run: runClaudeSdk,
   },
   codex: {
     provider: "codex",
@@ -127,6 +118,10 @@ export function buildProviderInvocation(request: ProviderRequest): {
 } {
   const command = request.provider === "antigravity" ? "agy" : request.provider;
   const adapter = providerAdapterRegistry[request.provider];
+  if (!adapter.build)
+    throw new Error(
+      `${request.provider} runs through its SDK, not a CLI invocation`,
+    );
   if (request.readOnly) assertProviderSupportsReadOnly(request.provider);
   const args = adapter.build(request);
 
@@ -141,6 +136,8 @@ export function assertProviderSupportsReadOnly(
 }
 
 export function runProvider(request: ProviderRequest): Promise<HeadlessResult> {
+  const sdkRun = providerAdapterRegistry[request.provider].run;
+  if (sdkRun) return sdkRun(request);
   const { command, args } = buildProviderInvocation(request);
   return runHeadless({
     command: resolveOriginalExecutable(command),

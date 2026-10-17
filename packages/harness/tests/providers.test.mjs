@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { validateProfile } from "@ocean/core/domain/profiles/profile-validator.js";
 import { SYSTEM_DIR } from "@ocean/core/shared/paths.js";
+import { claudeSdkOptions } from "../dist/infrastructure/providers/claude-sdk.js";
 import { resolveClientHome } from "../dist/infrastructure/providers/client-home.js";
 import {
   buildProviderInvocation,
@@ -14,17 +15,22 @@ import {
 
 const unixOnly = process.platform === "win32" ? test.skip : test;
 
-test("builds the Claude CLI stream contract", () => {
-  assert.deepEqual(
-    buildProviderInvocation({
-      provider: "claude",
-      prompt: "hello",
-      cwd: "/tmp",
-    }),
-    {
-      command: "claude",
-      args: ["-p", "hello", "--verbose", "--output-format", "stream-json"],
-    },
+test("maps a Claude request onto Claude Agent SDK options, not CLI arguments", () => {
+  const { env, ...options } = claudeSdkOptions(
+    { provider: "claude", prompt: "hello", cwd: "/tmp", env: { ONLY: "1" } },
+    "/opt/claude",
+  );
+  assert.deepEqual(options, {
+    pathToClaudeCodeExecutable: "/opt/claude",
+    cwd: path.resolve("/tmp"),
+    systemPrompt: { type: "preset", preset: "claude_code" },
+  });
+  assert.equal(env.ONLY, "1");
+  assert.equal(env.PATH, process.env.PATH);
+  assert.throws(
+    () =>
+      buildProviderInvocation({ provider: "claude", prompt: "x", cwd: "/tmp" }),
+    /runs through its SDK/,
   );
 });
 
@@ -65,14 +71,12 @@ test("read-only provider invocations use enforced provider modes and fail closed
     }).args.slice(0, 4),
     ["exec", "--sandbox", "read-only", "--json"],
   );
-  assert.ok(
-    buildProviderInvocation({
-      provider: "claude",
-      prompt: "inspect",
-      cwd: "/tmp",
-      readOnly: true,
-    }).args.includes("plan"),
+  const claude = claudeSdkOptions(
+    { provider: "claude", prompt: "inspect", cwd: "/tmp", readOnly: true },
+    "claude",
   );
+  assert.equal(claude.permissionMode, "plan");
+  assert.deepEqual(claude.extraArgs, { restricted: null });
   assert.ok(
     buildProviderInvocation({
       provider: "gemini",
@@ -179,24 +183,18 @@ test("accepts Gemini as a profile provider", () => {
   );
 });
 
-test("adds Claude resume ids without changing the CLI stream contract", () => {
-  assert.deepEqual(
-    buildProviderInvocation({
+test("hands a Claude resume id to the SDK session", () => {
+  const options = claudeSdkOptions(
+    {
       provider: "claude",
       prompt: "continue",
       cwd: "/tmp",
       resumeId: "session-1",
-    }).args,
-    [
-      "--resume",
-      "session-1",
-      "-p",
-      "continue",
-      "--verbose",
-      "--output-format",
-      "stream-json",
-    ],
+    },
+    "claude",
   );
+  assert.equal(options.resume, "session-1");
+  assert.equal(options.permissionMode, undefined);
 });
 
 unixOnly(

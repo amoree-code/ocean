@@ -28,6 +28,9 @@
     "test": "pnpm build && node --import ./tests/clear-ocean-env.mjs --test --test-concurrency=1 --test-timeout=30000 tests/*.test.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.289",
+    "@anthropic-ai/sdk": "0.131.0",
+    "@modelcontextprotocol/sdk": "1.32.0",
     "node-pty": "^1.1.0",
     "playwright-core": "^1.48.0",
     "zod": "^4.6.5",
