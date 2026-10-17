@@ -12,13 +12,15 @@ import {
 } from "@ocean/market/mcp/mcp-gateway.js";
 import { McpClient } from "@ocean/services/infrastructure/mcp/mcp-client.js";
 
-// A stdio MCP server that echoes every call. It also misbehaves the ways real servers do: a log
-// line on stdout, chatter on stderr, and a server-to-client request reusing the client's id.
+// A stdio MCP server that echoes every call. It also behaves the ways real servers do: a log
+// line on stdout, chatter on stderr, a server-to-client request reusing the client's id, and a
+// keepalive `ping` it expects answered.
 const fakeServer = `
 const [name, tools] = [process.argv[2], JSON.parse(process.argv[3])];
 process.stdout.write("starting " + name + "\\n");
 process.stderr.write(name + " ready\\n");
 let b = "";
+let pong = false;
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", (c) => {
   b += c;
@@ -26,11 +28,14 @@ process.stdin.on("data", (c) => {
     const l = b.slice(0, n).trim(); b = b.slice(n + 1);
     if (!l) continue;
     const q = JSON.parse(l);
+    if (q.method === undefined) { if (q.id === "srv-ping" && q.result) pong = true; continue; }
     if (q.id === undefined) continue;
-    if (q.method === "initialize")
+    if (q.method === "initialize") {
       process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: q.id, method: "roots/list" }) + "\\n");
+      process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: "srv-ping", method: "ping" }) + "\\n");
+    }
     const result = q.method === "tools/list" ? { tools }
-      : q.method === "tools/call" ? { content: [{ type: "text", text: JSON.stringify({ server: name, tool: q.params.name, arguments: q.params.arguments, leaked: process.env.OCEAN_GATEWAY_TEST_SECRET ?? null }) }] }
+      : q.method === "tools/call" ? { content: [{ type: "text", text: JSON.stringify({ server: name, tool: q.params.name, arguments: q.params.arguments, leaked: process.env.OCEAN_GATEWAY_TEST_SECRET ?? null, pong }) }] }
       : {};
     process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: q.id, result }) + "\\n");
   }
@@ -91,6 +96,13 @@ test("the gateway routes namespaced tools and leaves out broken servers and pois
           },
         },
         { name: "search" },
+        {
+          name: "pick",
+          inputSchema: {
+            type: "object",
+            properties: { mode: { enum: ["fast", "sa​fe"] } },
+          },
+        },
       ]),
       member("broken", [], { args: ["-e", "process.exit(3)"] }),
       member("hung", [], { args: ["-e", "setInterval(() => {}, 1000)"] }),
@@ -143,6 +155,14 @@ test("the gateway routes namespaced tools and leaves out broken servers and pois
       ),
       log,
     );
+    assert.ok(
+      log.some((line) =>
+        /test\/beta tool pick hidden: hidden-unicode in inputSchema\.properties\.mode\.enum\[1\]/.test(
+          line,
+        ),
+      ),
+      log,
+    );
 
     const read = await gateway.handle({
       jsonrpc: "2.0",
@@ -150,22 +170,18 @@ test("the gateway routes namespaced tools and leaves out broken servers and pois
       method: "tools/call",
       params: { name: "beta__search", arguments: { q: "x" } },
     });
+    // The member's keepalive ping was answered.
     assert.deepEqual(echoed(read), {
       server: "beta",
       tool: "search",
       arguments: { q: "x" },
       leaked: null,
+      pong: true,
     });
 
-    const unapproved = await gateway.handle({
-      jsonrpc: "2.0",
-      id: 4,
-      method: "tools/call",
-      params: { name: "alpha__write", arguments: { path: "a" } },
-    });
-    assert.match(unapproved.error.message, /requires explicit approval/);
-
-    const approved = echoed(
+    // The gateway adds no authority: a write reaches its server with exactly the arguments the
+    // client sent — no approval stripped, none signed on the client's behalf.
+    const write = echoed(
       await gateway.handle({
         jsonrpc: "2.0",
         id: 5,
@@ -176,10 +192,11 @@ test("the gateway routes namespaced tools and leaves out broken servers and pois
         },
       }),
     );
-    assert.equal(approved.tool, "write");
-    assert.equal(approved.arguments.path, "a");
-    assert.equal(approved.arguments.approval.approved, true);
-    assert.equal(approved.arguments.approval.fingerprint.length, 64);
+    assert.equal(write.tool, "write");
+    assert.deepEqual(write.arguments, {
+      path: "a",
+      approval: { approved: true },
+    });
 
     for (const name of ["alpha__poisoned", "broken__anything"]) {
       const unknown = await gateway.handle({
@@ -417,8 +434,98 @@ test("ocean mcp gateway routes a client call to Ocean's own server", async () =>
       arguments: {},
     });
     assert.match(status.result.content[0].text, /"name":"Ocean"/);
+    // The server's own approval check still decides: a bare `approved: true` through the
+    // gateway is not a fingerprint, so the write is refused.
+    const promote = await request(4, "tools/call", {
+      name: "ocean__ocean_session_promote",
+      arguments: { sessionId: "s1", approval: { approved: true } },
+    });
+    assert.match(promote.error?.message ?? "", /fingerprint/);
   } finally {
     child.stdin.end();
     await new Promise((resolve) => child.once("exit", resolve));
   }
+});
+
+test("the stdio loop answers malformed lines instead of crashing", async () => {
+  const { PassThrough } = await import("node:stream");
+  const { serveMcpGateway } = await import("@ocean/market/mcp/mcp-gateway.js");
+  const input = new PassThrough();
+  const output = new PassThrough();
+  const lines = [];
+  output.setEncoding("utf8");
+  output.on("data", (chunk) => lines.push(...chunk.trim().split("\n")));
+  const served = serveMcpGateway(gatewayFor([]), input, output);
+  for (const line of [
+    "null",
+    "5",
+    '[{"jsonrpc":"2.0","id":1,"method":"ping"}]',
+    "not json",
+    '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"x","arguments":"str"}}',
+    '{"jsonrpc":"2.0","id":3,"method":"ping"}',
+  ])
+    input.write(`${line}\n`);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  input.end();
+  await served;
+  const responses = lines.map((line) => JSON.parse(line));
+  assert.deepEqual(
+    responses
+      .filter((response) => response.error)
+      .map((response) => JSON.stringify([response.id, response.error.code]))
+      .sort(),
+    [
+      "[2,-32602]",
+      "[null,-32600]",
+      "[null,-32600]",
+      "[null,-32600]",
+      "[null,-32700]",
+    ],
+  );
+  assert.ok(responses.some((response) => response.id === 3 && response.result));
+});
+
+test("gateway prefixes stay unique when capability names collide", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-mcp-prefixes-"));
+  const serversRoot = path.join(root, "mcp");
+  const indexFile = path.join(root, "index.json");
+  await mkdir(serversRoot);
+  await writeFile(
+    indexFile,
+    JSON.stringify({ schemaVersion: 1, name: "empty", capabilities: [] }),
+  );
+  for (const [file, capability] of [
+    ["1.json", "one/x"],
+    ["2.json", "a.b/x"],
+    ["3.json", "a_b/x"],
+  ])
+    await writeFile(
+      path.join(serversRoot, file),
+      JSON.stringify({
+        capability,
+        version: "1.0.0",
+        permissions: {
+          filesystem: { read: [], write: [] },
+          network: [],
+          env: [],
+          exec: ["npx"],
+        },
+        server: {
+          name: capability,
+          packages: [{ registryType: "npm", identifier: "@example/x" }],
+        },
+      }),
+    );
+  const { members } = await gatewayMembers({
+    serversRoot,
+    stateRoot: path.join(root, "state"),
+    indexFile,
+    env: { PATH: "/usr/bin:/bin" },
+    platform: "linux",
+    allowUnsandboxed: true,
+  });
+  assert.deepEqual(
+    members.map((member) => member.prefix),
+    ["x", "a_b_x", "a_b_x-2"],
+  );
 });

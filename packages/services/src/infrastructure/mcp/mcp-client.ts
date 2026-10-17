@@ -20,8 +20,9 @@ export type McpClientOptions = {
   env?: NodeJS.ProcessEnv;
   // false: the server gets only `env`, not this process's environment (sandboxed servers).
   inheritEnv?: boolean;
-  // true: the server's stderr goes to this process's stderr; otherwise it is drained.
-  forwardStderr?: boolean;
+  // Set: the server's stderr lines go to this process's stderr under this label; otherwise
+  // they are drained.
+  stderrLabel?: string;
   allowedTools?: string[];
 };
 
@@ -47,9 +48,19 @@ export class McpClient {
       stdio: "pipe",
     });
     // An unread stderr pipe fills up and stalls the server.
-    if (this.options.forwardStderr)
-      this.child.stderr.pipe(process.stderr, { end: false });
-    else this.child.stderr.resume();
+    const label = this.options.stderrLabel;
+    if (label) {
+      let pending = "";
+      this.child.stderr.setEncoding("utf8");
+      this.child.stderr.on("data", (chunk: string) => {
+        const lines = (pending + chunk).split("\n");
+        pending = lines.pop() ?? "";
+        for (const line of lines) process.stderr.write(`${label}: ${line}\n`);
+      });
+      this.child.stderr.on("end", () => {
+        if (pending) process.stderr.write(`${label}: ${pending}\n`);
+      });
+    } else this.child.stderr.resume();
     this.child.stdout.setEncoding("utf8");
     this.child.stdout.on("data", (chunk: string) => this.consume(chunk));
     this.child.once("error", (error) => this.failPending(error));
@@ -100,6 +111,17 @@ export class McpClient {
     return this.request("tools/call", { name, arguments: args });
   }
 
+  // For a proxy whose own client already gated the call: the arguments go to the server
+  // unchanged, so the server's own checks (such as an approval fingerprint) still decide.
+  async forwardToolCall(
+    name: string,
+    arguments_: Record<string, unknown>,
+  ): Promise<unknown> {
+    if (!this.isAllowed(name))
+      throw new Error(`MCP tool is not allowed: ${name}`);
+    return this.request("tools/call", { name, arguments: arguments_ });
+  }
+
   close(): void {
     if (this.child) {
       this.child.stdin.destroy();
@@ -148,8 +170,23 @@ export class McpClient {
       } catch {
         continue;
       }
-      // Notifications and server-to-client requests are not answers to ours.
-      if (response.id === undefined || response.method !== undefined) continue;
+      if (response.id === undefined) continue;
+      // A request from the server: answer `ping`, decline the rest (no client capabilities).
+      if (response.method !== undefined) {
+        this.send(
+          response.method === "ping"
+            ? { jsonrpc: "2.0", id: response.id, result: {} }
+            : {
+                jsonrpc: "2.0",
+                id: response.id,
+                error: {
+                  code: -32601,
+                  message: `Unsupported method: ${response.method}`,
+                },
+              },
+        );
+        continue;
+      }
       const pending = this.pending.get(response.id);
       if (!pending) continue;
       this.pending.delete(response.id);

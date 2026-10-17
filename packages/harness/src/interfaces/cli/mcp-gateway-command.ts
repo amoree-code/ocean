@@ -26,7 +26,7 @@ export async function runMcpGatewayCommand(): Promise<void> {
         cwd: member.cwd,
         env: member.env,
         inheritEnv: member.inheritEnv,
-        forwardStderr: true,
+        stderrLabel: `ocean mcp gateway [${member.capability}]`,
       }),
     version: await oceanVersion(),
     log,

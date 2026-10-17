@@ -33,15 +33,19 @@ ocean mcp gateway-config
   by editing a client config. Remote servers are not proxied; the gateway logs their URL.
 - **Names:** tools are exposed as `<server>__<tool>`, for example `ocean__ocean_status` or
   `obsidian__obsidian_read`.
-- **Runtime scan:** each tool's description and every description inside its input schema are
-  scanned with the same rules as an install. A flagged tool is hidden and the finding is logged.
-- **Writes:** a tool annotated `readOnlyHint: false` runs only when its arguments carry
-  `"approval": {"approved": true}`. The gateway then attaches the approval fingerprint that the
-  server checks.
+- **Runtime scan:** each tool's name, its description, and every key and string inside its input
+  schema (property names, titles, enum values, defaults) are scanned with the same rules as an
+  install. A flagged tool is hidden and the finding is logged.
+- **Writes:** the gateway adds no authority and removes none. A call reaches its server with
+  exactly the arguments the client sent. So a server's own approval check (such as
+  `ocean_session_promote`'s fingerprint) decides as it would on a direct connection, and the
+  client's permission prompt stays the human gate.
 - **Failures:** a server that exits or does not answer within 15 s is left out and logged.
-  The other servers keep working.
+  The other servers keep working. A server that dies later is not restarted; its calls fail
+  until the client restarts the gateway.
 
-Logs go to stderr, which MCP clients keep as the server's log.
+Logs go to stderr, which MCP clients keep as the server's log. Each member's own stderr lines
+are labelled `ocean mcp gateway [<capability>]`.
 
 ## Obsidian sync flow
 

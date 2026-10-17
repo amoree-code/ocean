@@ -33,10 +33,9 @@ export type GatewaySkip = { capability: string; reason: string };
 export type GatewayClient = {
   connect(): Promise<void>;
   listTools(): Promise<McpTool[]>;
-  callTool(
+  forwardToolCall(
     name: string,
     args: Record<string, unknown>,
-    approval: boolean,
   ): Promise<unknown>;
   close(): void;
 };
@@ -48,7 +47,9 @@ function namespaceFor(capability: string, taken: Set<string>): string {
   const clean = (value: string) =>
     value.toLowerCase().replace(/[^a-z0-9_-]+/g, "_");
   const short = clean(capability.split("/").at(-1) ?? capability);
-  const prefix = taken.has(short) ? clean(capability) : short;
+  let prefix = taken.has(short) ? clean(capability) : short;
+  for (let suffix = 2; taken.has(prefix); suffix++)
+    prefix = `${clean(capability)}-${suffix}`;
   taken.add(prefix);
   return prefix;
 }
@@ -161,26 +162,30 @@ export async function gatewayMembers(options: {
   return { members, skipped };
 }
 
-// Every description a model reads for a tool: its own and each one inside its input schema.
-function toolDescriptions(tool: McpTool): { at: string; text: string }[] {
-  const texts = tool.description
-    ? [{ at: "description", text: tool.description }]
-    : [];
+// Every text a model reads for a tool: its name, its description and each key and string inside
+// its input schema (property names, titles, enums and defaults included).
+function toolTexts(tool: McpTool): { at: string; text: string }[] {
+  const texts: { at: string; text: string }[] = [];
   const walk = (value: unknown, at: string): void => {
-    if (Array.isArray(value))
+    if (typeof value === "string") texts.push({ at, text: value });
+    else if (Array.isArray(value))
       value.forEach((item, index) => {
         walk(item, `${at}[${index}]`);
       });
     else if (value && typeof value === "object")
       for (const [key, item] of Object.entries(value)) {
-        if (key === "description" && typeof item === "string")
-          texts.push({ at: `${at}.description`, text: item });
-        else walk(item, `${at}.${key}`);
+        texts.push({ at: `${at} key`, text: key });
+        walk(item, `${at}.${key}`);
       }
   };
+  walk(tool.name, "name");
+  walk(tool.description, "description");
   walk(tool.inputSchema, "inputSchema");
   return texts;
 }
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
 
 function withTimeout<T>(
   promise: Promise<T>,
@@ -220,10 +225,13 @@ type Response = {
   result?: unknown;
   error?: { code: number; message: string };
 };
-type Route = { client: GatewayClient; tool: string; write: boolean };
+type Route = { client: GatewayClient; tool: string };
 
 // One MCP endpoint in front of many servers. Tools are exposed as `<prefix>__<tool>`; a tool
-// whose descriptions carry injected instructions is hidden, since clients read them as prompt.
+// whose texts carry injected instructions is hidden, since clients read them as prompt. The
+// gateway adds no authority and removes none: a call reaches its server with the arguments the
+// client sent, so the server's own checks (an approval fingerprint, say) decide as they would
+// on a direct connection, and the client's permission prompt stays the human gate.
 export class McpGateway {
   readonly #routes = new Map<string, Route>();
   readonly #tools: McpTool[] = [];
@@ -279,7 +287,7 @@ export class McpGateway {
   }
 
   #expose(member: GatewayMember, client: GatewayClient, tool: McpTool): void {
-    const findings = toolDescriptions(tool).flatMap(({ at, text }) =>
+    const findings = toolTexts(tool).flatMap(({ at, text }) =>
       scanText(at, text),
     );
     if (findings.length) {
@@ -295,11 +303,7 @@ export class McpGateway {
       );
       return;
     }
-    this.#routes.set(name, {
-      client,
-      tool: tool.name,
-      write: tool.annotations?.readOnlyHint === false,
-    });
+    this.#routes.set(name, { client, tool: tool.name });
     this.#tools.push({ ...tool, name });
   }
 
@@ -312,31 +316,33 @@ export class McpGateway {
     await this.start();
     const route = this.#routes.get(name);
     if (!route) throw new GatewayError(-32602, `Unknown MCP tool: ${name}`);
-    if (!route.write) return route.client.callTool(route.tool, args, false);
-    // The rule every Ocean client applies: a tool that declares it writes runs only on an explicit
-    // approval. The client then attaches the approval fingerprint the server checks.
-    const { approval, ...rest } = args;
-    if ((approval as { approved?: unknown } | undefined)?.approved !== true)
-      throw new GatewayError(
-        -32000,
-        `MCP write requires explicit approval: ${name}. Once the user has confirmed, call it again with "approval": {"approved": true} in its arguments.`,
-      );
-    return route.client.callTool(route.tool, rest, true);
+    return route.client.forwardToolCall(route.tool, args);
   }
 
-  async handle(request: Request): Promise<Response | null> {
-    // Notifications get no answer.
-    if (request.id === undefined) return null;
-    try {
+  async handle(request: unknown): Promise<Response | null> {
+    // MCP 2025-06-18 has no batches; anything but one request object is invalid.
+    if (!isRecord(request))
       return {
         jsonrpc: "2.0",
-        id: request.id,
-        result: await this.#answer(request),
+        id: null,
+        error: { code: -32600, message: "Invalid Request" },
       };
+    // Notifications get no answer.
+    if (request.id === undefined) return null;
+    const id =
+      typeof request.id === "string" || typeof request.id === "number"
+        ? request.id
+        : null;
+    return this.#respond(request as Request, id);
+  }
+
+  async #respond(request: Request, id: Response["id"]): Promise<Response> {
+    try {
+      return { jsonrpc: "2.0", id, result: await this.#answer(request) };
     } catch (error) {
       return {
         jsonrpc: "2.0",
-        id: request.id,
+        id,
         error: {
           code: error instanceof GatewayError ? error.code : -32000,
           message: errorMessage(error),
@@ -363,13 +369,14 @@ export class McpGateway {
       case "tools/list":
         return { tools: await this.tools() };
       case "tools/call": {
-        const name = request.params?.name;
-        if (typeof name !== "string")
-          throw new GatewayError(-32602, "tools/call needs a tool name");
-        return this.call(
-          name,
-          (request.params?.arguments ?? {}) as Record<string, unknown>,
-        );
+        const params = isRecord(request.params) ? request.params : {};
+        const args = params.arguments ?? {};
+        if (typeof params.name !== "string" || !isRecord(args))
+          throw new GatewayError(
+            -32602,
+            "tools/call needs a tool name and an arguments object",
+          );
+        return this.call(params.name, args);
       }
       default:
         throw new GatewayError(
@@ -410,9 +417,9 @@ export async function serveMcpGateway(
       const line = buffer.slice(0, newline).trim();
       buffer = buffer.slice(newline + 1);
       if (!line) continue;
-      let request: Request;
+      let request: unknown;
       try {
-        request = JSON.parse(line) as Request;
+        request = JSON.parse(line);
       } catch {
         write({
           jsonrpc: "2.0",
