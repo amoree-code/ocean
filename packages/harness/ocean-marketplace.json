@@ -1,0 +1,307 @@
+{
+  "schemaVersion": 1,
+  "name": "ocean-engine",
+  "capabilities": [
+    {
+      "kind": "skill",
+      "name": "dev.ocean.skills.business-logic",
+      "version": "0.3.7",
+      "engines": {
+        "ocean": ">=0.3.7"
+      },
+      "source": {
+        "type": "path",
+        "path": "skills/core/business-logic"
+      },
+      "integrity": {
+        "sha256": "31b1ffc059cb76384100e294c9eeda0c977efa58b732fdcc6120cefea9151697"
+      },
+      "spec": {
+        "directory": "business-logic"
+      }
+    },
+    {
+      "kind": "skill",
+      "name": "dev.ocean.skills.catch-up",
+      "version": "0.3.7",
+      "engines": {
+        "ocean": ">=0.3.7"
+      },
+      "source": {
+        "type": "path",
+        "path": "skills/core/catch-up"
+      },
+      "integrity": {
+        "sha256": "724b99fb618118cdd95b023d6c8c7e9537031d8042038d127bf5f5389a3feebc"
+      },
+      "spec": {
+        "directory": "catch-up"
+      }
+    },
+    {
+      "kind": "skill",
+      "name": "dev.ocean.skills.core-thinking",
+      "version": "0.3.7",
+      "engines": {
+        "ocean": ">=0.3.7"
+      },
+      "source": {
+        "type": "path",
+        "path": "skills/core/core-thinking"
+      },
+      "integrity": {
+        "sha256": "7dc3991627849cba9148fc5d0c921faa347ed31499029d069940e78c980571d3"
+      },
+      "spec": {
+        "directory": "core-thinking"
+      }
+    },
+    {
+      "kind": "skill",
+      "name": "dev.ocean.skills.design-thinking",
+      "version": "0.3.7",
+      "engines": {
+        "ocean": ">=0.3.7"
+      },
+      "source": {
+        "type": "path",
+        "path": "skills/core/design-thinking"
+      },
+      "integrity": {
+        "sha256": "bb4d35f5135aa219f57935b918bebb74cd0d99851945abd05facc98f307b6b64"
+      },
+      "spec": {
+        "directory": "design-thinking"
+      }
+    },
+    {
+      "kind": "skill",
+      "name": "dev.ocean.skills.graft",
+      "version": "0.3.7",
+      "engines": {
+        "ocean": ">=0.3.7"
+      },
+      "source": {
+        "type": "path",
+        "path": "skills/core/graft"
+      },
+      "integrity": {
+        "sha256": "3144c8c50226702de281618ffb189290856c9aa438e0da6fdb8bba52f3a5a143"
+      },
+      "spec": {
+        "directory": "graft"
+      }
+    },
+    {
+      "kind": "skill",
+      "name": "dev.ocean.skills.loop",
+      "version": "0.3.7",
+      "engines": {
+        "ocean": ">=0.3.7"
+      },
+      "source": {
+        "type": "path",
+        "path": "skills/core/loop"
+      },
+      "integrity": {
+        "sha256": "a792828f2efcc546ba4709b9a1a72d37fc3e63b7f674b057ca10e889a53f1dda"
+      },
+      "spec": {
+        "directory": "loop"
+      }
+    },
+    {
+      "kind": "skill",
+      "name": "dev.ocean.skills.session-handoff",
+      "version": "0.3.7",
+      "engines": {
+        "ocean": ">=0.3.7"
+      },
+      "source": {
+        "type": "path",
+        "path": "skills/core/session-handoff"
+      },
+      "integrity": {
+        "sha256": "912d30e379f5a4ae7486cef723c46bb7752c71268ea4710c99ccf4668c84d49a"
+      },
+      "spec": {
+        "directory": "session-handoff"
+      }
+    },
+    {
+      "kind": "skill",
+      "name": "dev.ocean.skills.use-browser",
+      "version": "0.3.7",
+      "engines": {
+        "ocean": ">=0.3.7"
+      },
+      "source": {
+        "type": "path",
+        "path": "skills/core/use-browser"
+      },
+      "integrity": {
+        "sha256": "e79cdc8809b95d7896e33a18af6f380076862045480ac692ea66f468cfb660fb"
+      },
+      "spec": {
+        "directory": "use-browser"
+      }
+    },
+    {
+      "kind": "skill",
+      "name": "dev.ocean.skills.verification",
+      "version": "0.3.7",
+      "engines": {
+        "ocean": ">=0.3.7"
+      },
+      "source": {
+        "type": "path",
+        "path": "skills/core/verification"
+      },
+      "integrity": {
+        "sha256": "ff7c3ddf015743a1939a914edb5bcaae37763192f214d8e4c79fb883f5500604"
+      },
+      "spec": {
+        "directory": "verification"
+      }
+    },
+    {
+      "kind": "mcp",
+      "name": "dev.ocean/obsidian",
+      "description": "Ocean's Obsidian vault bridge over MCP.",
+      "version": "0.3.7",
+      "engines": {
+        "ocean": ">=0.3.7"
+      },
+      "source": {
+        "type": "path",
+        "path": "market/mcp/obsidian"
+      },
+      "integrity": {
+        "sha256": "e3b96130da7b6af6ffbb50f9c5c494cd29818fb2094dc3ca9f4151ed7e27f297"
+      },
+      "spec": {
+        "name": "dev.ocean/obsidian",
+        "description": "Read and sync an Obsidian vault through Ocean.",
+        "packages": [
+          {
+            "registryType": "ocean-engine",
+            "identifier": "ocean",
+            "transport": {
+              "type": "stdio"
+            },
+            "packageArguments": [
+              {
+                "type": "positional",
+                "value": "obsidian"
+              },
+              {
+                "type": "positional",
+                "value": "mcp"
+              }
+            ]
+          }
+        ],
+        "_meta": {
+          "dev.ocean": {
+            "clientKey": "ocean"
+          }
+        }
+      }
+    },
+    {
+      "kind": "mcp",
+      "name": "dev.ocean/ocean",
+      "description": "Ocean's own MCP server: workspace status, tasks, handoffs, sessions and the brain.",
+      "version": "0.3.7",
+      "engines": {
+        "ocean": ">=0.3.7"
+      },
+      "source": {
+        "type": "path",
+        "path": "market/mcp/ocean"
+      },
+      "integrity": {
+        "sha256": "4c1a7482efd8e1a96393a4ca913335b111e4744106e2b9230948360143aea3aa"
+      },
+      "spec": {
+        "name": "dev.ocean/ocean",
+        "description": "Ocean workspace, tasks, sessions and brain over MCP.",
+        "packages": [
+          {
+            "registryType": "ocean-engine",
+            "identifier": "ocean",
+            "transport": {
+              "type": "stdio"
+            },
+            "packageArguments": [
+              {
+                "type": "positional",
+                "value": "mcp"
+              },
+              {
+                "type": "positional",
+                "value": "serve"
+              }
+            ]
+          }
+        ],
+        "_meta": {
+          "dev.ocean": {
+            "clientKey": "ocean"
+          }
+        }
+      }
+    },
+    {
+      "kind": "mcp",
+      "name": "com.microsoft/playwright-mcp",
+      "description": "Playwright browser automation through the browser extension.",
+      "permissions": {
+        "network": [
+          "registry.npmjs.org",
+          "localhost",
+          "127.0.0.1"
+        ],
+        "exec": [
+          "npx"
+        ]
+      },
+      "version": "0.3.7",
+      "engines": {
+        "ocean": ">=0.3.7"
+      },
+      "source": {
+        "type": "path",
+        "path": "market/mcp/playwright"
+      },
+      "integrity": {
+        "sha256": "8369120578278dae45a21aac483766b6cbc26be2b3b36f79b741c5199e53f9d4"
+      },
+      "spec": {
+        "name": "com.microsoft/playwright-mcp",
+        "description": "Browser automation with Playwright.",
+        "packages": [
+          {
+            "registryType": "npm",
+            "identifier": "@playwright/mcp",
+            "version": "latest",
+            "transport": {
+              "type": "stdio"
+            },
+            "packageArguments": [
+              {
+                "type": "positional",
+                "value": "--extension"
+              }
+            ]
+          }
+        ],
+        "_meta": {
+          "dev.ocean": {
+            "clientKey": "playwright"
+          }
+        }
+      }
+    }
+  ]
+}

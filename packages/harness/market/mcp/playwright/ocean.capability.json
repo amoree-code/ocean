@@ -1,0 +1,23 @@
+{
+  "kind": "mcp",
+  "name": "com.microsoft/playwright-mcp",
+  "description": "Playwright browser automation through the browser extension.",
+  "permissions": {
+    "network": ["registry.npmjs.org", "localhost", "127.0.0.1"],
+    "exec": ["npx"]
+  },
+  "server": {
+    "name": "com.microsoft/playwright-mcp",
+    "description": "Browser automation with Playwright.",
+    "packages": [
+      {
+        "registryType": "npm",
+        "identifier": "@playwright/mcp",
+        "version": "latest",
+        "transport": { "type": "stdio" },
+        "packageArguments": [{ "type": "positional", "value": "--extension" }]
+      }
+    ],
+    "_meta": { "dev.ocean": { "clientKey": "playwright" } }
+  }
+}
