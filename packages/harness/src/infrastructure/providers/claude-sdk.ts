@@ -1,6 +1,5 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import path from "node:path";
-import { StringDecoder } from "node:string_decoder";
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import type {
   HeadlessResult,
@@ -8,6 +7,7 @@ import type {
 } from "@ocean/core/domain/process/process-events.js";
 import type { ProviderRequest } from "@ocean/core/domain/providers/provider.js";
 import { DEFAULT_MAX_OUTPUT_BYTES } from "../process/cli-process.js";
+import { ownsGroup, superviseProcess } from "../process/process-supervisor.js";
 import { resolveOriginalExecutable } from "./provider-registry.js";
 
 // The plan's model, unless it leaves the client's own default ("provider-managed" or absent).
@@ -44,68 +44,16 @@ export function claudeSdkOptions(
   };
 }
 
-// Claude Code runs as its own process group, so a timeout or budget stop ends everything it
-// started (a tool's subprocess too), not just the leader: a surviving descendant would hold the
-// output pipe open and keep the run waiting.
-const ownGroup = process.platform !== "win32";
-const forwardedSignals: NodeJS.Signals[] = ["SIGINT", "SIGTERM", "SIGHUP"];
-
-function signalTree(child: ChildProcess | undefined, signal: NodeJS.Signals) {
-  if (!child?.pid) return;
-  try {
-    if (ownGroup) process.kill(-child.pid, signal);
-    else child.kill(signal);
-  } catch {
-    // Already gone.
-  }
-}
-
-// Out of the terminal's process group, a run no longer receives this process's Ctrl+C or
-// kill directly; pass them on, then let the signal do what it would have done here. One set of
-// listeners serves every run in flight, so many concurrent runs never trip Node's listener warning.
-const active = new Set<ChildProcess>();
-let listening = false;
-const onExit = () => {
-  for (const child of active) signalTree(child, "SIGTERM");
-};
-const onSignal = (signal: NodeJS.Signals) => {
-  onExit();
-  unlisten();
-  if (process.listenerCount(signal) === 0) process.kill(process.pid, signal);
-};
-function unlisten(): void {
-  if (!listening) return;
-  listening = false;
-  process.off("exit", onExit);
-  for (const signal of forwardedSignals) process.off(signal, onSignal);
-}
-function endWithThisProcess(child: ChildProcess): () => void {
-  if (!listening) {
-    listening = true;
-    process.once("exit", onExit);
-    for (const signal of forwardedSignals) process.on(signal, onSignal);
-  }
-  active.add(child);
-  return () => {
-    active.delete(child);
-    if (active.size === 0) unlisten();
-  };
-}
-
 function exited(child: ChildProcess): Promise<number | null> {
   if (child.exitCode !== null || child.signalCode !== null)
     return Promise.resolve(child.exitCode);
   return new Promise((resolve) => child.once("exit", resolve));
 }
 
-// How long output still in the pipe gets, once Claude itself has exited, before whatever else
-// holds the pipe open (a background process it left behind) is stopped and no longer awaited.
-const LINGER_MS = 500;
-
 // One headless Claude turn through the Agent SDK, with the same contract as every CLI provider:
 // Ocean spawns the process (so the session store gets its pid and its environment is the
 // plan's), every SDK message becomes a `json` event, and the run's timeout (124) and output
-// budget (125) end it exactly as they end any other provider.
+// budget (125) end it exactly as they end any other provider, through the same supervisor.
 export async function runClaudeSdk(
   request: ProviderRequest,
 ): Promise<HeadlessResult> {
@@ -114,78 +62,27 @@ export async function runClaudeSdk(
   const { query } = await import("@anthropic-ai/claude-agent-sdk");
   const abortController = new AbortController();
   const events: RuntimeEvent[] = [];
-  const maxOutputBytes = request.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
-  let stderr = "";
-  let outputBytes = 0;
-  let timedOut = false;
-  let outputLimitExceeded = false;
-  let child: ChildProcess | undefined;
-  let release = () => {};
-  let spawnError: Error | undefined;
-  // Settles once a stop has been forced. After that the run no longer waits on the SDK, whose
-  // message stream may never settle once its process and pipes are gone.
-  let forced = () => {};
-  const stopped = new Promise<void>((resolve) => {
-    forced = resolve;
-  });
-  // Whatever still holds the pipes (a descendant that left the group) no longer holds the run.
-  const letGo = (): void => {
-    child?.stdout?.destroy();
-    child?.stderr?.destroy();
-    forced();
-  };
   let terminating = false;
-  let killTimer: NodeJS.Timeout | undefined;
-  let lingerTimer: NodeJS.Timeout | undefined;
-  const terminate = (): void => {
-    if (terminating) return;
-    terminating = true;
-    abortController.abort();
-    signalTree(child, "SIGTERM");
-    // Not unref'd: this timer keeps the process alive until the run has been let go.
-    killTimer = setTimeout(() => {
-      signalTree(child, "SIGKILL");
-      letGo();
-    }, 100);
-  };
-  // Raw stdout and stderr bytes count against one budget as they arrive, before the SDK
-  // buffers a line, so a huge or unterminated line cannot grow past the cap.
-  const withinBudget = (bytes: number): boolean => {
-    if (outputLimitExceeded) return false;
-    if (outputBytes + bytes > maxOutputBytes) {
-      outputLimitExceeded = true;
-      terminate();
-      return false;
-    }
-    outputBytes += bytes;
-    return true;
-  };
-  // Lines that are not JSON never reach the SDK's messages (a crash notice, a plain-text
-  // warning); keep them as text events, as the CLI runner does.
-  const decoder = new StringDecoder("utf8");
-  let pending = "";
-  const emitText = (line: string): void => {
-    if (!line) return;
-    try {
-      JSON.parse(line);
-    } catch {
-      const event: RuntimeEvent = { type: "text", data: line };
-      events.push(event);
-      request.onEvent?.(event);
-    }
-  };
-  const teeStdout = (chunk: Buffer): void => {
-    pending += decoder.write(chunk);
-    const lines = pending.split(/\r?\n/);
-    pending = lines.pop() ?? "";
-    for (const line of lines) emitText(line);
-  };
-  // Armed until the process has closed, not just until the SDK stops yielding.
-  const timer = setTimeout(() => {
-    timedOut = true;
-    terminate();
-  }, request.timeoutMs ?? 60_000);
-
+  const supervision = superviseProcess({
+    timeoutMs: request.timeoutMs ?? 60_000,
+    maxOutputBytes: request.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES,
+    onTerminate: () => {
+      terminating = true;
+      abortController.abort();
+    },
+    // JSON lines reach us as the SDK's messages; lines that are not JSON never do (a crash
+    // notice, a plain-text warning), so keep those as text events, as the CLI runner does.
+    onLine: (line) => {
+      try {
+        JSON.parse(line);
+      } catch {
+        const event: RuntimeEvent = { type: "text", data: line };
+        events.push(event);
+        request.onEvent?.(event);
+      }
+    },
+  });
+  let child: ChildProcess | undefined;
   let failure: string | undefined;
   let errorResult = false;
   let code: number | null = null;
@@ -202,29 +99,12 @@ export async function runClaudeSdk(
               env: options.env,
               signal: options.signal,
               stdio: ["pipe", "pipe", "pipe"],
-              detached: ownGroup,
+              detached: ownsGroup,
               windowsHide: true,
             });
             child = spawned;
-            if (ownGroup) release = endWithThisProcess(spawned);
+            supervision.attach(spawned);
             if (spawned.pid) request.onSpawn?.(spawned.pid);
-            // A failed start (no such executable) is a rejected run, as for the CLI runner; the abort
-            // of a stop we asked for is not a failure.
-            spawned.once("error", (error) => {
-              if (terminating) return;
-              spawnError = error;
-              letGo();
-            });
-            spawned.once("exit", () => {
-              if (!terminating) lingerTimer = setTimeout(letGo, LINGER_MS);
-            });
-            spawned.stdout.on("data", (chunk: Buffer) => {
-              if (withinBudget(chunk.byteLength)) teeStdout(chunk);
-            });
-            spawned.stderr.on("data", (chunk: Buffer) => {
-              if (withinBudget(chunk.byteLength))
-                stderr += chunk.toString("utf8");
-            });
             return spawned;
           },
         },
@@ -239,38 +119,29 @@ export async function runClaudeSdk(
     })().catch((error: unknown) => {
       failure = error instanceof Error ? error.message : String(error);
     });
-    await Promise.race([consumed, stopped]);
-    if (!spawnError && child) code = await exited(child);
+    // After a forced stop the run no longer waits on the SDK, whose message stream may never
+    // settle once its process and pipes are gone.
+    await Promise.race([consumed, supervision.released]);
+    if (!supervision.spawnError && child) code = await exited(child);
   } finally {
-    clearTimeout(timer);
-    clearTimeout(lingerTimer);
-    clearTimeout(killTimer);
-    // The leader is gone; end anything it left in the group, then stop watching it.
-    signalTree(child, "SIGKILL");
-    release();
+    supervision.finish();
   }
-  if (spawnError && !timedOut) throw spawnError;
-  emitText(pending + decoder.end());
+  if (supervision.spawnError && !supervision.timedOut)
+    throw supervision.spawnError;
+  supervision.flush();
+  const stopped = supervision.timedOut || supervision.outputLimitExceeded;
   return {
-    exitCode: timedOut
-      ? 124
-      : outputLimitExceeded
-        ? 125
-        : // A process ended by a signal has no exit code: that is a failure, as for every provider.
-          !child || code === null
-          ? 1
-          : code !== 0
-            ? code
-            : failure || errorResult
-              ? 1
-              : 0,
+    exitCode:
+      stopped || !child || code === null
+        ? supervision.exitCode(child ? code : null)
+        : code !== 0
+          ? code
+          : failure || errorResult
+            ? 1
+            : 0,
     events,
-    stderr: timedOut
-      ? `${stderr}Process timed out.\n`
-      : outputLimitExceeded
-        ? `${stderr}Output budget exceeded.\n`
-        : failure
-          ? `${stderr}${failure}\n`
-          : stderr,
+    stderr:
+      supervision.stderr +
+      (stopped ? supervision.stopNote : failure ? `${failure}\n` : ""),
   };
 }

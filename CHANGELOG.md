@@ -6,6 +6,7 @@ Docs-only or CI-only PRs may add the `skip-changelog` label instead.
 
 ## Unreleased
 
+- refactor(T-273): one process supervisor ends every headless provider run (timeout 124, output budget 125, process group, signal forwarding, line splitting); the CLI providers now stop their whole process group on a stop and no longer wait on a background process holding their output (#PR)
 - feat(T-223): headless Claude runs go through the Claude Agent SDK instead of `claude -p` argument building; Claude Code's own system prompt, process-group stops (timeout 124, output budget 125), plain-text stdout kept as events, spawn failure rejects the run (#188)
 - feat(T-223): each task-loop iteration runs as a LangGraph graph (`work → verify → record`) with per-loop crash-safe checkpoints under `bridge/loop-checkpoints/`; a loop killed mid-run resumes without repeating provider calls (#187)
 - feat(T-223): `ocean mcp gateway` — one MCP endpoint for every registered server (engine and marketplace-installed), namespaced `<server>__<tool>`, poisoned tool descriptions hidden, write tools keep the explicit-approval gate; `ocean mcp gateway-config` prints client config (#186)
