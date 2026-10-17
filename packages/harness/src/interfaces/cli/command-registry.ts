@@ -46,9 +46,11 @@ import {
   simulateRetention,
 } from "@ocean/loop/sessions/session-retention.js";
 import {
+  mcpClientConfig,
   oceanMcpConfig,
   playwrightMcpConfig,
 } from "@ocean/market/mcp/mcp-connection.js";
+import { GATEWAY_CAPABILITY } from "@ocean/market/mcp/mcp-gateway.js";
 import {
   coreSkillReports,
   syncCoreSkills,
@@ -144,6 +146,7 @@ import { runIdeaCommand } from "./idea-command.js";
 import { intercept } from "./intercept-command.js";
 import { runLayoutCommand } from "./layout-command.js";
 import { runMarketCommand } from "./market-command.js";
+import { runMcpGatewayCommand } from "./mcp-gateway-command.js";
 import { runMemoryCommand } from "./memory-command.js";
 import { runMigrateCommand } from "./migrate-command.js";
 import { runObserveCommand } from "./observe-command.js";
@@ -417,14 +420,19 @@ async function commandMcp(): Promise<void> {
     console.log(JSON.stringify(oceanMcpConfig(), null, 2));
   else if (action === "playwright-config")
     console.log(JSON.stringify(playwrightMcpConfig(), null, 2));
+  else if (action === "gateway-config")
+    console.log(JSON.stringify(mcpClientConfig(GATEWAY_CAPABILITY), null, 2));
   else if (action === "serve")
     await runOceanMcpServer({
       brainIndex: defaultBrainIndexPort,
       sessionStoreFactory: defaultSessionStoreFactory,
       wrapperManager: defaultWrapperManager,
     });
+  else if (action === "gateway") await runMcpGatewayCommand();
   else {
-    console.error("Usage: ocean mcp config|playwright-config|serve");
+    console.error(
+      "Usage: ocean mcp config|playwright-config|gateway-config|serve|gateway",
+    );
     process.exitCode = 1;
   }
 }
