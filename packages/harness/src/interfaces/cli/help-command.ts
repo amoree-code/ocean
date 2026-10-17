@@ -7,7 +7,7 @@ const commandGroups = [
     "Execution",
     "run, profiles, session, service, intercept, operate, gateway, schedule",
   ],
-  ["Providers", "client, install, update, remove, auth, mcp, browser"],
+  ["Providers", "client, install, update, remove, auth, mcp, market, browser"],
   [
     "Knowledge",
     "memory, observe, capture, handoff, idea, daily, skill, catalog",
