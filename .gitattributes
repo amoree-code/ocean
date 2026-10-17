@@ -1,0 +1,5 @@
+# The engine marketplace index pins these payloads by content digest
+# (packages/harness/ocean-marketplace.json); CRLF on checkout would change every digest.
+packages/harness/skills/core/** text eol=lf
+packages/harness/market/** text eol=lf
+packages/harness/ocean-marketplace.json text eol=lf

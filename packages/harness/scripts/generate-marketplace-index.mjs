@@ -4,14 +4,12 @@
 // drift from the files it pins. `--check` fails instead of writing when it is out of date.
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { marketplaceIndexSchema } from "@ocean/core/domain/capabilities/capability-manifest.js";
 import { contentDigest } from "@ocean/market/capability/content-digest.js";
 
 const checkOnly = process.argv.includes("--check");
-const engine = path.resolve(
-  path.dirname(new URL(import.meta.url).pathname),
-  "..",
-);
+const engine = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const marketDir = path.join(engine, "market");
 const indexPath = path.join(engine, "ocean-marketplace.json");
 const { version } = JSON.parse(
