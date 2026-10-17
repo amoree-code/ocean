@@ -18,32 +18,13 @@ import {
 import { runAgent } from "../runs/run-agent.js";
 import { checkpointTask } from "../tasks/checkpoint-task.js";
 import { type CommandRunner, verifyTask } from "../tasks/verify-task.js";
+import type { IterationSteps } from "./iteration-graph.js";
+import type { TaskLoop } from "./task-loop-record.js";
 
-type TaskLoopStatus = "active" | "paused" | "completed" | "failed" | "stopped";
-export type TaskLoop = {
-  id: string;
-  taskId: string;
-  // The project the loop started in (null: not inside one). Optional: loops written before
-  // task ids carried a prefix have none and find their task by id alone.
-  projectId?: string | null;
-  profile: string;
-  prompt: string;
-  cwd: string;
-  status: TaskLoopStatus;
-  approved: boolean;
-  maxIterations: number;
-  intervalMs: number;
-  maxAttempts: number;
-  iterations: number;
-  failures: number;
-  nextRunAt: string;
-  lastSessionId: string | null;
-  lastError: string | null;
-  checkpoint: string;
-  resultPath: string | null;
-};
+export type { TaskLoop } from "./task-loop-record.js";
 
 const loopsFile = () => oceanPath(SYSTEM_DIR, "loops.json");
+const checkpointsDir = () => oceanPath(SYSTEM_DIR, "loop-checkpoints");
 
 export async function listTaskLoops(): Promise<TaskLoop[]> {
   try {
@@ -107,87 +88,164 @@ export async function runTaskLoopsOnce(
   runtime: AgentRuntimeDeps,
   options: { verifyRun?: CommandRunner } = {},
 ): Promise<string[]> {
+  // LangGraph loads only when loops actually run, not on every `ocean` command.
+  const { FileCheckpointSaver, iterationGraph, keepRunsLocal } = await import(
+    "./iteration-graph.js"
+  );
+  keepRunsLocal();
+  const checkpointer = await FileCheckpointSaver.open(checkpointsDir());
+  const graph = iterationGraph(
+    iterationSteps(cwd, runtime, options),
+    checkpointer,
+  );
   const loops = await listTaskLoops();
   const ran: string[] = [];
   for (const loop of loops) {
-    if (loop.status !== "active" || Date.parse(loop.nextRunAt) > Date.now())
-      continue;
-    if (loop.iterations >= loop.maxIterations) {
-      loop.status = "failed";
-      loop.lastError = "iteration budget exhausted";
-      continue;
-    }
-    const sessionId = randomUUID();
-    loop.iterations += 1;
-    loop.lastSessionId = sessionId;
+    const config = { configurable: { thread_id: loop.id } };
     try {
-      const session = await runAgent(
-        {
-          sessionId,
-          profileName: loop.profile,
-          prompt: `${loop.prompt}\n\nLoop checkpoint: ${loop.checkpoint}\nWork only on task ${loop.taskId}. Complete one bounded action, verify it, and record the next checkpoint.`,
-          cwd: loop.cwd || cwd,
-          taskId: loop.taskId,
-          runContract: {
-            runId: loop.id,
+      const saved = await graph.getState(config);
+      const reached = saved.values.loop as TaskLoop | undefined;
+      if (reached && ["stopped", "completed", "failed"].includes(loop.status)) {
+        // Stopped (or finished) since the process died: its iteration is dropped, not resumed.
+        await checkpointer.deleteThread(loop.id);
+        continue;
+      }
+      if (reached && saved.next.length === 0) {
+        // The iteration finished but its result never reached loops.json: take it, don't redo it.
+        Object.assign(loop, reached);
+        await saveLoops(loops);
+        await checkpointer.deleteThread(loop.id);
+        continue;
+      }
+      // An iteration the process died in resumes at its step; a paused loop keeps it for later.
+      const interrupted = saved.next.length > 0;
+      if (loop.status !== "active") continue;
+      if (!interrupted && Date.parse(loop.nextRunAt) > Date.now()) continue;
+      try {
+        // "sync": a step's checkpoint is on disk before the next step starts, so a crash in
+        // verify never re-runs the agent session.
+        const result = await graph.invoke(
+          interrupted ? null : { loop: { ...loop }, ran: false },
+          { ...config, durability: "sync" },
+        );
+        Object.assign(loop, result.loop);
+        if (result.ran) ran.push(loop.id);
+      } catch (error) {
+        // A step that fails (record: after its retries) is one failed attempt of the loop.
+        const failed = (await graph.getState(config)).values.loop;
+        if (failed) Object.assign(loop, failed);
+        recordFailure(loop, error);
+      }
+      // The record first, then the checkpoint: a crash between the two leaves a finished
+      // thread, which the next pass takes instead of running again.
+      await saveLoops(loops);
+      await checkpointer.deleteThread(loop.id);
+    } catch (error) {
+      // Checkpoint storage failing for one loop is that loop's failed attempt, not the pass's.
+      recordFailure(loop, error);
+    }
+  }
+  await saveLoops(loops);
+  return ran;
+}
+
+function recordFailure(loop: TaskLoop, error: unknown): void {
+  loop.failures += 1;
+  loop.lastError = error instanceof Error ? error.message : String(error);
+  loop.nextRunAt = new Date(Date.now() + loop.intervalMs).toISOString();
+  if (loop.failures >= loop.maxAttempts) loop.status = "failed";
+}
+
+// The loop's policy, step by step. Each step takes the record as the graph checkpointed it and
+// returns the next one; none of them mutates its input, so a resumed step starts clean.
+function iterationSteps(
+  cwd: string,
+  runtime: AgentRuntimeDeps,
+  options: { verifyRun?: CommandRunner },
+): IterationSteps {
+  return {
+    async work(current) {
+      const loop = { ...current };
+      if (loop.iterations >= loop.maxIterations) {
+        loop.status = "failed";
+        loop.lastError = "iteration budget exhausted";
+        return { loop, next: "end" };
+      }
+      const sessionId = randomUUID();
+      loop.iterations += 1;
+      loop.lastSessionId = sessionId;
+      try {
+        const session = await runAgent(
+          {
             sessionId,
-            profile: loop.profile,
-            workingDirectory: loop.cwd || cwd,
-            allowedTools: [],
-            deniedTools: [],
-            stopConditions: [
-              "task complete",
-              "missing input",
-              "approval required",
-              "verification failure",
-              "budget exhausted",
-            ],
-            approval: { required: true, approved: loop.approved },
-            budget: {
-              timeoutMs: loop.intervalMs,
-              maxAttempts: loop.maxAttempts,
-              maxOutputBytes: 1_000_000,
+            profileName: loop.profile,
+            prompt: `${loop.prompt}\n\nLoop checkpoint: ${loop.checkpoint}\nWork only on task ${loop.taskId}. Complete one bounded action, verify it, and record the next checkpoint.`,
+            cwd: loop.cwd || cwd,
+            taskId: loop.taskId,
+            runContract: {
+              runId: loop.id,
+              sessionId,
+              profile: loop.profile,
+              workingDirectory: loop.cwd || cwd,
+              allowedTools: [],
+              deniedTools: [],
+              stopConditions: [
+                "task complete",
+                "missing input",
+                "approval required",
+                "verification failure",
+                "budget exhausted",
+              ],
+              approval: { required: true, approved: loop.approved },
+              budget: {
+                timeoutMs: loop.intervalMs,
+                maxAttempts: loop.maxAttempts,
+                maxOutputBytes: 1_000_000,
+              },
             },
           },
-        },
-        runtime,
-      );
-      if (session.status !== "completed")
-        throw new Error(`session ${session.status}`);
+          runtime,
+        );
+        if (session.status !== "completed")
+          throw new Error(`session ${session.status}`);
+      } catch (error) {
+        recordFailure(loop, error);
+        return { loop, next: "end" };
+      }
       loop.checkpoint = `Iteration ${loop.iterations} completed; inspect task ${loop.taskId} before continuing.`;
       loop.lastError = null;
       loop.nextRunAt = new Date(Date.now() + loop.intervalMs).toISOString();
-      // A task is only complete when it claims done AND an independent verifier
-      // agrees. A self-reported `state: done` whose checks fail keeps the loop
-      // active and records why.
+      return { loop, next: "verify" };
+    },
+    // A task is only complete when it claims done AND an independent verifier agrees. A
+    // self-reported `state: done` whose checks fail keeps the loop active and records why.
+    async verify(current) {
+      const loop = { ...current };
       const task = await loopTask(loop, cwd);
-      const root = tasksRootOf(task);
       if (await taskClaimsDone(task.file)) {
-        const outcome = await verifyTask(task.id, root, {
+        const outcome = await verifyTask(task.id, tasksRootOf(task), {
           cwd: loop.cwd || cwd,
           run: options.verifyRun,
         });
         if (outcome.passed) loop.status = "completed";
         else loop.lastError = `not complete: ${outcome.reason}`;
       }
-      // Durable per-step checkpoint: survives a cold restart because it is
-      // written into the task file, not just held in loops.json.
-      await recordStepCheckpoint(loop, task, root, session.status);
-      loop.resultPath = await persistWorkerResult(
-        loop,
-        sessionId,
-        session.status,
-      );
-      ran.push(loop.id);
-    } catch (error) {
-      loop.failures += 1;
-      loop.lastError = error instanceof Error ? error.message : String(error);
-      loop.nextRunAt = new Date(Date.now() + loop.intervalMs).toISOString();
-      if (loop.failures >= loop.maxAttempts) loop.status = "failed";
-    }
-  }
-  await saveLoops(loops);
-  return ran;
+      return loop;
+    },
+    // Durable per-step checkpoint: survives a cold restart because it is written into the task
+    // file, not just held in loops.json. The result file (an idempotent overwrite) goes first
+    // and the task note (an append that never throws) last, so a retried record adds no
+    // duplicate note.
+    async record(current) {
+      const loop = { ...current };
+      const sessionId = loop.lastSessionId;
+      if (!sessionId) throw new Error("record step reached without a session");
+      const task = await loopTask(loop, cwd);
+      loop.resultPath = await persistWorkerResult(loop, sessionId, "completed");
+      await recordStepCheckpoint(loop, task, tasksRootOf(task), "completed");
+      return loop;
+    },
+  };
 }
 
 // The loop's task, found where it lives now (renumbered or archived tasks included).

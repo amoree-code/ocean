@@ -1,0 +1,6 @@
+---
+"ocean": minor
+"@ocean/loop": minor
+---
+
+The task loop runs each iteration as a LangGraph graph (`work → verify → record`) with a durable checkpointer: one file per loop under `bridge/loop-checkpoints/`, and every step's result is on disk before the next step starts. A process that dies mid-iteration resumes at its step on the next pass, so a finished agent session is not run again. An iteration that finished but whose result never reached `loops.json` is taken rather than redone. A loop stopped (or finished) in the meantime drops its interrupted iteration; a paused one keeps it. `record` retries a filesystem error in place (3 attempts, nothing printed). `work` and `verify`, which are provider runs and the task's own checks, are never re-run in place. An unreadable checkpoint is set aside instead of stopping every loop. The loop's own policy is unchanged: iteration budget, attempt budget, interval, stop, and verifier-in-loop completion. LangGraph loads only when loops run. Loop runs turn off any LangSmith tracing that is on in the environment, so loop state never leaves the machine; processes the loop starts inherit that. Adds `@langchain/langgraph` 1.4.19 and `@langchain/core` 1.2.14, pinned exactly.
