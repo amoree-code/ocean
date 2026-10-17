@@ -6,6 +6,7 @@ Docs-only or CI-only PRs may add the `skip-changelog` label instead.
 
 ## Unreleased
 
+- feat(T-223): `ocean mcp gateway` — one MCP endpoint for every registered server (engine and marketplace-installed), namespaced `<server>__<tool>`, poisoned tool descriptions hidden, write tools keep the explicit-approval gate; `ocean mcp gateway-config` prints client config (#186)
 - feat(T-229): the engine ships `ocean-marketplace.json` (9 core skills + 3 MCP servers); MCP client configs and both MCP servers' tool lists come from registries, output unchanged (#185)
 - feat(T-229): installed MCP servers start via `ocean market exec` under a macOS sandbox that denies undeclared writes, secret reads and network; install refuses injected instructions and hidden Unicode (#184)
 - feat(T-229): `ocean market install|update|uninstall|list` — offline install from local indexes with a verified content digest, consent for declared permissions, `bridge/installed/ocean.lock`, and rollback when an update fails (#183)

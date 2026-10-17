@@ -17,6 +17,36 @@ transcripts and credentials are not copied between clients.
 
 The server reads the private connection at `OCEAN_ROOT/bridge/integrations/obsidian/connection.json`. It never receives provider credentials. Keep the connection `read-only` until the client route is verified. Mutating tools require both client approval and an explicit `read-write` connection.
 
+## One endpoint for every server: the MCP gateway
+
+`ocean mcp gateway` is a single stdio MCP server that routes the tools of every registered
+server. Print its client entry (keyed `ocean-gateway`) with:
+
+```sh
+ocean mcp gateway-config
+```
+
+- **Members:** the engine's first-party servers (`dev.ocean/ocean`, `dev.ocean/obsidian`) and
+  every MCP server installed with `ocean market install`. An installed server is started by the
+  same launcher as `ocean market exec`: declared permissions, only its declared environment
+  variables, inside the macOS sandbox. A third-party server joins only by being installed, never
+  by editing a client config. Remote servers are not proxied; the gateway logs their URL.
+- **Names:** tools are exposed as `<server>__<tool>`, for example `ocean__ocean_status` or
+  `obsidian__obsidian_read`.
+- **Runtime scan:** each tool's name, its description, and every key and string inside its input
+  schema (property names, titles, enum values, defaults) are scanned with the same rules as an
+  install. A flagged tool is hidden and the finding is logged.
+- **Writes:** the gateway adds no authority and removes none. A call reaches its server with
+  exactly the arguments the client sent. So a server's own approval check (such as
+  `ocean_session_promote`'s fingerprint) decides as it would on a direct connection, and the
+  client's permission prompt stays the human gate.
+- **Failures:** a server that exits or does not answer within 15 s is left out and logged.
+  The other servers keep working. A server that dies later is not restarted; its calls fail
+  until the client restarts the gateway.
+
+Logs go to stderr, which MCP clients keep as the server's log. Each member's own stderr lines
+are labelled `ocean mcp gateway [<capability>]`.
+
 ## Obsidian sync flow
 
 `ocean obsidian discover` and `ocean obsidian sync` run read-only by default; a write only

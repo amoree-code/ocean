@@ -166,6 +166,50 @@
     },
     {
       "kind": "mcp",
+      "name": "dev.ocean/mcp-gateway",
+      "description": "One MCP endpoint for every registered server: Ocean's own and those installed from the marketplace.",
+      "version": "0.3.7",
+      "engines": {
+        "ocean": ">=0.3.7"
+      },
+      "source": {
+        "type": "path",
+        "path": "market/mcp/gateway"
+      },
+      "integrity": {
+        "sha256": "ffff5a2c48452147caa2bf064c86a1155fea17af32212e5f40afb76e852571d0"
+      },
+      "spec": {
+        "name": "dev.ocean/mcp-gateway",
+        "description": "Lists and routes the tools of every registered MCP server behind one stdio endpoint.",
+        "packages": [
+          {
+            "registryType": "ocean-engine",
+            "identifier": "ocean",
+            "transport": {
+              "type": "stdio"
+            },
+            "packageArguments": [
+              {
+                "type": "positional",
+                "value": "mcp"
+              },
+              {
+                "type": "positional",
+                "value": "gateway"
+              }
+            ]
+          }
+        ],
+        "_meta": {
+          "dev.ocean": {
+            "clientKey": "ocean-gateway"
+          }
+        }
+      }
+    },
+    {
+      "kind": "mcp",
       "name": "dev.ocean/obsidian",
       "description": "Ocean's Obsidian vault bridge over MCP.",
       "version": "0.3.7",
