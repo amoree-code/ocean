@@ -15,6 +15,7 @@ export const marketplacePaths = () => ({
   store: oceanPath(SYSTEM_DIR, "market", "store"),
   mcpServers: oceanPath(SYSTEM_DIR, "market", "mcp"),
   plugins: oceanPath(SYSTEM_DIR, "market", "plugins"),
+  mcpState: oceanPath(SYSTEM_DIR, "market", "state"),
   lock: oceanPath(SYSTEM_DIR, "installed", "ocean.lock"),
 });
 
@@ -31,6 +32,7 @@ export function defaultCapabilityRegistry(): CapabilityRegistry {
 export function createDefaultMarketplace(options: {
   indexFiles?: string[];
   consent: ConsentPrompt;
+  acceptFlagged?: boolean;
 }): MarketplaceService {
   const paths = marketplacePaths();
   return new MarketplaceService({
@@ -43,5 +45,6 @@ export function createDefaultMarketplace(options: {
     storeDir: paths.store,
     lockFile: paths.lock,
     consent: options.consent,
+    acceptFlagged: options.acceptFlagged,
   });
 }

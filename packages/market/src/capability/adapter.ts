@@ -21,4 +21,9 @@ export interface CapabilityAdapter<TSpec = unknown> {
   parseSpec(spec: unknown): TSpec;
   install(context: CapabilityInstallContext<TSpec>): Promise<void>;
   uninstall(context: CapabilityUninstallContext<TSpec>): Promise<void>;
+  // Text from the payload that a model will read (skill bodies, server descriptions), scanned
+  // for injected instructions before install.
+  inspect?(
+    context: CapabilityInstallContext<TSpec>,
+  ): Promise<{ source: string; text: string }[]>;
 }

@@ -6,6 +6,7 @@ import {
   expectDirectoryName,
   expectRecord,
   installOwnedDirectory,
+  markdownTexts,
   removeOwnedDirectory,
 } from "./owned-directory.js";
 
@@ -40,6 +41,7 @@ export function createSkillAdapter(
         version: manifest.version,
       });
     },
+    inspect: ({ contentDir }) => markdownTexts(contentDir),
     async uninstall({ manifest, spec }) {
       await removeOwnedDirectory(hubRoot(), spec.directory, manifest.name);
     },

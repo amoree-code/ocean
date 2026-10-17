@@ -70,6 +70,25 @@ export function createMcpAdapter(
         `${JSON.stringify({ capability: manifest.name, version: manifest.version, permissions: manifest.permissions, server: spec }, null, 2)}\n`,
       );
     },
+    // Every `description` in server.json: the server's and its packages'.
+    async inspect({ spec }) {
+      const texts: { source: string; text: string }[] = [];
+      const walk = (value: unknown, at: string): void => {
+        if (Array.isArray(value))
+          value.forEach((item, index) => {
+            walk(item, `${at}[${index}]`);
+          });
+        else if (value && typeof value === "object")
+          for (const [key, item] of Object.entries(value)) {
+            const where = at ? `${at}.${key}` : key;
+            if (key === "description" && typeof item === "string")
+              texts.push({ source: `server.json ${where}`, text: item });
+            else walk(item, where);
+          }
+      };
+      walk(spec, "");
+      return texts;
+    },
     async uninstall({ manifest }) {
       await rm(mcpServerFile(serversRoot(), manifest.name), { force: true });
     },
