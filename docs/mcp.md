@@ -17,6 +17,32 @@ transcripts and credentials are not copied between clients.
 
 The server reads the private connection at `OCEAN_ROOT/bridge/integrations/obsidian/connection.json`. It never receives provider credentials. Keep the connection `read-only` until the client route is verified. Mutating tools require both client approval and an explicit `read-write` connection.
 
+## One endpoint for every server: the MCP gateway
+
+`ocean mcp gateway` is a single stdio MCP server that routes the tools of every registered
+server. Print its client entry (keyed `ocean-gateway`) with:
+
+```sh
+ocean mcp gateway-config
+```
+
+- **Members:** the engine's first-party servers (`dev.ocean/ocean`, `dev.ocean/obsidian`) and
+  every MCP server installed with `ocean market install`. An installed server is started by the
+  same launcher as `ocean market exec`: declared permissions, only its declared environment
+  variables, inside the macOS sandbox. A third-party server joins only by being installed, never
+  by editing a client config. Remote servers are not proxied; the gateway logs their URL.
+- **Names:** tools are exposed as `<server>__<tool>`, for example `ocean__ocean_status` or
+  `obsidian__obsidian_read`.
+- **Runtime scan:** each tool's description and every description inside its input schema are
+  scanned with the same rules as an install. A flagged tool is hidden and the finding is logged.
+- **Writes:** a tool annotated `readOnlyHint: false` runs only when its arguments carry
+  `"approval": {"approved": true}`. The gateway then attaches the approval fingerprint that the
+  server checks.
+- **Failures:** a server that exits or does not answer within 15 s is left out and logged.
+  The other servers keep working.
+
+Logs go to stderr, which MCP clients keep as the server's log.
+
 ## Obsidian sync flow
 
 `ocean obsidian discover` and `ocean obsidian sync` run read-only by default; a write only

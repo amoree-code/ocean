@@ -18,6 +18,10 @@ export type McpClientOptions = {
   args?: string[];
   cwd: string;
   env?: NodeJS.ProcessEnv;
+  // false: the server gets only `env`, not this process's environment (sandboxed servers).
+  inheritEnv?: boolean;
+  // true: the server's stderr goes to this process's stderr; otherwise it is drained.
+  forwardStderr?: boolean;
   allowedTools?: string[];
 };
 
@@ -36,9 +40,16 @@ export class McpClient {
   async connect(): Promise<void> {
     this.child = spawn(this.options.command, this.options.args ?? [], {
       cwd: this.options.cwd,
-      env: { ...process.env, ...this.options.env },
+      env:
+        this.options.inheritEnv === false
+          ? (this.options.env ?? {})
+          : { ...process.env, ...this.options.env },
       stdio: "pipe",
     });
+    // An unread stderr pipe fills up and stalls the server.
+    if (this.options.forwardStderr)
+      this.child.stderr.pipe(process.stderr, { end: false });
+    else this.child.stderr.resume();
     this.child.stdout.setEncoding("utf8");
     this.child.stdout.on("data", (chunk: string) => this.consume(chunk));
     this.child.once("error", (error) => this.failPending(error));
@@ -130,8 +141,15 @@ export class McpClient {
       const line = this.buffer.slice(0, newline).trim();
       this.buffer = this.buffer.slice(newline + 1);
       if (!line) continue;
-      const response = JSON.parse(line) as JsonRpc;
-      if (response.id === undefined) continue;
+      // A stray log line on stdout is not a reason to drop the connection.
+      let response: JsonRpc;
+      try {
+        response = JSON.parse(line) as JsonRpc;
+      } catch {
+        continue;
+      }
+      // Notifications and server-to-client requests are not answers to ours.
+      if (response.id === undefined || response.method !== undefined) continue;
       const pending = this.pending.get(response.id);
       if (!pending) continue;
       this.pending.delete(response.id);

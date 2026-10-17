@@ -1,0 +1,21 @@
+{
+  "kind": "mcp",
+  "name": "dev.ocean/mcp-gateway",
+  "description": "One MCP endpoint for every registered server: Ocean's own and those installed from the marketplace.",
+  "server": {
+    "name": "dev.ocean/mcp-gateway",
+    "description": "Lists and routes the tools of every registered MCP server behind one stdio endpoint.",
+    "packages": [
+      {
+        "registryType": "ocean-engine",
+        "identifier": "ocean",
+        "transport": { "type": "stdio" },
+        "packageArguments": [
+          { "type": "positional", "value": "mcp" },
+          { "type": "positional", "value": "gateway" }
+        ]
+      }
+    ],
+    "_meta": { "dev.ocean": { "clientKey": "ocean-gateway" } }
+  }
+}
