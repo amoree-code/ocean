@@ -5,7 +5,7 @@ import type {
   ProviderRequest,
 } from "@ocean/core/domain/providers/provider.js";
 import { type HeadlessResult, runHeadless } from "../process/cli-process.js";
-import { runClaudeSdk } from "./claude-sdk.js";
+import { explicitModel, runClaudeSdk } from "./claude-sdk.js";
 import { resolveOriginalExecutable } from "./provider-registry.js";
 
 // Provider contracts live in the domain layer; re-exported here for existing callers.
@@ -23,17 +23,19 @@ function repeatFlag(flag: string, values: string[] | undefined): string[] {
 // The model is enforced with each client's own flag, never only described in the prompt.
 // Flags verified against each installed CLI's --help on 2026-10-13.
 function modelFlag(flag: string, model: string | undefined): string[] {
-  return model && model !== "provider-managed" ? [flag, model] : [];
+  const chosen = explicitModel(model);
+  return chosen ? [flag, chosen] : [];
 }
 
 export const providerAdapterRegistry: Readonly<
   Record<HeadlessProvider, ProviderAdapter>
 > = {
-  // Claude runs through the Claude Agent SDK (claude-sdk.ts), which builds its own flags.
+  // Claude runs through the Claude Agent SDK, which builds Claude Code's flags itself
+  // (claudeSdkOptions: resume, model, read-only, read grant).
   claude: {
     provider: "claude",
     capabilities: ["headless", "resume", "read-only"],
-    readOnlyArgs: ["--permission-mode", "plan", "--restricted"],
+    run: runClaudeSdk,
   },
   codex: {
     provider: "codex",
@@ -134,7 +136,8 @@ export function assertProviderSupportsReadOnly(
 }
 
 export function runProvider(request: ProviderRequest): Promise<HeadlessResult> {
-  if (request.provider === "claude") return runClaudeSdk(request);
+  const sdkRun = providerAdapterRegistry[request.provider].run;
+  if (sdkRun) return sdkRun(request);
   const { command, args } = buildProviderInvocation(request);
   return runHeadless({
     command: resolveOriginalExecutable(command),

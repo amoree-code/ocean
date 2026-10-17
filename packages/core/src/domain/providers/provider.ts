@@ -1,4 +1,7 @@
-import type { RuntimeEvent } from "../process/process-events.js";
+import type {
+  HeadlessResult,
+  RuntimeEvent,
+} from "../process/process-events.js";
 
 // Pure provider contracts (no behavior) — the set of headless providers and the
 // request/adapter shapes. Live in the domain layer; infrastructure/providers
@@ -86,8 +89,10 @@ export type ProviderAdapter = {
   provider: HeadlessProvider;
   capabilities: readonly string[];
   readOnlyArgs?: readonly string[];
-  // CLI arguments for one headless run; absent for a provider that runs through its SDK.
+  // CLI arguments for one headless run, or — for a provider that runs through its SDK — the run
+  // itself. Exactly one of the two.
   build?: (request: ProviderRequest) => string[];
+  run?: (request: ProviderRequest) => Promise<HeadlessResult>;
 };
 
 export type ProviderRecord = {

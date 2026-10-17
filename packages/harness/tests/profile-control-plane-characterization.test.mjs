@@ -136,7 +136,20 @@ test("DeepSeek and OpenRouter are completion clients, not CLI adapters", () => {
 
 // Phase 3 flipped: every adapter passes the plan's model with its client's own flag; Claude,
 // which runs through the Agent SDK, passes it as the SDK's `model` option.
-test("every adapter enforces the requested model with a CLI flag", () => {
+test("every adapter enforces the requested model: CLI providers by flag, Claude through the SDK", () => {
+  // Every adapter is covered: each has exactly one of a CLI builder or an SDK run, and Claude is
+  // the only SDK one.
+  for (const adapter of Object.values(providerAdapterRegistry))
+    assert.ok(
+      Boolean(adapter.build) !== Boolean(adapter.run),
+      adapter.provider,
+    );
+  assert.deepEqual(
+    Object.keys(providerAdapterRegistry).filter(
+      (provider) => providerAdapterRegistry[provider].run,
+    ),
+    ["claude"],
+  );
   assert.equal(
     claudeSdkOptions(
       {

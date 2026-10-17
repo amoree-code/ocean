@@ -102,8 +102,11 @@ The contract matches the other providers:
 - **Process:** Ocean spawns it through `spawnClaudeCodeProcess`, so `onSpawn` gets its pid and
   its environment is this process's plus the plan's variables.
 - **Events:** every SDK message becomes a `"json"` event.
-- **Limits:** the run's timeout ends it with exit code `124`, and its output budget (messages
-  and stderr together) with `125`.
+- **Limits:** the run's timeout ends it with exit code `124`, and its output budget (raw stdout
+  and stderr bytes, counted as they arrive) with `125`. Both stop Claude's whole process group,
+  so a tool subprocess can't hold the run open.
+- **Signals:** a Ctrl+C or kill of Ocean is passed on to that group. A process ended by a signal
+  is a failed run.
 - **Load cost:** the SDK loads only when Claude actually runs.
 
 Provider-side session ids are captured opportunistically: if a `"json"` event's data

@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
+import { existsSync } from "node:fs";
 import {
   chmod,
   mkdir,
@@ -23,6 +26,9 @@ case "$FAKE_MODE" in
   big) i=0; while [ $i -lt 400 ]; do printf '{"type":"assistant","pad":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}\\n'; i=$((i+1)); done ;;
   error) printf '{"type":"result","subtype":"error_during_execution","is_error":true,"session_id":"sess-2"}\\n' ;;
   exit7) echo boom >&2; exit 7 ;;
+  killed) kill -9 $$ ;;
+  hugeline) head -c 20000 /dev/zero | tr '\\0' 'x'; sleep 5 ;;
+  linger) sleep 5 & echo $! > "$FAKE_PIDFILE"; printf '{"type":"result","subtype":"success","is_error":false,"session_id":"sess-3"}\\n' ;;
 esac
 `;
 
@@ -112,5 +118,65 @@ unixOnly("an error result or a non-zero exit fails the Claude run", () =>
     const crashed = await run(root, "exit7");
     assert.equal(crashed.exitCode, 7);
     assert.match(crashed.stderr, /boom/);
+  }),
+);
+
+unixOnly(
+  "a Claude process killed by a signal is a failed run, not a success",
+  () =>
+    withFakeClaude(async (root) => {
+      assert.equal((await run(root, "killed")).exitCode, 1);
+    }),
+);
+
+unixOnly(
+  "one huge unterminated line trips the output budget as it arrives",
+  () =>
+    withFakeClaude(async (root) => {
+      const started = Date.now();
+      const result = await run(root, "hugeline", { maxOutputBytes: 4_000 });
+      assert.equal(result.exitCode, 125);
+      assert.ok(Date.now() - started < 4_000, "stopped before the line ends");
+    }),
+);
+
+unixOnly(
+  "a descendant holding the output open cannot outlive the run's timeout",
+  () =>
+    withFakeClaude(async (root) => {
+      const pidFile = path.join(root, "linger.pid");
+      const started = Date.now();
+      const result = await run(root, "linger", {
+        timeoutMs: 1_500,
+        env: { FAKE_MODE: "linger", FAKE_PIDFILE: pidFile },
+      });
+      assert.equal(result.exitCode, 124);
+      assert.ok(Date.now() - started < 4_000);
+      const descendant = Number((await readFile(pidFile, "utf8")).trim());
+      assert.throws(() => process.kill(descendant, 0), { code: "ESRCH" });
+    }),
+);
+
+unixOnly("a Ctrl+C to Ocean ends the Claude run's whole process group", () =>
+  withFakeClaude(async (root) => {
+    const pidFile = path.join(root, "interrupted.pid");
+    const code = `
+const { runProvider } = await import("./dist/infrastructure/providers/providers.js");
+await runProvider({ provider: "claude", prompt: "x", cwd: process.env.ROOT, timeoutMs: 20000, env: { FAKE_MODE: "sleep", FAKE_PIDFILE: process.env.PIDFILE } });
+`;
+    const ocean = spawn(process.execPath, ["--input-type=module", "-e", code], {
+      cwd: path.resolve("."),
+      env: { ...process.env, ROOT: root, PIDFILE: pidFile },
+      stdio: "ignore",
+    });
+    const deadline = Date.now() + 10_000;
+    while (!existsSync(pidFile) && Date.now() < deadline)
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    const descendant = Number((await readFile(pidFile, "utf8")).trim());
+    ocean.kill("SIGINT");
+    const [, signal] = await once(ocean, "exit");
+    assert.equal(signal, "SIGINT", "Ocean still ends the way Ctrl+C ends it");
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    assert.throws(() => process.kill(descendant, 0), { code: "ESRCH" });
   }),
 );
