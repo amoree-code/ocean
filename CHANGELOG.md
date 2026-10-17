@@ -6,6 +6,8 @@ Docs-only or CI-only PRs may add the `skip-changelog` label instead.
 
 ## Unreleased
 
+- feat(T-229): `ocean market install|update|uninstall|list` — offline install from local indexes with a verified content digest, consent for declared permissions, `bridge/installed/ocean.lock`, and rollback when an update fails (#183)
+- feat(T-229): capability manifest schema (`ocean.capability.json`), `CapabilityRegistry` and catalog — a new capability kind needs only an adapter (#182)
 - refactor(T-222): new `@ocean/services` package — browser, Obsidian, workspace doctor, the MCP servers; the kernel is now seven packages (core ← market ← brain ← context ← loop ← services ← ocean), documented in `docs/architecture.md`
 - refactor(T-222): new `@ocean/loop` package — tasks, handoff, runs, loops, sessions, operations, hooks, session store; `check:deps` enforces "application code never imports an infrastructure concrete" in every package, which caught onboarding importing the wrapper manager (now injected)
 - refactor(T-222): new `@ocean/context` package — context ladder, packet, intent router, resource injection, references, cost, compression
