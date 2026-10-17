@@ -31,6 +31,7 @@ import {
 } from "@ocean/loop/runs/prompt-assembly.js";
 import { resumeAgent, runAgent } from "@ocean/loop/runs/run-agent.js";
 import { createAgentRuntime } from "../dist/composition/runtime.js";
+import { claudeSdkOptions } from "../dist/infrastructure/providers/claude-sdk.js";
 import { buildProviderInvocation } from "../dist/infrastructure/providers/providers.js";
 
 const SKILLS = ["alpha-lean", "beta-lean", "gamma-lean"];
@@ -555,16 +556,10 @@ test("skills outside cwd are granted to workspace-restricted providers", (t) =>
     ];
     assert.deepEqual(providerRequest.readDirectories, expected);
 
-    const claude = buildProviderInvocation(providerRequest);
-    for (const directory of expected) {
-      const index = claude.args.indexOf(directory);
-      assert.ok(index > 0, `claude --add-dir ${path.basename(directory)}`);
-      assert.equal(claude.args[index - 1], "--add-dir");
-    }
-    assert.ok(claude.args.indexOf("--add-dir") < claude.args.indexOf("-p"));
-    assert.equal(
-      claude.args[claude.args.indexOf("-p") + 1],
-      providerRequest.prompt,
+    // Claude gets them as the Agent SDK's additionalDirectories (its --add-dir).
+    assert.deepEqual(
+      claudeSdkOptions(providerRequest, "claude").additionalDirectories,
+      expected,
     );
 
     const gemini = buildProviderInvocation({
@@ -616,13 +611,9 @@ test("a resumed Claude session gets the same read grant as its first turn", () =
     assert.equal(resumed.resumeId, "provider-lean-1");
     assert.ok(first.readDirectories.length > 0);
     assert.deepEqual(resumed.readDirectories, first.readDirectories);
-    const args = buildProviderInvocation(resumed).args;
-    assert.ok(args.includes("--resume"));
-    for (const directory of first.readDirectories) {
-      const index = args.indexOf(directory);
-      assert.ok(index > 0, `resume --add-dir ${path.basename(directory)}`);
-      assert.equal(args[index - 1], "--add-dir");
-    }
+    const options = claudeSdkOptions(resumed, "claude");
+    assert.equal(options.resume, "provider-lean-1");
+    assert.deepEqual(options.additionalDirectories, first.readDirectories);
   }));
 
 test("a resume whose skill or facts lookup fails narrows the grant, not the turn", () =>

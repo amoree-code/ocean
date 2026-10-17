@@ -86,7 +86,8 @@ export type ProviderAdapter = {
   provider: HeadlessProvider;
   capabilities: readonly string[];
   readOnlyArgs?: readonly string[];
-  build: (request: ProviderRequest) => string[];
+  // CLI arguments for one headless run; absent for a provider that runs through its SDK.
+  build?: (request: ProviderRequest) => string[];
 };
 
 export type ProviderRecord = {

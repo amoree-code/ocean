@@ -5,6 +5,7 @@ import type {
   ProviderRequest,
 } from "@ocean/core/domain/providers/provider.js";
 import { type HeadlessResult, runHeadless } from "../process/cli-process.js";
+import { runClaudeSdk } from "./claude-sdk.js";
 import { resolveOriginalExecutable } from "./provider-registry.js";
 
 // Provider contracts live in the domain layer; re-exported here for existing callers.
@@ -28,23 +29,11 @@ function modelFlag(flag: string, model: string | undefined): string[] {
 export const providerAdapterRegistry: Readonly<
   Record<HeadlessProvider, ProviderAdapter>
 > = {
+  // Claude runs through the Claude Agent SDK (claude-sdk.ts), which builds its own flags.
   claude: {
     provider: "claude",
     capabilities: ["headless", "resume", "read-only"],
     readOnlyArgs: ["--permission-mode", "plan", "--restricted"],
-    build: (request) => [
-      ...(request.resumeId ? ["--resume", request.resumeId] : []),
-      ...modelFlag("--model", request.model),
-      ...(request.readOnly
-        ? ["--permission-mode", "plan", "--restricted"]
-        : []),
-      ...repeatFlag("--add-dir", request.readDirectories),
-      "-p",
-      request.prompt,
-      "--verbose",
-      "--output-format",
-      "stream-json",
-    ],
   },
   codex: {
     provider: "codex",
@@ -127,6 +116,10 @@ export function buildProviderInvocation(request: ProviderRequest): {
 } {
   const command = request.provider === "antigravity" ? "agy" : request.provider;
   const adapter = providerAdapterRegistry[request.provider];
+  if (!adapter.build)
+    throw new Error(
+      `${request.provider} runs through its SDK, not a CLI invocation`,
+    );
   if (request.readOnly) assertProviderSupportsReadOnly(request.provider);
   const args = adapter.build(request);
 
@@ -141,6 +134,7 @@ export function assertProviderSupportsReadOnly(
 }
 
 export function runProvider(request: ProviderRequest): Promise<HeadlessResult> {
+  if (request.provider === "claude") return runClaudeSdk(request);
   const { command, args } = buildProviderInvocation(request);
   return runHeadless({
     command: resolveOriginalExecutable(command),

@@ -51,9 +51,11 @@ before invoking it.
 
 ## Invocation shape (`buildProviderInvocation`)
 
+`claude` is not in this table: it runs through the Claude Agent SDK (see
+[Claude](#claude-through-the-agent-sdk)).
+
 | Provider | Command | Args |
 |---|---|---|
-| `claude` | `claude` | `[--resume <id>]? -p <prompt> --verbose --output-format stream-json` |
 | `codex` | `codex` | `exec --json <prompt>` |
 | `gemini` | `gemini` | `--prompt <prompt> --output-format stream-json` |
 | `antigravity` | `agy` | `--print <prompt> --output-format stream-json` |
@@ -76,6 +78,33 @@ Only `claude` currently supports `--resume`; `resumeAgent` in
 - Applies a timeout (default 60,000 ms); on timeout the process is sent `SIGTERM` and the
   result reports exit code `124`.
 - Resolves with `{ exitCode, events, stderr }` once the process closes.
+
+### Claude through the Agent SDK
+
+`runProvider` hands a `claude` request to `runClaudeSdk`
+(`src/infrastructure/providers/claude-sdk.ts`), which runs it with the Claude Agent SDK
+(`@anthropic-ai/claude-agent-sdk`, pinned exactly). `claudeSdkOptions` maps the request onto
+SDK options, and the SDK turns those into Claude Code's own flags and speaks its stream
+protocol:
+
+| Request | SDK option | Claude Code flag |
+|---|---|---|
+| `resumeId` | `resume` | `--resume` |
+| `model` (unless provider-managed) | `model` | `--model` |
+| `readOnly` | `permissionMode: "plan"`, `extraArgs.restricted` | `--permission-mode plan --restricted` |
+| `readDirectories` | `additionalDirectories` | `--add-dir` (one per directory) |
+
+The contract matches the other providers:
+
+- **Executable:** the SDK runs the user's installed `claude`, resolved past Ocean's shims. The
+  SDK's bundled platform binaries are excluded at install (`ignoredOptionalDependencies` in
+  `pnpm-workspace.yaml`).
+- **Process:** Ocean spawns it through `spawnClaudeCodeProcess`, so `onSpawn` gets its pid and
+  its environment is this process's plus the plan's variables.
+- **Events:** every SDK message becomes a `"json"` event.
+- **Limits:** the run's timeout ends it with exit code `124`, and its output budget (messages
+  and stderr together) with `125`.
+- **Load cost:** the SDK loads only when Claude actually runs.
 
 Provider-side session ids are captured opportunistically: if a `"json"` event's data
 contains a `session_id` field, `agent-run.ts` stores it as the session's `providerSessionId`

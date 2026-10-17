@@ -1,0 +1,6 @@
+---
+"ocean": minor
+"@ocean/core": patch
+---
+
+Headless Claude runs go through the Claude Agent SDK instead of Ocean building `claude -p … --output-format stream-json` arguments and parsing their output. `claudeSdkOptions` maps the run onto SDK options: `resume`, `model` (unless provider-managed), `permissionMode: "plan"` plus `--restricted` for read-only, and `additionalDirectories` for the read grant. The SDK turns those into Claude Code's own flags and speaks its stream protocol. The SDK runs the user's installed `claude`, resolved past Ocean's shims; its bundled platform binaries (about 220 MB) are excluded at install. Ocean still spawns the process, so the session store gets its pid and its environment is the plan's. Every SDK message is a `json` event. The run's timeout ends it with `124` and its output budget with `125`, as for every other provider. The SDK loads only when Claude runs. Claude's CLI argument builder is retired: `ProviderAdapter.build` is now optional, and `buildProviderInvocation` refuses a provider that runs through its SDK. Adds `@anthropic-ai/claude-agent-sdk` 0.3.289 with its peers `@anthropic-ai/sdk` 0.131.0 and `@modelcontextprotocol/sdk` 1.32.0, pinned exactly.

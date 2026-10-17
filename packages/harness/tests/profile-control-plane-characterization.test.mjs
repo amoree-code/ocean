@@ -31,6 +31,7 @@ import {
 import { validateProfile } from "@ocean/core/domain/profiles/profile-validator.js";
 import { SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import { loadProfile } from "../dist/infrastructure/filesystem/profile-loader.js";
+import { claudeSdkOptions } from "../dist/infrastructure/providers/claude-sdk.js";
 import { completionEndpoints } from "../dist/infrastructure/providers/openai-compatible.js";
 import {
   buildProviderInvocation,
@@ -133,10 +134,22 @@ test("DeepSeek and OpenRouter are completion clients, not CLI adapters", () => {
 
 // ---- model selection ----------------------------------------------------------------------
 
-// Phase 3 flipped: every adapter passes the plan's model with its client's own flag.
+// Phase 3 flipped: every adapter passes the plan's model with its client's own flag; Claude,
+// which runs through the Agent SDK, passes it as the SDK's `model` option.
 test("every adapter enforces the requested model with a CLI flag", () => {
+  assert.equal(
+    claudeSdkOptions(
+      {
+        provider: "claude",
+        prompt: "hello",
+        cwd: "/tmp",
+        model: "chosen-model",
+      },
+      "claude",
+    ).model,
+    "chosen-model",
+  );
   const flags = {
-    claude: "--model",
     codex: "--model",
     gemini: "--model",
     antigravity: "--model",
@@ -146,7 +159,9 @@ test("every adapter enforces the requested model with a CLI flag", () => {
   };
   assert.deepEqual(
     Object.keys(flags).sort(),
-    Object.keys(providerAdapterRegistry).sort(),
+    Object.keys(providerAdapterRegistry)
+      .filter((provider) => providerAdapterRegistry[provider].build)
+      .sort(),
   );
   for (const [provider, flag] of Object.entries(flags)) {
     const { args } = buildProviderInvocation({
@@ -164,7 +179,17 @@ test("every adapter enforces the requested model with a CLI flag", () => {
 });
 
 test("a provider-managed or absent model adds no model flag", () => {
-  for (const provider of Object.keys(providerAdapterRegistry))
+  for (const model of [undefined, "provider-managed"])
+    assert.equal(
+      claudeSdkOptions(
+        { provider: "claude", prompt: "hello", cwd: "/tmp", model },
+        "claude",
+      ).model,
+      undefined,
+    );
+  for (const provider of Object.keys(providerAdapterRegistry).filter(
+    (name) => providerAdapterRegistry[name].build,
+  ))
     for (const model of [undefined, "provider-managed"]) {
       const { args } = buildProviderInvocation({
         provider,
