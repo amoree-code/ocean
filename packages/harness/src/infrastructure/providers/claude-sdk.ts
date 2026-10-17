@@ -1,5 +1,6 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import path from "node:path";
+import { StringDecoder } from "node:string_decoder";
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import type {
   HeadlessResult,
@@ -59,29 +60,47 @@ function signalTree(child: ChildProcess | undefined, signal: NodeJS.Signals) {
   }
 }
 
-// Out of the terminal's process group, the run no longer receives this process's Ctrl+C or
-// kill directly; pass them on, then let the signal do what it would have done here.
+// Out of the terminal's process group, a run no longer receives this process's Ctrl+C or
+// kill directly; pass them on, then let the signal do what it would have done here. One set of
+// listeners serves every run in flight, so many concurrent runs never trip Node's listener warning.
+const active = new Set<ChildProcess>();
+let listening = false;
+const onExit = () => {
+  for (const child of active) signalTree(child, "SIGTERM");
+};
+const onSignal = (signal: NodeJS.Signals) => {
+  onExit();
+  unlisten();
+  if (process.listenerCount(signal) === 0) process.kill(process.pid, signal);
+};
+function unlisten(): void {
+  if (!listening) return;
+  listening = false;
+  process.off("exit", onExit);
+  for (const signal of forwardedSignals) process.off(signal, onSignal);
+}
 function endWithThisProcess(child: ChildProcess): () => void {
-  const onExit = () => signalTree(child, "SIGTERM");
-  const onSignal = (signal: NodeJS.Signals) => {
-    signalTree(child, "SIGTERM");
-    release();
-    if (process.listenerCount(signal) === 0) process.kill(process.pid, signal);
+  if (!listening) {
+    listening = true;
+    process.once("exit", onExit);
+    for (const signal of forwardedSignals) process.on(signal, onSignal);
+  }
+  active.add(child);
+  return () => {
+    active.delete(child);
+    if (active.size === 0) unlisten();
   };
-  const release = () => {
-    process.off("exit", onExit);
-    for (const signal of forwardedSignals) process.off(signal, onSignal);
-  };
-  process.once("exit", onExit);
-  for (const signal of forwardedSignals) process.on(signal, onSignal);
-  return release;
 }
 
-function closed(child: ChildProcess): Promise<number | null> {
+function exited(child: ChildProcess): Promise<number | null> {
   if (child.exitCode !== null || child.signalCode !== null)
     return Promise.resolve(child.exitCode);
-  return new Promise((resolve) => child.once("close", resolve));
+  return new Promise((resolve) => child.once("exit", resolve));
 }
+
+// How long output still in the pipe gets, once Claude itself has exited, before whatever else
+// holds the pipe open (a background process it left behind) is stopped and no longer awaited.
+const LINGER_MS = 500;
 
 // One headless Claude turn through the Agent SDK, with the same contract as every CLI provider:
 // Ocean spawns the process (so the session store gets its pid and its environment is the
@@ -102,25 +121,31 @@ export async function runClaudeSdk(
   let outputLimitExceeded = false;
   let child: ChildProcess | undefined;
   let release = () => {};
+  let spawnError: Error | undefined;
   // Settles once a stop has been forced. After that the run no longer waits on the SDK, whose
   // message stream may never settle once its process and pipes are gone.
   let forced = () => {};
   const stopped = new Promise<void>((resolve) => {
     forced = resolve;
   });
+  // Whatever still holds the pipes (a descendant that left the group) no longer holds the run.
+  const letGo = (): void => {
+    child?.stdout?.destroy();
+    child?.stderr?.destroy();
+    forced();
+  };
   let terminating = false;
+  let killTimer: NodeJS.Timeout | undefined;
+  let lingerTimer: NodeJS.Timeout | undefined;
   const terminate = (): void => {
     if (terminating) return;
     terminating = true;
     abortController.abort();
     signalTree(child, "SIGTERM");
     // Not unref'd: this timer keeps the process alive until the run has been let go.
-    setTimeout(() => {
+    killTimer = setTimeout(() => {
       signalTree(child, "SIGKILL");
-      // Whatever still holds the pipes (a descendant that left the group) no longer holds the run.
-      child?.stdout?.destroy();
-      child?.stderr?.destroy();
-      forced();
+      letGo();
     }, 100);
   };
   // Raw stdout and stderr bytes count against one budget as they arrive, before the SDK
@@ -134,6 +159,26 @@ export async function runClaudeSdk(
     }
     outputBytes += bytes;
     return true;
+  };
+  // Lines that are not JSON never reach the SDK's messages (a crash notice, a plain-text
+  // warning); keep them as text events, as the CLI runner does.
+  const decoder = new StringDecoder("utf8");
+  let pending = "";
+  const emitText = (line: string): void => {
+    if (!line) return;
+    try {
+      JSON.parse(line);
+    } catch {
+      const event: RuntimeEvent = { type: "text", data: line };
+      events.push(event);
+      request.onEvent?.(event);
+    }
+  };
+  const teeStdout = (chunk: Buffer): void => {
+    pending += decoder.write(chunk);
+    const lines = pending.split(/\r?\n/);
+    pending = lines.pop() ?? "";
+    for (const line of lines) emitText(line);
   };
   // Armed until the process has closed, not just until the SDK stops yielding.
   const timer = setTimeout(() => {
@@ -158,12 +203,23 @@ export async function runClaudeSdk(
               signal: options.signal,
               stdio: ["pipe", "pipe", "pipe"],
               detached: ownGroup,
+              windowsHide: true,
             });
             child = spawned;
             if (ownGroup) release = endWithThisProcess(spawned);
             if (spawned.pid) request.onSpawn?.(spawned.pid);
+            // A failed start (no such executable) is a rejected run, as for the CLI runner; the abort
+            // of a stop we asked for is not a failure.
+            spawned.once("error", (error) => {
+              if (terminating) return;
+              spawnError = error;
+              letGo();
+            });
+            spawned.once("exit", () => {
+              if (!terminating) lingerTimer = setTimeout(letGo, LINGER_MS);
+            });
             spawned.stdout.on("data", (chunk: Buffer) => {
-              withinBudget(chunk.byteLength);
+              if (withinBudget(chunk.byteLength)) teeStdout(chunk);
             });
             spawned.stderr.on("data", (chunk: Buffer) => {
               if (withinBudget(chunk.byteLength))
@@ -184,11 +240,17 @@ export async function runClaudeSdk(
       failure = error instanceof Error ? error.message : String(error);
     });
     await Promise.race([consumed, stopped]);
-    if (child) code = await closed(child);
+    if (!spawnError && child) code = await exited(child);
   } finally {
     clearTimeout(timer);
+    clearTimeout(lingerTimer);
+    clearTimeout(killTimer);
+    // The leader is gone; end anything it left in the group, then stop watching it.
+    signalTree(child, "SIGKILL");
     release();
   }
+  if (spawnError && !timedOut) throw spawnError;
+  emitText(pending + decoder.end());
   return {
     exitCode: timedOut
       ? 124

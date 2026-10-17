@@ -29,6 +29,7 @@ case "$FAKE_MODE" in
   killed) kill -9 $$ ;;
   hugeline) head -c 20000 /dev/zero | tr '\\0' 'x'; sleep 5 ;;
   linger) sleep 5 & echo $! > "$FAKE_PIDFILE"; printf '{"type":"result","subtype":"success","is_error":false,"session_id":"sess-3"}\\n' ;;
+  text) printf 'fatal: plain crash notice\\n{"type":"result","subtype":"success","is_error":false,"session_id":"sess-5"}\\n'; printf 'tail without newline' ;;
   argv) for a in "$@"; do printf '%s\\n' "$a"; done > "$FAKE_ARGVFILE"; IFS= read -r init; printf '%s\\n' "$init" > "$FAKE_ARGVFILE.init"; printf '{"type":"result","subtype":"success","is_error":false,"session_id":"sess-4"}\\n' ;;
 esac
 `;
@@ -104,7 +105,9 @@ unixOnly(
       // Read-only is enforced by Claude Code's own flags, not only asked for in the prompt.
       assert.equal(after("--permission-mode"), "plan");
       assert.ok(argv.includes("--restricted"));
-      assert.ok(argv.includes("--resume=sess-9") || after("--resume") === "sess-9");
+      assert.ok(
+        argv.includes("--resume=sess-9") || after("--resume") === "sess-9",
+      );
       assert.equal(after("--model"), "claude-test-model");
       assert.deepEqual(
         argv.flatMap((arg, i) => (arg === "--add-dir" ? [argv[i + 1]] : [])),
@@ -174,20 +177,81 @@ unixOnly(
 );
 
 unixOnly(
-  "a descendant holding the output open cannot outlive the run's timeout",
+  "a background process left holding the output does not keep a finished run open",
   () =>
     withFakeClaude(async (root) => {
       const pidFile = path.join(root, "linger.pid");
       const started = Date.now();
+      // Claude exits 0 with its result; the descendant would hold the pipes for 5 s.
       const result = await run(root, "linger", {
-        timeoutMs: 1_500,
+        timeoutMs: 20_000,
         env: { FAKE_MODE: "linger", FAKE_PIDFILE: pidFile },
       });
-      assert.equal(result.exitCode, 124);
-      assert.ok(Date.now() - started < 4_000);
+      assert.equal(result.exitCode, 0, result.stderr);
+      assert.ok(Date.now() - started < 3_500, "the run ends once Claude has");
       const descendant = Number((await readFile(pidFile, "utf8")).trim());
       assert.throws(() => process.kill(descendant, 0), { code: "ESRCH" });
     }),
+);
+
+unixOnly("plain-text stdout lines are kept as text events", () =>
+  withFakeClaude(async (root) => {
+    const result = await run(root, "text");
+    assert.equal(result.exitCode, 0, result.stderr);
+    assert.deepEqual(
+      result.events.map((event) => [event.type, event.data.type ?? event.data]),
+      [
+        ["text", "fatal: plain crash notice"],
+        ["json", "result"],
+        ["text", "tail without newline"],
+      ],
+    );
+  }),
+);
+
+unixOnly("a Claude that cannot start rejects the run", () =>
+  withFakeClaude(async (root) => {
+    await writeFile(
+      path.join(root, "bin", "claude"),
+      "#!/no/such/interpreter\n",
+    );
+    await assert.rejects(run(root, "ok"), { code: "ENOENT" });
+  }),
+);
+
+unixOnly("many concurrent runs share one set of process listeners", () =>
+  withFakeClaude(async (root) => {
+    const warnings = [];
+    const onWarning = (warning) => warnings.push(warning.name);
+    process.on("warning", onWarning);
+    const before = process.listenerCount("SIGINT");
+    try {
+      const results = await Promise.all(
+        Array.from({ length: 14 }, () => run(root, "ok")),
+      );
+      assert.ok(results.every((result) => result.exitCode === 0));
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.deepEqual(warnings, []);
+      assert.equal(process.listenerCount("SIGINT"), before);
+    } finally {
+      process.off("warning", onWarning);
+    }
+  }),
+);
+
+unixOnly("a stopped run leaves no timer behind", () =>
+  withFakeClaude(async (root) => {
+    const timers = () =>
+      process.getActiveResourcesInfo().filter((name) => name === "Timeout")
+        .length;
+    const before = timers();
+    const result = await run(root, "sleep", {
+      timeoutMs: 300,
+      env: { FAKE_MODE: "sleep", FAKE_PIDFILE: path.join(root, "t.pid") },
+    });
+    assert.equal(result.exitCode, 124);
+    assert.equal(timers(), before);
+  }),
 );
 
 unixOnly("a Ctrl+C to Ocean ends the Claude run's whole process group", () =>
