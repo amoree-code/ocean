@@ -23,6 +23,7 @@ test("maps a Claude request onto Claude Agent SDK options, not CLI arguments", (
   assert.deepEqual(options, {
     pathToClaudeCodeExecutable: "/opt/claude",
     cwd: path.resolve("/tmp"),
+    systemPrompt: { type: "preset", preset: "claude_code" },
   });
   assert.equal(env.ONLY, "1");
   assert.equal(env.PATH, process.env.PATH);

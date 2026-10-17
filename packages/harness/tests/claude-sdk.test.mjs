@@ -29,6 +29,7 @@ case "$FAKE_MODE" in
   killed) kill -9 $$ ;;
   hugeline) head -c 20000 /dev/zero | tr '\\0' 'x'; sleep 5 ;;
   linger) sleep 5 & echo $! > "$FAKE_PIDFILE"; printf '{"type":"result","subtype":"success","is_error":false,"session_id":"sess-3"}\\n' ;;
+  argv) for a in "$@"; do printf '%s\\n' "$a"; done > "$FAKE_ARGVFILE"; IFS= read -r init; printf '%s\\n' "$init" > "$FAKE_ARGVFILE.init"; printf '{"type":"result","subtype":"success","is_error":false,"session_id":"sess-4"}\\n' ;;
 esac
 `;
 
@@ -82,6 +83,38 @@ unixOnly(
       );
       assert.equal(result.events[0].data.session_id, "sess-1");
       assert.deepEqual(seen, result.events);
+    }),
+);
+
+unixOnly(
+  "the SDK hands Claude Code the run's flags and its own system prompt",
+  () =>
+    withFakeClaude(async (root) => {
+      const argvFile = path.join(root, "argv.txt");
+      const result = await run(root, "argv", {
+        env: { FAKE_MODE: "argv", FAKE_ARGVFILE: argvFile },
+        readOnly: true,
+        resumeId: "sess-9",
+        model: "claude-test-model",
+        readDirectories: ["/tmp/grant-a", "/tmp/grant-b"],
+      });
+      assert.equal(result.exitCode, 0, result.stderr);
+      const argv = (await readFile(argvFile, "utf8")).trim().split("\n");
+      const after = (flag) => argv[argv.indexOf(flag) + 1];
+      // Read-only is enforced by Claude Code's own flags, not only asked for in the prompt.
+      assert.equal(after("--permission-mode"), "plan");
+      assert.ok(argv.includes("--restricted"));
+      assert.ok(argv.includes("--resume=sess-9") || after("--resume") === "sess-9");
+      assert.equal(after("--model"), "claude-test-model");
+      assert.deepEqual(
+        argv.flatMap((arg, i) => (arg === "--add-dir" ? [argv[i + 1]] : [])),
+        ["/tmp/grant-a", "/tmp/grant-b"],
+      );
+      // Claude Code's default system prompt, as `claude -p` runs it, never an empty one.
+      const init = JSON.parse(await readFile(`${argvFile}.init`, "utf8"));
+      assert.equal(init.request.subtype, "initialize");
+      assert.notDeepEqual(init.request.systemPrompt, [""]);
+      assert.notEqual(init.request.systemPrompt, "");
     }),
 );
 

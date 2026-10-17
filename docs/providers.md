@@ -101,6 +101,9 @@ The contract matches the other providers:
   `pnpm-workspace.yaml`).
 - **Process:** Ocean spawns it through `spawnClaudeCodeProcess`, so `onSpawn` gets its pid and
   its environment is this process's plus the plan's variables.
+- **System prompt and settings:** Claude Code's own system prompt (`systemPrompt` preset
+  `claude_code`), as `claude -p` has it; left unset, the SDK would send an empty one. Settings
+  and `CLAUDE.md` load from every source, as with the CLI.
 - **Events:** every SDK message becomes a `"json"` event.
 - **Limits:** the run's timeout ends it with exit code `124`, and its output budget (raw stdout
   and stderr bytes, counted as they arrive) with `125`. Both stop Claude's whole process group,

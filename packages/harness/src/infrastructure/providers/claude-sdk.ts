@@ -28,6 +28,9 @@ export function claudeSdkOptions(
     cwd: path.resolve(request.cwd),
     // Built fresh for every run, as for every provider: the plan's variables over this process's.
     env: { ...process.env, ...request.env },
+    // Claude Code's own system prompt, as `claude -p` has it. Left unset, the SDK sends an empty one.
+    // Settings and CLAUDE.md need nothing: an unset settingSources loads every source, as the CLI does.
+    systemPrompt: { type: "preset", preset: "claude_code" },
     ...(request.resumeId ? { resume: request.resumeId } : {}),
     ...(model ? { model } : {}),
     // Read-only is enforced with Claude Code's own controls, never only asked for in the prompt.
