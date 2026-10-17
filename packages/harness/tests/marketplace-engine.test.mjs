@@ -50,7 +50,7 @@ test("the engine index is schema-valid and every digest matches contentDigest", 
   const index = marketplaceIndexSchema.parse(
     JSON.parse(await readFile(engineIndex, "utf8")),
   );
-  assert.equal(index.capabilities.length, 12);
+  assert.equal(index.capabilities.length, 13);
   for (const capability of index.capabilities)
     assert.equal(
       await contentDigest(path.resolve(capability.source.path)),
