@@ -1,5 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 import {
   Annotation,
@@ -28,10 +35,17 @@ const IterationState = Annotation.Root({
   ran: Annotation<boolean>(),
 });
 
-// verify and record only read the task and write files; a transient failure there is retried in
-// place before it counts against the loop. work is never retried here: a provider run is costly
-// and the loop's interval and attempt budget decide when it runs again.
-const fileStepRetry: RetryPolicy = { maxAttempts: 3, initialInterval: 200 };
+// Only record is retried in place, and only on a filesystem error: it writes files and is safe
+// to repeat. work (a provider run) and verify (the task's own checks, a test suite say) are
+// never re-run here; the loop's interval and attempt budget decide when they run again. No
+// jitter and no log line: retries must not write to stdout, which carries command JSON.
+const recordRetry: RetryPolicy = {
+  maxAttempts: 3,
+  initialInterval: 200,
+  jitter: false,
+  logWarning: false,
+  retryOn: (error) => typeof (error as { code?: unknown })?.code === "string",
+};
 
 export function iterationGraph(
   steps: IterationSteps,
@@ -39,15 +53,13 @@ export function iterationGraph(
 ) {
   return new StateGraph(IterationState)
     .addNode("work", (state) => steps.work(state.loop))
-    .addNode(
-      "verify",
-      async (state) => ({ loop: await steps.verify(state.loop) }),
-      { retryPolicy: fileStepRetry },
-    )
+    .addNode("verify", async (state) => ({
+      loop: await steps.verify(state.loop),
+    }))
     .addNode(
       "record",
       async (state) => ({ loop: await steps.record(state.loop), ran: true }),
-      { retryPolicy: fileStepRetry },
+      { retryPolicy: recordRetry },
     )
     .addEdge(START, "work")
     .addConditionalEdges(
@@ -60,9 +72,10 @@ export function iterationGraph(
     .compile({ checkpointer });
 }
 
-// LangChain sends every run to LangSmith when one of these is "true" in the environment, which a
-// shell set up for another project may well have. Loop state (prompts, task ids, paths) stays
-// on this machine.
+// LangChain sends every run to LangSmith when one of these is "true", which a shell set up for
+// another project may well have. It reads them only from process.env, with no per-run switch,
+// so loop state (prompts, task ids, paths) stays on this machine by turning off just the ones
+// that are on; processes the loop starts inherit that.
 export function keepRunsLocal(env: NodeJS.ProcessEnv = process.env): void {
   for (const name of [
     "LANGSMITH_TRACING_V2",
@@ -70,42 +83,74 @@ export function keepRunsLocal(env: NodeJS.ProcessEnv = process.env): void {
     "LANGSMITH_TRACING",
     "LANGCHAIN_TRACING",
   ])
-    env[name] = "false";
+    if (env[name] === "true") env[name] = "false";
 }
 
-type Saved = { storage: MemorySaver["storage"]; writes: MemorySaver["writes"] };
+type ThreadStorage = MemorySaver["storage"][string];
+type ThreadWrites = MemorySaver["writes"][string];
+type SavedThread = {
+  threadId: string;
+  storage: ThreadStorage;
+  writes: Record<string, ThreadWrites>;
+};
 
 const bytesKey = "$bytes";
+const safeThreadId = /^[A-Za-z0-9_-]+$/;
 
-// MemorySaver's checkpoints, kept in a file so a thread can resume after the process is gone.
-// Loaded once, rewritten atomically after every write; the LangGraph version is pinned exactly
-// because this relies on MemorySaver's `storage` and `writes` layout.
+// MemorySaver keeps its maps prototype-free so no key can reach Object.prototype; JSON.parse
+// does not, so rebuild them that way.
+function prototypeFree(value: unknown, depth: number): Record<string, unknown> {
+  const out = Object.create(null) as Record<string, unknown>;
+  for (const [key, item] of Object.entries(value as Record<string, unknown>))
+    out[key] = depth > 0 ? prototypeFree(item, depth - 1) : item;
+  return out;
+}
+
+// MemorySaver's checkpoints kept on disk, one file per thread (a loop), so a thread resumes after
+// the process is gone and two processes working different loops never overwrite each other.
+// The LangGraph version is pinned exactly because this relies on MemorySaver's typed `storage`
+// and `writes` maps and its `[thread, namespace, checkpoint]` write keys.
 export class FileCheckpointSaver extends MemorySaver {
-  #saving: Promise<void> = Promise.resolve();
+  readonly #saving = new Map<string, Promise<void>>();
 
-  private constructor(private readonly file: string) {
+  private constructor(private readonly dir: string) {
     super();
   }
 
-  static async open(file: string): Promise<FileCheckpointSaver> {
-    const saver = new FileCheckpointSaver(file);
-    let source: string | undefined;
+  static async open(dir: string): Promise<FileCheckpointSaver> {
+    const saver = new FileCheckpointSaver(dir);
+    let files: string[] = [];
     try {
-      source = await readFile(file, "utf8");
+      files = await readdir(dir);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
-    if (source !== undefined) {
-      const saved = JSON.parse(source, (_key, value) =>
-        value &&
-        typeof value === "object" &&
-        typeof value[bytesKey] === "string" &&
-        Object.keys(value).length === 1
-          ? new Uint8Array(Buffer.from(value[bytesKey], "base64"))
-          : value,
-      ) as Saved;
-      saver.storage = saved.storage;
-      saver.writes = saved.writes;
+    for (const file of files.filter((name) => name.endsWith(".json"))) {
+      const full = path.join(dir, file);
+      try {
+        const saved = JSON.parse(await readFile(full, "utf8"), (_key, value) =>
+          value &&
+          typeof value === "object" &&
+          typeof value[bytesKey] === "string" &&
+          Object.keys(value).length === 1
+            ? new Uint8Array(Buffer.from(value[bytesKey], "base64"))
+            : value,
+        ) as SavedThread;
+        if (!safeThreadId.test(saved.threadId))
+          throw new Error("unsafe thread id");
+        saver.storage[saved.threadId] = prototypeFree(
+          saved.storage,
+          1,
+        ) as ThreadStorage;
+        for (const [key, writes] of Object.entries(saved.writes))
+          saver.writes[key] = prototypeFree(writes, 0) as ThreadWrites;
+      } catch {
+        // An unreadable thread is set aside rather than stopping every loop; the worst case is
+        // that its iteration runs again from the start.
+        await rename(full, `${full}.unreadable-${Date.now()}`).catch(
+          () => undefined,
+        );
+      }
     }
     return saver;
   }
@@ -114,7 +159,7 @@ export class FileCheckpointSaver extends MemorySaver {
     ...args: Parameters<MemorySaver["put"]>
   ): ReturnType<MemorySaver["put"]> {
     const result = await super.put(...args);
-    await this.#save();
+    await this.#save(args[0].configurable?.thread_id);
     return result;
   }
 
@@ -122,22 +167,37 @@ export class FileCheckpointSaver extends MemorySaver {
     ...args: Parameters<MemorySaver["putWrites"]>
   ): Promise<void> {
     await super.putWrites(...args);
-    await this.#save();
+    await this.#save(args[0].configurable?.thread_id);
   }
 
   override async deleteThread(threadId: string): Promise<void> {
     await super.deleteThread(threadId);
-    await this.#save();
+    await this.#save(threadId);
   }
 
-  // Saves run one after another, each writing the state current when it starts; a failed save
-  // fails its own caller, not the ones after it.
-  #save(): Promise<void> {
-    const run = this.#saving
+  // One thread's saves run one after another, each writing what is current when it starts; a
+  // failed save fails its own caller, not the ones after it.
+  #save(threadId: unknown): Promise<void> {
+    if (typeof threadId !== "string" || !safeThreadId.test(threadId))
+      return Promise.reject(
+        new Error(`Unsafe checkpoint thread id: ${String(threadId)}`),
+      );
+    const file = path.join(this.dir, `${threadId}.json`);
+    const run = (this.#saving.get(threadId) ?? Promise.resolve())
       .catch(() => undefined)
       .then(async () => {
+        const storage = this.storage[threadId];
+        const writes = Object.fromEntries(
+          Object.entries(this.writes).filter(
+            ([key]) => (JSON.parse(key) as unknown[])[0] === threadId,
+          ),
+        );
+        if (!storage && !Object.keys(writes).length) {
+          await rm(file, { force: true });
+          return;
+        }
         const payload = JSON.stringify(
-          { storage: this.storage, writes: this.writes } satisfies Saved,
+          { threadId, storage: storage ?? {}, writes } satisfies SavedThread,
           // `this[key]` is the value before toJSON (a Buffer would otherwise arrive as JSON).
           function (this: Record<string, unknown>, key, value) {
             const raw = this[key];
@@ -146,12 +206,12 @@ export class FileCheckpointSaver extends MemorySaver {
               : value;
           },
         );
-        await mkdir(path.dirname(this.file), { recursive: true });
-        const temp = `${this.file}.${process.pid}.${randomUUID()}.tmp`;
+        await mkdir(this.dir, { recursive: true });
+        const temp = `${file}.${process.pid}.${randomUUID()}.tmp`;
         await writeFile(temp, `${payload}\n`, { mode: 0o600 });
-        await rename(temp, this.file);
+        await rename(temp, file);
       });
-    this.#saving = run;
+    this.#saving.set(threadId, run);
     return run;
   }
 }

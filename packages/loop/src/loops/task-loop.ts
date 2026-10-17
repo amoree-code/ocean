@@ -24,7 +24,7 @@ import type { TaskLoop } from "./task-loop-record.js";
 export type { TaskLoop } from "./task-loop-record.js";
 
 const loopsFile = () => oceanPath(SYSTEM_DIR, "loops.json");
-const checkpointsFile = () => oceanPath(SYSTEM_DIR, "loop-checkpoints.json");
+const checkpointsDir = () => oceanPath(SYSTEM_DIR, "loop-checkpoints");
 
 export async function listTaskLoops(): Promise<TaskLoop[]> {
   try {
@@ -93,7 +93,7 @@ export async function runTaskLoopsOnce(
     "./iteration-graph.js"
   );
   keepRunsLocal();
-  const checkpointer = await FileCheckpointSaver.open(checkpointsFile());
+  const checkpointer = await FileCheckpointSaver.open(checkpointsDir());
   const graph = iterationGraph(
     iterationSteps(cwd, runtime, options),
     checkpointer,
@@ -102,29 +102,48 @@ export async function runTaskLoopsOnce(
   const ran: string[] = [];
   for (const loop of loops) {
     const config = { configurable: { thread_id: loop.id } };
-    // An iteration the process died in resumes at its step, unless the loop was stopped since.
-    const interrupted = (await graph.getState(config)).next.length > 0;
-    if (loop.status !== "active") {
-      if (interrupted) await checkpointer.deleteThread(loop.id);
-      continue;
-    }
-    if (!interrupted && Date.parse(loop.nextRunAt) > Date.now()) continue;
     try {
-      // "sync": a step's checkpoint is on disk before the next step starts, so a crash in
-      // verify never re-runs the agent session.
-      const result = await graph.invoke(
-        interrupted ? null : { loop: { ...loop }, ran: false },
-        { ...config, durability: "sync" },
-      );
-      Object.assign(loop, result.loop);
-      if (result.ran) ran.push(loop.id);
+      const saved = await graph.getState(config);
+      const reached = saved.values.loop as TaskLoop | undefined;
+      if (reached && ["stopped", "completed", "failed"].includes(loop.status)) {
+        // Stopped (or finished) since the process died: its iteration is dropped, not resumed.
+        await checkpointer.deleteThread(loop.id);
+        continue;
+      }
+      if (reached && saved.next.length === 0) {
+        // The iteration finished but its result never reached loops.json: take it, don't redo it.
+        Object.assign(loop, reached);
+        await saveLoops(loops);
+        await checkpointer.deleteThread(loop.id);
+        continue;
+      }
+      // An iteration the process died in resumes at its step; a paused loop keeps it for later.
+      const interrupted = saved.next.length > 0;
+      if (loop.status !== "active") continue;
+      if (!interrupted && Date.parse(loop.nextRunAt) > Date.now()) continue;
+      try {
+        // "sync": a step's checkpoint is on disk before the next step starts, so a crash in
+        // verify never re-runs the agent session.
+        const result = await graph.invoke(
+          interrupted ? null : { loop: { ...loop }, ran: false },
+          { ...config, durability: "sync" },
+        );
+        Object.assign(loop, result.loop);
+        if (result.ran) ran.push(loop.id);
+      } catch (error) {
+        // A step that fails (record: after its retries) is one failed attempt of the loop.
+        const failed = (await graph.getState(config)).values.loop;
+        if (failed) Object.assign(loop, failed);
+        recordFailure(loop, error);
+      }
+      // The record first, then the checkpoint: a crash between the two leaves a finished
+      // thread, which the next pass takes instead of running again.
+      await saveLoops(loops);
+      await checkpointer.deleteThread(loop.id);
     } catch (error) {
-      // A step still failing after its retries is one failed attempt of the loop.
-      const reached = (await graph.getState(config)).values.loop;
-      if (reached) Object.assign(loop, reached);
+      // Checkpoint storage failing for one loop is that loop's failed attempt, not the pass's.
       recordFailure(loop, error);
     }
-    await checkpointer.deleteThread(loop.id);
   }
   await saveLoops(loops);
   return ran;
@@ -214,14 +233,16 @@ function iterationSteps(
       return loop;
     },
     // Durable per-step checkpoint: survives a cold restart because it is written into the task
-    // file, not just held in loops.json.
+    // file, not just held in loops.json. The result file (an idempotent overwrite) goes first
+    // and the task note (an append that never throws) last, so a retried record adds no
+    // duplicate note.
     async record(current) {
       const loop = { ...current };
       const sessionId = loop.lastSessionId;
       if (!sessionId) throw new Error("record step reached without a session");
       const task = await loopTask(loop, cwd);
-      await recordStepCheckpoint(loop, task, tasksRootOf(task), "completed");
       loop.resultPath = await persistWorkerResult(loop, sessionId, "completed");
+      await recordStepCheckpoint(loop, task, tasksRootOf(task), "completed");
       return loop;
     },
   };
