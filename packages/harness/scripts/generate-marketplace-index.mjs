@@ -2,11 +2,48 @@
 // Generates ocean-marketplace.json at the engine root — the engine's own marketplace index — from the core
 // skills and the MCP capability files, with each payload's content digest, so the index can never
 // drift from the files it pins. `--check` fails instead of writing when it is out of date.
-import { readdir, readFile, writeFile } from "node:fs/promises";
+//
+// It runs before the build (CI's check:skills step), so it uses only Node built-ins. The digest
+// below must stay byte-for-byte the algorithm of `contentDigest` in
+// packages/market/src/capability/content-digest.ts; marketplace-engine.test.mjs recomputes every
+// pinned digest with that function and fails if the two ever disagree. The index shape itself is
+// validated by `marketplaceIndexSchema` whenever the catalog reads it, and in that test.
+import { createHash } from "node:crypto";
+import { lstat, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { marketplaceIndexSchema } from "@ocean/core/domain/capabilities/capability-manifest.js";
-import { contentDigest } from "@ocean/market/capability/content-digest.js";
+
+async function contentDigest(root) {
+  const hash = createHash("sha256");
+  const info = await lstat(root);
+  if (info.isSymbolicLink()) throw new Error(`${root} is a symlink`);
+  if (info.isFile()) {
+    const bytes = await readFile(root);
+    hash.update(`file\0\0${bytes.length}\0`).update(bytes);
+    return hash.digest("hex");
+  }
+  async function walk(current, prefix) {
+    const entries = (await readdir(current, { withFileTypes: true })).sort(
+      (a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0),
+    );
+    for (const entry of entries) {
+      const full = path.join(current, entry.name);
+      const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+      const entryInfo = await lstat(full);
+      if (entryInfo.isSymbolicLink())
+        throw new Error(`${relative} is a symlink inside the payload`);
+      if (entryInfo.isDirectory()) {
+        hash.update(`dir\0${relative}\0`);
+        await walk(full, relative);
+      } else if (entryInfo.isFile()) {
+        const bytes = await readFile(full);
+        hash.update(`file\0${relative}\0${bytes.length}\0`).update(bytes);
+      } else throw new Error(`${relative} is not a regular file`);
+    }
+  }
+  await walk(root, "");
+  return hash.digest("hex");
+}
 
 const checkOnly = process.argv.includes("--check");
 const engine = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -58,7 +95,6 @@ const index = {
   name: "ocean-engine",
   capabilities,
 };
-marketplaceIndexSchema.parse(index);
 const rendered = `${JSON.stringify(index, null, 2)}\n`;
 
 if (checkOnly) {

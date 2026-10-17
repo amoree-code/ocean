@@ -4,12 +4,14 @@ import { mkdtemp, readdir, readFile, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { marketplaceIndexSchema } from "@ocean/core/domain/capabilities/capability-manifest.js";
 import { createMcpAdapter } from "@ocean/market/adapters/mcp-adapter.js";
 import { createSkillAdapter } from "@ocean/market/adapters/skill-adapter.js";
 import {
   CapabilityCatalog,
   LocalIndexSource,
 } from "@ocean/market/capability/catalog.js";
+import { contentDigest } from "@ocean/market/capability/content-digest.js";
 import { CapabilityRegistry } from "@ocean/market/capability/registry.js";
 import { MarketplaceService } from "@ocean/market/install/marketplace-service.js";
 import {
@@ -40,6 +42,21 @@ test("the engine index is generated from the current files", () => {
     },
   );
   assert.equal(result.status, 0, result.stderr);
+});
+
+// The generator carries its own copy of the digest so it can run before the build; this pins the
+// two together: every digest in the index must equal the market's contentDigest of its payload.
+test("the engine index is schema-valid and every digest matches contentDigest", async () => {
+  const index = marketplaceIndexSchema.parse(
+    JSON.parse(await readFile(engineIndex, "utf8")),
+  );
+  assert.equal(index.capabilities.length, 12);
+  for (const capability of index.capabilities)
+    assert.equal(
+      await contentDigest(path.resolve(capability.source.path)),
+      capability.integrity.sha256,
+      capability.name,
+    );
 });
 
 test("every core skill is in the engine index and passes the injection scan", async () => {
