@@ -5,6 +5,7 @@ import {
   expectDirectoryName,
   expectRecord,
   installOwnedDirectory,
+  markdownTexts,
   removeOwnedDirectory,
 } from "./owned-directory.js";
 
@@ -49,6 +50,7 @@ export function createPluginAdapter(
         version: manifest.version,
       });
     },
+    inspect: ({ contentDir }) => markdownTexts(contentDir),
     async uninstall({ manifest, spec }) {
       await removeOwnedDirectory(pluginsRoot(), spec.directory, manifest.name);
     },

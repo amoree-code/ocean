@@ -1,7 +1,11 @@
-import { createDefaultMarketplace } from "@ocean/market/install/default-marketplace.js";
+import {
+  createDefaultMarketplace,
+  marketplacePaths,
+} from "@ocean/market/install/default-marketplace.js";
+import { runInstalledMcp } from "@ocean/market/mcp/mcp-runner.js";
 
 const usage =
-  "Usage: ocean market list|install <name> [--version <v>]|update <name>|uninstall <name> [--index <file>]... [--yes]";
+  "Usage: ocean market list|install <name> [--version <v>]|update <name>|uninstall <name>|exec <name> [--index <file>]... [--yes] [--accept-flagged]";
 
 function flagValues(args: string[], flag: string): string[] {
   return args.flatMap((arg, index) =>
@@ -16,6 +20,7 @@ export async function runMarketCommand(
   const approved = args.includes("--yes");
   const marketplace = createDefaultMarketplace({
     indexFiles: flagValues(args, "--index"),
+    acceptFlagged: args.includes("--accept-flagged"),
     // Non-interactive: permissions are granted only by an explicit --yes, and are always shown.
     consent: async (manifest) => {
       console.error(
@@ -45,6 +50,14 @@ export async function runMarketCommand(
         2,
       ),
     );
+    return;
+  }
+  if (action === "exec" && name) {
+    const paths = marketplacePaths();
+    process.exitCode = await runInstalledMcp(name, {
+      serversRoot: paths.mcpServers,
+      stateRoot: paths.mcpState,
+    });
     return;
   }
   if (!name || !["install", "update", "uninstall"].includes(action))

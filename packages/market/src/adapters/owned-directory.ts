@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   cp,
   mkdir,
+  readdir,
   readFile,
   rename,
   rm,
@@ -102,4 +103,23 @@ export async function removeOwnedDirectory(
       `${target} is ${current ? `owned by ${current}` : "not managed by the marketplace"}; refusing to remove it`,
     );
   await rm(target, { recursive: true, force: true });
+}
+
+// Every markdown file in a payload: what a model reads from a skill or a plugin.
+export async function markdownTexts(
+  contentDir: string,
+): Promise<{ source: string; text: string }[]> {
+  const texts: { source: string; text: string }[] = [];
+  for (const entry of await readdir(contentDir, {
+    recursive: true,
+    withFileTypes: true,
+  })) {
+    if (!entry.isFile() || !entry.name.toLowerCase().endsWith(".md")) continue;
+    const full = path.join(entry.parentPath, entry.name);
+    texts.push({
+      source: path.relative(contentDir, full),
+      text: await readFile(full, "utf8"),
+    });
+  }
+  return texts;
 }

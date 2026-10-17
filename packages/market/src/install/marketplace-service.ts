@@ -6,6 +6,7 @@ import { resolveWithin } from "@ocean/core/shared/paths.js";
 import type { CapabilityCatalog, CatalogEntry } from "../capability/catalog.js";
 import { contentDigest } from "../capability/content-digest.js";
 import type { CapabilityRegistry } from "../capability/registry.js";
+import { scanText } from "../security/description-scan.js";
 import { type LockEntry, readLock, writeLock } from "./lock.js";
 
 // Asked before anything is installed that declares permissions. Returning false refuses.
@@ -18,6 +19,8 @@ export type MarketplaceOptions = {
   storeDir: string;
   lockFile: string;
   consent: ConsentPrompt;
+  // Install even when the description scan flags text. Off unless the owner asks for it.
+  acceptFlagged?: boolean;
 };
 
 export type InstallResult = {
@@ -74,6 +77,24 @@ export class MarketplaceService {
       };
 
     const contentDir = await this.#fetchVerified(entry);
+    const texts = [
+      ...(manifest.description
+        ? [{ source: "manifest.description", text: manifest.description }]
+        : []),
+      ...((await adapter.inspect?.({ manifest, spec, contentDir })) ?? []),
+    ];
+    const findings = texts.flatMap(({ source, text }) =>
+      scanText(source, text),
+    );
+    if (findings.length && !this.#options.acceptFlagged)
+      throw new Error(
+        `Install of ${manifest.name}@${manifest.version} refused: possible injected instructions — ${findings
+          .map(
+            (finding) =>
+              `${finding.rule} in ${finding.source}: "${finding.excerpt}"`,
+          )
+          .join("; ")}`,
+      );
     if (hasPermissions(manifest) && !(await consent(manifest)))
       throw new Error(
         `Install of ${manifest.name}@${manifest.version} refused: permissions not approved`,
