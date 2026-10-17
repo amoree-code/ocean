@@ -23,7 +23,13 @@ if (!readme.includes("CHANGELOG.md"))
   findings.push("README.md does not link CHANGELOG.md");
 if (
   JSON.stringify(packageJson.files) !==
-  JSON.stringify(["dist", "templates", "skills"])
+  JSON.stringify([
+    "dist",
+    "templates",
+    "skills",
+    "market",
+    "ocean-marketplace.json",
+  ])
 )
   findings.push("package files allowlist changed");
 

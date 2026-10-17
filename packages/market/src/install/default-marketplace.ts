@@ -1,9 +1,11 @@
+import { existsSync } from "node:fs";
 import { oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import { createMcpAdapter } from "../adapters/mcp-adapter.js";
 import { createPluginAdapter } from "../adapters/plugin-adapter.js";
 import { createSkillAdapter } from "../adapters/skill-adapter.js";
 import { CapabilityCatalog, LocalIndexSource } from "../capability/catalog.js";
 import { CapabilityRegistry } from "../capability/registry.js";
+import { engineIndexFile } from "../mcp/mcp-connection.js";
 import {
   type ConsentPrompt,
   MarketplaceService,
@@ -18,6 +20,13 @@ export const marketplacePaths = () => ({
   mcpState: oceanPath(SYSTEM_DIR, "market", "state"),
   lock: oceanPath(SYSTEM_DIR, "installed", "ocean.lock"),
 });
+
+// The owner's own index under bridge/ first (it wins on a name@version clash), then the one the
+// engine ships with its core skills and MCP servers.
+export function defaultIndexFiles(): string[] {
+  const local = marketplacePaths().index;
+  return [...(existsSync(local) ? [local] : []), engineIndexFile()];
+}
 
 // The built-in kinds. A new kind is one more `register` here (or in any caller), nothing else.
 export function defaultCapabilityRegistry(): CapabilityRegistry {
@@ -38,9 +47,10 @@ export function createDefaultMarketplace(options: {
   return new MarketplaceService({
     registry: defaultCapabilityRegistry(),
     catalog: new CapabilityCatalog(
-      (options.indexFiles?.length ? options.indexFiles : [paths.index]).map(
-        (file) => new LocalIndexSource(file),
-      ),
+      (options.indexFiles?.length
+        ? options.indexFiles
+        : defaultIndexFiles()
+      ).map((file) => new LocalIndexSource(file)),
     ),
     storeDir: paths.store,
     lockFile: paths.lock,

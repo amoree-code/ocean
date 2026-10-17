@@ -1,0 +1,21 @@
+{
+  "kind": "mcp",
+  "name": "dev.ocean/obsidian",
+  "description": "Ocean's Obsidian vault bridge over MCP.",
+  "server": {
+    "name": "dev.ocean/obsidian",
+    "description": "Read and sync an Obsidian vault through Ocean.",
+    "packages": [
+      {
+        "registryType": "ocean-engine",
+        "identifier": "ocean",
+        "transport": { "type": "stdio" },
+        "packageArguments": [
+          { "type": "positional", "value": "obsidian" },
+          { "type": "positional", "value": "mcp" }
+        ]
+      }
+    ],
+    "_meta": { "dev.ocean": { "clientKey": "ocean" } }
+  }
+}

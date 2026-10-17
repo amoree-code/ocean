@@ -59,7 +59,7 @@ const runners: Record<
 
 type Argument = { type?: unknown; name?: unknown; value?: unknown };
 
-function literalArguments(list: unknown, where: string): string[] {
+export function literalArguments(list: unknown, where: string): string[] {
   if (list === undefined) return [];
   if (!Array.isArray(list)) throw new Error(`${where} must be an array`);
   return (list as Argument[]).flatMap((argument) => {

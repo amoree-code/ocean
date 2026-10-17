@@ -24,6 +24,7 @@ import {
 import { openSessionStoreReadOnly } from "@ocean/loop/infrastructure/persistence/session-store.js";
 import { listTasksForFolder } from "@ocean/loop/tasks/list-tasks.js";
 import { hasFailures, workspaceReport } from "../../doctor/workspace-doctor.js";
+import { McpToolRegistry } from "./tool-registry.js";
 
 type Request = {
   jsonrpc?: string;
@@ -38,7 +39,7 @@ type Response = {
   error?: { code: number; message: string };
 };
 
-const tools = [
+const tools = new McpToolRegistry([
   {
     name: "ocean_status",
     description: "Return the Ocean runtime and workspace status.",
@@ -233,7 +234,7 @@ const tools = [
       additionalProperties: false,
     },
   },
-];
+]);
 
 const resources = [
   {
@@ -574,7 +575,7 @@ export async function handleOceanMcpRequest(
       },
     };
   if (request.method === "tools/list")
-    return { jsonrpc: "2.0", id: request.id, result: { tools } };
+    return { jsonrpc: "2.0", id: request.id, result: { tools: tools.list() } };
   if (request.method === "resources/list")
     return { jsonrpc: "2.0", id: request.id, result: { resources } };
   if (request.method === "resources/read") {
@@ -632,7 +633,7 @@ export async function handleOceanMcpRequest(
       },
     };
   const name = request.params?.name;
-  if (typeof name !== "string" || !tools.some((tool) => tool.name === name))
+  if (typeof name !== "string" || !tools.has(name))
     return {
       jsonrpc: "2.0",
       id: request.id,

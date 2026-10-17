@@ -9,7 +9,9 @@
   "files": [
     "dist",
     "templates",
-    "skills"
+    "skills",
+    "market",
+    "ocean-marketplace.json"
   ],
   "bin": {
     "ocean": "./dist/main.js"
@@ -19,8 +21,8 @@
     "build": "tsc",
     "dev": "tsx src/main.ts",
     "start": "node dist/main.js",
-    "check:skills": "node scripts/validate-skills.mjs && node scripts/validate-skill-paths.mjs && node scripts/generate-skills-index.mjs --check",
-    "generate:skills": "node scripts/generate-skills-index.mjs",
+    "check:skills": "node scripts/validate-skills.mjs && node scripts/validate-skill-paths.mjs && node scripts/generate-skills-index.mjs --check && node scripts/generate-marketplace-index.mjs --check",
+    "generate:skills": "node scripts/generate-skills-index.mjs && node scripts/generate-marketplace-index.mjs",
     "typecheck": "tsc --noEmit",
     "typecheck:watch": "tsc --noEmit --watch",
     "test": "pnpm build && node --import ./tests/clear-ocean-env.mjs --test --test-concurrency=1 --test-timeout=30000 tests/*.test.mjs"

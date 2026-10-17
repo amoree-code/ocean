@@ -1,0 +1,21 @@
+{
+  "kind": "mcp",
+  "name": "dev.ocean/ocean",
+  "description": "Ocean's own MCP server: workspace status, tasks, handoffs, sessions and the brain.",
+  "server": {
+    "name": "dev.ocean/ocean",
+    "description": "Ocean workspace, tasks, sessions and brain over MCP.",
+    "packages": [
+      {
+        "registryType": "ocean-engine",
+        "identifier": "ocean",
+        "transport": { "type": "stdio" },
+        "packageArguments": [
+          { "type": "positional", "value": "mcp" },
+          { "type": "positional", "value": "serve" }
+        ]
+      }
+    ],
+    "_meta": { "dev.ocean": { "clientKey": "ocean" } }
+  }
+}

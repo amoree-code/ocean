@@ -19,6 +19,7 @@ import {
   resolveObsidianNotePath,
   writeObsidianNote,
 } from "../../obsidian/vault-writer.js";
+import { McpToolRegistry } from "./tool-registry.js";
 
 type Request = {
   jsonrpc?: string;
@@ -33,7 +34,7 @@ type Response = {
   error?: { code: number; message: string };
 };
 
-const tools = [
+const tools = new McpToolRegistry([
   {
     name: "obsidian_discover",
     description: "List Obsidian Markdown notes and metadata issues.",
@@ -119,7 +120,7 @@ const tools = [
       additionalProperties: false,
     },
   },
-];
+]);
 
 function textResult(value: unknown): {
   content: [{ type: "text"; text: string }];
@@ -246,7 +247,7 @@ export async function handleObsidianMcpRequest(
       },
     };
   if (request.method === "tools/list")
-    return { jsonrpc: "2.0", id: request.id, result: { tools } };
+    return { jsonrpc: "2.0", id: request.id, result: { tools: tools.list() } };
   if (request.method !== "tools/call")
     return {
       jsonrpc: "2.0",
@@ -257,7 +258,7 @@ export async function handleObsidianMcpRequest(
       },
     };
   const name = request.params?.name;
-  if (typeof name !== "string" || !tools.some((tool) => tool.name === name))
+  if (typeof name !== "string" || !tools.has(name))
     return {
       jsonrpc: "2.0",
       id: request.id,

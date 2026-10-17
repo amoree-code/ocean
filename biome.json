@@ -15,7 +15,8 @@
       "!!.cursor/mcp.json",
       "!!.gemini/settings.json",
       "!!.mcp.json",
-      "!!opencode.json"
+      "!!opencode.json",
+      "!!packages/harness/ocean-marketplace.json"
     ]
   },
   "formatter": {
