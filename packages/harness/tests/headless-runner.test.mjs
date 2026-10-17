@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import process from "node:process";
 import test from "node:test";
 import {
@@ -95,4 +98,86 @@ test("counts stderr against the same output budget as stdout", async () => {
 
   assert.equal(result.exitCode, 125);
   assert.match(result.stderr, /Output budget exceeded/);
+});
+
+const unixOnly = process.platform === "win32" ? test.skip : test;
+
+// A shell that starts a background `sleep` holding the pipes, records its pid, then runs on.
+const withDescendant = (pidFile, tail) => [
+  "-c",
+  `sleep 5 & echo $! > "${pidFile}"; ${tail}`,
+];
+// A killed process is gone once its parent (init) has reaped it, a moment after the signal.
+async function assertGone(pidFile) {
+  const pid = Number(readFileSync(pidFile, "utf8").trim());
+  const deadline = Date.now() + 2_000;
+  while (Date.now() < deadline) {
+    try {
+      process.kill(pid, 0);
+    } catch (error) {
+      if (error.code === "ESRCH") return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  assert.fail(`process ${pid} is still running`);
+}
+const pidFileIn = () =>
+  path.join(os.tmpdir(), `ocean-headless-${process.pid}-${Date.now()}.pid`);
+
+unixOnly(
+  "a timeout stops the whole process group, not just the leader",
+  async () => {
+    const pidFile = pidFileIn();
+    const started = Date.now();
+    const result = await runHeadless({
+      command: "/bin/sh",
+      args: withDescendant(pidFile, "wait"),
+      cwd: process.cwd(),
+      timeoutMs: 1_000,
+    });
+    assert.equal(result.exitCode, 124);
+    assert.ok(Date.now() - started < 3_500, "the run ends at its timeout");
+    await assertGone(pidFile);
+  },
+);
+
+unixOnly(
+  "a finished process does not stay open for a background child holding its output",
+  async () => {
+    const pidFile = pidFileIn();
+    const started = Date.now();
+    const result = await runHeadless({
+      command: "/bin/sh",
+      args: withDescendant(pidFile, "echo done"),
+      cwd: process.cwd(),
+      timeoutMs: 20_000,
+    });
+    assert.equal(result.exitCode, 0);
+    assert.deepEqual(result.events, [{ type: "text", data: "done" }]);
+    assert.ok(
+      Date.now() - started < 3_500,
+      "the run ends once the process has",
+    );
+    await assertGone(pidFile);
+  },
+);
+
+test("a command that cannot start rejects the run", async () => {
+  await assert.rejects(
+    runHeadless({
+      command: "/no/such/command",
+      args: [],
+      cwd: process.cwd(),
+    }),
+    { code: "ENOENT" },
+  );
+});
+
+test("a process ended by a signal is a failed run", async () => {
+  const result = await runHeadless({
+    command: process.execPath,
+    args: ["-e", "process.kill(process.pid, 'SIGKILL')"],
+    cwd: process.cwd(),
+  });
+  assert.equal(result.exitCode, 1);
 });
