@@ -58,6 +58,19 @@ export type RuntimeLogger = (log: RuntimeLogEntry) => Promise<void>;
 
 export type ReadOnlyAssertion = (provider: HeadlessProvider) => void;
 
+// A lesson selected for a run; `truncated` marks one cut to the run's byte budget.
+export type ActiveLessonRef = {
+  id: string;
+  title: string;
+  body: string;
+  sourceSessionId: string | null;
+  truncated: boolean;
+};
+export type ActiveLessonLoader = (
+  prompt: string,
+  maxBytes: number,
+) => Promise<ActiveLessonRef[]>;
+
 /**
  * The full set of infrastructure dependencies `runAgent`/`resumeAgent` need.
  * The composition root supplies concrete implementations; the run functions
@@ -71,6 +84,7 @@ export type AgentRuntimeDeps = {
   executeAgentTool: AgentToolPort;
   loadProfile: ProfileLoader;
   loadSkillIndex: SkillIndexLoader;
+  loadActiveLessons: ActiveLessonLoader;
   resolveClientHome: ClientHomeResolver;
   appendRuntimeLog: RuntimeLogger;
   assertProviderSupportsReadOnly: ReadOnlyAssertion;

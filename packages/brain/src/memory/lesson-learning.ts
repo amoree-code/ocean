@@ -9,7 +9,7 @@ import {
   detectSessionSignals,
   hasUserCorrection,
   type SessionSignal,
-} from "@ocean/market/skills/task-observer.js";
+} from "@ocean/market/skills/signal-detection.js";
 import {
   addLesson,
   confirmLesson,

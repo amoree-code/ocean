@@ -1,30 +1,24 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createInterface } from "node:readline/promises";
+import { listLessons, setLessonStatus } from "@ocean/brain/memory/lessons.js";
 import type { Session } from "@ocean/core/domain/sessions/session.js";
 import { withFileLock } from "@ocean/core/shared/fs-utils.js";
 import { DAILY_DIR, oceanPath } from "@ocean/core/shared/paths.js";
 import { openSessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
-import {
-  listObservations,
-  reviewObservation,
-} from "@ocean/market/skills/task-observer.js";
 import { listTasks } from "./tasks-command.js";
 
 /**
- * Interactive human-in-the-loop gate for observations sitting in "observed"
- * status (see task-observer.ts). Only runs on a real TTY, so headless and
- * scheduled invocations of `ocean daily start` never block on input.
+ * Interactive human-in-the-loop gate for candidate lessons (see lessons.ts). Only runs on a
+ * real TTY, so headless and scheduled invocations of `ocean daily start` never block on input.
  */
-const observationGateLimit = 5;
+const lessonGateLimit = 5;
 
-async function runObservationGate(): Promise<void> {
+async function runLessonGate(): Promise<void> {
   if (!(process.stdin.isTTY && process.stdout.isTTY)) return;
-  const allPending = (await listObservations()).filter(
-    (observation) => observation.status === "observed",
-  );
+  const allPending = await listLessons({ status: "candidate" });
   if (!allPending.length) return;
-  const pending = allPending.slice(-observationGateLimit);
+  const pending = allPending.slice(-lessonGateLimit);
   const prompt = createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -32,25 +26,25 @@ async function runObservationGate(): Promise<void> {
   try {
     console.log(
       allPending.length > pending.length
-        ? `\n🤖 Ocean: ${pending.length} most recent of ${allPending.length} observation(s) awaiting review.`
-        : `\n🤖 Ocean: ${pending.length} observation(s) awaiting review.`,
+        ? `\n🤖 Ocean: ${pending.length} most recent of ${allPending.length} candidate lesson(s) awaiting review.`
+        : `\n🤖 Ocean: ${pending.length} candidate lesson(s) awaiting review.`,
     );
-    for (const observation of pending) {
-      console.log(`\n[${observation.signalType}] ${observation.summary}`);
-      const answer = await prompt.question(
-        "Approve evolving this into a skill? (y/n): ",
-      );
-      const status =
-        answer.trim().toLowerCase() === "y" ? "approved" : "rejected";
-      const reviewed = await reviewObservation(
-        observation.observationId,
-        status,
-      );
-      console.log(
-        reviewed.skillCandidateId
-          ? `→ ${status} (skill candidate: ${reviewed.skillCandidateId})`
-          : `→ ${status}`,
-      );
+    for (const lesson of pending) {
+      console.log(`\n[${lesson.hits} verified hit(s)] ${lesson.title}`);
+      const answer = (
+        await prompt.question(
+          "Activate this lesson? (y = activate, n = retire, Enter = later): ",
+        )
+      )
+        .trim()
+        .toLowerCase();
+      // Only an explicit answer changes anything: Enter or EOF leaves it a candidate.
+      if (answer !== "y" && answer !== "n") {
+        console.log("→ left as candidate");
+        continue;
+      }
+      await setLessonStatus(lesson.id, answer === "y" ? "active" : "retired");
+      console.log(answer === "y" ? "→ active" : "→ retired");
     }
   } finally {
     prompt.close();
@@ -68,7 +62,7 @@ export async function runDailyCommand(
     process.exitCode = 1;
     return;
   }
-  await runObservationGate();
+  await runLessonGate();
   const apply = args.includes("--apply");
   const newsIndex = args.indexOf("--news");
   const news =

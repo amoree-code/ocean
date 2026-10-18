@@ -4,6 +4,7 @@
 // application → domain ports, never application → infrastructure.
 
 import { brainIndexPort } from "@ocean/brain/infrastructure/brain/brain-index.js";
+import { selectActiveLessons } from "@ocean/brain/memory/lesson-activation.js";
 import type { BrainIndexPort } from "@ocean/core/domain/ports/brain-index-port.js";
 import type {
   ProviderRegistryPort,
@@ -62,6 +63,8 @@ export const defaultAgentRuntime: AgentRuntimeDeps = {
   executeAgentTool,
   loadProfile,
   loadSkillIndex,
+  loadActiveLessons: (prompt, maxBytes) =>
+    selectActiveLessons(prompt, { maxBytes, indexPort: defaultBrainIndexPort }),
   resolveClientHome,
   appendRuntimeLog,
   assertProviderSupportsReadOnly,
