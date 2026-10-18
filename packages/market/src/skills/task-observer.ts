@@ -6,6 +6,7 @@ import type {
   SessionStorePort,
 } from "@ocean/core/domain/ports/session-store-port.js";
 import { redactRuntimeText } from "@ocean/core/domain/redaction/redaction.js";
+import type { SessionEvent } from "@ocean/core/domain/sessions/session.js";
 import { oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import { addSkillCandidate } from "./skill-curation.js";
 
@@ -65,14 +66,36 @@ function observationId(
   return `obs-${createHash("sha256").update(`${sessionId}:${signalType}:${summary}`).digest("hex").slice(0, 16)}`;
 }
 
-export async function observeSessionWithStore(
-  store: SessionStorePort,
-  sessionId: string,
-): Promise<TaskObservation[]> {
-  const session = store.get(sessionId);
-  if (!session) throw new Error(`Session not found: ${sessionId}`);
-  if (session.status !== "completed") return [];
-  const events = store.listEvents(sessionId);
+export type SessionSignal = {
+  signalType: TaskObservation["signalType"];
+  summary: string;
+  refs: string[];
+  confidence: number;
+};
+
+const CORRECTION_PATTERN =
+  /\bno,|\bactually,|\bnot that\b|\binstead of\b|\bshould use\b|\bthat'?s wrong\b/i;
+
+function userInputTexts(events: SessionEvent[]) {
+  return events
+    .filter((event) => event.type === "user_input")
+    .map((event) => ({
+      id: event.eventId,
+      text: redactRuntimeText(event.data).replace(/\s+/g, " ").trim(),
+    }))
+    .filter((event) => event.text.length > 12)
+    .slice(0, 80);
+}
+
+// True when the user pushed back in this session ("no, use X", "that's wrong").
+export function hasUserCorrection(events: SessionEvent[]): boolean {
+  return userInputTexts(events).some((event) =>
+    CORRECTION_PATTERN.test(event.text),
+  );
+}
+
+// What a completed, proven session is worth remembering. Pure: reads events, writes nothing.
+export function detectSessionSignals(events: SessionEvent[]): SessionSignal[] {
   const proven = events.filter(
     (event) =>
       event.type === "evidence" && /"result"\s*:\s*"proven"/.test(event.data),
@@ -86,20 +109,8 @@ export async function observeSessionWithStore(
     }))
     .filter((event) => event.text.length > 12)
     .slice(0, 80);
-  const userInputs = events
-    .filter((event) => event.type === "user_input")
-    .map((event) => ({
-      id: event.eventId,
-      text: redactRuntimeText(event.data).replace(/\s+/g, " ").trim(),
-    }))
-    .filter((event) => event.text.length > 12)
-    .slice(0, 80);
-  const candidates: Array<{
-    signalType: TaskObservation["signalType"];
-    summary: string;
-    refs: string[];
-    confidence: number;
-  }> = [];
+  const userInputs = userInputTexts(events);
+  const candidates: SessionSignal[] = [];
   const decisions = outputs.filter((event) =>
     /\bdecision\s*:/i.test(event.text),
   );
@@ -127,9 +138,7 @@ export async function observeSessionWithStore(
       confidence: 0.8,
     });
   const corrections = userInputs.filter((event) =>
-    /\b(no,|not that|instead of|should use|that'?s wrong|actually,)\b/i.test(
-      event.text,
-    ),
+    CORRECTION_PATTERN.test(event.text),
   );
   if (corrections.length)
     candidates.push({
@@ -138,6 +147,18 @@ export async function observeSessionWithStore(
       refs: corrections.slice(0, 4).map((event) => `event:${event.id}`),
       confidence: 0.7,
     });
+  return candidates;
+}
+
+export async function observeSessionWithStore(
+  store: SessionStorePort,
+  sessionId: string,
+): Promise<TaskObservation[]> {
+  const session = store.get(sessionId);
+  if (!session) throw new Error(`Session not found: ${sessionId}`);
+  if (session.status !== "completed") return [];
+  const events = store.listEvents(sessionId);
+  const candidates = detectSessionSignals(events);
   const items = await load();
   const created: TaskObservation[] = [];
   for (const candidate of candidates.slice(0, 4)) {

@@ -8,7 +8,7 @@ import type {
 import { atomicWrite, withFileLock } from "@ocean/core/shared/fs-utils.js";
 import { DAILY_DIR, oceanPath } from "@ocean/core/shared/paths.js";
 import { findGitRoot } from "@ocean/core/shared/project-resolution.js";
-import type { TaskObservation } from "@ocean/market/skills/task-observer.js";
+import type { LearnedSignal } from "./lesson-learning.js";
 import type { ModelNarrative } from "./model-narrative.js";
 
 const dailyTemplate = (date: string): string =>
@@ -153,13 +153,13 @@ export async function appendDailyNarrative(input: {
 
 /**
  * Appends newly detected observations (corrections, repeated procedures,
- * explicit decisions, proven verifications — see task-observer.ts) to
+ * explicit decisions, proven verifications — see lesson-learning.ts) to
  * today's brain/01-daily/YYYY-MM-DD.md, so they surface next to the
- * session narrative instead of sitting only in system/skills/observations.json.
+ * session narrative instead of sitting only in 05-knowledge/lessons.
  */
 export async function appendObservations(
   session: Session,
-  observations: TaskObservation[],
+  observations: LearnedSignal[],
 ): Promise<void> {
   if (!observations.length) return;
   const project =
