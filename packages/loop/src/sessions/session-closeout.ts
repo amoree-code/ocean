@@ -3,6 +3,10 @@ import {
   appendDailyNarrative,
   appendObservations,
 } from "@ocean/brain/memory/daily-narrative.js";
+import {
+  type LearnedSignal,
+  learnFromSession,
+} from "@ocean/brain/memory/lesson-learning.js";
 import { generateModelNarrative } from "@ocean/brain/memory/model-narrative.js";
 import {
   type SessionSummaryResult,
@@ -12,10 +16,6 @@ import type { SessionStorePort } from "@ocean/core/domain/ports/session-store-po
 import type { SessionEvent } from "@ocean/core/domain/sessions/session.js";
 import { safeJsonParse } from "@ocean/core/shared/fs-utils.js";
 import { gitChangedFiles } from "@ocean/core/shared/project-resolution.js";
-import {
-  observeSessionWithStore,
-  type TaskObservation,
-} from "@ocean/market/skills/task-observer.js";
 import { createHandoffWithStore } from "../handoff/handoff-service.js";
 
 export type SessionCloseoutResult = SessionSummaryResult & {
@@ -131,9 +131,30 @@ export async function finalizeSession(
     // Computed first so writeBrainDump can surface the same signals as the
     // daily narrative, but kept in its own try/catch: a failure here must
     // not skip the narrative/summary work below, and vice versa.
-    let observations: TaskObservation[] = [];
+    let observations: LearnedSignal[] = [];
     try {
-      observations = await observeSessionWithStore(store, sessionId);
+      const learning = await learnFromSession(store, sessionId);
+      observations = learning.created;
+      // Only when the session changed the store: a no-op closeout adds no event.
+      if (
+        learning.created.length ||
+        learning.confirmed.length ||
+        learning.contradicted.length ||
+        learning.promoted.length ||
+        learning.errors.length
+      )
+        store.appendEvent(
+          sessionId,
+          "lesson_scored",
+          JSON.stringify({
+            verified: learning.score.verified,
+            created: learning.created.map((lesson) => lesson.id),
+            confirmed: learning.confirmed,
+            contradicted: learning.contradicted,
+            promoted: learning.promoted,
+            errors: learning.errors,
+          }),
+        );
       await appendObservations(session, observations);
     } catch (error) {
       store.appendEvent(

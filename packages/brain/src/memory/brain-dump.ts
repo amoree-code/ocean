@@ -7,7 +7,7 @@ import type {
 } from "@ocean/core/domain/sessions/session.js";
 import { INBOX_DIR, oceanPath, oceanRoot } from "@ocean/core/shared/paths.js";
 import { findGitRoot } from "@ocean/core/shared/project-resolution.js";
-import type { TaskObservation } from "@ocean/market/skills/task-observer.js";
+import type { LearnedSignal } from "./lesson-learning.js";
 import type { ModelNarrative } from "./model-narrative.js";
 
 // Same fallback title stamped on a session with no explicit title (see
@@ -63,7 +63,7 @@ async function uniqueFilename(
  * separate from the machine-oriented kernel/bridge/sessions/summaries/ dump. Prefers
  * the cheap model narrative (see model-narrative.ts) and falls back to the
  * same deterministic heuristics as daily-narrative.ts when it is unavailable.
- * When task-observer.ts already found signals for this session (corrections,
+ * When lesson-learning.ts already found signals for this session (corrections,
  * repeated procedures, explicit decisions), they're mirrored under
  * "## Signals" — the same events already surfaced in brain/01-daily/, so a
  * later cross-session sweep has one place to look instead of two.
@@ -79,7 +79,7 @@ export async function writeBrainDump(input: {
   exitCode?: number;
   nextAction?: string;
   narrative?: ModelNarrative | null;
-  observations?: TaskObservation[];
+  observations?: LearnedSignal[];
 }): Promise<{ brainDumpPath: string } | null> {
   const { session, events, narrative, changedFiles, observations } = input;
 

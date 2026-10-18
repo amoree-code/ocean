@@ -246,6 +246,17 @@ export async function confirmLesson(
   });
 }
 
+// The only way a lesson changes status outside contradiction. Callers own the rule that
+// justifies the move (see lesson-learning.ts for candidate → active).
+export async function setLessonStatus(
+  id: string,
+  status: LessonStatus,
+): Promise<Lesson> {
+  return update(id, (lesson) => {
+    lesson.status = status;
+  });
+}
+
 // A contradicted fact loses confidence, the disagreement is written to CONFLICTS.md for
 // the owner, and a lesson that falls below RETIRE_BELOW is retired (kept, never deleted).
 export async function contradictLesson(
@@ -259,6 +270,10 @@ export async function contradictLesson(
     const before = effectiveConfidence(current, now);
     current.confidence = clamp(before * CONTRADICT_FACTOR);
     current.confidenceAt = now.toISOString();
+    if (options.evidence && !current.evidence.includes(options.evidence))
+      current.evidence = [...current.evidence, options.evidence].slice(
+        -MAX_EVIDENCE,
+      );
     if (current.confidence < RETIRE_BELOW) current.status = "retired";
     const reason = options.reason.replace(/\s+/g, " ").trim().slice(0, 500);
     entry =
