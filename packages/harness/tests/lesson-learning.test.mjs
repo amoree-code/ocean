@@ -211,7 +211,7 @@ test("learning the same session twice counts it once", async () => {
   assert.equal((await readLesson("twice")).confidence, 0.4);
 });
 
-test("one failing lesson is reported without losing the others", async () => {
+test("an activated id that is not a lesson is ignored and the rest are still scored", async () => {
   const { store } = await freshStore();
   await addLesson({ id: "fine", title: "t", body: "b" });
   session(store, "e1", [
