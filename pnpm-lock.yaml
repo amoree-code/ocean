@@ -304,9 +304,6 @@ importers:
       '@ocean/core':
         specifier: workspace:*
         version: link:../core
-      '@ocean/market':
-        specifier: workspace:*
-        version: link:../market
     devDependencies:
       '@types/node':
         specifier: ^22.0.0

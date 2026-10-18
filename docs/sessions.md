@@ -25,14 +25,20 @@ if absent:
 - `capture_items` — reviewable references to explicit `user_input` events. Use `ocean capture` to list,
   promote, or discard candidates; provider completion does not sync them into the inbox view.
 
-Completed proven sessions may also produce bounded observations in
-`<workspace>/system/skills/observations.json`. Observations link source sessions, tasks,
-profiles, signal types, confidence, and evidence references. They are not skills or memory,
-and normal runs never promote them automatically. Review with:
+A closed session is scored into the lessons store (`<workspace>/05-knowledge/lessons/`, one markdown
+record per lesson) when it completed, exited 0 and every evidence event it recorded is proven. A
+verified session confirms the lessons it used, turns repeated work into candidate lessons, and a
+user correction in a session that used a lesson contradicts it (logged to `lessons/CONFLICTS.md`).
+Confidence halves every 30 days without confirmation. A candidate becomes active only with three
+verified hits and a passing replay eval; nothing is written to `charter/` automatically. The outcome
+is recorded as a `lesson_scored` event. Runs pick active lessons through the brain index, so run
+`ocean memory reindex` after a lesson changes. Review with:
 
 ```bash
-ocean skill observe [session-id]
-ocean skill observation-review <observation-id> discarded
+ocean skill list [candidate|active|retired]
+ocean skill observe <session-id>
+ocean skill review <lesson-id> promoted|rejected
+ocean skill migrate    # fold the legacy skills/observations.json and candidates.json into lessons
 ```
 
 `openSessionStore()` ensures the `bridge/sessions/` directory exists and returns a `SessionStore`;

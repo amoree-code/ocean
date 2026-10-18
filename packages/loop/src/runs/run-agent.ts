@@ -34,15 +34,14 @@ import type { RunContract } from "@ocean/core/domain/runs/run-contract.js";
 import { validateSessionEntryContract } from "@ocean/core/domain/sessions/entry-contract.js";
 import type { Session } from "@ocean/core/domain/sessions/session.js";
 import type { SkillIndexEntry } from "@ocean/core/domain/skills/skill.js";
-import { loadPromotedSkills } from "@ocean/market/skills/skill-curation.js";
 import { getHandoff } from "../handoff/handoff-service.js";
 import { emitHook } from "../hooks/lifecycle-hooks.js";
 import { finalizeSession } from "../sessions/session-closeout.js";
 import { sessionProjectId } from "../sessions/session-projects.js";
 import {
   assemblePrompt,
+  formatActiveLessons,
   formatProfileContract,
-  formatPromotedSkills,
   formatSkillIndex,
   PROMOTED_SKILL_MAX_BYTES,
   readDirectoriesOutside,
@@ -172,7 +171,7 @@ export async function runAgent(
         )
       : { text: "", partial: false };
     const skillIndex = await deps.loadSkillIndex(profile.skills, request.cwd);
-    const autoSkills = await loadPromotedSkills(
+    const autoSkills = await deps.loadActiveLessons(
       request.prompt,
       PROMOTED_SKILL_MAX_BYTES,
     );
@@ -182,7 +181,7 @@ export async function runAgent(
         "skill_auto_activated",
         JSON.stringify({
           id: skill.id,
-          name: skill.name,
+          name: skill.title,
           sourceSessionId: skill.sourceSessionId ?? null,
         }),
       );
@@ -221,7 +220,7 @@ export async function runAgent(
       }),
       instructions: profile.instructions,
       skills: local
-        ? [formatSkillIndex(skillIndex), formatPromotedSkills(autoSkills)]
+        ? [formatSkillIndex(skillIndex), formatActiveLessons(autoSkills)]
             .filter(Boolean)
             .join("\n\n")
         : "",
@@ -238,9 +237,8 @@ export async function runAgent(
         bytes,
         sources: context.manifest.files,
         handoffId: request.handoffId ?? null,
-        selectedSkills: (local ? [...skillIndex, ...autoSkills] : []).map(
-          (skill) => skill.name,
-        ),
+        selectedSkills: local ? skillIndex.map((skill) => skill.name) : [],
+        selectedLessons: local ? autoSkills.map((lesson) => lesson.id) : [],
         sections: breakdown,
       }),
     );

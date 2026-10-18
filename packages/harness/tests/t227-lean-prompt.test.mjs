@@ -23,8 +23,8 @@ import {
 import { SessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
 import {
   assemblePrompt,
+  formatActiveLessons,
   formatProfileContract,
-  formatPromotedSkills,
   formatSkillIndex,
   PROMPT_SECTIONS,
   readDirectoriesOutside,
@@ -395,12 +395,18 @@ test("truncateUtf8 never splits a code point", () => {
   assert.equal(truncateUtf8("a🌍", 5), "a🌍");
 });
 
-test("formatPromotedSkills marks only truncated skills", () => {
-  const whole = formatPromotedSkills([
-    { id: "a", name: "A", instructions: "full", truncated: false },
+test("formatActiveLessons renders each lesson with its id", () => {
+  const whole = formatActiveLessons([
+    {
+      id: "a",
+      title: "A",
+      body: "full",
+      sourceSessionId: null,
+      truncated: false,
+    },
   ]);
-  assert.equal(whole, "## Promoted skill: A [a]\nfull");
-  assert.equal(formatPromotedSkills([]), "");
+  assert.equal(whole, "## Lesson: A [a]\nfull");
+  assert.equal(formatActiveLessons([]), "");
 });
 
 test("buildContextReferences references a single task record without reading it", () =>

@@ -1,8 +1,9 @@
 import path from "node:path";
+import type { ActiveLessonRef } from "@ocean/core/domain/ports/runtime-ports.js";
 import type { Profile } from "@ocean/core/domain/profiles/profile.js";
+import { redactRuntimeText } from "@ocean/core/domain/redaction/redaction.js";
 import type { SkillIndexEntry } from "@ocean/core/domain/skills/skill.js";
 import { truncateUtf8 } from "@ocean/core/shared/fs-utils.js";
-import type { PromotedSkill } from "@ocean/market/skills/skill-curation.js";
 
 // Pure formatting for the headless runAgent prompt: every section is text built from data
 // the caller already loaded, and each section's byte size is measured so the context_cost
@@ -102,12 +103,12 @@ export function formatSkillIndex(entries: SkillIndexEntry[]): string {
   return `## Ocean skills\nSkill bodies are not inlined; read a skill's SKILL.md at the path shown before applying it.\n${lines.join("\n")}`;
 }
 
-// Promoted skills have no SKILL.md, so their (budget-bounded) text stays inline.
-export function formatPromotedSkills(skills: PromotedSkill[]): string {
-  return skills
+// Lessons have no SKILL.md, so their (budget-bounded) text stays inline.
+export function formatActiveLessons(lessons: ActiveLessonRef[]): string {
+  return lessons
     .map(
-      (skill) =>
-        `## Promoted skill: ${skill.name} [${skill.id}]\n${skill.instructions}`,
+      (lesson) =>
+        `## Lesson: ${redactRuntimeText(lesson.title)} [${lesson.id}]\n${redactRuntimeText(lesson.body)}`,
     )
     .join("\n\n");
 }

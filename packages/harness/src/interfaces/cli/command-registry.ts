@@ -1,5 +1,14 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { learnFromSession } from "@ocean/brain/memory/lesson-learning.js";
+import {
+  addLesson,
+  effectiveConfidence,
+  listLessons,
+  migrateLegacyLessons,
+  readLesson,
+  setLessonStatus,
+} from "@ocean/brain/memory/lessons.js";
 import { promoteSessionToKnowledge } from "@ocean/brain/memory/session-promotion.js";
 import { classifyIntent } from "@ocean/context/context/intent-router.js";
 import { resolveProfileName } from "@ocean/core/domain/profiles/runtime-config.js";
@@ -56,21 +65,10 @@ import {
   syncCoreSkills,
 } from "@ocean/market/skills/core-skill-sync.js";
 import {
-  addSkillCandidate,
-  learnSkillFromSession,
-  listSkillCandidates,
-  reviewSkillCandidate,
-} from "@ocean/market/skills/skill-curation.js";
-import {
   copyClientSkills,
   linkClientSkills,
   populateSkillHub,
 } from "@ocean/market/skills/skill-hub.js";
-import {
-  listObservations,
-  observeSession,
-  reviewObservation,
-} from "@ocean/market/skills/task-observer.js";
 import {
   hasFailures,
   repairWorkspace,
@@ -937,40 +935,49 @@ async function commandSkill(): Promise<void> {
     );
   } else if (action === "doctor")
     console.log(JSON.stringify(await coreSkillReports(), null, 2));
-  else if (action === "list")
-    console.log(JSON.stringify(await listSkillCandidates(), null, 2));
-  else if (action === "observe") {
-    const sessionId = process.argv[4];
-    if (sessionId)
-      console.log(
-        JSON.stringify(
-          await observeSession(sessionId, defaultSessionStoreFactory),
-          null,
-          2,
-        ),
-      );
-    else console.log(JSON.stringify(await listObservations(), null, 2));
-  } else if (action === "observation-review") {
-    const [observationId, status] = process.argv.slice(4);
-    if (
-      !observationId ||
-      !["approved", "promoted", "discarded", "rejected"].includes(status)
-    ) {
-      console.error(
-        "Usage: ocean skill observation-review <id> approved|promoted|discarded|rejected",
-      );
+  else if (action === "list") {
+    // [status] filters; any other argument is a lesson id (what a truncated lesson points at).
+    const filter = process.argv[4];
+    const isStatus =
+      filter === "candidate" || filter === "active" || filter === "retired";
+    const lessons =
+      filter && !isStatus
+        ? [await readLesson(filter)].filter((lesson) => lesson !== null)
+        : await listLessons(isStatus ? { status: filter } : {});
+    if (filter && !isStatus && !lessons.length) {
+      console.error(`Lesson not found: ${filter}`);
       process.exitCode = 1;
     } else
       console.log(
         JSON.stringify(
-          await reviewObservation(
-            observationId,
-            status as "approved" | "promoted" | "discarded" | "rejected",
-          ),
+          lessons.map((lesson) => ({
+            ...lesson,
+            effectiveConfidence: Number(effectiveConfidence(lesson).toFixed(4)),
+          })),
           null,
           2,
         ),
       );
+  } else if (action === "observe" || action === "learn") {
+    // Scores one closed session into the lessons store (the same step closeout runs).
+    const sessionId = process.argv[4];
+    if (!sessionId && action === "observe")
+      console.log(
+        JSON.stringify(await listLessons({ status: "candidate" }), null, 2),
+      );
+    else if (!sessionId) {
+      console.error("Usage: ocean skill learn <session-id>");
+      process.exitCode = 1;
+    } else {
+      const store = await defaultSessionStoreFactory();
+      try {
+        console.log(
+          JSON.stringify(await learnFromSession(store, sessionId), null, 2),
+        );
+      } finally {
+        store.close();
+      }
+    }
   } else if (action === "add") {
     const [id, name, ...instructions] = process.argv.slice(4);
     if (!id || !name || !instructions.length) {
@@ -979,40 +986,34 @@ async function commandSkill(): Promise<void> {
     } else
       console.log(
         JSON.stringify(
-          await addSkillCandidate({
-            id,
-            name,
-            instructions: instructions.join(" "),
-          }),
+          await addLesson({ id, title: name, body: instructions.join(" ") }),
           null,
           2,
         ),
       );
   } else if (action === "review") {
+    // The owner's call: promoted activates a lesson without waiting for the replay eval,
+    // rejected retires it. Run `ocean memory reindex` afterwards so runs can find it.
     const [id, status] = process.argv.slice(4);
     if (!id || (status !== "promoted" && status !== "rejected")) {
       console.error("Usage: ocean skill review <id> promoted|rejected");
       process.exitCode = 1;
     } else
       console.log(
-        JSON.stringify(await reviewSkillCandidate(id, status), null, 2),
-      );
-  } else if (action === "learn") {
-    const sessionId = process.argv[4];
-    if (!sessionId) {
-      console.error("Usage: ocean skill learn <completed-session-id>");
-      process.exitCode = 1;
-    } else
-      console.log(
         JSON.stringify(
-          await learnSkillFromSession(sessionId, defaultSessionStoreFactory),
+          await setLessonStatus(
+            id,
+            status === "promoted" ? "active" : "retired",
+          ),
           null,
           2,
         ),
       );
+  } else if (action === "migrate") {
+    console.log(JSON.stringify(await migrateLegacyLessons(), null, 2));
   } else {
     console.error(
-      "Usage: ocean skill sync|doctor|list|observe [session-id]|observation-review <id> approved|promoted|discarded|rejected|add|learn|review",
+      "Usage: ocean skill sync|doctor|list [status|id]|observe [session-id]|add|review <id> promoted|rejected|migrate",
     );
     process.exitCode = 1;
   }

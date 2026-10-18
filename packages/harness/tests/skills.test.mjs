@@ -4,16 +4,7 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { PROJECTS_DIR, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
-import { openSessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
-import {
-  addSkillCandidate,
-  learnSkillFromSession,
-  listSkillCandidates,
-  loadPromotedSkills,
-  reviewSkillCandidate,
-} from "@ocean/market/skills/skill-curation.js";
-import { defaultSessionStoreFactory } from "../dist/composition/runtime.js";
+import { PROJECTS_DIR } from "@ocean/core/shared/paths.js";
 import {
   listSkills,
   loadSkill,
@@ -68,74 +59,6 @@ test("the skill index rejects unknown skills", async () => {
     () => loadSkillIndex(["missing-skill"]),
     /Skill not found/,
   );
-});
-
-test("promoted skills are truncated by bytes with a marker naming the candidate", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-promoted-bytes-"));
-  const previous = process.env.OCEAN_ROOT;
-  process.env.OCEAN_ROOT = root;
-  try {
-    await addSkillCandidate({
-      id: "arabic-review",
-      name: "Arabic Review",
-      instructions: "مرحبا بالعالم ".repeat(400),
-    });
-    await reviewSkillCandidate("arabic-review", "promoted");
-    const [skill] = await loadPromotedSkills("apply arabic review", 1000);
-    assert.equal(skill.truncated, true);
-    assert.ok(Buffer.byteLength(skill.instructions) <= 1000);
-    // The marker is an actionable pointer: the entry id, the command and the store file.
-    assert.match(skill.instructions, /entry id "arabic-review"/);
-    assert.match(skill.instructions, /`ocean skill list`/);
-    assert.ok(
-      skill.instructions.includes(
-        path.join(root, SYSTEM_DIR, "skills", "candidates.json"),
-      ),
-    );
-    assert.equal(
-      Buffer.from(skill.instructions, "utf8").toString("utf8"),
-      skill.instructions,
-    );
-    assert.ok(!skill.instructions.includes("\uFFFD"));
-    const [whole] = await loadPromotedSkills("apply arabic review");
-    assert.equal(whole.truncated, false);
-  } finally {
-    if (previous === undefined) delete process.env.OCEAN_ROOT;
-    else process.env.OCEAN_ROOT = previous;
-  }
-});
-
-test("auto-activates only owner-reviewed promoted skills matching the prompt", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-auto-skills-"));
-  const previous = process.env.OCEAN_ROOT;
-  process.env.OCEAN_ROOT = root;
-  try {
-    await addSkillCandidate({
-      id: "typescript-review",
-      name: "TypeScript Review",
-      instructions: "Check strict typing.",
-    });
-    await addSkillCandidate({
-      id: "untrusted-review",
-      name: "Untrusted Review",
-      instructions: "Do not load me.",
-    });
-    await reviewSkillCandidate("typescript-review", "promoted");
-    const loaded = await loadPromotedSkills(
-      "Please apply TypeScript Review to this change",
-    );
-    assert.deepEqual(
-      loaded.map((skill) => skill.id),
-      ["typescript-review"],
-    );
-    assert.deepEqual(
-      await loadPromotedSkills("Please apply Untrusted Review"),
-      [],
-    );
-  } finally {
-    if (previous === undefined) delete process.env.OCEAN_ROOT;
-    else process.env.OCEAN_ROOT = previous;
-  }
 });
 
 test("resolves private and project skills without reading them from engine", async () => {
@@ -193,58 +116,4 @@ test("the pinned local validator rejects malformed Agent Skills", async () => {
   });
   assert.notEqual(output.code, 0);
   assert.match(output.value, /invalid name/);
-});
-
-test("stores and requires review for skill candidates", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-skill-candidates-"));
-  process.env.OCEAN_ROOT = root;
-  await addSkillCandidate({
-    id: "review",
-    name: "Review",
-    instructions: "Check the diff.",
-  });
-  assert.equal((await listSkillCandidates())[0].status, "candidate");
-  assert.equal(
-    (await reviewSkillCandidate("review", "promoted")).status,
-    "promoted",
-  );
-  delete process.env.OCEAN_ROOT;
-});
-
-test("learns a bounded skill candidate from a completed session without auto-promoting it", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-skill-learning-"));
-  process.env.OCEAN_ROOT = root;
-  const sessionId = "learn-session";
-  const store = await openSessionStore();
-  store.create({
-    sessionId,
-    provider: "codex",
-    providerSessionId: null,
-    parentSessionId: null,
-    profile: "default",
-    profileIdentity: "",
-    workingDirectory: root,
-    resumeData: null,
-  });
-  store.updateStatus(sessionId, "running");
-  store.appendEvent(
-    sessionId,
-    "provider_output",
-    "Use a bounded review checklist.",
-  );
-  store.appendEvent(
-    sessionId,
-    "evidence",
-    JSON.stringify({ result: "proven" }),
-  );
-  store.updateStatus(sessionId, "completed");
-  store.close();
-  const candidate = await learnSkillFromSession(
-    sessionId,
-    defaultSessionStoreFactory,
-  );
-  assert.equal(candidate.status, "candidate");
-  assert.equal(candidate.sourceSessionId, sessionId);
-  assert.match(candidate.instructions, /bounded review/);
-  delete process.env.OCEAN_ROOT;
 });
