@@ -8,7 +8,8 @@
     "packages/harness": {
       "entry": ["tests/*.test.mjs", "scripts/*.mjs"],
       "project": ["src/**/*.ts", "tests/**/*.mjs", "scripts/**/*.mjs"],
-      "ignore": ["tests/fixtures/**"]
+      "ignore": ["tests/fixtures/**"],
+      "ignoreBinaries": ["gitleaks"]
     },
     "packages/core": {
       "project": ["src/**/*.ts"]
