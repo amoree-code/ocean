@@ -23,9 +23,18 @@ import { finalizeSession } from "@ocean/loop/sessions/session-closeout.js";
 
 const previousRoot = process.env.OCEAN_ROOT;
 const roots = [];
+const stores = [];
 test.after(async () => {
   if (previousRoot === undefined) delete process.env.OCEAN_ROOT;
   else process.env.OCEAN_ROOT = previousRoot;
+  // Windows cannot delete a sqlite file that is still open.
+  for (const store of stores) {
+    try {
+      store.close();
+    } catch {
+      // already closed by the test
+    }
+  }
   await Promise.all(roots.map((r) => rm(r, { recursive: true, force: true })));
 });
 
@@ -34,12 +43,11 @@ async function freshStore() {
   roots.push(root);
   process.env.OCEAN_ROOT = root;
   await mkdir(path.join(root, SYSTEM_DIR, "sessions"), { recursive: true });
-  return {
-    root,
-    store: new SessionStore(
-      path.join(root, SYSTEM_DIR, "sessions", "sessions.sqlite"),
-    ),
-  };
+  const store = new SessionStore(
+    path.join(root, SYSTEM_DIR, "sessions", "sessions.sqlite"),
+  );
+  stores.push(store);
+  return { root, store };
 }
 
 const PROCEDURE = "Run the build with pnpm build before committing the change";
