@@ -1,0 +1,36 @@
+# PUBLIC — the publish allowlist (T-231). Deny-by-default.
+#
+# `node scripts/publish.mjs` exports a tracked file to the public repo only if a line below
+# matches it. Anything not listed stays private. One entry per line:
+#   dir/        everything under that directory
+#   a/b.json    exactly that file
+#   docs/*.md   `*` stays within one path segment, `**` crosses segments
+# No negation. The hard deny list in scripts/publish.mjs (workspace dirs, .env*, keys) beats
+# this file, so listing a path here can never publish it.
+
+packages/
+scripts/
+docs/
+.changeset/
+.github/
+
+.dependency-cruiser.cjs
+.dockerignore
+.gitattributes
+.gitignore
+.ignore
+.nvmrc
+.prettierignore
+AGENTS.md
+CHANGELOG.md
+CLAUDE.md
+Dockerfile
+GEMINI.md
+LICENSE
+README.md
+biome.json
+knip.json
+lefthook.yml
+package.json
+pnpm-lock.yaml
+pnpm-workspace.yaml
