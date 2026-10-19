@@ -15,6 +15,20 @@ export type SessionSignal = {
 const CORRECTION_PATTERN =
   /\bno,|\bactually,|\bnot that\b|\binstead of\b|\bshould use\b|\bthat'?s wrong\b/i;
 
+// biome-ignore lint/suspicious/noControlCharactersInRegex: matching terminal escape sequences
+const ANSI_PATTERN = /\u001b\[[0-?]*[ -/]*[@-~]/g;
+
+// Runtime chatter (hook_response JSON, terminal redraws) repeats by construction, not by lesson.
+function isRuntimeNoise(text: string) {
+  if (text.length <= 12) return true;
+  if (!text.startsWith("{")) return false;
+  try {
+    return (JSON.parse(text) as { type?: unknown })?.type === "system";
+  } catch {
+    return false;
+  }
+}
+
 function userInputTexts(events: SessionEvent[]) {
   return events
     .filter((event) => event.type === "user_input")
@@ -44,9 +58,12 @@ export function detectSessionSignals(events: SessionEvent[]): SessionSignal[] {
     .filter((event) => ["provider_output", "text", "json"].includes(event.type))
     .map((event) => ({
       id: event.eventId,
-      text: redactRuntimeText(event.data).replace(/\s+/g, " ").trim(),
+      text: redactRuntimeText(event.data)
+        .replace(ANSI_PATTERN, "")
+        .replace(/\s+/g, " ")
+        .trim(),
     }))
-    .filter((event) => event.text.length > 12)
+    .filter((event) => !isRuntimeNoise(event.text))
     .slice(0, 80);
   const userInputs = userInputTexts(events);
   const candidates: SessionSignal[] = [];

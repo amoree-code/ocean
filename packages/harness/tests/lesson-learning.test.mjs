@@ -20,6 +20,7 @@ import {
 import { SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import { SessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
 import { finalizeSession } from "@ocean/loop/sessions/session-closeout.js";
+import { detectSessionSignals } from "@ocean/market/skills/signal-detection.js";
 
 const previousRoot = process.env.OCEAN_ROOT;
 const roots = [];
@@ -222,4 +223,29 @@ test("an activated id that is not a lesson is ignored and the rest are still sco
   const learning = await learnFromSession(store, "e1");
   assert.deepEqual(learning.confirmed, ["fine"]);
   assert.deepEqual(learning.errors, []);
+});
+
+test("repeated hook_response JSON and terminal escape codes are not signals", () => {
+  const event = (eventId, type, data) => ({ eventId, type, data });
+  const proven = event(1, "evidence", JSON.stringify({ result: "proven" }));
+  const hook = JSON.stringify({
+    type: "system",
+    subtype: "hook_response",
+    hook_name: "sessionstart:startup",
+    exit_code: 0,
+  });
+  const noise = [
+    proven,
+    event(2, "json", hook),
+    event(3, "json", hook),
+    event(4, "text", "\u001b[?2026h\u001b[1;1h\u001b[j"),
+    event(5, "text", "\u001b[?2026h\u001b[1;1h\u001b[j"),
+  ];
+  assert.deepEqual(detectSessionSignals(noise), []);
+  const real = [
+    proven,
+    event(2, "text", "\u001b[1mran the build and it passed\u001b[0m"),
+    event(3, "text", "ran the build and it passed"),
+  ];
+  assert.equal(detectSessionSignals(real)[0]?.signalType, "repeated-procedure");
 });
