@@ -55,18 +55,28 @@ function parseError(stderr) {
     assert.fail(`script crashed instead of reporting an error:\n${stderr}`);
   }
 }
+// External scanners are skipped by default so the suite does not need them installed; the gate
+// tests below pass `--skip` themselves (or stubs) to say what they exercise.
 function run(root, ...extra) {
+  const args = extra.includes("--skip")
+    ? extra
+    : ["--skip", "gitleaks,trufflehog", ...extra];
   const result = spawnSync(
     process.execPath,
-    [script, "--root", root, ...extra],
-    { encoding: "utf8" },
+    [script, "--root", root, ...args],
+    {
+      encoding: "utf8",
+      env: { ...process.env, ...runEnv },
+    },
   );
   return {
     code: result.status,
     out: result.stdout ? JSON.parse(result.stdout) : null,
     err: result.stdout ? null : parseError(result.stderr),
+    stderr: result.stderr,
   };
 }
+let runEnv = {};
 
 test("allowlist matching: dir prefix, exact file, * and **", () => {
   const allowed = parseAllowlist(
@@ -251,6 +261,138 @@ test("missing PUBLIC or non-repo fails closed", () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "ocean-publish-test-"));
   try {
     assert.equal(run(root).code, 1);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// Assembled at run time so this file does not trip the scans it tests.
+const LEAK = `${"pass"}${"word"} = ${"hunter2".repeat(2)}\n`;
+const stubDir = mkdtempSync(path.join(os.tmpdir(), "ocean-publish-stubs-"));
+function stub(name, exitCode) {
+  const file = path.join(stubDir, name);
+  writeFileSync(file, `#!/bin/sh\nexit ${exitCode}\n`, { mode: 0o755 });
+  return file;
+}
+test.after(() => rmSync(stubDir, { recursive: true, force: true }));
+
+test("a planted fake secret aborts the publish without echoing it", {
+  skip: noGit,
+}, () => {
+  const root = repo({ "ok.txt": "ok", "leak.txt": LEAK }, "ok.txt\nleak.txt\n");
+  try {
+    const { code, out, err, stderr } = run(root);
+    assert.equal(code, 1);
+    assert.equal(out, null);
+    assert.equal(err.error, "gate failed: privacy");
+    assert.deepEqual(err.gates.find((g) => g.gate === "privacy").detail, [
+      { type: "credential", path: "leak.txt" },
+    ]);
+    assert.ok(!stderr.includes("hunter2"));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a clean export passes; skipped scanners make it incomplete", {
+  skip: noGit,
+}, () => {
+  const root = repo({ "ok.txt": "ok" }, "ok.txt\n");
+  try {
+    const { code, out } = run(root);
+    assert.equal(code, 0);
+    assert.equal(out.ok, true);
+    assert.equal(out.complete, false);
+    assert.deepEqual(
+      out.gates.map((g) => `${g.gate}:${g.status}`),
+      ["gitleaks:skipped", "trufflehog:skipped", "privacy:passed"],
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a scanner that is not installed fails closed unless skipped", {
+  skip: noGit,
+}, () => {
+  const root = repo({ "ok.txt": "ok" }, "ok.txt\n");
+  runEnv = { OCEAN_PUBLISH_GITLEAKS: path.join(stubDir, "missing") };
+  try {
+    const { code, err } = run(root, "--skip", "trufflehog");
+    assert.equal(code, 1);
+    assert.equal(err.error, "gate failed: gitleaks");
+    assert.match(err.gates[0].detail, /scanner not found/);
+    assert.equal(err.gates[2].status, "not-run");
+  } finally {
+    runEnv = {};
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("scanner verdicts decide the run (stub scanners)", {
+  skip: noGit || process.platform === "win32",
+}, () => {
+  const root = repo({ "ok.txt": "ok" }, "ok.txt\n");
+  try {
+    runEnv = {
+      OCEAN_PUBLISH_GITLEAKS: stub("gitleaks-ok", 0),
+      OCEAN_PUBLISH_TRUFFLEHOG: stub("trufflehog-ok", 0),
+    };
+    const pass = run(root, "--skip", "");
+    assert.equal(pass.code, 0);
+    assert.equal(pass.out.complete, true);
+
+    runEnv = {
+      OCEAN_PUBLISH_GITLEAKS: stub("gitleaks-ok", 0),
+      OCEAN_PUBLISH_TRUFFLEHOG: stub("trufflehog-hit", 183),
+    };
+    const hit = run(root, "--skip", "");
+    assert.equal(hit.code, 1);
+    assert.equal(hit.err.error, "gate failed: trufflehog");
+    assert.deepEqual(
+      hit.err.gates.map((g) => g.status),
+      ["passed", "failed", "not-run"],
+    );
+  } finally {
+    runEnv = {};
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+const noGitleaks = spawnSync("gitleaks", ["version"]).error !== undefined;
+test("the export cannot silence the real gitleaks scan", {
+  skip: noGit || noGitleaks,
+}, () => {
+  // Assembled at run time: the allow marker and the key must not appear literally here.
+  const allow = ["gitleaks", "allow"].join(":");
+  const key = `aws_access_key_id = ${"AKIA"}${"IOSFODNN7"}${"REALKEY"} # ${allow}\n`;
+  const root = repo(
+    {
+      "leak.txt": key,
+      ".gitleaks.toml": "[allowlist]\npaths = ['.*']\n",
+      ".gitleaksignore": "leak.txt:aws-access-token:1\n",
+    },
+    "leak.txt\n.gitleaks.toml\n.gitleaksignore\n",
+  );
+  try {
+    const { code, err } = run(root, "--skip", "trufflehog");
+    assert.equal(code, 1);
+    assert.equal(err.error, "gate failed: gitleaks");
+    assert.equal(err.gates[0].detail, "findings reported");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("--skip rejects an unknown gate and the privacy gate", {
+  skip: noGit,
+}, () => {
+  const root = repo({ "ok.txt": "ok" }, "ok.txt\n");
+  try {
+    const { code, err } = run(root, "--skip", "nope");
+    assert.equal(code, 1);
+    assert.match(err.error, /unknown gate nope/);
+    assert.equal(run(root, "--skip", "privacy").code, 1);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

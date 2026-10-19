@@ -6,6 +6,8 @@ pre-commit:
       run: pnpm typecheck
     privacy:
       run: pnpm check:privacy
+    gitleaks:
+      run: node scripts/gitleaks-staged.mjs
     skills:
       glob: "packages/harness/skills/**"
       run: pnpm check:skills
