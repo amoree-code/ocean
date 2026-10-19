@@ -6,6 +6,7 @@ Docs-only or CI-only PRs may add the `skip-changelog` label instead.
 
 ## Unreleased
 
+- fix(T-274): lesson signal detection ignores repeated hook_response JSON and terminal escape codes, so they no longer become lesson candidates (#193)
 - fix(T-275): the lesson-learning test closes its session stores before deleting temp dirs, so the Windows gate no longer fails with EBUSY (#194)
 - refactor(T-273): one process supervisor ends every headless provider run (timeout 124, output budget 125, process group, signal forwarding, line splitting); the CLI providers now stop their whole process group on a stop and no longer wait on a background process holding their output (#189)
 - feat(T-223): headless Claude runs go through the Claude Agent SDK instead of `claude -p` argument building; Claude Code's own system prompt, process-group stops (timeout 124, output budget 125), plain-text stdout kept as events, spawn failure rejects the run (#188)
