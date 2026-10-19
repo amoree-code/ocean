@@ -13,9 +13,12 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
+  checkRemoteShape,
   deniedReason,
+  normalizeRemote,
   PublishError,
   parseAllowlist,
+  redactRemote,
 } from "../../../scripts/publish.mjs";
 
 const script = fileURLToPath(
@@ -27,6 +30,8 @@ function repo(files, allowlist, { links = {} } = {}) {
   const root = mkdtempSync(path.join(os.tmpdir(), "ocean-publish-test-"));
   const git = (...args) => execFileSync("git", args, { cwd: root });
   git("init", "-q");
+  git("config", "user.name", "t");
+  git("config", "user.email", `t${"@"}example.test`);
   const put = (file, text) => {
     mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
     writeFileSync(path.join(root, file), text);
@@ -395,5 +400,225 @@ test("--skip rejects an unknown gate and the privacy gate", {
     assert.equal(run(root, "--skip", "privacy").code, 1);
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+function bare() {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ocean-publish-remote-"));
+  execFileSync("git", ["init", "--bare", "-q", "-b", "main", dir]);
+  return dir;
+}
+const gitOut = (cwd, ...args) =>
+  execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+function commitAll(root, message) {
+  execFileSync("git", ["add", "-A", "-f"], { cwd: root });
+  execFileSync("git", ["commit", "-qm", message], { cwd: root });
+}
+const stubScanners = () => ({
+  OCEAN_PUBLISH_GITLEAKS: stub("gitleaks-ok", 0),
+  OCEAN_PUBLISH_TRUFFLEHOG: stub("trufflehog-ok", 0),
+});
+const canStub = noGit || process.platform === "win32";
+// `--skip ""` skips nothing: the helper would otherwise add its default skips.
+const push = (root, remote, confirm, ...more) =>
+  run(
+    root,
+    "--skip",
+    "",
+    "--push",
+    "--remote",
+    remote,
+    "--confirm",
+    confirm,
+    ...more,
+  );
+
+test("remote shapes: only https, ssh, scp-style or an existing local dir", () => {
+  for (const ok of [
+    "https://example.test/o/r.git",
+    `ssh://git${"@"}example.test/o/r.git`,
+    `git${"@"}example.test:o/r.git`,
+    os.tmpdir(),
+  ])
+    assert.ok(checkRemoteShape(ok), ok);
+  for (const bad of [
+    "",
+    "--upload-pack=touch /tmp/x",
+    "ext::sh -c id",
+    "file:///tmp/x",
+    "relative/path",
+    "-oProxyCommand=x",
+  ])
+    assert.ok(!checkRemoteShape(bad), bad);
+});
+
+test("remote spellings of one repo normalise equal; credentials are redacted", () => {
+  const forms = [
+    "https://example.test/Owner/Repo.git",
+    `https://user:token${"@"}example.test/owner/repo`,
+    "https://example.test/owner/repo/",
+    `git${"@"}example.test:owner/repo.git`,
+    `ssh://git${"@"}example.test/owner/repo`,
+  ];
+  for (const form of forms)
+    assert.equal(normalizeRemote(form), "example.test/owner/repo", form);
+  assert.notEqual(
+    normalizeRemote("https://example.test/owner/other"),
+    normalizeRemote(forms[0]),
+  );
+  assert.equal(
+    redactRemote(`https://user:token${"@"}example.test/o/r`),
+    "https://example.test/o/r",
+  );
+});
+
+test("push: one squashed fast-forward commit per publish, never forced", {
+  skip: canStub,
+}, () => {
+  const root = repo({ "a.txt": "one", "dir/b.txt": "b" }, "a.txt\ndir/\n");
+  const remote = bare();
+  runEnv = stubScanners();
+  try {
+    const first = run(root).out;
+    const pushed = push(root, remote, first.sha256);
+    assert.equal(pushed.code, 0, pushed.stderr);
+    assert.equal(pushed.out.pushed, true);
+    assert.equal(pushed.out.mode, "push");
+    assert.equal(gitOut(remote, "rev-list", "--count", "main"), "1");
+    assert.deepEqual(
+      gitOut(remote, "ls-tree", "-r", "--name-only", "main").split("\n"),
+      ["a.txt", "dir/b.txt"],
+    );
+    assert.equal(
+      gitOut(remote, "log", "-1", "--format=%s", "main"),
+      `publish: ${first.head.slice(0, 12)}`,
+    );
+    const tip1 = gitOut(remote, "rev-parse", "main");
+
+    // Same content again: nothing to publish.
+    const again = push(root, remote, first.sha256);
+    assert.equal(again.out.pushed, false);
+    assert.equal(gitOut(remote, "rev-parse", "main"), tip1);
+
+    // Changed content: a second commit on top, history intact.
+    writeFileSync(path.join(root, "a.txt"), "two");
+    commitAll(root, "edit");
+    const next = run(root).out;
+    assert.equal(push(root, remote, next.sha256).out.pushed, true);
+    assert.equal(gitOut(remote, "rev-list", "--count", "main"), "2");
+    execFileSync("git", ["merge-base", "--is-ancestor", tip1, "main"], {
+      cwd: remote,
+    });
+  } finally {
+    runEnv = {};
+    rmSync(root, { recursive: true, force: true });
+    rmSync(remote, { recursive: true, force: true });
+  }
+});
+
+test("push refuses without the matching --confirm, and pushes nothing", {
+  skip: canStub,
+}, () => {
+  const root = repo({ "a.txt": "one" }, "a.txt\n");
+  const remote = bare();
+  runEnv = stubScanners();
+  try {
+    for (const confirm of ["0".repeat(64), "not-a-hash"]) {
+      const result = push(root, remote, confirm);
+      assert.equal(result.code, 1);
+      assert.match(
+        result.err.error,
+        /--confirm must equal the manifest sha256/,
+      );
+      assert.equal(result.err.sha256, run(root).out.sha256);
+    }
+    const missing = run(root, "--skip", "", "--push", "--remote", remote);
+    assert.equal(missing.code, 1);
+    assert.equal(
+      spawnSync("git", ["rev-parse", "main"], { cwd: remote }).status !== 0,
+      true,
+    );
+  } finally {
+    runEnv = {};
+    rmSync(root, { recursive: true, force: true });
+    rmSync(remote, { recursive: true, force: true });
+  }
+});
+
+test("push refuses origin, the source repo, --skip, a dirty tree and no remote", {
+  skip: canStub,
+}, () => {
+  const root = repo({ "a.txt": "one" }, "a.txt\n");
+  const remote = bare();
+  execFileSync("git", ["remote", "add", "origin", remote], { cwd: root });
+  runEnv = stubScanners();
+  try {
+    const sha = run(root).out.sha256;
+    for (const spelling of [remote, `${remote}/`]) {
+      const refused = push(root, spelling, sha);
+      assert.equal(refused.code, 1, spelling);
+      assert.match(refused.err.error, /must not be origin/);
+    }
+    assert.match(
+      push(root, root, sha).err.error,
+      /must not be the source repository/,
+    );
+    const skipped = run(
+      root,
+      "--push",
+      "--remote",
+      os.tmpdir(),
+      "--confirm",
+      sha,
+      "--skip",
+      "gitleaks",
+    );
+    assert.match(skipped.err.error, /does not allow --skip/);
+    const noRemote = run(root, "--skip", "", "--push", "--confirm", sha);
+    assert.match(noRemote.err.error, /--push needs --remote/);
+    const badShape = push(root, "ext::sh -c id", sha);
+    assert.match(badShape.err.error, /--remote must be/);
+
+    const other = bare();
+    try {
+      writeFileSync(path.join(root, "a.txt"), "dirty");
+      const dirty = push(root, other, sha);
+      assert.match(dirty.err.error, /uncommitted tracked changes/);
+    } finally {
+      rmSync(other, { recursive: true, force: true });
+    }
+    assert.equal(
+      spawnSync("git", ["rev-parse", "main"], { cwd: remote }).status !== 0,
+      true,
+    );
+  } finally {
+    runEnv = {};
+    rmSync(root, { recursive: true, force: true });
+    rmSync(remote, { recursive: true, force: true });
+  }
+});
+
+test("a failing scanner stops the push before anything is sent", {
+  skip: canStub,
+}, () => {
+  const root = repo({ "a.txt": "one" }, "a.txt\n");
+  const remote = bare();
+  runEnv = {
+    OCEAN_PUBLISH_GITLEAKS: stub("gitleaks-hit", 1),
+    OCEAN_PUBLISH_TRUFFLEHOG: stub("trufflehog-ok", 0),
+  };
+  try {
+    const sha = run(root).out.sha256;
+    const result = push(root, remote, sha);
+    assert.equal(result.code, 1);
+    assert.equal(result.err.error, "gate failed: gitleaks");
+    assert.equal(
+      spawnSync("git", ["rev-parse", "main"], { cwd: remote }).status !== 0,
+      true,
+    );
+  } finally {
+    runEnv = {};
+    rmSync(root, { recursive: true, force: true });
+    rmSync(remote, { recursive: true, force: true });
   }
 });

@@ -291,8 +291,138 @@ const firstLine = (text) =>
     ?.trim()
     .slice(0, 200) ?? "no stderr";
 
+// --- publishing -----------------------------------------------------------------------------
+// Only these shapes are accepted as a push target: an option-looking value or a transport such as
+// `ext::<command>` would let a mistyped argument run something. A local directory is allowed so
+// the push can be rehearsed against a bare repository.
+const REMOTE_SHAPES = [
+  /^https:\/\/[^\s/@]+(?::[^\s/@]*)?@?[^\s]+$/,
+  /^ssh:\/\/[^\s]+$/,
+  /^[\w.-]+@[\w.-]+:[^\s]+$/,
+];
+
+export function checkRemoteShape(remote) {
+  if (!remote || remote.startsWith("-")) return false;
+  if (REMOTE_SHAPES.some((shape) => shape.test(remote))) return true;
+  return path.isAbsolute(remote) && existsSync(remote);
+}
+
+// A URL can carry a credential in its userinfo: it never reaches output.
+export function redactRemote(remote) {
+  return remote.replace(/^(\w+:\/\/)[^/@\s]*@/, "$1");
+}
+
+// Two spellings of one repository compare equal: https/ssh/scp forms, `.git`, trailing slash,
+// case of the host; local paths by their resolved location.
+export function normalizeRemote(remote) {
+  if (path.isAbsolute(remote))
+    return path.resolve(remote).replace(/\.git$/i, "");
+  const scp = remote.match(/^[\w.-]+@([\w.-]+):(.+)$/);
+  const url = scp ? `${scp[1]}/${scp[2]}` : remote.replace(/^\w+:\/\//, "");
+  return url
+    .replace(/^[^/@]*@/, "")
+    .replace(/\/+$/, "")
+    .replace(/\.git$/i, "")
+    .toLowerCase();
+}
+
+function assertNotOrigin(root, remote) {
+  let origins = [];
+  try {
+    origins = git(root, ["remote", "get-url", "--all", "origin"])
+      .split("\n")
+      .filter(Boolean);
+  } catch {
+    // no origin configured: nothing to collide with
+  }
+  const wanted = normalizeRemote(remote);
+  if (origins.some((origin) => normalizeRemote(origin) === wanted))
+    throw new PublishError("the public remote must not be origin");
+  if (wanted === normalizeRemote(root))
+    throw new PublishError(
+      "the public remote must not be the source repository",
+    );
+}
+
+function runGit(cwd, args, extra = {}) {
+  return spawnSync("git", args, {
+    cwd,
+    encoding: "utf8",
+    ...extra,
+    env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+  });
+}
+
+function mustGit(cwd, args, what) {
+  const run = runGit(cwd, args);
+  if (run.status !== 0)
+    throw new PublishError(`${what} failed: ${firstLine(run.stderr)}`);
+  return run.stdout;
+}
+
+// One squashed commit on top of the public tip: the whole difference since the last publish is a
+// single fast-forward commit, so the public history is never rewritten and nothing is forced.
+export function squashPush(root, scratch, remote, head) {
+  const name = git(root, ["config", "user.name"]).trim();
+  const email = git(root, ["config", "user.email"]).trim();
+  if (!name || !email)
+    throw new PublishError("git user.name and user.email must be configured");
+  const quiet = [
+    "-c",
+    "core.hooksPath=/dev/null",
+    "-c",
+    "commit.gpgsign=false",
+  ];
+  mustGit(scratch, ["init", "-q", "-b", "main"], "git init");
+  const tip = runGit(scratch, ["ls-remote", remote, "refs/heads/main"]);
+  if (tip.status !== 0)
+    throw new PublishError(
+      `cannot read the public remote: ${firstLine(tip.stderr)}`,
+    );
+  if (tip.stdout.trim()) {
+    mustGit(scratch, ["fetch", "-q", remote, "main"], "git fetch");
+    mustGit(scratch, ["reset", "-q", "--soft", "FETCH_HEAD"], "git reset");
+  }
+  mustGit(scratch, ["add", "-A", "-f"], "git add");
+  const hasParent =
+    runGit(scratch, ["rev-parse", "--verify", "HEAD"]).status === 0;
+  const unchanged =
+    hasParent && runGit(scratch, ["diff", "--cached", "--quiet"]).status === 0;
+  if (unchanged)
+    return { pushed: false, reason: "public repo already up to date" };
+  mustGit(
+    scratch,
+    [
+      ...quiet,
+      "-c",
+      `user.name=${name}`,
+      "-c",
+      `user.email=${email}`,
+      "commit",
+      "-q",
+      "-m",
+      `publish: ${head.slice(0, 12)}`,
+    ],
+    "git commit",
+  );
+  const commit = mustGit(
+    scratch,
+    ["rev-parse", "HEAD"],
+    "git rev-parse",
+  ).trim();
+  mustGit(scratch, ["push", "-q", remote, "HEAD:refs/heads/main"], "git push");
+  return { pushed: true, commit };
+}
+
 function main(argv) {
-  const args = { root: null, keep: false, skip: [] };
+  const args = {
+    root: null,
+    keep: false,
+    skip: [],
+    push: false,
+    confirm: null,
+    remote: process.env.OCEAN_PUBLISH_REMOTE || null,
+  };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--root") {
       args.root = argv[++i];
@@ -303,13 +433,38 @@ function main(argv) {
           throw new PublishError(`--skip: unknown gate ${gate}`);
         args.skip.push(gate);
       }
-    } else if (argv[i] === "--keep") args.keep = true;
+    } else if (argv[i] === "--remote") {
+      args.remote = argv[++i];
+      if (!args.remote) throw new PublishError("--remote needs a url");
+    } else if (argv[i] === "--confirm") {
+      args.confirm = argv[++i];
+      if (!args.confirm) throw new PublishError("--confirm needs a hash");
+    } else if (argv[i] === "--push") args.push = true;
+    else if (argv[i] === "--keep") args.keep = true;
     else if (argv[i] === "--dry-run") continue;
     else throw new PublishError(`unknown argument: ${argv[i]}`);
   }
   const root = path.resolve(
     args.root ?? path.join(path.dirname(fileURLToPath(import.meta.url)), ".."),
   );
+  // A push is refused before any work if its target or its approval is wrong.
+  if (args.remote) {
+    if (!checkRemoteShape(args.remote))
+      throw new PublishError(
+        "--remote must be an https, ssh or scp-style git url",
+      );
+    assertNotOrigin(root, args.remote);
+  }
+  if (args.push) {
+    if (!args.remote)
+      throw new PublishError(
+        "--push needs --remote <url> or OCEAN_PUBLISH_REMOTE",
+      );
+    if (args.skip.length)
+      throw new PublishError(
+        "--push does not allow --skip: every scanner must run",
+      );
+  }
   const scratch = mkdtempSync(path.join(os.tmpdir(), "ocean-publish-"));
   try {
     const manifest = stage(root, scratch);
@@ -320,11 +475,27 @@ function main(argv) {
         gates,
         ...(args.keep ? { scratch } : {}),
       });
+    const complete = gates.every((g) => g.status === "passed");
+    let published = {};
+    if (args.push) {
+      if (manifest.dirty)
+        throw new PublishError(
+          "the working tree has uncommitted tracked changes",
+        );
+      if (args.confirm !== manifest.sha256)
+        throw new PublishError(
+          "--confirm must equal the manifest sha256 of a dry-run you reviewed",
+          { sha256: manifest.sha256 },
+        );
+      published = squashPush(root, scratch, args.remote, manifest.head);
+    }
     console.log(
       JSON.stringify({
         ok: true,
-        mode: "dry-run",
-        complete: gates.every((g) => g.status === "passed"),
+        mode: args.push ? "push" : "dry-run",
+        complete,
+        ...(args.remote ? { remote: redactRemote(args.remote) } : {}),
+        ...published,
         gates,
         root,
         ...(args.keep ? { scratch } : {}),
