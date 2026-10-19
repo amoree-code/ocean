@@ -10,7 +10,7 @@ deny-by-default and every export is scanned before anything is sent.
    cannot leak and the manifest hash names a real commit.
 2. **Hard deny list**, compiled into the script, beats everything: the private workspace
    directories (`brain/`, `charter/`, `bridge/`, `sessions/`, `00-inbox/` … `05-knowledge/`),
-   `.git/`, `node_modules/`, `.env*` (except `.env.example`), keys and certificates,
+   `.git/`, `node_modules/`, machine-local tool config (`.claude/`, `.cursor/`, `.gemini/`, `.mcp.json`), `.env*` (except `.env.example`), keys and certificates,
    `credentials.json`, `secrets.json`, `.netrc`, `.npmrc`. Matching is case-insensitive and
    anchored to the repository root, so `packages/brain/` is engine code and stays publishable.
 3. **`PUBLIC` allowlist.** A file ships only if a line in `PUBLIC` matches it. A file that is not
@@ -41,6 +41,17 @@ external scanners for a local dry run and marks the result `complete: false`; th
 gate cannot be skipped. Point at a scanner outside `PATH` with `OCEAN_PUBLISH_GITLEAKS` /
 `OCEAN_PUBLISH_TRUFFLEHOG`. Scanner output is never printed — only the verdict, and for the
 privacy gate the paths and finding types.
+
+A failed gate names each finding as `{rule, file, line}`, relative to the export. The matched
+text is never printed.
+
+### Known limits
+
+- gitleaks' default configuration skips some paths and binary file types (for example images and
+  lockfiles). The other two gates are independent layers, but a secret hidden in a skipped file
+  type can still pass all three; `PUBLIC` is the control that keeps such files out.
+- The scanners find credentials and private paths by pattern. They do not know what is
+  private in a sentence. The allowlist is deliberately narrow for that reason.
 
 ## Pushing
 

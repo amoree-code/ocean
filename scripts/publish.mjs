@@ -36,10 +36,17 @@ const DENIED_ROOT_DIRS = new Set([
   "03-areas",
   "04-projects",
   "05-knowledge",
+  // Machine-local agent and tool configuration: names this machine's paths and tools.
+  ".claude",
+  ".cursor",
+  ".gemini",
+  ".aws",
+  ".ssh",
+  ".gnupg",
 ]);
 const DENIED_SEGMENTS = new Set([".git", "node_modules"]);
 const DENIED_NAMES =
-  /^(?:\.env(?:\..+)?|.+\.(?:pem|key|p12|p8|pfx|jks|keystore)|credentials\.json|secrets\.json|\.netrc|\.npmrc|\.pypirc|\.git-credentials|id_(?:rsa|dsa|ecdsa|ed25519))$/;
+  /^(?:\.env(?:\..+)?|.+\.(?:pem|key|p12|p8|pfx|jks|keystore|keychain|keychain-db)|credentials\.json|secrets\.json|\.netrc|\.npmrc|\.pypirc|\.git-credentials|\.mcp\.json|\.dev\.vars|id_(?:rsa|dsa|ecdsa|ed25519))$/;
 
 export class PublishError extends Error {
   constructor(message, extra = {}) {
@@ -110,25 +117,36 @@ const git = (root, args) => {
   }
 };
 
+const blobContent = (root, blob) =>
+  execFileSync("git", ["-C", root, "cat-file", "blob", blob], {
+    maxBuffer: 256 * 1024 * 1024,
+  });
+
 export function stage(root, scratch) {
-  const allowlist = path.join(root, "PUBLIC");
-  if (!existsSync(allowlist))
-    throw new PublishError(`no PUBLIC allowlist at ${allowlist}`);
-  const allowed = parseAllowlist(readFileSync(allowlist, "utf8"));
   const head = git(root, ["rev-parse", "--verify", "HEAD"]).trim();
   const entries = git(root, ["ls-tree", "-r", "-z", head])
     .split("\0")
     .filter(Boolean)
     .map((line) => {
-      const [meta, file] = line.split("\t");
-      const [mode, , blob] = meta.split(" ");
-      return { mode, blob, file };
+      // A path may itself contain a tab: only the first one separates metadata from the name.
+      const tab = line.indexOf("\t");
+      const [mode, , blob] = line.slice(0, tab).split(" ");
+      return { mode, blob, file: line.slice(tab + 1) };
     })
     .sort((a, b) => (a.file < b.file ? -1 : 1));
+  // The allowlist is read from the same commit as the files it judges, and is part of the hash.
+  const listing = entries.find(
+    (e) => e.file === "PUBLIC" && e.mode !== "120000",
+  );
+  if (!listing) throw new PublishError("no PUBLIC allowlist committed at HEAD");
+  const listingBytes = blobContent(root, listing.blob);
+  const allowed = parseAllowlist(listingBytes.toString("utf8"));
   const files = [];
   const denied = [];
   let unlisted = 0;
   const hash = createHash("sha256");
+  hash.update("PUBLIC\0");
+  hash.update(createHash("sha256").update(listingBytes).digest());
   for (const { mode, blob, file } of entries) {
     const reason = deniedReason(file);
     if (reason) {
@@ -143,13 +161,7 @@ export function stage(root, scratch) {
       throw new PublishError(`refusing to export symlink: ${file}`);
     if (mode === "160000")
       throw new PublishError(`refusing to export submodule: ${file}`);
-    const content = execFileSync(
-      "git",
-      ["-C", root, "cat-file", "blob", blob],
-      {
-        maxBuffer: 256 * 1024 * 1024,
-      },
-    );
+    const content = blobContent(root, blob);
     const target = path.join(scratch, file);
     if (path.relative(scratch, target).split(path.sep).includes(".."))
       throw new PublishError(`refusing path outside the export: ${file}`);
@@ -190,8 +202,17 @@ const gateCommands = {
       "--ignore-gitleaks-allow",
       "--redact",
       "--no-banner",
+      // 2 = leaks found, so exit 1 (a usage or config error) is not mistaken for a finding.
+      "--exit-code",
+      "2",
+      "--report-format",
+      "json",
+      "--report-path",
+      path.join(trusted, "gitleaks-report.json"),
     ],
-    findingsExit: 1,
+    findingsExit: 2,
+    findings: (_run, scratch) =>
+      readFindings(path.join(trusted, "gitleaks-report.json"), scratch),
     hint: "install gitleaks >= 8.19 (brew install gitleaks) or set OCEAN_PUBLISH_GITLEAKS",
   }),
   // --no-verification: verifying would send a found credential to its provider.
@@ -207,12 +228,14 @@ const gateCommands = {
       "--json",
     ],
     findingsExit: 183,
+    findings: (run, scratch) => trufflehogFindings(run.stdout, scratch),
     hint: "install trufflehog (brew install trufflehog) or set OCEAN_PUBLISH_TRUFFLEHOG",
   }),
   privacy: (scratch) => ({
     bin: process.execPath,
     args: [privacyScan, scratch],
     findingsExit: 1,
+    findings: (run) => JSON.parse(run.stderr).findings,
   }),
 };
 
@@ -248,7 +271,7 @@ export function runGates(scratch, { skip = [], env = process.env } = {}) {
 }
 
 function runGate(gate, scratch, env, trusted) {
-  const { bin, args, hint, findingsExit } = gateCommands[gate](
+  const { bin, args, hint, findingsExit, findings } = gateCommands[gate](
     scratch,
     env,
     trusted,
@@ -264,24 +287,54 @@ function runGate(gate, scratch, env, trusted) {
       detail: `scanner not found; ${hint ?? bin}`,
     };
   if (!run.error && run.status === 0) return { gate, status: "passed" };
-  if (gate === "privacy" && run.status === findingsExit) {
+  if (run.status === findingsExit) {
+    let found = [];
     try {
-      return {
-        gate,
-        status: "failed",
-        detail: JSON.parse(run.stderr).findings,
-      };
+      found = findings?.(run, scratch) ?? [];
     } catch {
-      // fall through to the generic report
+      // an unreadable report still leaves the verdict: failed
     }
+    return {
+      gate,
+      status: "failed",
+      detail: found.length ? found : "findings reported",
+    };
   }
   // stdout is never echoed (a scanner's report can hold the secret). For anything other than
   // the scanner's known "findings" exit, the first stderr line says what actually went wrong.
-  const cause =
-    run.status === findingsExit
-      ? "findings reported"
-      : `${run.signal ? `signal ${run.signal}` : `exit ${run.status ?? run.error?.code}`}: ${firstLine(run.stderr)}`;
-  return { gate, status: "failed", detail: cause };
+  const how = run.signal
+    ? `signal ${run.signal}`
+    : `exit ${run.status ?? run.error?.code}`;
+  return { gate, status: "failed", detail: `${how}: ${firstLine(run.stderr)}` };
+}
+
+// A finding names where, never what: rule, file (relative to the export) and line. The matched
+// text, which is the secret itself, is dropped here and never printed.
+const relative = (scratch, file) =>
+  path.relative(scratch, String(file)).split(path.sep).join("/");
+
+function readFindings(report, scratch) {
+  if (!existsSync(report)) return [];
+  return JSON.parse(readFileSync(report, "utf8")).map((f) => ({
+    rule: String(f.RuleID),
+    file: relative(scratch, f.File),
+    line: f.StartLine,
+  }));
+}
+
+function trufflehogFindings(stdout, scratch) {
+  return (stdout ?? "")
+    .split("\n")
+    .filter((line) => line.startsWith("{"))
+    .map((line) => {
+      const f = JSON.parse(line);
+      const where = f.SourceMetadata?.Data?.Filesystem ?? {};
+      return {
+        rule: String(f.DetectorName),
+        file: relative(scratch, where.file),
+        line: where.line,
+      };
+    });
 }
 
 const firstLine = (text) =>

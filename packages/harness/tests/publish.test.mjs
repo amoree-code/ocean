@@ -126,6 +126,9 @@ test("hard deny list covers workspace dirs, secrets, keys; not engine code", () 
     "a/.ENV",
     "ci/.git-credentials",
     "a/key.p8",
+    ".claude/settings.json",
+    ".mcp.json",
+    ".ssh/config",
   ])
     assert.ok(deniedReason(file), file);
   for (const file of [
@@ -274,9 +277,15 @@ test("missing PUBLIC or non-repo fails closed", () => {
 // Assembled at run time so this file does not trip the scans it tests.
 const LEAK = `${"pass"}${"word"} = ${"hunter2".repeat(2)}\n`;
 const stubDir = mkdtempSync(path.join(os.tmpdir(), "ocean-publish-stubs-"));
-function stub(name, exitCode) {
+function stub(name, exitCode, stdout = "") {
   const file = path.join(stubDir, name);
-  writeFileSync(file, `#!/bin/sh\nexit ${exitCode}\n`, { mode: 0o755 });
+  writeFileSync(
+    file,
+    `#!/bin/sh\nprintf '%s\\n' '${stdout}'\nexit ${exitCode}\n`,
+    {
+      mode: 0o755,
+    },
+  );
   return file;
 }
 test.after(() => rmSync(stubDir, { recursive: true, force: true }));
@@ -383,7 +392,13 @@ test("the export cannot silence the real gitleaks scan", {
     const { code, err } = run(root, "--skip", "trufflehog");
     assert.equal(code, 1);
     assert.equal(err.error, "gate failed: gitleaks");
-    assert.equal(err.gates[0].detail, "findings reported");
+    // Names the rule, file and line; the matched text never appears.
+    assert.deepEqual(
+      err.gates[0].detail.map((f) => f.file),
+      ["leak.txt"],
+    );
+    assert.equal(typeof err.gates[0].detail[0].rule, "string");
+    assert.ok(!JSON.stringify(err).includes(["IOSFODNN7", "REALKEY"].join("")));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -604,7 +619,7 @@ test("a failing scanner stops the push before anything is sent", {
   const root = repo({ "a.txt": "one" }, "a.txt\n");
   const remote = bare();
   runEnv = {
-    OCEAN_PUBLISH_GITLEAKS: stub("gitleaks-hit", 1),
+    OCEAN_PUBLISH_GITLEAKS: stub("gitleaks-hit", 2),
     OCEAN_PUBLISH_TRUFFLEHOG: stub("trufflehog-ok", 0),
   };
   try {
@@ -620,5 +635,64 @@ test("a failing scanner stops the push before anything is sent", {
     runEnv = {};
     rmSync(root, { recursive: true, force: true });
     rmSync(remote, { recursive: true, force: true });
+  }
+});
+
+test("a gitleaks error is not reported as a finding; trufflehog findings drop the secret", {
+  skip: canStub,
+}, () => {
+  const root = repo({ "ok.txt": "ok" }, "ok.txt\n");
+  try {
+    runEnv = {
+      OCEAN_PUBLISH_GITLEAKS: stub("gitleaks-error", 1),
+      OCEAN_PUBLISH_TRUFFLEHOG: stub("trufflehog-ok", 0),
+    };
+    const broken = run(root, "--skip", "");
+    assert.equal(broken.err.error, "gate failed: gitleaks");
+    assert.match(broken.err.gates[0].detail, /^exit 1:/);
+
+    const leaked = `{"DetectorName":"Fake","Raw":"SECRETVALUE","SourceMetadata":{"Data":{"Filesystem":{"file":"ok.txt","line":3}}}}`;
+    runEnv = {
+      OCEAN_PUBLISH_GITLEAKS: stub("gitleaks-ok", 0),
+      OCEAN_PUBLISH_TRUFFLEHOG: stub("trufflehog-leak", 183, leaked),
+    };
+    const hit = run(root, "--skip", "");
+    assert.equal(hit.err.error, "gate failed: trufflehog");
+    assert.equal(hit.err.gates[1].detail[0].rule, "Fake");
+    assert.equal(hit.err.gates[1].detail[0].line, 3);
+    assert.ok(!hit.stderr.includes("SECRETVALUE"));
+  } finally {
+    runEnv = {};
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("PUBLIC is read from the committed tree, like the files it judges", {
+  skip: noGit,
+}, () => {
+  const root = repo({ "a.txt": "a", "secret.txt": "s" }, "a.txt\n");
+  try {
+    const before = run(root).out;
+    writeFileSync(path.join(root, "PUBLIC"), "**\n");
+    const after = run(root).out;
+    assert.equal(after.dirty, true);
+    assert.deepEqual(after.files, ["a.txt"]);
+    assert.equal(after.sha256, before.sha256);
+    // The allowlist is part of the hash: committing a wider one changes it.
+    commitAll(root, "widen");
+    assert.notEqual(run(root).out.sha256, before.sha256);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a path containing a tab is exported under its real name", {
+  skip: noGit || process.platform === "win32",
+}, () => {
+  const root = repo({ "dir/x\ty.txt": "tabbed" }, "dir/\n");
+  try {
+    assert.deepEqual(run(root).out.files, ["dir/x\ty.txt"]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });
