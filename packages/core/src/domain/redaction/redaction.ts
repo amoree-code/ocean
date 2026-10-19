@@ -21,7 +21,7 @@ const shapePatterns = [
   /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g,
   /-----BEGIN (?:RSA |OPENSSH |EC )?PRIVATE KEY-----[\s\S]{0,16384}?-----END (?:RSA |OPENSSH |EC )?PRIVATE KEY-----/g,
   // Connection strings and webhook URLs that embed a credential in the userinfo or path
-  // segment, e.g. postgres://user:pass@host/db or a Slack incoming-webhook URL.
+  // segment, e.g. a database connection string or a Slack incoming-webhook URL.
   /\b[a-zA-Z][a-zA-Z0-9+.-]{0,31}:\/\/[^\s'"<>/:@]{1,256}:[^\s'"<>/@]{1,256}@[^\s'"<>]{1,256}/g,
   /https:\/\/hooks\.slack\.com\/services\/[A-Za-z0-9/]+/gi,
 ];
