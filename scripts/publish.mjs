@@ -146,6 +146,8 @@ export function stage(root, scratch) {
       },
     );
     const target = path.join(scratch, file);
+    if (path.relative(scratch, target).split(path.sep).includes(".."))
+      throw new PublishError(`refusing path outside the export: ${file}`);
     mkdirSync(path.dirname(target), { recursive: true });
     writeFileSync(target, content);
     const executable = mode === "100755";
