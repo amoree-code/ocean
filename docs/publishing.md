@@ -10,9 +10,11 @@ deny-by-default and every export is scanned before anything is sent.
    cannot leak and the manifest hash names a real commit.
 2. **Hard deny list**, compiled into the script, beats everything: the private workspace
    directories (`brain/`, `charter/`, `bridge/`, `sessions/`, `00-inbox/` … `05-knowledge/`),
-   `.git/`, `node_modules/`, machine-local tool config (`.claude/`, `.cursor/`, `.gemini/`, `.mcp.json`), `.env*` (except `.env.example`), keys and certificates,
-   `credentials.json`, `secrets.json`, `.netrc`, `.npmrc`. Matching is case-insensitive and
-   anchored to the repository root, so `packages/brain/` is engine code and stays publishable.
+   `.git/`, `node_modules/`, `.env*` (except `.env.example`), keys and certificates,
+   `credentials.json`, `secrets.json`, `.netrc`, `.npmrc`, `.mcp.json`. Matching is
+   case-insensitive. The workspace directories are anchored to the repository root, so
+   `packages/brain/` is engine code and stays publishable; machine-local tool config
+   (`.claude/`, `.cursor/`, `.gemini/`, `.aws/`, `.ssh/`, `.gnupg/`) is denied at any depth.
 3. **`PUBLIC` allowlist.** A file ships only if a line in `PUBLIC` matches it. A file that is not
    listed stays private. A symlink or submodule in the allowlisted set aborts the run.
 
@@ -63,9 +65,17 @@ node scripts/publish.mjs --push --remote <url> --confirm <sha256>   # 2. publish
 ```
 
 - `--remote` (or `OCEAN_PUBLISH_REMOTE`) is an `https://`, `ssh://` or `user@host:path` URL. It
-  is **never `origin`**, in any spelling, and never the source repository itself.
-- `--confirm` must equal the manifest hash of the same `HEAD`; otherwise nothing is sent.
-- `--push` refuses `--skip`, a dirty tracked tree, and any gate failure.
+  is **never `origin`** and never the source repository itself, whether spelled with a port,
+  `.git`, another case, a symlinked path, or an alias that `url.<base>.insteadOf` rewrites to it.
+- `--confirm` must equal the manifest hash of the same `HEAD`; otherwise nothing is sent. The
+  error does not repeat the hash: it comes from the dry run you reviewed.
+- `--push` runs from `main` only (the merged, reviewed tree; a feature branch or a detached
+  `HEAD` is refused) and refuses `--skip`, a dirty tracked tree, and any gate failure. These
+  checks run before the scanners.
+- The commit is made verbatim: no line-ending conversion, filter or attribute from your git
+  config or from the exported `.gitattributes` can change the bytes that were scanned.
+- The commit **author** is your `user.name` / `user.email` from the source repository, and it
+  becomes public in the history; the push result prints it. Check it before the first push.
 - The public history is one squashed commit per publish, `publish: <head>`, added on top of the
   public `main` as a plain fast-forward. Nothing is forced or rewritten; when the content is
   unchanged nothing is pushed.

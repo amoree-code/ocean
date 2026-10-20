@@ -12,6 +12,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -36,7 +37,12 @@ const DENIED_ROOT_DIRS = new Set([
   "03-areas",
   "04-projects",
   "05-knowledge",
-  // Machine-local agent and tool configuration: names this machine's paths and tools.
+]);
+// Denied at any depth: dependency dirs, and machine-local agent and tool configuration, which
+// names this machine's paths and tools and is as likely nested inside a package as at the root.
+const DENIED_SEGMENTS = new Set([
+  ".git",
+  "node_modules",
   ".claude",
   ".cursor",
   ".gemini",
@@ -44,7 +50,6 @@ const DENIED_ROOT_DIRS = new Set([
   ".ssh",
   ".gnupg",
 ]);
-const DENIED_SEGMENTS = new Set([".git", "node_modules"]);
 const DENIED_NAMES =
   /^(?:\.env(?:\..+)?|.+\.(?:pem|key|p12|p8|pfx|jks|keystore|keychain|keychain-db)|credentials\.json|secrets\.json|\.netrc|\.npmrc|\.pypirc|\.git-credentials|\.mcp\.json|\.dev\.vars|id_(?:rsa|dsa|ecdsa|ed25519))$/;
 
@@ -62,7 +67,7 @@ export function deniedReason(file) {
   if (DENIED_ROOT_DIRS.has(parts[0]))
     return `private workspace dir ${parts[0]}/`;
   if (parts.slice(0, -1).some((p) => DENIED_SEGMENTS.has(p)))
-    return "vcs or dependency dir";
+    return "vcs, dependency or machine-local config dir";
   const name = parts.at(-1);
   if (name !== ".env.example" && DENIED_NAMES.test(name))
     return "credential or key file";
@@ -310,8 +315,17 @@ function runGate(gate, scratch, env, trusted) {
 
 // A finding names where, never what: rule, file (relative to the export) and line. The matched
 // text, which is the secret itself, is dropped here and never printed.
-const relative = (scratch, file) =>
-  path.relative(scratch, String(file)).split(path.sep).join("/");
+// A scanner may report the real path of the scratch dir (`/private/var` for `/var` on macOS), so
+// both spellings are tried; anything outside the export is never printed as a path.
+function relative(scratch, file) {
+  if (typeof file !== "string" || !file) return "(unknown file)";
+  for (const base of [scratch, realpathSync(scratch)]) {
+    const rel = path.relative(base, file);
+    if (rel && !rel.startsWith("..") && !path.isAbsolute(rel))
+      return rel.split(path.sep).join("/");
+  }
+  return "(outside the export)";
+}
 
 function readFindings(report, scratch) {
   if (!existsSync(report)) return [];
@@ -337,12 +351,18 @@ function trufflehogFindings(stdout, scratch) {
     });
 }
 
+// A URL can carry a credential in its userinfo: it never reaches output, whichever message a
+// git or scanner error is quoted in.
+const redactUrls = (text) => text.replace(/(\w+:\/\/)[^/@\s'"]*@/g, "$1");
+
 const firstLine = (text) =>
-  (text ?? "")
-    .split("\n")
-    .find((line) => line.trim())
-    ?.trim()
-    .slice(0, 200) ?? "no stderr";
+  redactUrls(
+    (text ?? "")
+      .split("\n")
+      .find((line) => line.trim())
+      ?.trim()
+      .slice(0, 200) ?? "no stderr",
+  );
 
 // --- publishing -----------------------------------------------------------------------------
 // Only these shapes are accepted as a push target: an option-looking value or a transport such as
@@ -362,21 +382,44 @@ export function checkRemoteShape(remote) {
 
 // A URL can carry a credential in its userinfo: it never reaches output.
 export function redactRemote(remote) {
-  return remote.replace(/^(\w+:\/\/)[^/@\s]*@/, "$1");
+  return redactUrls(remote);
 }
 
 // Two spellings of one repository compare equal: https/ssh/scp forms, `.git`, trailing slash,
-// case of the host; local paths by their resolved location.
+// an explicit port, case of the host; local paths by their real location.
 export function normalizeRemote(remote) {
-  if (path.isAbsolute(remote))
-    return path.resolve(remote).replace(/\.git$/i, "");
+  if (path.isAbsolute(remote)) {
+    let real = path.resolve(remote);
+    try {
+      real = realpathSync(real);
+    } catch {
+      // not on disk: compare the path as written
+    }
+    return real.replace(/\/\.git\/?$/i, "").replace(/\.git$/i, "");
+  }
   const scp = remote.match(/^[\w.-]+@([\w.-]+):(.+)$/);
-  const url = scp ? `${scp[1]}/${scp[2]}` : remote.replace(/^\w+:\/\//, "");
+  const url = scp
+    ? `${scp[1]}/${scp[2]}`
+    : remote
+        .replace(/^\w+:\/\//, "")
+        .replace(/^([^/@]*@)?([^/:]+):\d+\//, "$1$2/");
   return url
     .replace(/^[^/@]*@/, "")
     .replace(/\/+$/, "")
     .replace(/\.git$/i, "")
     .toLowerCase();
+}
+
+// What git would really contact: `url.<base>.insteadOf` rewrites apply to a typed URL and to an
+// origin alike, so both are compared after the rewrite as well as as written.
+function spellings(root, url) {
+  const rewritten = runGit(root, ["ls-remote", "--get-url", url]);
+  return [
+    normalizeRemote(url),
+    ...(rewritten.status === 0 && rewritten.stdout.trim()
+      ? [normalizeRemote(rewritten.stdout.trim())]
+      : []),
+  ];
 }
 
 function assertNotOrigin(root, remote) {
@@ -388,10 +431,11 @@ function assertNotOrigin(root, remote) {
   } catch {
     // no origin configured: nothing to collide with
   }
-  const wanted = normalizeRemote(remote);
-  if (origins.some((origin) => normalizeRemote(origin) === wanted))
+  const wanted = spellings(root, remote);
+  const forbidden = new Set(origins.flatMap((o) => spellings(root, o)));
+  if (wanted.some((w) => forbidden.has(w)))
     throw new PublishError("the public remote must not be origin");
-  if (wanted === normalizeRemote(root))
+  if (wanted.includes(normalizeRemote(root)))
     throw new PublishError(
       "the public remote must not be the source repository",
     );
@@ -416,8 +460,8 @@ function mustGit(cwd, args, what) {
 // One squashed commit on top of the public tip: the whole difference since the last publish is a
 // single fast-forward commit, so the public history is never rewritten and nothing is forced.
 export function squashPush(root, scratch, remote, head) {
-  const name = git(root, ["config", "user.name"]).trim();
-  const email = git(root, ["config", "user.email"]).trim();
+  const name = runGit(root, ["config", "user.name"]).stdout.trim();
+  const email = runGit(root, ["config", "user.email"]).stdout.trim();
   if (!name || !email)
     throw new PublishError("git user.name and user.email must be configured");
   const quiet = [
@@ -426,7 +470,14 @@ export function squashPush(root, scratch, remote, head) {
     "-c",
     "commit.gpgsign=false",
   ];
+  // What is committed is byte for byte what was scanned and hashed: no line-ending conversion,
+  // clean filter or other attribute, from the user's config or from an exported `.gitattributes`.
+  const verbatim = ["-c", "core.autocrlf=false", "-c", "core.safecrlf=false"];
   mustGit(scratch, ["init", "-q", "-b", "main"], "git init");
+  writeFileSync(
+    path.join(scratch, ".git", "info", "attributes"),
+    "* -text -eol -ident -filter -working-tree-encoding\n",
+  );
   const tip = runGit(scratch, ["ls-remote", remote, "refs/heads/main"]);
   if (tip.status !== 0)
     throw new PublishError(
@@ -436,7 +487,7 @@ export function squashPush(root, scratch, remote, head) {
     mustGit(scratch, ["fetch", "-q", remote, "main"], "git fetch");
     mustGit(scratch, ["reset", "-q", "--soft", "FETCH_HEAD"], "git reset");
   }
-  mustGit(scratch, ["add", "-A", "-f"], "git add");
+  mustGit(scratch, [...verbatim, "add", "-A", "-f"], "git add");
   const hasParent =
     runGit(scratch, ["rev-parse", "--verify", "HEAD"]).status === 0;
   const unchanged =
@@ -464,7 +515,7 @@ export function squashPush(root, scratch, remote, head) {
     "git rev-parse",
   ).trim();
   mustGit(scratch, ["push", "-q", remote, "HEAD:refs/heads/main"], "git push");
-  return { pushed: true, commit };
+  return { pushed: true, commit, author: `${name} <${email}>` };
 }
 
 function main(argv) {
@@ -521,6 +572,28 @@ function main(argv) {
   const scratch = mkdtempSync(path.join(os.tmpdir(), "ocean-publish-"));
   try {
     const manifest = stage(root, scratch);
+    // Cheap refusals first: a push that cannot go out never spends minutes in the scanners.
+    if (args.push) {
+      const branch = runGit(root, [
+        "symbolic-ref",
+        "-q",
+        "--short",
+        "HEAD",
+      ]).stdout.trim();
+      if (branch !== "main")
+        throw new PublishError(
+          `publish from main, the merged and reviewed tree; HEAD is ${branch ? `on ${branch}` : "detached"}`,
+        );
+      if (manifest.dirty)
+        throw new PublishError(
+          "the working tree has uncommitted tracked changes",
+        );
+      // The hash is not echoed back: it comes from the dry run you reviewed.
+      if (args.confirm !== manifest.sha256)
+        throw new PublishError(
+          "--confirm must equal the manifest sha256 of a dry-run you reviewed",
+        );
+    }
     const gates = runGates(scratch, { skip: args.skip });
     const failedGate = gates.find((g) => g.status === "failed");
     if (failedGate)
@@ -530,18 +603,8 @@ function main(argv) {
       });
     const complete = gates.every((g) => g.status === "passed");
     let published = {};
-    if (args.push) {
-      if (manifest.dirty)
-        throw new PublishError(
-          "the working tree has uncommitted tracked changes",
-        );
-      if (args.confirm !== manifest.sha256)
-        throw new PublishError(
-          "--confirm must equal the manifest sha256 of a dry-run you reviewed",
-          { sha256: manifest.sha256 },
-        );
+    if (args.push)
       published = squashPush(root, scratch, args.remote, manifest.head);
-    }
     console.log(
       JSON.stringify({
         ok: true,

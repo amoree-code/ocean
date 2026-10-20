@@ -29,7 +29,7 @@ const noGit = spawnSync("git", ["--version"]).status !== 0;
 function repo(files, allowlist, { links = {} } = {}) {
   const root = mkdtempSync(path.join(os.tmpdir(), "ocean-publish-test-"));
   const git = (...args) => execFileSync("git", args, { cwd: root });
-  git("init", "-q");
+  git("init", "-q", "-b", "main");
   git("config", "user.name", "t");
   git("config", "user.email", `t${"@"}example.test`);
   const put = (file, text) => {
@@ -129,6 +129,10 @@ test("hard deny list covers workspace dirs, secrets, keys; not engine code", () 
     ".claude/settings.json",
     ".mcp.json",
     ".ssh/config",
+    "packages/harness/.claude/settings.json",
+    "docs/.aws/credentials",
+    "tools/x/.Cursor/rules.md",
+    "pkg/.dev.vars",
   ])
     assert.ok(deniedReason(file), file);
   for (const file of [
@@ -487,6 +491,27 @@ test("remote spellings of one repo normalise equal; credentials are redacted", (
   );
 });
 
+test("an explicit port, a symlinked path and /.git do not hide the same repository", () => {
+  assert.equal(
+    normalizeRemote(`ssh://git${"@"}example.test:22/owner/repo`),
+    "example.test/owner/repo",
+  );
+  assert.equal(
+    normalizeRemote("https://example.test:443/owner/repo.git"),
+    "example.test/owner/repo",
+  );
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ocean-publish-link-"));
+  try {
+    mkdirSync(path.join(dir, "real", ".git"), { recursive: true });
+    symlinkSync(path.join(dir, "real"), path.join(dir, "alias"));
+    const real = normalizeRemote(path.join(dir, "real"));
+    assert.equal(normalizeRemote(path.join(dir, "alias")), real);
+    assert.equal(normalizeRemote(path.join(dir, "alias", ".git")), real);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("push: one squashed fast-forward commit per publish, never forced", {
   skip: canStub,
 }, () => {
@@ -545,7 +570,7 @@ test("push refuses without the matching --confirm, and pushes nothing", {
         result.err.error,
         /--confirm must equal the manifest sha256/,
       );
-      assert.equal(result.err.sha256, run(root).out.sha256);
+      assert.equal(result.err.sha256, undefined);
     }
     const missing = run(root, "--skip", "", "--push", "--remote", remote);
     assert.equal(missing.code, 1);
@@ -693,6 +718,142 @@ test("a path containing a tab is exported under its real name", {
   try {
     assert.deepEqual(run(root).out.files, ["dir/x\ty.txt"]);
   } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("push refuses a url that git rewrites to origin, and a port spelling of it", {
+  skip: canStub,
+}, () => {
+  const root = repo({ "a.txt": "one" }, "a.txt\n");
+  const remote = bare();
+  execFileSync("git", ["remote", "add", "origin", remote], { cwd: root });
+  execFileSync(
+    "git",
+    ["config", `url.${remote}.insteadOf`, "https://alias.example.test/pub"],
+    { cwd: root },
+  );
+  runEnv = stubScanners();
+  try {
+    const sha = run(root).out.sha256;
+    const refused = push(root, "https://alias.example.test/pub", sha);
+    assert.equal(refused.code, 1);
+    assert.match(refused.err.error, /must not be origin/);
+    assert.equal(
+      spawnSync("git", ["rev-parse", "main"], { cwd: remote }).status !== 0,
+      true,
+    );
+  } finally {
+    runEnv = {};
+    rmSync(root, { recursive: true, force: true });
+    rmSync(remote, { recursive: true, force: true });
+  }
+});
+
+test("push refuses to publish from a branch other than main, before any scanner runs", {
+  skip: canStub,
+}, () => {
+  const root = repo({ "a.txt": "one" }, "a.txt\n");
+  const remote = bare();
+  runEnv = {
+    OCEAN_PUBLISH_GITLEAKS: stub("gitleaks-never", 9),
+    OCEAN_PUBLISH_TRUFFLEHOG: stub("trufflehog-never", 9),
+  };
+  try {
+    const sha = run(root, "--skip", "gitleaks,trufflehog").out.sha256;
+    execFileSync("git", ["switch", "-q", "-c", "feat/x"], { cwd: root });
+    const result = push(root, remote, sha);
+    assert.equal(result.code, 1);
+    assert.match(result.err.error, /publish from main.*on feat\/x/);
+    assert.equal(result.err.gates, undefined);
+    execFileSync("git", ["checkout", "-q", "--detach"], { cwd: root });
+    assert.match(push(root, remote, sha).err.error, /detached/);
+  } finally {
+    runEnv = {};
+    rmSync(root, { recursive: true, force: true });
+    rmSync(remote, { recursive: true, force: true });
+  }
+});
+
+test("the pushed bytes are the scanned bytes: no eol or attribute rewriting", {
+  skip: canStub,
+}, () => {
+  const crlf = "line one\r\nline two\r\n";
+  const root = repo(
+    { "a.txt": crlf, ".gitattributes": "* text eol=lf\n" },
+    "a.txt\n.gitattributes\n",
+  );
+  const remote = bare();
+  // The user's own config converts line endings, as it would on a Windows checkout.
+  runEnv = {
+    ...stubScanners(),
+    GIT_CONFIG_COUNT: "1",
+    GIT_CONFIG_KEY_0: "core.autocrlf",
+    GIT_CONFIG_VALUE_0: "true",
+  };
+  try {
+    // `repo()` committed through the attributes, so the source blob is rewritten to CRLF
+    // without filters; the test is only meaningful if the committed bytes really hold CRLF.
+    const blob = gitOut(root, "hash-object", "-w", "--no-filters", "a.txt");
+    execFileSync(
+      "git",
+      ["update-index", "--cacheinfo", `100644,${blob},a.txt`],
+      { cwd: root },
+    );
+    execFileSync("git", ["commit", "-qm", "crlf"], { cwd: root });
+    assert.equal(
+      execFileSync("git", ["cat-file", "blob", "HEAD:a.txt"], {
+        cwd: root,
+      }).toString("latin1"),
+      crlf,
+    );
+    // Only the exported tree carries `text eol=lf`; the source repo reads its own files as-is.
+    writeFileSync(path.join(root, ".git", "info", "attributes"), "* -text\n");
+    const sha = run(root).out.sha256;
+    const pushed = push(root, remote, sha);
+    assert.equal(pushed.code, 0, pushed.stderr);
+    const out = execFileSync("git", ["show", "main:a.txt"], { cwd: remote });
+    assert.equal(out.toString("latin1"), crlf);
+  } finally {
+    runEnv = {};
+    rmSync(root, { recursive: true, force: true });
+    rmSync(remote, { recursive: true, force: true });
+  }
+});
+
+test("a credential in the url never reaches the error output", {
+  skip: canStub,
+}, () => {
+  const root = repo({ "a.txt": "one" }, "a.txt\n");
+  runEnv = stubScanners();
+  try {
+    const sha = run(root).out.sha256;
+    const url = `https://user:SECRETTOKEN${"@"}127.0.0.1:9/o/r.git`;
+    const result = push(root, url, sha);
+    assert.equal(result.code, 1);
+    assert.doesNotMatch(result.stderr, /SECRETTOKEN/);
+  } finally {
+    runEnv = {};
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("scanner findings are relative to the export, never an absolute or foreign path", {
+  skip: canStub,
+}, () => {
+  const root = repo({ "ok.txt": "ok" }, "ok.txt\n");
+  try {
+    const leaked = `{"DetectorName":"Fake","Raw":"SECRETVALUE","SourceMetadata":{"Data":{"Filesystem":{"file":"/nowhere/else/ok.txt","line":3}}}}`;
+    runEnv = {
+      OCEAN_PUBLISH_GITLEAKS: stub("gitleaks-ok", 0),
+      OCEAN_PUBLISH_TRUFFLEHOG: stub("trufflehog-leak", 183, leaked),
+    };
+    const hit = run(root, "--skip", "");
+    const [finding] = hit.err.gates.find((g) => g.gate === "trufflehog").detail;
+    assert.equal(finding.file, "(outside the export)");
+    assert.doesNotMatch(hit.stderr, /nowhere/);
+  } finally {
+    runEnv = {};
     rmSync(root, { recursive: true, force: true });
   }
 });
