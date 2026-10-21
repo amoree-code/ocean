@@ -41,6 +41,8 @@ or invent credentials; authentication remains owned by each provider CLI.
 
 ## Data validation
 
+Publication goes through `scripts/publish.mjs` (see [publishing.md](publishing.md)): a deny-by-default
+export, gitleaks, trufflehog and the privacy scan, and a content-bound confirmation before any push.
 Before publication, run `pnpm check:privacy`. This read-only release-gate scan checks tracked
 and publishable untracked source, documentation, and templates for credential patterns, real
 private paths, and personal data. It reports finding types and file paths without secret values
