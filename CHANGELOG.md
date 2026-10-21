@@ -6,6 +6,9 @@ Docs-only or CI-only PRs may add the `skip-changelog` label instead.
 
 ## Unreleased
 
+- feat(T-231): `scripts/publish.mjs --push --remote <url> --confirm <sha256>` publishes the export as one squashed fast-forward commit on a public remote that is never `origin`; it runs from `main` only, needs the reviewed dry-run hash, commits the scanned bytes verbatim, and adds `.github/CODEOWNERS` and `docs/publishing.md` (#197)
+- feat(T-231): the publish export runs through gitleaks, trufflehog (no live verification) and `pnpm check:privacy` and stops at the first failure; a missing scanner fails the run unless skipped (`complete: false`); a pre-commit hook scans staged changes with gitleaks (#196)
+- feat(T-231): `PUBLIC` allowlist (deny-by-default) and `node scripts/publish.mjs` dry-run that exports only allowlisted tracked files from `HEAD` to a scratch dir with a content-hash manifest; a hard deny list for workspace dirs, `.env*`, keys and tool config overrides `PUBLIC` (#195)
 - fix(T-274): lesson signal detection ignores repeated hook_response JSON and terminal escape codes, so they no longer become lesson candidates (#193)
 - fix(T-275): the lesson-learning test closes its session stores before deleting temp dirs, so the Windows gate no longer fails with EBUSY (#194)
 - refactor(T-273): one process supervisor ends every headless provider run (timeout 124, output budget 125, process group, signal forwarding, line splitting); the CLI providers now stop their whole process group on a stop and no longer wait on a background process holding their output (#189)
