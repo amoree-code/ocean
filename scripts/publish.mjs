@@ -395,7 +395,7 @@ export function normalizeRemote(remote) {
     } catch {
       // not on disk: compare the path as written
     }
-    return real.replace(/\/\.git\/?$/i, "").replace(/\.git$/i, "");
+    return real.replace(/[\\/]\.git[\\/]?$/i, "").replace(/\.git$/i, "");
   }
   const scp = remote.match(/^[\w.-]+@([\w.-]+):(.+)$/);
   const url = scp
