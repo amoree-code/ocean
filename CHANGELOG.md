@@ -6,6 +6,7 @@ Docs-only or CI-only PRs may add the `skip-changelog` label instead.
 
 ## Unreleased
 
+- fix(T-231): the publish remote check strips a trailing `/.git` or `\.git` from a local path on any OS, so the Windows gate passes the remote-spelling test (#199)
 - feat(T-231): `scripts/publish.mjs --push --remote <url> --confirm <sha256>` publishes the export as one squashed fast-forward commit on a public remote that is never `origin`; it runs from `main` only, needs the reviewed dry-run hash, commits the scanned bytes verbatim, and adds `.github/CODEOWNERS` and `docs/publishing.md` (#197)
 - feat(T-231): the publish export runs through gitleaks, trufflehog (no live verification) and `pnpm check:privacy` and stops at the first failure; a missing scanner fails the run unless skipped (`complete: false`); a pre-commit hook scans staged changes with gitleaks (#196)
 - feat(T-231): `PUBLIC` allowlist (deny-by-default) and `node scripts/publish.mjs` dry-run that exports only allowlisted tracked files from `HEAD` to a scratch dir with a content-hash manifest; a hard deny list for workspace dirs, `.env*`, keys and tool config overrides `PUBLIC` (#195)
