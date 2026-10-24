@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { oceanPath, STORE_DIR } from "@ocean/core/shared/paths.js";
+import { conflictsFile, lessonsDir } from "./lessons.js";
 
 type Store = "memory" | "knowledge";
 const generatedStart = "## Records (generated)";
@@ -63,13 +64,24 @@ function links(content: string): Set<string> {
   );
 }
 
+// Lesson records are machine-managed (T-230) and found through the brain index, so the curated
+// KNOWLEDGE.md neither demands nor lists them. CONFLICTS.md beside them waits on a human, so it
+// stays an indexed record.
+function isLessonRecord(store: Store, file: string): boolean {
+  if (store !== "knowledge" || file === conflictsFile()) return false;
+  const relative = path.relative(lessonsDir(), file);
+  return (
+    relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative)
+  );
+}
+
 async function syncStore(store: Store, apply: boolean) {
   const root = oceanPath(STORE_DIR[store]);
   const indexName = store === "memory" ? "MEMORY.md" : "KNOWLEDGE.md";
   const index = path.join(root, indexName);
   const current = await readFile(index, "utf8");
   const recordFiles = (await markdownFiles(root)).filter(
-    (file) => path.basename(file) !== indexName,
+    (file) => path.basename(file) !== indexName && !isLessonRecord(store, file),
   );
   const known = links(current);
   const missing = recordFiles.filter(

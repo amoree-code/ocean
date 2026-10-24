@@ -6,6 +6,7 @@ Docs-only or CI-only PRs may add the `skip-changelog` label instead.
 
 ## Unreleased
 
+- fix(T-279): `ocean memory doctor` and reindex leave the machine-managed lesson records (`knowledge/lessons/`, found through the brain index) out of the curated KNOWLEDGE.md, so the doctor no longer fails on 200 lesson files and a reindex no longer writes them into the index; `lessons/CONFLICTS.md` stays indexed because it waits on a human (#203)
 - docs(T-276): README states the idea and the philosophy, fixes the layout tree and dead links, and adds a releases section; one name everywhere — no former-name mentions left in docs or comments (#200)
 - test(T-277): the background-process test waits up to 1 s for the SIGKILLed descendant to be gone or a zombie instead of checking at once, so it no longer races the reaper on ubuntu-26.04 runners (#201)
 - fix(T-231): the publish remote check strips a trailing `/.git` or `\.git` from a local path on any OS, so the Windows gate passes the remote-spelling test (#199)
