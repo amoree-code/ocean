@@ -6,6 +6,7 @@ Docs-only or CI-only PRs may add the `skip-changelog` label instead.
 
 ## Unreleased
 
+- test(T-277): the background-process test waits up to 1 s for the SIGKILLed descendant to be gone or a zombie instead of checking at once, so it no longer races the reaper on ubuntu-26.04 runners (#201)
 - fix(T-231): the publish remote check strips a trailing `/.git` or `\.git` from a local path on any OS, so the Windows gate passes the remote-spelling test (#199)
 - feat(T-231): `scripts/publish.mjs --push --remote <url> --confirm <sha256>` publishes the export as one squashed fast-forward commit on a public remote that is never `origin`; it runs from `main` only, needs the reviewed dry-run hash, commits the scanned bytes verbatim, and adds `.github/CODEOWNERS` and `docs/publishing.md` (#197)
 - feat(T-231): the publish export runs through gitleaks, trufflehog (no live verification) and `pnpm check:privacy` and stops at the first failure; a missing scanner fails the run unless skipped (`complete: false`); a pre-commit hook scans staged changes with gitleaks (#196)
