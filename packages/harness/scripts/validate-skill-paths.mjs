@@ -4,7 +4,7 @@
 // covered: repo-relative paths, brace/placeholder templates, symlinked skill directories.
 //
 // T-244: five of the running skills pointed at the pre-rename engine/scripts/ tree and
-// ~/.ai-os/user/... for weeks after the T-224 rename moved those trees. Nothing caught it,
+// the old home-directory tree for weeks after the T-224 rename moved those trees. Nothing caught it,
 // because validate-skills.mjs only checks frontmatter against the catalog and only sees
 // the nine packaged skills — not the hub the clients actually read.
 //
@@ -14,7 +14,7 @@
 //   - The *parent directory* is what must exist, not the leaf. Skills legitimately name
 //     files they create on first use (`~/.claude/loop.md`); none of them legitimately
 //     name a file inside a tree that is not there. That is what rot looks like, and it is
-//     what the old engine/scripts/ tree and `~/.ai-os/user/...` both were.
+//     what the old engine/scripts/ tree and the old home-directory tree both were.
 
 import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
