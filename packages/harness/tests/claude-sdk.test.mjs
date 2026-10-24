@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
 import { existsSync } from "node:fs";
 import {
@@ -190,9 +190,34 @@ unixOnly(
       assert.equal(result.exitCode, 0, result.stderr);
       assert.ok(Date.now() - started < 3_500, "the run ends once Claude has");
       const descendant = Number((await readFile(pidFile, "utf8")).trim());
-      assert.throws(() => process.kill(descendant, 0), { code: "ESRCH" });
+      // The group was SIGKILLed as the run ended. Wait at most 1 s: the run ended inside 3.5 s, so
+      // the check ends before the descendant's own `sleep 5` could, and a survivor still fails.
+      assert.ok(
+        await isGoneWithin(descendant, 1_000),
+        "the descendant died with the group",
+      );
     }),
 );
+
+// A SIGKILLed process can still answer kill(pid, 0) briefly: until the signal lands, and then as a
+// zombie until its new parent reaps it (slower on ubuntu-26.04 runners). Neither is running.
+async function isGoneWithin(pid, ms) {
+  const deadline = Date.now() + ms;
+  for (;;) {
+    try {
+      process.kill(pid, 0);
+    } catch (error) {
+      if (error.code === "ESRCH") return true;
+      throw error;
+    }
+    const state = spawnSync("ps", ["-o", "stat=", "-p", String(pid)], {
+      encoding: "utf8",
+    }).stdout.trim();
+    if (state === "" || state.startsWith("Z")) return true;
+    if (Date.now() > deadline) return false;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+}
 
 unixOnly("plain-text stdout lines are kept as text events", () =>
   withFakeClaude(async (root) => {
