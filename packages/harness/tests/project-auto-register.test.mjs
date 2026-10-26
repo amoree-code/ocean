@@ -75,12 +75,26 @@ test("the first session in an unregistered repo registers it as a project", asyn
     // A new project starts its own task namespace.
     assert.equal(manifest.prefix, "MA");
     assert.equal(manifest.nextTask, 1);
-    assert.ok(
-      (await stat(path.join(folder(root, "my-app"), "tasks"))).isDirectory(),
+    for (const directory of ["tasks", "memory", "docs"])
+      assert.ok(
+        (
+          await stat(path.join(folder(root, "my-app"), directory))
+        ).isDirectory(),
+      );
+    const memory = await readFile(
+      path.join(folder(root, "my-app"), "MEMORY.md"),
+      "utf8",
     );
+    assert.match(memory, /my-app/);
+    // The seeded index tells every session where things go.
+    assert.match(memory, /`docs\/`/);
+    assert.match(memory, /nothing else goes at the project root/);
     assert.match(
-      await readFile(path.join(folder(root, "my-app"), "MEMORY.md"), "utf8"),
-      /my-app/,
+      await readFile(
+        path.join(folder(root, "my-app"), "docs", "README.md"),
+        "utf8",
+      ),
+      /my-app — docs/,
     );
     assert.equal((await resolveProject(app)).projectId, "my-app");
     assert.equal((await autoRegisterProject(app)).status, "skipped");
