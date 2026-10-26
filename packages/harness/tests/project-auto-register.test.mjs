@@ -8,6 +8,7 @@ import {
   autoRegisterProject,
   bindProject,
   canonicalPath,
+  ensureProjectLayout,
   projectSlug,
   renameProject,
   resolveProject,
@@ -75,12 +76,26 @@ test("the first session in an unregistered repo registers it as a project", asyn
     // A new project starts its own task namespace.
     assert.equal(manifest.prefix, "MA");
     assert.equal(manifest.nextTask, 1);
-    assert.ok(
-      (await stat(path.join(folder(root, "my-app"), "tasks"))).isDirectory(),
+    for (const directory of ["tasks", "memory", "docs"])
+      assert.ok(
+        (
+          await stat(path.join(folder(root, "my-app"), directory))
+        ).isDirectory(),
+      );
+    const memory = await readFile(
+      path.join(folder(root, "my-app"), "MEMORY.md"),
+      "utf8",
     );
+    assert.match(memory, /my-app/);
+    // The seeded index tells every session where things go.
+    assert.match(memory, /`docs\/`/);
+    assert.match(memory, /nothing else goes at the project root/);
     assert.match(
-      await readFile(path.join(folder(root, "my-app"), "MEMORY.md"), "utf8"),
-      /my-app/,
+      await readFile(
+        path.join(folder(root, "my-app"), "docs", "README.md"),
+        "utf8",
+      ),
+      /my-app — docs/,
     );
     assert.equal((await resolveProject(app)).projectId, "my-app");
     assert.equal((await autoRegisterProject(app)).status, "skipped");
@@ -88,13 +103,16 @@ test("the first session in an unregistered repo registers it as a project", asyn
 });
 
 test("the session-start hook registers and reports the new project", async () => {
-  await withWorkspace(async ({ code }) => {
+  await withWorkspace(async ({ root, code }) => {
     const app = await repo(code, "billing");
     const result = await claudeSessionStartHook({ cwd: path.join(app, "src") });
     assert.match(
       result.hookSpecificOutput.additionalContext,
       /project=billing confidence=high/,
     );
+    // The hook is the path every real project takes, so it gets the full layout too.
+    for (const entry of ["tasks", "memory", "docs", "docs/README.md"])
+      await stat(path.join(folder(root, "billing"), entry));
   });
 });
 
@@ -290,7 +308,7 @@ test("unbind works from anywhere inside the repo", async () => {
   });
 });
 
-test("rename ignores dotfiles in tasks/ and renames the memory heading", async () => {
+test("rename ignores dotfiles in tasks/ and renames the memory and docs headings", async () => {
   await withWorkspace(async ({ root, code }) => {
     await autoRegisterProject(await repo(code, "draft"));
     await writeFile(path.join(folder(root, "draft"), "tasks", ".DS_Store"), "");
@@ -298,6 +316,36 @@ test("rename ignores dotfiles in tasks/ and renames the memory heading", async (
     assert.match(
       await readFile(path.join(folder(root, "final"), "MEMORY.md"), "utf8"),
       /^# final — memory/,
+    );
+    assert.match(
+      await readFile(
+        path.join(folder(root, "final"), "docs", "README.md"),
+        "utf8",
+      ),
+      /^# final — docs/,
+    );
+  });
+});
+
+test("the standard layout fills gaps and never overwrites what a project already has", async () => {
+  await withWorkspace(async ({ root }) => {
+    const project = folder(root, "legacy");
+    await mkdir(path.join(project, "docs"), { recursive: true });
+    await writeFile(path.join(project, "MEMORY.md"), "# mine\n\n- a lesson\n");
+    assert.deepEqual(await ensureProjectLayout("legacy"), [
+      "tasks/",
+      "memory/",
+      "docs/README.md",
+    ]);
+    assert.equal(
+      await readFile(path.join(project, "MEMORY.md"), "utf8"),
+      "# mine\n\n- a lesson\n",
+    );
+    await writeFile(path.join(project, "docs", "README.md"), "# my docs\n");
+    assert.deepEqual(await ensureProjectLayout("legacy"), []);
+    assert.equal(
+      await readFile(path.join(project, "docs", "README.md"), "utf8"),
+      "# my docs\n",
     );
   });
 });

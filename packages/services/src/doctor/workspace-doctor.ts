@@ -24,10 +24,16 @@ import {
   oceanPath,
   POLICIES_DIR,
   PROJECTS_DIR,
+  projectFolder,
   repoPath,
   SYSTEM_DIR,
   workspaceTasksRoot,
 } from "@ocean/core/shared/paths.js";
+import {
+  ensureProjectLayout,
+  listProjectManifests,
+  PROJECT_ROOT_ENTRIES,
+} from "@ocean/core/shared/project-resolution.js";
 
 const execFile = promisify(execFileCallback);
 
@@ -325,6 +331,52 @@ async function checkPermissions(): Promise<Finding[]> {
       ];
 }
 
+// A project folder keeps reference material in docs/ and lessons in memory/; anything else at
+// its root is a file a session put in the wrong place. Moving it is a judgment call, so repair
+// only adds the missing standard folders.
+async function checkProjectLayout(): Promise<Finding[]> {
+  const findings: Finding[] = [];
+  for (const manifest of await listProjectManifests()) {
+    const relative = path.join(PROJECTS_DIR, projectFolder(manifest.id));
+    const entries = await readdir(oceanPath(relative)).catch(
+      (): string[] => [],
+    );
+    const missing = ["tasks", "memory", "docs", "MEMORY.md"].filter(
+      (entry) => !entries.includes(entry),
+    );
+    const stray = entries.filter(
+      (entry) =>
+        !entry.startsWith(".") && !PROJECT_ROOT_ENTRIES.includes(entry),
+    );
+    if (missing.length)
+      findings.push({
+        code: "PROJECT_LAYOUT_MISSING",
+        severity: "WARN",
+        path: relative,
+        message: `project '${manifest.id}' is missing ${missing.join(", ")}`,
+        fixable: true,
+      });
+    if (stray.length)
+      findings.push({
+        code: "PROJECT_LAYOUT_STRAY",
+        severity: "WARN",
+        path: relative,
+        message: `project '${manifest.id}' has ${stray.join(", ")} at its root; reference material belongs in docs/, lessons in memory/`,
+        fixable: false,
+      });
+  }
+  return findings.length
+    ? findings
+    : [
+        {
+          code: "PROJECT_LAYOUT_OK",
+          severity: "OK",
+          message: "every project folder follows the standard layout",
+          fixable: false,
+        },
+      ];
+}
+
 async function checkDuplicates(): Promise<Finding[]> {
   const seen = new Map<string, string>();
   const duplicates: string[] = [];
@@ -477,6 +529,7 @@ async function scanWorkspace(
     ...(await checkWorkspaceContracts()),
     ...(await checkPermissions()),
     ...(await checkDuplicates()),
+    ...(await checkProjectLayout()),
     ...(await checkProfileAuthority()),
   ];
 }
@@ -505,6 +558,13 @@ export async function repairWorkspace(
     for (const directory of await activeDirectories(oceanPath(SYSTEM_DIR)))
       await chmod(directory, 0o700);
     changes.push("restricted active system directories to owner-only");
+  }
+  if (before.some((finding) => finding.code === "PROJECT_LAYOUT_MISSING")) {
+    for (const manifest of await listProjectManifests()) {
+      const created = await ensureProjectLayout(manifest.id);
+      if (created.length)
+        changes.push(`project '${manifest.id}': created ${created.join(", ")}`);
+    }
   }
   await wrapperManager.syncProviderWrappers();
   changes.push("synchronized provider wrappers");

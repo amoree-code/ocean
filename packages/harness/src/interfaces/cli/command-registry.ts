@@ -103,6 +103,7 @@ import {
   removeInstalledProvider,
   updateProvider,
 } from "../../application/install/provider-installer.js";
+import { syncCharterCopies } from "../../application/integrations/charter-copies.js";
 import { configureClaudeCodeWrapper } from "../../application/integrations/claude-vscode.js";
 import {
   listSchedules,
@@ -247,9 +248,12 @@ async function commandClient(): Promise<void> {
     }
   } else if (action === "sync") {
     const result = await syncProviderWrappers();
+    // Runs at every session start (the SessionStart hook calls `client sync`), so an edit
+    // to core.md reaches the clients that carry a copy without a manual step.
+    const charter = await syncCharterCopies();
     console.log(
       JSON.stringify(
-        { directory: result.directory, providers: result.providers },
+        { directory: result.directory, providers: result.providers, charter },
         null,
         2,
       ),

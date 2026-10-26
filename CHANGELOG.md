@@ -7,6 +7,8 @@ Docs-only or CI-only PRs may add the `skip-changelog` label instead.
 ## Unreleased
 
 - test(T-278): the Ctrl+C process-group test runs its child from the package dir, so it passes from any working directory (it failed from the kernel root, where `ocean tasks verify` runs) (#202)
+- feat(T-282): `ocean client sync` (run by the SessionStart hook every session) re-copies `charter/core.md` into the marked block of `~/.codex/AGENTS.md` and `~/.gemini/GEMINI.md`, keeping text outside the markers and refusing to overwrite a block edited by hand, so a charter edit reaches every client without a manual copy (#205)
+- feat(T-280): every project gets a standard layout — `memory/` (lessons, indexed by `MEMORY.md`) and `docs/` (reference material) next to `tasks/` — on auto-register, so sessions stop writing reference files at the project root; `ocean doctor` warns on stray root entries and `ocean repair --apply` adds missing folders without moving files; rename also renames the `docs/README.md` heading (#204)
 - docs(T-276): README states the idea and the philosophy, fixes the layout tree and dead links, and adds a releases section; one name everywhere — no former-name mentions left in docs or comments (#200)
 - test(T-277): the background-process test waits up to 1 s for the SIGKILLed descendant to be gone or a zombie instead of checking at once, so it no longer races the reaper on ubuntu-26.04 runners (#201)
 - fix(T-231): the publish remote check strips a trailing `/.git` or `\.git` from a local path on any OS, so the Windows gate passes the remote-spelling test (#199)
