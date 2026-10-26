@@ -6,6 +6,7 @@ Docs-only or CI-only PRs may add the `skip-changelog` label instead.
 
 ## Unreleased
 
+- feat(T-283): `ocean client sync` disables the skills hidden from Claude's model in Codex (a generated `[[skills.config]] enabled = false` block in `~/.codex/config.toml`) and Gemini (`skills.disabled` in `~/.gemini/settings.json`, owner entries kept), and `ocean context cost` honors both — Codex and Gemini no longer pay ~17 KB of skill descriptions on every request (#208)
 - fix(T-283): `ocean context cost` counts only what Claude really loads — skills hidden by `skillOverrides` (`off`, `user-invocable-only`) or `disable-model-invocation` are reported as hidden instead of always-on, and Claude's commands, agents and enabled plugins are now counted — so the always-on number is no longer wrong in both directions (#206)
 - fix(T-279): `ocean memory doctor` and reindex leave the machine-managed lesson records (`knowledge/lessons/`, found through the brain index) out of the curated KNOWLEDGE.md, so the doctor no longer fails on 200 lesson files and a reindex no longer writes them into the index; `lessons/CONFLICTS.md` stays indexed because it waits on a human (#203)
 - test(T-278): the Ctrl+C process-group test runs its child from the package dir, so it passes from any working directory (it failed from the kernel root, where `ocean tasks verify` runs) (#202)

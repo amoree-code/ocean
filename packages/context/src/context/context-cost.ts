@@ -356,6 +356,76 @@ async function readClaudeSettings(
   return settings;
 }
 
+// The skills the owner hid from Claude's model; `ocean client sync` hides the same ones from
+// Codex and Gemini.
+export async function claudeHiddenSkills(
+  home = os.homedir(),
+): Promise<Set<string>> {
+  return (await readClaudeSettings(home, [])).hidden;
+}
+
+// The SKILL.md paths that `~/.codex/config.toml` disables with
+// `[[skills.config]] path = "..." enabled = false`.
+export async function codexDisabledSkillPaths(
+  home = os.homedir(),
+): Promise<Set<string>> {
+  const disabled = new Set<string>();
+  let text: string;
+  try {
+    text = await readFile(path.join(home, ".codex", "config.toml"), "utf8");
+  } catch {
+    return disabled;
+  }
+  let entry: { path?: string; enabled?: boolean } | null = null;
+  const flush = () => {
+    if (entry?.path && entry.enabled === false)
+      disabled.add(path.resolve(entry.path));
+  };
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line.startsWith("[")) {
+      flush();
+      entry = line === "[[skills.config]]" ? {} : null;
+      continue;
+    }
+    if (!entry) continue;
+    const value = /^path\s*=\s*("(?:[^"\\]|\\.)*"|'[^']*')\s*(#.*)?$/.exec(
+      line,
+    )?.[1];
+    if (value)
+      try {
+        entry.path = value.startsWith("'")
+          ? value.slice(1, -1)
+          : JSON.parse(value);
+      } catch {
+        // An unreadable path disables nothing.
+      }
+    const enabled = /^enabled\s*=\s*(true|false)\s*(#.*)?$/.exec(line)?.[1];
+    if (enabled) entry.enabled = enabled === "true";
+  }
+  flush();
+  return disabled;
+}
+
+// The skill names `~/.gemini/settings.json` lists under `skills.disabled`.
+export async function geminiDisabledSkills(
+  home = os.homedir(),
+): Promise<Set<string>> {
+  try {
+    const parsed = JSON.parse(
+      await readFile(path.join(home, ".gemini", "settings.json"), "utf8"),
+    );
+    const list = parsed?.skills?.disabled;
+    return new Set(
+      Array.isArray(list)
+        ? list.filter((name): name is string => typeof name === "string")
+        : [],
+    );
+  } catch {
+    return new Set();
+  }
+}
+
 // One always-on listing: the frontmatter of every model-visible `*.md` (or `<dir>/SKILL.md`
 // when `skillDirs`) directly under `dir`. Hidden entries cost nothing.
 async function listingBytes(
@@ -451,7 +521,7 @@ async function measureSkills(
   sources: Sources,
   home: string,
   notes: string[],
-  hidden: (name: string) => boolean = () => false,
+  hidden: (name: string, file: string) => boolean = () => false,
 ): Promise<ClientContextCost["skills"]> {
   const root = sources.skillsRoot(home);
   const result = {
@@ -478,7 +548,7 @@ async function measureSkills(
       const frontmatter = frontmatterBytes(buffer);
       const fields = frontmatterFields(buffer, frontmatter);
       const name = fields.name ?? path.basename(path.dirname(file));
-      if (fields.modelHidden || hidden(name)) {
+      if (fields.modelHidden || hidden(name, file)) {
         result.hidden += 1;
         result.hiddenFrontmatterBytes += frontmatter;
         return;
@@ -538,8 +608,16 @@ export async function measureContextCost(
     const memory = await measureMemory(client, home, projectDir, notes);
     const claude =
       client === "claude" ? await readClaudeSettings(home, notes) : null;
-    const skills = await measureSkills(sources, home, notes, (name) =>
-      Boolean(claude?.hidden.has(name)),
+    const codexOff =
+      client === "codex" ? await codexDisabledSkillPaths(home) : null;
+    const geminiOff =
+      client === "gemini" ? await geminiDisabledSkills(home) : null;
+    const skills = await measureSkills(sources, home, notes, (name, file) =>
+      Boolean(
+        claude?.hidden.has(name) ||
+          codexOff?.has(path.resolve(file)) ||
+          geminiOff?.has(name),
+      ),
     );
     const extras = claude ? await measureClaudeExtras(home, claude, notes) : [];
     const alwaysOnBytes =
