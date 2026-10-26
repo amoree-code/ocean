@@ -49,6 +49,40 @@ test("doctor reports missing roots and broken active links without mutating", as
   );
 });
 
+test("doctor warns on stray project-root files and missing standard folders", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-doctor-layout-"));
+  for (const dir of [PERSONAL_DIR, KNOWLEDGE_DIR, SYSTEM_DIR])
+    await mkdir(path.join(root, dir), { recursive: true });
+  const project = path.join(root, PROJECTS_DIR, "acme");
+  await mkdir(path.join(project, "tasks"), { recursive: true });
+  await writeFile(
+    path.join(project, "project.json"),
+    `${JSON.stringify({ id: "acme", name: "acme", paths: ["~/acme"], created: "2026-10-26T00:00:00.000Z", autoRegistered: true })}\n`,
+  );
+  await writeFile(path.join(project, "MEMORY.md"), "# acme — memory\n");
+  await writeFile(path.join(project, "api.md"), "# API\n");
+  await writeFile(path.join(project, ".DS_Store"), "");
+  const result = spawnSync(
+    process.execPath,
+    [path.resolve("dist/main.js"), "doctor", "--json"],
+    {
+      env: {
+        ...process.env,
+        OCEAN_ROOT: root,
+        OCEAN_SKIP_DEPENDENCY_AUDIT: "1",
+      },
+      encoding: "utf8",
+    },
+  );
+  const findings = JSON.parse(result.stdout).findings;
+  const stray = findings.find((f) => f.code === "PROJECT_LAYOUT_STRAY");
+  assert.match(stray.message, /api\.md/);
+  assert.doesNotMatch(stray.message, /DS_Store|MEMORY\.md|tasks/);
+  const missing = findings.find((f) => f.code === "PROJECT_LAYOUT_MISSING");
+  assert.match(missing.message, /memory, docs/);
+  assert.equal(missing.fixable, true);
+});
+
 test("doctor skips links in generated session summaries and installed skill docs, not in authored files", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ocean-doctor-links-"));
   for (const dir of [PERSONAL_DIR, KNOWLEDGE_DIR, PROJECTS_DIR, SYSTEM_DIR])

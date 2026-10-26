@@ -919,7 +919,8 @@ function within(root: string, target: string): boolean {
 class ProjectFolderTaken extends Error {}
 
 // A session opened in a git repo that no project claims registers that repo as its own
-// project: 04-projects/<slug>/ with project.json, tasks/ and MEMORY.md. Automatic runs stay
+// project: 04-projects/<slug>/ with project.json and the standard layout (ensureProjectLayout:
+// tasks/, memory/, docs/, MEMORY.md). Automatic runs stay
 // under the code roots, out of the temp dir and off a code root itself; `explicit` (the
 // `ocean project register` command) is the owner asking, so only the hard rules apply: a git
 // repo, not a linked worktree or submodule, not the Ocean workspace, never over an existing
@@ -972,17 +973,7 @@ export async function autoRegisterProject(
     resolution = await resolveProject(cwd);
     return skipped(`conflicts with project '${result.conflict.id}'`);
   }
-  const folder = path.join(projectsRoot(), id);
-  await mkdir(path.join(folder, "tasks"), { recursive: true });
-  try {
-    await writeFile(
-      path.join(folder, "MEMORY.md"),
-      `${memoryHeading(id)}\n\nIndex of this project's memory. Loaded only for sessions in this project.\n`,
-      { flag: "wx" },
-    );
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-  }
+  await ensureProjectLayout(id);
   resolution = {
     status: "bound",
     projectId: id,
@@ -1001,6 +992,68 @@ export async function autoRegisterProject(
 
 function memoryHeading(id: string): string {
   return `# ${id} — memory`;
+}
+
+// The only entries a project folder holds at its root. Lessons and decisions go in memory/
+// (indexed by MEMORY.md, which every session in the project loads); reference material goes
+// in docs/ (indexed by docs/README.md); work goes in tasks/. index.md is the generated board.
+export const PROJECT_ROOT_ENTRIES = [
+  "project.json",
+  "MEMORY.md",
+  "README.md",
+  "index.md",
+  "tasks",
+  "memory",
+  "docs",
+];
+
+function memorySeed(id: string): string {
+  return `${memoryHeading(id)}
+
+Index of this project's memory. Loaded only for sessions in this project.
+
+Layout — nothing else goes at the project root:
+- Lessons, decisions, gotchas → one file in \`memory/\`, plus one line here.
+- Reference material (requirements, API notes, plans, maps) → \`docs/\`, plus one line in \`docs/README.md\`.
+- Work → \`tasks/<ID>/task.md\`.
+`;
+}
+
+function docsHeading(id: string): string {
+  return `# ${id} — docs`;
+}
+
+function docsSeed(id: string): string {
+  return `${docsHeading(id)}
+
+Reference material for this project: requirements, API notes, plans, maps. One line per file
+below. Status lives in the tasks, never here.
+`;
+}
+
+// Creates whatever of the standard layout is missing and never overwrites a file. Returns the
+// paths it created, relative to the project folder.
+export async function ensureProjectLayout(
+  projectId: string,
+): Promise<string[]> {
+  const folder = path.join(projectsRoot(), projectFolder(projectId));
+  const created: string[] = [];
+  for (const directory of ["tasks", "memory", "docs"])
+    if (await mkdir(path.join(folder, directory), { recursive: true }))
+      created.push(`${directory}/`);
+  const seeds: [string, string][] = [
+    ["MEMORY.md", memorySeed(projectId)],
+    [path.join("docs", "README.md"), docsSeed(projectId)],
+  ];
+  for (const [file, text] of seeds) {
+    try {
+      await writeFile(path.join(folder, file), text, { flag: "wx" });
+      created.push(file.split(path.sep).join("/"));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    }
+  }
+  return created;
 }
 
 // Undoes a binding (a wrong auto-registration, a moved repo). Only the path goes; the project
@@ -1068,16 +1121,21 @@ export async function renameProject(
       id: to,
       name: manifest.name === from ? to : manifest.name,
     });
-    const memory = path.join(target, "MEMORY.md");
-    try {
-      const text = await readFile(memory, "utf8");
-      if (text.startsWith(memoryHeading(from)))
-        await atomicWrite(
-          memory,
-          `${memoryHeading(to)}${text.slice(memoryHeading(from).length)}`,
-        );
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    for (const [file, heading] of [
+      ["MEMORY.md", memoryHeading],
+      [path.join("docs", "README.md"), docsHeading],
+    ] as const) {
+      const index = path.join(target, file);
+      try {
+        const text = await readFile(index, "utf8");
+        if (text.startsWith(heading(from)))
+          await atomicWrite(
+            index,
+            `${heading(to)}${text.slice(heading(from).length)}`,
+          );
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
     }
     if (
       (
