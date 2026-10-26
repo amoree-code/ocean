@@ -53,7 +53,7 @@ const SECRET_PATTERN = /(api[_ -]?key|token|password|secret)\s*[:=]/i;
 
 export const lessonsDir = () => oceanPath(KNOWLEDGE_DIR, "lessons");
 const lessonFile = (id: string) => path.join(lessonsDir(), `${id}.md`);
-const conflictsFile = () => path.join(lessonsDir(), "CONFLICTS.md");
+export const conflictsFile = () => path.join(lessonsDir(), "CONFLICTS.md");
 
 const clamp = (value: number) => Math.min(1, Math.max(0, value));
 
