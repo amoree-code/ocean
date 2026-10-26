@@ -8,7 +8,8 @@ import {
 
 // Read-only measurement of each client's always-on context: the text an interactive client
 // loads on every request before the user types anything (global rules, an auto-loaded memory
-// index, and the frontmatter of every installed skill). Reports only display paths (~/...),
+// index, the frontmatter of every model-visible skill, and for Claude its commands, agents
+// and enabled plugins). Reports only display paths (~/...),
 // byte counts and fixed notes — never file contents and never raw error messages, which can
 // carry absolute paths.
 
@@ -33,7 +34,13 @@ export type ClientContextCost = {
     count: number;
     frontmatterBytes: number;
     bodyBytes: number;
+    // Installed but kept out of the model's listing (a client setting or the skill's own
+    // `disable-model-invocation`), so not always-on and not in the counts above.
+    hidden: number;
+    hiddenFrontmatterBytes: number;
   };
+  // Other always-on listings: Claude's commands, agents and enabled plugins.
+  extras: MeasuredFile[];
   alwaysOnBytes: number;
   overBudget: boolean;
   notes: string[];
@@ -299,10 +306,152 @@ function frontmatterBytes(buffer: Buffer): number {
   return Buffer.byteLength(text.slice(0, end));
 }
 
+// The `name:` and `disable-model-invocation:` of a frontmatter block — all the listing rules
+// need. A missing name falls back to the directory or file name.
+function frontmatterFields(
+  buffer: Buffer,
+  bytes: number,
+): { name: string | null; modelHidden: boolean } {
+  const text = buffer.subarray(0, bytes).toString("utf8");
+  const name = /^name:[ \t]*["']?([^"'\r\n]+?)["']?[ \t]*$/m.exec(text)?.[1];
+  return {
+    name: name ?? null,
+    modelHidden: /^disable-model-invocation:[ \t]*true[ \t]*$/m.test(text),
+  };
+}
+
+// Claude's `skillOverrides` values that keep a skill out of the model's listing.
+const HIDDEN_OVERRIDES = new Set(["off", "user-invocable-only"]);
+
+type ClaudeSettings = {
+  hidden: Set<string>;
+  enabledPlugins: string[];
+};
+
+async function readClaudeSettings(
+  home: string,
+  notes: string[],
+): Promise<ClaudeSettings> {
+  const settings: ClaudeSettings = { hidden: new Set(), enabledPlugins: [] };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(
+      await readFile(path.join(home, ".claude", "settings.json"), "utf8"),
+    );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT")
+      notes.push("settings.json unreadable; skill overrides not applied");
+    return settings;
+  }
+  if (!parsed || typeof parsed !== "object") return settings;
+  const { skillOverrides, enabledPlugins } = parsed as Record<string, unknown>;
+  if (skillOverrides && typeof skillOverrides === "object")
+    for (const [name, value] of Object.entries(skillOverrides))
+      if (typeof value === "string" && HIDDEN_OVERRIDES.has(value))
+        settings.hidden.add(name);
+  if (enabledPlugins && typeof enabledPlugins === "object")
+    settings.enabledPlugins = Object.entries(enabledPlugins)
+      .filter(([, enabled]) => enabled === true)
+      .map(([id]) => id);
+  return settings;
+}
+
+// One always-on listing: the frontmatter of every model-visible `*.md` (or `<dir>/SKILL.md`
+// when `skillDirs`) directly under `dir`. Hidden entries cost nothing.
+async function listingBytes(
+  dir: string,
+  options: { skillDirs: boolean; hidden: (name: string) => boolean },
+): Promise<number> {
+  let entries: string[];
+  try {
+    entries = (await readdir(dir)).sort();
+  } catch {
+    return 0;
+  }
+  let total = 0;
+  for (const entry of entries) {
+    if (entry.startsWith(".")) continue;
+    const file = options.skillDirs
+      ? path.join(dir, entry, "SKILL.md")
+      : entry.endsWith(".md")
+        ? path.join(dir, entry)
+        : null;
+    if (!file) continue;
+    let buffer: Buffer;
+    try {
+      buffer = await readFile(file);
+    } catch {
+      continue;
+    }
+    const bytes = frontmatterBytes(buffer);
+    const fields = frontmatterFields(buffer, bytes);
+    const name = fields.name ?? entry.replace(/\.md$/, "");
+    if (fields.modelHidden || options.hidden(name)) continue;
+    total += bytes;
+  }
+  return total;
+}
+
+// Claude also lists custom commands, subagents and each enabled plugin's skills, commands
+// and agents on every request; each is reported as one line.
+async function measureClaudeExtras(
+  home: string,
+  settings: ClaudeSettings,
+  notes: string[],
+): Promise<MeasuredFile[]> {
+  const claude = path.join(home, ".claude");
+  const extras: MeasuredFile[] = [];
+  const add = (dir: string, bytes: number) => {
+    if (bytes) extras.push({ path: displayPath(dir, home), bytes });
+  };
+  const userHidden = (name: string) => settings.hidden.has(name);
+  for (const kind of ["commands", "agents"])
+    add(
+      path.join(claude, kind),
+      await listingBytes(path.join(claude, kind), {
+        skillDirs: false,
+        hidden: userHidden,
+      }),
+    );
+  if (!settings.enabledPlugins.length) return extras;
+  let installed: Record<string, { installPath?: unknown }[]> = {};
+  try {
+    installed =
+      JSON.parse(
+        await readFile(
+          path.join(claude, "plugins", "installed_plugins.json"),
+          "utf8",
+        ),
+      ).plugins ?? {};
+  } catch {
+    notes.push("installed_plugins.json unreadable; plugins not measured");
+    return extras;
+  }
+  for (const id of settings.enabledPlugins) {
+    const root = installed[id]?.[0]?.installPath;
+    if (typeof root !== "string") continue;
+    const plugin = id.split("@")[0];
+    const hidden = (name: string) =>
+      settings.hidden.has(`${plugin}:${name}`) || settings.hidden.has(name);
+    let bytes = await listingBytes(path.join(root, "skills"), {
+      skillDirs: true,
+      hidden,
+    });
+    for (const kind of ["commands", "agents"])
+      bytes += await listingBytes(path.join(root, kind), {
+        skillDirs: false,
+        hidden,
+      });
+    add(root, bytes);
+  }
+  return extras;
+}
+
 async function measureSkills(
   sources: Sources,
   home: string,
   notes: string[],
+  hidden: (name: string) => boolean = () => false,
 ): Promise<ClientContextCost["skills"]> {
   const root = sources.skillsRoot(home);
   const result = {
@@ -311,6 +460,8 @@ async function measureSkills(
     count: 0,
     frontmatterBytes: 0,
     bodyBytes: 0,
+    hidden: 0,
+    hiddenFrontmatterBytes: 0,
   };
   let entries: string[];
   try {
@@ -325,6 +476,13 @@ async function measureSkills(
     try {
       const buffer = await readFile(file);
       const frontmatter = frontmatterBytes(buffer);
+      const fields = frontmatterFields(buffer, frontmatter);
+      const name = fields.name ?? path.basename(path.dirname(file));
+      if (fields.modelHidden || hidden(name)) {
+        result.hidden += 1;
+        result.hiddenFrontmatterBytes += frontmatter;
+        return;
+      }
       result.count += 1;
       result.frontmatterBytes += frontmatter;
       result.bodyBytes += buffer.byteLength - frontmatter;
@@ -378,16 +536,24 @@ export async function measureContextCost(
     const notes = [...sources.notes];
     const rules = await measureRules(sources, home);
     const memory = await measureMemory(client, home, projectDir, notes);
-    const skills = await measureSkills(sources, home, notes);
+    const claude =
+      client === "claude" ? await readClaudeSettings(home, notes) : null;
+    const skills = await measureSkills(sources, home, notes, (name) =>
+      Boolean(claude?.hidden.has(name)),
+    );
+    const extras = claude ? await measureClaudeExtras(home, claude, notes) : [];
     const alwaysOnBytes =
-      [...rules, ...memory].reduce((total, file) => total + file.bytes, 0) +
-      skills.frontmatterBytes;
+      [...rules, ...memory, ...extras].reduce(
+        (total, file) => total + file.bytes,
+        0,
+      ) + skills.frontmatterBytes;
     clients.push({
       client,
       shared: sources.shared ?? false,
       rules,
       memory,
       skills,
+      extras,
       alwaysOnBytes,
       overBudget: alwaysOnBytes > budget,
       notes,

@@ -193,6 +193,86 @@ test("context cost measures always-on bytes per client from a fake home", () =>
     assert.ok(claudeNoProject.notes.some((note) => note.includes("--project")));
   }));
 
+test("claude skills hidden from the model cost nothing; commands, agents and plugins count", () =>
+  withFakeHome(async (home) => {
+    const claude = path.join(home, ".claude");
+    const shown = skillFile("shown", `${MARKER}\n`);
+    const quiet = skillFile("quiet", `${MARKER}\n`);
+    const self = `---\nname: self\ndescription: Hides itself.\ndisable-model-invocation: true\n---\n${MARKER}\n`;
+    await put(path.join(claude, "skills", "shown", "SKILL.md"), shown.text);
+    await put(path.join(claude, "skills", "quiet", "SKILL.md"), quiet.text);
+    await put(path.join(claude, "skills", "self", "SKILL.md"), self);
+    const commandFm = "---\ndescription: Runs a thing.\n---\n";
+    const command = `${commandFm}Do it.\n`;
+    const agentFm = "---\nname: helper\ndescription: Helps.\n---\n";
+    const agent = `${agentFm}Prompt.\n`;
+    await put(path.join(claude, "commands", "go.md"), command);
+    await put(path.join(claude, "commands", "notes.txt"), "not a command");
+    await put(path.join(claude, "agents", "helper.md"), agent);
+    const plugin = path.join(home, "plugin-root");
+    const pluginSkill = skillFile("tool", `${MARKER}\n`);
+    await put(
+      path.join(plugin, "skills", "tool", "SKILL.md"),
+      pluginSkill.text,
+    );
+    await put(
+      path.join(plugin, "skills", "inner", "SKILL.md"),
+      skillFile("inner", "").text,
+    );
+    await put(
+      path.join(claude, "plugins", "installed_plugins.json"),
+      JSON.stringify({
+        plugins: {
+          "kit@market": [{ installPath: plugin }],
+          "off@market": [{ installPath: path.join(home, "nope") }],
+        },
+      }),
+    );
+    await put(
+      path.join(claude, "settings.json"),
+      JSON.stringify({
+        skillOverrides: {
+          quiet: "user-invocable-only",
+          "kit:inner": "off",
+          shown: "on",
+        },
+        enabledPlugins: { "kit@market": true, "off@market": false },
+      }),
+    );
+    const report = await measureContextCost({ home, budget: 10 ** 9 });
+    const cost = report.clients.find((client) => client.client === "claude");
+    assert.equal(cost.skills.count, 1);
+    assert.equal(cost.skills.frontmatterBytes, shown.frontmatter);
+    assert.equal(cost.skills.hidden, 2);
+    assert.deepEqual(cost.extras, [
+      { path: "~/.claude/commands", bytes: Buffer.byteLength(commandFm) },
+      { path: "~/.claude/agents", bytes: Buffer.byteLength(agentFm) },
+      { path: "~/plugin-root", bytes: pluginSkill.frontmatter },
+    ]);
+    assert.equal(
+      cost.alwaysOnBytes,
+      shown.frontmatter +
+        cost.extras.reduce((total, file) => total + file.bytes, 0),
+    );
+    assert.ok(!JSON.stringify(report).includes(MARKER));
+    // Other clients never read Claude's settings.
+    const codex = report.clients.find((client) => client.client === "codex");
+    assert.deepEqual(codex.extras, []);
+  }));
+
+test("an unreadable Claude settings file is a note, not a failure", () =>
+  withFakeHome(async (home) => {
+    await put(
+      path.join(home, ".claude", "skills", "a", "SKILL.md"),
+      skillFile("a", "").text,
+    );
+    await put(path.join(home, ".claude", "settings.json"), "{ not json");
+    const report = await measureContextCost({ home });
+    const cost = report.clients.find((client) => client.client === "claude");
+    assert.equal(cost.skills.count, 1);
+    assert.ok(cost.notes.some((note) => note.includes("settings.json")));
+  }));
+
 test("claude memory is keyed by the git root, and a worktree by its main checkout", () =>
   withFakeHome(async (home) => {
     const repo = path.join(home, "work", "repo");

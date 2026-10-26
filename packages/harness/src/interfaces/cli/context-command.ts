@@ -195,12 +195,12 @@ export async function runContextCostCommand(args: string[]): Promise<void> {
   console.log(format(header));
   report.clients.forEach((client, index) => {
     console.log(format(rows[index]));
-    for (const file of [...client.rules, ...client.memory])
+    for (const file of [...client.rules, ...client.memory, ...client.extras])
       console.log(
         `  ${file.path} ${file.bytes}${file.via ? ` (via ${file.via})` : ""}${file.missing ? " missing" : ""}${file.unreadable ? " unreadable" : ""}`,
       );
     console.log(
-      `  skills: ${client.skills.root}${client.skills.present ? "" : " absent"}`,
+      `  skills: ${client.skills.root}${client.skills.present ? "" : " absent"}${client.skills.hidden ? ` (${client.skills.hidden} hidden from the model, ${client.skills.hiddenFrontmatterBytes} bytes not loaded)` : ""}`,
     );
     for (const note of client.notes) console.log(`  note: ${note}`);
   });

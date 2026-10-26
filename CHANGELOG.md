@@ -6,6 +6,7 @@ Docs-only or CI-only PRs may add the `skip-changelog` label instead.
 
 ## Unreleased
 
+- fix(T-283): `ocean context cost` counts only what Claude really loads — skills hidden by `skillOverrides` (`off`, `user-invocable-only`) or `disable-model-invocation` are reported as hidden instead of always-on, and Claude's commands, agents and enabled plugins are now counted — so the always-on number is no longer wrong in both directions
 - fix(T-279): `ocean memory doctor` and reindex leave the machine-managed lesson records (`knowledge/lessons/`, found through the brain index) out of the curated KNOWLEDGE.md, so the doctor no longer fails on 200 lesson files and a reindex no longer writes them into the index; `lessons/CONFLICTS.md` stays indexed because it waits on a human (#203)
 - test(T-278): the Ctrl+C process-group test runs its child from the package dir, so it passes from any working directory (it failed from the kernel root, where `ocean tasks verify` runs) (#202)
 - feat(T-282): `ocean client sync` (run by the SessionStart hook every session) re-copies `charter/core.md` into the marked block of `~/.codex/AGENTS.md` and `~/.gemini/GEMINI.md`, keeping text outside the markers and refusing to overwrite a block edited by hand, so a charter edit reaches every client without a manual copy (#205)
