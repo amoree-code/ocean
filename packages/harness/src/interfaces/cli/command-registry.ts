@@ -105,6 +105,7 @@ import {
 } from "../../application/install/provider-installer.js";
 import { syncCharterCopies } from "../../application/integrations/charter-copies.js";
 import { configureClaudeCodeWrapper } from "../../application/integrations/claude-vscode.js";
+import { syncSkillFilter } from "../../application/integrations/skill-filter.js";
 import {
   listSchedules,
   runDueSchedules,
@@ -251,9 +252,15 @@ async function commandClient(): Promise<void> {
     // Runs at every session start (the SessionStart hook calls `client sync`), so an edit
     // to core.md reaches the clients that carry a copy without a manual step.
     const charter = await syncCharterCopies();
+    const skillFilter = await syncSkillFilter();
     console.log(
       JSON.stringify(
-        { directory: result.directory, providers: result.providers, charter },
+        {
+          directory: result.directory,
+          providers: result.providers,
+          charter,
+          skillFilter,
+        },
         null,
         2,
       ),
