@@ -1019,8 +1019,12 @@ Layout — nothing else goes at the project root:
 `;
 }
 
+function docsHeading(id: string): string {
+  return `# ${id} — docs`;
+}
+
 function docsSeed(id: string): string {
-  return `# ${id} — docs
+  return `${docsHeading(id)}
 
 Reference material for this project: requirements, API notes, plans, maps. One line per file
 below. Status lives in the tasks, never here.
@@ -1117,16 +1121,21 @@ export async function renameProject(
       id: to,
       name: manifest.name === from ? to : manifest.name,
     });
-    const memory = path.join(target, "MEMORY.md");
-    try {
-      const text = await readFile(memory, "utf8");
-      if (text.startsWith(memoryHeading(from)))
-        await atomicWrite(
-          memory,
-          `${memoryHeading(to)}${text.slice(memoryHeading(from).length)}`,
-        );
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    for (const [file, heading] of [
+      ["MEMORY.md", memoryHeading],
+      [path.join("docs", "README.md"), docsHeading],
+    ] as const) {
+      const index = path.join(target, file);
+      try {
+        const text = await readFile(index, "utf8");
+        if (text.startsWith(heading(from)))
+          await atomicWrite(
+            index,
+            `${heading(to)}${text.slice(heading(from).length)}`,
+          );
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
     }
     if (
       (
