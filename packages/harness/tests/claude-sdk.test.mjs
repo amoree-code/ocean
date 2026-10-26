@@ -13,6 +13,7 @@ import {
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { runProvider } from "../dist/infrastructure/providers/providers.js";
 
 const unixOnly = process.platform === "win32" ? test.skip : test;
@@ -287,7 +288,8 @@ const { runProvider } = await import("./dist/infrastructure/providers/providers.
 await runProvider({ provider: "claude", prompt: "x", cwd: process.env.ROOT, timeoutMs: 20000, env: { FAKE_MODE: "sleep", FAKE_PIDFILE: process.env.PIDFILE } });
 `;
     const ocean = spawn(process.execPath, ["--input-type=module", "-e", code], {
-      cwd: path.resolve("."),
+      // The package dir, wherever the suite is run from: the child imports `./dist`.
+      cwd: fileURLToPath(new URL("..", import.meta.url)),
       env: { ...process.env, ROOT: root, PIDFILE: pidFile },
       stdio: "ignore",
     });
