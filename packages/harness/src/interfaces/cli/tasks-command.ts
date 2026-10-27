@@ -10,7 +10,10 @@ import {
   resolveWithin,
   WORKSPACE_PROJECT_ID,
 } from "@ocean/core/shared/paths.js";
-import { folderProject } from "@ocean/core/shared/project-resolution.js";
+import {
+  folderProject,
+  projectsWithTasks,
+} from "@ocean/core/shared/project-resolution.js";
 import { resolveTaskReference } from "@ocean/core/shared/task-reference.js";
 import {
   archiveDoneTasks,
@@ -110,21 +113,28 @@ export async function runTasksCommand(
     return;
   }
   if (action === "doctor") {
-    try {
-      const result = await execFile(process.execPath, [
-        enginePath("scripts", "validate-tasks.mjs"),
-        resolveWithin(
-          oceanPath(PROJECTS_DIR),
-          projectFolder(projectId),
-          "tasks",
-        ),
-      ]);
-      process.stdout.write(result.stdout);
-    } catch (error) {
-      const failure = error as Error & { stdout?: string; stderr?: string };
-      if (failure.stdout) process.stdout.write(failure.stdout);
-      if (failure.stderr) process.stderr.write(failure.stderr);
-      process.exitCode = 1;
+    // `--all`: every project with tasks, so a clean cwd project never hides another's drift.
+    const projects = args.includes("--all")
+      ? await projectsWithTasks()
+      : [projectId];
+    for (const project of projects) {
+      const label = projects.length > 1 ? `${project}: ` : "";
+      try {
+        const result = await execFile(process.execPath, [
+          enginePath("scripts", "validate-tasks.mjs"),
+          resolveWithin(
+            oceanPath(PROJECTS_DIR),
+            projectFolder(project),
+            "tasks",
+          ),
+        ]);
+        process.stdout.write(`${label}${result.stdout}`);
+      } catch (error) {
+        const failure = error as Error & { stdout?: string; stderr?: string };
+        if (failure.stdout) process.stdout.write(`${label}${failure.stdout}`);
+        if (failure.stderr) process.stderr.write(`${label}${failure.stderr}`);
+        process.exitCode = 1;
+      }
     }
     return;
   }
@@ -260,7 +270,7 @@ export async function runTasksCommand(
   }
   if (action !== "archive") {
     console.error(
-      "Usage: ocean tasks list [state] [--project <id>] [--pretty]|doctor|index [--write]|checkpoint <id> --note <text> [--next <text>]|verify <id>|complete <id>|claim <id> --by <name> [--paths a,b] [--force]|release <id> [--by <name>] [--force]|archive [--apply|--auto]|renumber --project <id> --prefix <PREFIX> [--write]",
+      "Usage: ocean tasks list [state] [--project <id>] [--pretty]|doctor [--all]|index [--write]|checkpoint <id> --note <text> [--next <text>]|verify <id>|complete <id>|claim <id> --by <name> [--paths a,b] [--force]|release <id> [--by <name>] [--force]|archive [--apply|--auto]|renumber --project <id> --prefix <PREFIX> [--write]",
     );
     process.exitCode = 1;
     return;
