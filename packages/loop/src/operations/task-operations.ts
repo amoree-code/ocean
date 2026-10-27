@@ -15,6 +15,7 @@ import {
   type TaskLocation,
 } from "@ocean/core/shared/task-reference.js";
 import { completeTask } from "../tasks/archive-tasks.js";
+import { taskRecord, validTaskTitle } from "../tasks/new-task.js";
 import {
   approvalMatchesTarget,
   type OperationRecord,
@@ -196,7 +197,7 @@ export async function taskCreate(
   const project = await crossProjectGuard(options, cwd);
   if (!project.ok) return operationResult("task.create", project.reason);
   const title = classification.identifier?.trim();
-  if (!title || title.length > 200 || /[\r\n]/.test(title))
+  if (!validTaskTitle(title))
     return operationResult(
       "task.create",
       "write refused: an explicit single-line task title is required",
@@ -228,7 +229,13 @@ export async function taskCreate(
       );
     const absent = await requireAbsentTarget(target.value);
     if (!absent.ok) return operationResult("task.create", absent.reason);
-    const source = `---\nid: ${id}\ntitle: ${title}\nstate: active\nproject: ${project.projectId}\nopened: ${today}\nupdated: ${today}\nartifacts: []\nclass: medium\nexpected_context: medium\n---\n\n## Objective\n\n${objective}\n\n## Definition of done\n\nThe requested outcome is implemented and its verification passes.\n\n## Next action\n\nInspect the project and define the first implementation slice.\n\n## Verification\n\nPending.\n\n## Blockers\n\nNone.\n\n## Log\n\n- ${today} — Task created.\n`;
+    const source = taskRecord({
+      id,
+      title,
+      project: project.projectId,
+      objective,
+      today,
+    });
     try {
       await mkdir(path.dirname(target.value), { recursive: true });
       const bytes = await atomicWrite(target.value, source);

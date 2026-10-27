@@ -26,6 +26,7 @@ import {
   listTasksForFolder,
   type ProjectTask,
 } from "@ocean/loop/tasks/list-tasks.js";
+import { newTask } from "@ocean/loop/tasks/new-task.js";
 import { renumberTasks } from "@ocean/loop/tasks/renumber-tasks.js";
 import { verifyTask } from "@ocean/loop/tasks/verify-task.js";
 
@@ -110,6 +111,22 @@ export async function runTasksCommand(
     if (found.note) console.error(found.note);
     if (args.includes("--pretty")) process.stdout.write(taskTable(found.tasks));
     else console.log(JSON.stringify(found.tasks, null, 2));
+    return;
+  }
+  if (action === "new") {
+    const title = args.find(
+      (arg, index) =>
+        !arg.startsWith("--") &&
+        (projectIndex < 0 || index !== projectIndex + 1),
+    );
+    const created = await newTask(projectId, title ?? "");
+    console.log(
+      JSON.stringify({
+        id: created.id,
+        project: projectId,
+        file: path.relative(oceanPath(), created.file),
+      }),
+    );
     return;
   }
   if (action === "doctor") {
@@ -270,7 +287,7 @@ export async function runTasksCommand(
   }
   if (action !== "archive") {
     console.error(
-      "Usage: ocean tasks list [state] [--project <id>] [--pretty]|doctor [--all]|index [--write]|checkpoint <id> --note <text> [--next <text>]|verify <id>|complete <id>|claim <id> --by <name> [--paths a,b] [--force]|release <id> [--by <name>] [--force]|archive [--apply|--auto]|renumber --project <id> --prefix <PREFIX> [--write]",
+      "Usage: ocean tasks list [state] [--project <id>] [--pretty]|new <title> [--project <id>]|doctor [--all]|index [--write]|checkpoint <id> --note <text> [--next <text>]|verify <id>|complete <id>|claim <id> --by <name> [--paths a,b] [--force]|release <id> [--by <name>] [--force]|archive [--apply|--auto]|renumber --project <id> --prefix <PREFIX> [--write]",
     );
     process.exitCode = 1;
     return;
