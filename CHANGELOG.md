@@ -6,6 +6,7 @@ Docs-only or CI-only PRs may add the `skip-changelog` label instead.
 
 ## Unreleased
 
+- fix(T-287): the kernel's pre-commit hook refuses a commit while `main` is checked out (`scripts/no-commit-on-main.mjs`) — a session had committed straight onto local `main`, leaving it ahead of origin with unreviewed work; branches and a detached HEAD are unaffected, `--no-verify` stays the deliberate escape (#211)
 - docs(T-286): AGENTS.md asks for `graft` only where it is installed and its graph is built, says what to do without it, and points to the graft skill's real path — every kernel session paid for an order to run a tool that may not exist; a test now fails when AGENTS.md names a repo file that is missing (#210)
 - feat(T-283): `ocean client sync` disables the skills hidden from Claude's model in Codex (a generated `[[skills.config]] enabled = false` block in `~/.codex/config.toml`) and Gemini (`skills.disabled` in `~/.gemini/settings.json`, owner entries kept), and `ocean context cost` honors both — Codex and Gemini no longer pay ~17 KB of skill descriptions on every request (#208)
 - fix(T-283): `ocean context cost` counts only what Claude really loads — skills hidden by `skillOverrides` (`off`, `user-invocable-only`) or `disable-model-invocation` are reported as hidden instead of always-on, and Claude's commands, agents and enabled plugins are now counted — so the always-on number is no longer wrong in both directions (#206)
