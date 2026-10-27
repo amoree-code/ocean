@@ -27,11 +27,37 @@ function isGenericContent(text: string | null | undefined): boolean {
   return trimmed.length === 0 || GENERIC_TITLE.test(trimmed);
 }
 
+// Markup a client wraps around a prompt (`<ide_opened_file>…</ide_opened_file>`,
+// `<task-notification>…`) is not what the session was about. Client tags carry `_` or `-`,
+// which HTML tag names never do, so a prompt about `<button>Save</button>` keeps its words.
+const CLIENT_TAG = "[a-z][a-z0-9]*(?:[_-][a-z0-9]+)+";
+
+function withoutClientMarkup(text: string): string {
+  return text
+    .replace(
+      new RegExp(`<(${CLIENT_TAG})\\b[^>]*>[\\s\\S]*?<\\/\\1>`, "gi"),
+      " ",
+    )
+    .replace(new RegExp(`<\\/?${CLIENT_TAG}\\b[^>]*>`, "gi"), " ");
+}
+
+// Local wall-clock date and time, like the SessionEnd hook's own line: a UTC stamp put one
+// session three hours apart in the same log, and after midnight UTC into another day's file.
+function localStamp(now = new Date()): { date: string; time: string } {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return {
+    date: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
+    time: `${pad(now.getHours())}:${pad(now.getMinutes())}`,
+  };
+}
+
 function insertUnderHeading(
   content: string,
   heading: string,
   line: string,
 ): string {
+  // A client that reports one session end twice must not log it twice.
+  if (content.split("\n").includes(line)) return content;
   const marker = `${heading}\n`;
   const index = content.indexOf(marker);
   if (index < 0) return `${content.trimEnd()}\n\n${heading}\n${line}\n`;
@@ -45,7 +71,7 @@ function insertUnderHeading(
 async function updateDailyFile(
   update: (content: string) => string,
 ): Promise<void> {
-  const date = new Date().toISOString().slice(0, 10);
+  const { date } = localStamp();
   const directory = oceanPath(DAILY_DIR);
   const file = path.join(directory, `${date}.md`);
   await mkdir(directory, { recursive: true });
@@ -82,7 +108,7 @@ export async function appendDailyNarrative(input: {
 }): Promise<void> {
   const { session, events, narrative } = input;
   const inserts: Array<[heading: string, line: string]> = [];
-  const time = new Date().toISOString().slice(11, 16);
+  const { time } = localStamp();
   const project =
     path.basename(session.workingDirectory) || session.workingDirectory;
   const status =
@@ -97,15 +123,18 @@ export async function appendDailyNarrative(input: {
         (event) =>
           event.type === "user_input" || event.type === "resume_requested",
       );
-      return safeText(objectiveEvent?.data ?? session.title, 160);
+      // A prompt that was only client markup falls back to the session's title.
+      const prompt = safeText(withoutClientMarkup(objectiveEvent?.data ?? ""));
+      return safeText(prompt || session.title, 160);
     })();
 
-  // Skip the doubly-useless case: no real content beyond the generic
-  // placeholder title, AND no real project (root/home session, no git repo)
-  // to give the entry any meaning. A generic title in a real project, or
-  // real content with no project, still gets logged.
+  // Skip an entry with nothing to say (the SessionEnd hook already notes that a session
+  // ended), and the doubly-useless case: only the generic placeholder title AND no real
+  // project (root/home session, no git repo). A generic title in a real project, or real
+  // content with no project, still gets logged.
   const hasRealProject = findGitRoot(session.workingDirectory) !== null;
-  const skipWorkLog = isGenericContent(workLog) && !hasRealProject;
+  const skipWorkLog =
+    !workLog.trim() || (isGenericContent(workLog) && !hasRealProject);
   if (!skipWorkLog) {
     inserts.push([
       "## Work log",
