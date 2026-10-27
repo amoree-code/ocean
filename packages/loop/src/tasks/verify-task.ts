@@ -257,3 +257,16 @@ export async function verifyTask(
     source: from,
   };
 }
+
+// What a task declares, and which of it the allowlist refuses: a dry readiness check that runs
+// nothing (T-291).
+export function declaredVerificationCommands(source: string): {
+  declared: string[];
+  refused: string[];
+} {
+  const declared = candidateCommands(source);
+  return {
+    declared,
+    refused: declared.filter((command) => !isAllowedCommand(command)),
+  };
+}
