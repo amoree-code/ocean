@@ -32,11 +32,50 @@ export function enginePath(...parts: string[]): string {
   return path.join(engineRoot(), ...parts);
 }
 
+// A release build of the engine (`ocean runtime release`, T-294) lives at
+// <workspace>/bridge/runtime/release/<id>/packages/harness, so sessions never run whatever a
+// development build left in the kernel checkout. Its data root is <workspace>.
+const RELEASE_ENGINE =
+  /^(.+)[\\/]bridge[\\/]runtime[\\/]release[\\/][^\\/]+[\\/]packages[\\/]harness$/;
+
+export function releaseWorkspace(root = engineRoot()): string | null {
+  return RELEASE_ENGINE.exec(path.resolve(root))?.[1] ?? null;
+}
+
+// The entry clients and shims launch: a release build is reached through the stable `current`
+// link (repointing it updates every client at once), a checkout through its own dist/.
+export function liveEngineEntry(root = engineRoot()): string {
+  const workspace = releaseWorkspace(root);
+  return workspace
+    ? path.join(
+        workspace,
+        "bridge",
+        "runtime",
+        "release",
+        "current",
+        "packages",
+        "harness",
+        "dist",
+        "main.js",
+      )
+    : path.join(root, "dist", "main.js");
+}
+
 // The pnpm workspace root (kernel/), two directories above the engine root
 // (packages/harness → packages → kernel). Repo-wide tooling that lives outside any
 // workspace package (e.g. scripts/ shared across packages) is anchored here, not on
-// engineRoot(), which is this package's own root.
+// engineRoot(), which is this package's own root. A release build answers with the
+// workspace's own kernel checkout, so task verification runs against the owner's tree.
 export function repoRoot(): string {
+  const workspace = releaseWorkspace();
+  if (workspace) {
+    const checkout = path.join(workspace, "kernel");
+    try {
+      if (statSync(checkout).isDirectory()) return checkout;
+    } catch {
+      // no checkout next to the release: fall back to the release's own tree
+    }
+  }
   return path.resolve(engineRoot(), "..", "..");
 }
 
@@ -201,7 +240,7 @@ export function oceanRoot(): string {
   // (~/ocean/kernel/packages/harness) sits three directories below ~/ocean.
   return root
     ? path.resolve(root)
-    : path.resolve(engineRoot(), "..", "..", "..");
+    : (releaseWorkspace() ?? path.resolve(engineRoot(), "..", "..", ".."));
 }
 
 export function oceanPath(...parts: string[]): string {

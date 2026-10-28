@@ -13,7 +13,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { atomicWrite } from "@ocean/core/shared/fs-utils.js";
 import {
-  enginePath,
+  liveEngineEntry,
   oceanEnv,
   oceanPath,
   SYSTEM_DIR,
@@ -90,23 +90,23 @@ export function desktopWrapperPath(provider = "claude"): string {
 }
 
 function wrapperContents(provider: ProviderRecord): string {
-  const entry = shellQuote(enginePath("dist", "main.js"));
+  const entry = shellQuote(liveEngineEntry());
   if (process.platform === "win32") {
-    return `@echo off\r\nset "OCEAN_SHIM_DIR=${shimDirectory()}"\r\n${windowsNode()}"%node%" "${enginePath("dist", "main.js")}" intercept --client "${provider.id}" -- %*\r\n`;
+    return `@echo off\r\nset "OCEAN_SHIM_DIR=${shimDirectory()}"\r\n${windowsNode()}"%node%" "${liveEngineEntry()}" intercept --client "${provider.id}" -- %*\r\n`;
   }
   return `#!/bin/sh\nexport OCEAN_SHIM_DIR=${shellQuote(shimDirectory())}\n${posixNode()}exec "$node" ${entry} intercept --client ${shellQuote(provider.id)} -- "$@"\n`;
 }
 
 function cliWrapperContents(): string {
   if (process.platform === "win32") {
-    return `@echo off\r\n${windowsNode()}"%node%" "${enginePath("dist", "main.js")}" %*\r\n`;
+    return `@echo off\r\n${windowsNode()}"%node%" "${liveEngineEntry()}" %*\r\n`;
   }
-  return `#!/bin/sh\n${posixNode()}exec "$node" ${shellQuote(enginePath("dist", "main.js"))} "$@"\n`;
+  return `#!/bin/sh\n${posixNode()}exec "$node" ${shellQuote(liveEngineEntry())} "$@"\n`;
 }
 
 function desktopWrapperContents(provider: string): string {
   if (process.platform === "win32") {
-    return `@echo off\r\nif "%~1"=="" exit /b 64\r\nset "native=%~1"\r\nshift\r\n${windowsNode()}"%node%" "${enginePath("dist", "main.js")}" intercept --client "${provider}" --executable "%native%" -- %*\r\n`;
+    return `@echo off\r\nif "%~1"=="" exit /b 64\r\nset "native=%~1"\r\nshift\r\n${windowsNode()}"%node%" "${liveEngineEntry()}" intercept --client "${provider}" --executable "%native%" -- %*\r\n`;
   }
   return `#!/bin/sh
 if [ "$#" -lt 1 ]; then
@@ -115,7 +115,7 @@ if [ "$#" -lt 1 ]; then
 fi
 native="$1"
 shift
-${posixNode()}exec "$node" ${shellQuote(enginePath("dist", "main.js"))} intercept --client ${shellQuote(provider)} --executable "$native" -- "$@"
+${posixNode()}exec "$node" ${shellQuote(liveEngineEntry())} intercept --client ${shellQuote(provider)} --executable "$native" -- "$@"
 `;
 }
 
@@ -362,7 +362,7 @@ export async function wrapperDoctor(commandPath?: string): Promise<string[]> {
   for (const name of CLI_WRAPPER_NAMES) {
     try {
       const contents = await readFile(wrapperPath(name), "utf8");
-      if (!contents.includes(enginePath("dist", "main.js")))
+      if (!contents.includes(liveEngineEntry()))
         findings.push(
           `${name}: CLI wrapper is stale or does not route through Ocean; run: ocean doctor --fix`,
         );

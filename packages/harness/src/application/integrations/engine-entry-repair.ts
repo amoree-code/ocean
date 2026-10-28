@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { atomicWrite } from "@ocean/core/shared/fs-utils.js";
-import { enginePath, repoRoot } from "@ocean/core/shared/paths.js";
+import { liveEngineEntry, repoRoot } from "@ocean/core/shared/paths.js";
 
 // Client configs that may launch Ocean by an absolute path into the kernel (an MCP server entry).
 // When the engine's entry moved (packages/core → packages/harness), an entry written earlier kept
@@ -36,7 +36,7 @@ function escape(value: string): string {
 export async function repairEngineEntries(
   home = os.homedir(),
 ): Promise<EngineEntryRepair[]> {
-  const entry = enginePath("dist", "main.js");
+  const entry = liveEngineEntry();
   const results: EngineEntryRepair[] = [];
   // Without a built entry there is nothing correct to point at.
   if (!existsSync(entry)) return results;
