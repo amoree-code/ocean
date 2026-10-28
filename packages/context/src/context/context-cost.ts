@@ -407,6 +407,86 @@ export async function codexDisabledSkillPaths(
   return disabled;
 }
 
+// `skills.disabled` of `~/.hermes/config.yaml`, read line by line (no YAML dependency): a
+// top-level `skills:` block whose `disabled:` is a block list (`- name`, indented or not) or a
+// flow list (`[a, b]`). Line indexes let `ocean client sync` rewrite exactly that key. `null`
+// for a shape this reader does not understand — then nothing may be written.
+export type HermesDisabled = {
+  names: string[];
+  lines: string[];
+  // Index of the `skills:` line, or -1 when there is none.
+  skills: number;
+  // Half-open line range of the `disabled:` key and its items, or null when absent.
+  disabled: [number, number] | null;
+  indent: string;
+};
+
+const unquoteName = (value: string) =>
+  value.trim().replace(/^(["'])(.*)\1$/, "$2");
+
+export function readHermesDisabled(text: string): HermesDisabled | null {
+  const lines = text.split("\n");
+  const skills = lines.findIndex((line) => /^skills:\s*(#.*)?$/.test(line));
+  if (skills < 0)
+    return lines.some((line) => /^skills\s*:/.test(line))
+      ? null
+      : { names: [], lines, skills: -1, disabled: null, indent: "  " };
+  let end = skills + 1;
+  while (end < lines.length && !/^[^\s#]/.test(lines[end])) end += 1;
+  const child = lines
+    .slice(skills + 1, end)
+    .find((line) => /^\s+[^\s#]/.test(line));
+  const indent = child?.match(/^\s+/)?.[0] ?? "  ";
+  const key = lines.findIndex(
+    (line, index) =>
+      index > skills &&
+      index < end &&
+      line.startsWith(`${indent}disabled:`) &&
+      !line.startsWith(`${indent} `),
+  );
+  if (key < 0) return { names: [], lines, skills, disabled: null, indent };
+  const value = lines[key]
+    .slice(`${indent}disabled:`.length)
+    .replace(/\s+#.*$/, "")
+    .trim();
+  if (value.startsWith("[") && value.endsWith("]")) {
+    const inner = value.slice(1, -1).trim();
+    const names = inner ? inner.split(",").map(unquoteName) : [];
+    return names.every((name) => /^[\w.:-]+$/.test(name))
+      ? { names, lines, skills, disabled: [key, key + 1], indent }
+      : null;
+  }
+  if (value) return null;
+  const names: string[] = [];
+  let next = key + 1;
+  for (; next < end; next += 1) {
+    const line = lines[next];
+    if (!line.trim() || /^\s*#/.test(line)) continue;
+    const item = /^(\s*)-\s+(.+?)\s*$/.exec(line);
+    if (!item || item[1].length < indent.length) break;
+    const name = unquoteName(item[2]);
+    if (!/^[\w.:-]+$/.test(name)) return null;
+    names.push(name);
+  }
+  // Trailing blank lines stay outside the range.
+  while (next > key + 1 && !lines[next - 1].trim()) next -= 1;
+  return { names, lines, skills, disabled: [key, next], indent };
+}
+
+export async function hermesDisabledSkills(
+  home = os.homedir(),
+): Promise<Set<string>> {
+  try {
+    const text = await readFile(
+      path.join(home, ".hermes", "config.yaml"),
+      "utf8",
+    );
+    return new Set(readHermesDisabled(text)?.names ?? []);
+  } catch {
+    return new Set();
+  }
+}
+
 // The skill names `~/.gemini/settings.json` lists under `skills.disabled`.
 export async function geminiDisabledSkills(
   home = os.homedir(),
@@ -612,11 +692,14 @@ export async function measureContextCost(
       client === "codex" ? await codexDisabledSkillPaths(home) : null;
     const geminiOff =
       client === "gemini" ? await geminiDisabledSkills(home) : null;
+    const hermesOff =
+      client === "hermes" ? await hermesDisabledSkills(home) : null;
     const skills = await measureSkills(sources, home, notes, (name, file) =>
       Boolean(
         claude?.hidden.has(name) ||
           codexOff?.has(path.resolve(file)) ||
-          geminiOff?.has(name),
+          geminiOff?.has(name) ||
+          hermesOff?.has(name),
       ),
     );
     const extras = claude ? await measureClaudeExtras(home, claude, notes) : [];

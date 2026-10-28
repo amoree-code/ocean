@@ -146,3 +146,124 @@ test("missing or unparseable client files are reported and never created or rewr
     assert.equal(await read(".gemini/settings.json"), "{ // comments\n}");
   });
 });
+
+const hermesConfig = (skills) =>
+  `model:\n  default: x\n${skills}kanban:\n  review_dispatch: true\n`;
+
+test("hermes's skills.disabled gains Claude-hidden skills, keeps the owner's, and the rest of the file", async () => {
+  await withHome(async ({ home, put, read, skill, hide }) => {
+    // PyYAML's default style: the list items sit at the key's own indent.
+    await put(
+      ".hermes/config.yaml",
+      hermesConfig(
+        "skills:\n  creation_nudge_interval: 15\n  disabled:\n  - mine\n",
+      ),
+    );
+    await skill(".hermes/skills/apple", "quiet");
+    await skill(".hermes/skills", "loud");
+    await hide(["quiet", "not-installed"]);
+    assert.equal((await cost(home, "hermes")).count, 2);
+
+    const first = byClient(await syncSkillFilter(home)).hermes;
+    assert.deepEqual([first.status, first.disabled], ["updated", 1]);
+    assert.equal(
+      await read(".hermes/config.yaml"),
+      hermesConfig(
+        "skills:\n  creation_nudge_interval: 15\n  disabled:\n  - mine\n  - quiet\n",
+      ),
+    );
+    const hermes = await cost(home, "hermes");
+    assert.deepEqual([hermes.count, hermes.hidden], [1, 1]);
+    assert.equal(
+      byClient(await syncSkillFilter(home)).hermes.status,
+      "current",
+    );
+
+    await hide([]);
+    await syncSkillFilter(home);
+    assert.equal(
+      await read(".hermes/config.yaml"),
+      hermesConfig(
+        "skills:\n  creation_nudge_interval: 15\n  disabled:\n  - mine\n",
+      ),
+    );
+  });
+});
+
+test("hermes: a missing disabled key or skills block is added; a flow list is read", async () => {
+  await withHome(async ({ home, put, read, skill, hide }) => {
+    await skill(".hermes/skills", "quiet");
+    await hide(["quiet"]);
+    await put(
+      ".hermes/config.yaml",
+      hermesConfig("skills:\n  creation_nudge_interval: 15\n"),
+    );
+    await syncSkillFilter(home);
+    assert.equal(
+      await read(".hermes/config.yaml"),
+      hermesConfig(
+        "skills:\n  disabled:\n  - quiet\n  creation_nudge_interval: 15\n",
+      ),
+    );
+    await put(".hermes/config.yaml", "model:\n  default: x\n");
+    await syncSkillFilter(home);
+    assert.equal(
+      await read(".hermes/config.yaml"),
+      "model:\n  default: x\nskills:\n  disabled:\n  - quiet\n",
+    );
+    await put(
+      ".hermes/config.yaml",
+      hermesConfig("skills:\n  disabled: [quiet, 'mine']\n"),
+    );
+    assert.equal(
+      byClient(await syncSkillFilter(home)).hermes.status,
+      "current",
+    );
+  });
+});
+
+test("hermes: a shape the line reader does not understand is reported and left alone", async () => {
+  await withHome(async ({ home, put, read, skill, hide }) => {
+    await skill(".hermes/skills", "quiet");
+    await hide(["quiet"]);
+    for (const text of [
+      "skills: {disabled: [a]}\n",
+      hermesConfig("skills:\n  disabled: a\n"),
+      hermesConfig("skills:\n  disabled:\n  - {name: a}\n"),
+    ]) {
+      await put(".hermes/config.yaml", text);
+      assert.equal(
+        byClient(await syncSkillFilter(home)).hermes.status,
+        "unparseable",
+        text,
+      );
+      assert.equal(await read(".hermes/config.yaml"), text);
+    }
+  });
+});
+
+test("gemini and hermes state entries never overwrite each other", async () => {
+  await withHome(async ({ home, put, skill, hide }) => {
+    await put(
+      ".gemini/settings.json",
+      JSON.stringify({ skills: { disabled: [] } }),
+    );
+    await put(".hermes/config.yaml", "skills:\n  disabled: []\n");
+    await skill(".gemini/skills", "quiet");
+    await skill(".hermes/skills", "quiet");
+    await hide(["quiet"]);
+    await syncSkillFilter(home);
+    const state = JSON.parse(
+      await readFile(
+        path.join(
+          process.env.OCEAN_ROOT,
+          "bridge",
+          "state",
+          "skill-filter.json",
+        ),
+        "utf8",
+      ),
+    );
+    assert.deepEqual(state, { gemini: ["quiet"], hermes: ["quiet"] });
+  });
+});
