@@ -59,21 +59,28 @@ export const defaultSteps: ReleaseSteps = {
         stdio: ["pipe", "inherit", "inherit"],
       });
       archive.stdout.pipe(tar.stdin);
-      let archived: number | null = null;
+      // Settle only once both have closed: tar can close before git's own close event fires.
+      const codes: { git?: number | null; tar?: number | null } = {};
+      const settle = () => {
+        if (!("git" in codes) || !("tar" in codes)) return;
+        if (codes.git === 0 && codes.tar === 0) resolve();
+        else
+          reject(
+            new Error(
+              `export of ${ref} failed (git ${codes.git}, tar ${codes.tar})`,
+            ),
+          );
+      };
       archive.on("error", reject);
       tar.on("error", reject);
       archive.on("close", (code) => {
-        archived = code;
+        codes.git = code;
+        settle();
       });
-      tar.on("close", (code) =>
-        archived === 0 && code === 0
-          ? resolve()
-          : reject(
-              new Error(
-                `export of ${ref} failed (git ${archived}, tar ${code})`,
-              ),
-            ),
-      );
+      tar.on("close", (code) => {
+        codes.tar = code;
+        settle();
+      });
     }),
   build: async (directory) => {
     await run(
