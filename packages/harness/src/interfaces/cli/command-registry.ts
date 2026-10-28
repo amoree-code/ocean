@@ -105,6 +105,7 @@ import {
 } from "../../application/install/provider-installer.js";
 import { syncCharterCopies } from "../../application/integrations/charter-copies.js";
 import { configureClaudeCodeWrapper } from "../../application/integrations/claude-vscode.js";
+import { repairEngineEntries } from "../../application/integrations/engine-entry-repair.js";
 import { syncSkillFilter } from "../../application/integrations/skill-filter.js";
 import {
   listSchedules,
@@ -253,6 +254,7 @@ async function commandClient(): Promise<void> {
     // to core.md reaches the clients that carry a copy without a manual step.
     const charter = await syncCharterCopies();
     const skillFilter = await syncSkillFilter();
+    const engineEntries = await repairEngineEntries();
     console.log(
       JSON.stringify(
         {
@@ -260,6 +262,7 @@ async function commandClient(): Promise<void> {
           providers: result.providers,
           charter,
           skillFilter,
+          engineEntries,
         },
         null,
         2,
