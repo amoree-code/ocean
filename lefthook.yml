@@ -1,6 +1,8 @@
 pre-commit:
   parallel: true
   commands:
+    no-main:
+      run: node scripts/no-commit-on-main.mjs
     typecheck:
       glob: "packages/**/*.ts"
       run: pnpm typecheck
