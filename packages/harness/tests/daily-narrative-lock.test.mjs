@@ -127,11 +127,11 @@ test("two processes writing the same daily file keep every line", async () => {
 
 test("a lock left by a dead process is taken over", async () => {
   await withRoot(async (root) => {
-    const date = new Date().toISOString().slice(0, 10);
     const directory = path.join(root, "01-daily");
     await appendDailyNarrative({ session: session("first", root), events: [] });
+    const [daily] = await readdir(directory);
     // A pid far above any real one stands in for a crashed writer.
-    await writeFile(path.join(directory, `${date}.md.lock`), "999999999\n");
+    await writeFile(path.join(directory, `${daily}.lock`), "999999999\n");
     await appendDailyNarrative({
       session: session("second", root),
       events: [],
@@ -144,14 +144,14 @@ test("a lock left by a dead process is taken over", async () => {
 
 test("a lock held past the age cap is stale even when its pid is alive", async () => {
   await withRoot(async (root) => {
-    const date = new Date().toISOString().slice(0, 10);
     const directory = path.join(root, "01-daily");
     await appendDailyNarrative({
       session: session("before", root),
       events: [],
     });
+    const [daily] = await readdir(directory);
     // A reused pid looks alive; only the lock's age shows it is abandoned.
-    const lock = path.join(directory, `${date}.md.lock`);
+    const lock = path.join(directory, `${daily}.lock`);
     await writeFile(lock, `${process.pid} abandoned`);
     const old = new Date(Date.now() - 120_000);
     await utimes(lock, old, old);
