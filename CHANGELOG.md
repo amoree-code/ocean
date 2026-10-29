@@ -6,6 +6,7 @@ Docs-only or CI-only PRs may add the `skip-changelog` label instead.
 
 ## Unreleased
 
+- feat(T-289): `ocean tasks doctor --all` checks every project with tasks, and the doctor now fails when a project's generated `index.md` has drifted from its records (a state that differs, a live task it lacks, a task it lists that is not live) — the charter says doctor fails on drift, but it checked only the cwd project and never the index, so crm-web-sdk's index showed `todo` for active tasks while doctor passed (#213)
 - fix(T-288): the daily log stops repeating itself — session entries use local time and the local day's file (UTC put one session 3 h apart from the SessionEnd hook's line, and after midnight UTC into another day), client markup (`<ide_opened_file>`, `<task-notification>`) is stripped from the prompt excerpt, a session with no prompt left is not logged, and a line already in the file is never written twice (#212)
 - fix(T-287): the kernel's pre-commit hook refuses a commit while `main` is checked out (`scripts/no-commit-on-main.mjs`) — a session had committed straight onto local `main`, leaving it ahead of origin with unreviewed work; branches and a detached HEAD are unaffected, `--no-verify` stays the deliberate escape (#211)
 - docs(T-286): AGENTS.md asks for `graft` only where it is installed and its graph is built, says what to do without it, and points to the graft skill's real path — every kernel session paid for an order to run a tool that may not exist; a test now fails when AGENTS.md names a repo file that is missing (#210)
