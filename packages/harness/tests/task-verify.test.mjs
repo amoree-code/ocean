@@ -407,3 +407,81 @@ test("hardened allowlist: single &, control characters, and project-only bash/sh
   );
   assert.equal(existsSync(canary), false);
 });
+
+test("prose spans in a Verification section are not commands, so they never block completion", async () => {
+  const { root, repo, tasks } = await projectFixture(["pnpm test"]);
+  await withOceanRoot(root, async () => {
+    await writeTask(
+      tasks,
+      "T-1",
+      "---\nid: T-1\nstate: active\n---\n\n## Verification\n\nNo `→`/`←` logs, no `[redacted]`, `CLAUDE.md` and `onExit(clientId)` unchanged.\n",
+    );
+    const calls = [];
+    const outcome = await verifyTask("T-1", tasks, {
+      run: async (command, cwd) => {
+        calls.push([command, cwd]);
+        return { exitCode: 0 };
+      },
+    });
+    assert.equal(outcome.passed, true);
+    assert.equal(outcome.source, "project");
+    assert.deepEqual(calls, [["pnpm test", repo]]);
+  });
+});
+
+test("another project's own commands run in that project's first path", async () => {
+  const { root, repo, tasks } = await projectFixture(["pnpm test"]);
+  await withOceanRoot(root, async () => {
+    await writeTask(tasks, "T-900", taskBody("active"));
+    const calls = [];
+    const outcome = await verifyTask("T-900", tasks, {
+      run: async (command, cwd) => {
+        calls.push([command, cwd]);
+        return { exitCode: 0 };
+      },
+    });
+    assert.equal(outcome.source, "task");
+    assert.deepEqual(calls, [["pnpm build && pnpm test", repo]]);
+  });
+});
+
+test("another project's own commands fail, never run in the engine, when its path is missing", async () => {
+  const { root, tasks } = await projectFixture(["pnpm test"], {
+    pathExists: false,
+  });
+  await withOceanRoot(root, async () => {
+    await writeTask(tasks, "T-900", taskBody("active"));
+    let called = false;
+    const outcome = await verifyTask("T-900", tasks, {
+      run: async () => {
+        called = true;
+        return { exitCode: 0 };
+      },
+    });
+    assert.equal(outcome.passed, false);
+    assert.match(outcome.reason, /lab needs the project's first path/);
+    assert.equal(called, false);
+  });
+});
+
+test("the workspace project's own commands still run in the engine repo root", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-verify-ws-"));
+  const dir = path.join(root, PROJECTS_DIR, "ocean");
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    path.join(dir, "project.json"),
+    JSON.stringify({ name: "ocean", paths: [root] }),
+  );
+  await withOceanRoot(root, async () => {
+    const tasks = path.join(dir, "tasks");
+    await writeTask(tasks, "T-900", taskBody("active"));
+    let seen = "";
+    await verifyTask("T-900", tasks, {
+      run: async (_command, cwd) => {
+        seen = cwd;
+        return { exitCode: 0 };
+      },
+    });
+    assert.equal(seen, repoRoot());
+  });
+});
