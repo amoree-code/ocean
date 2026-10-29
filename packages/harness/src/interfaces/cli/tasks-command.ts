@@ -28,6 +28,7 @@ import {
 } from "@ocean/loop/tasks/list-tasks.js";
 import { newTask } from "@ocean/loop/tasks/new-task.js";
 import { renumberTasks } from "@ocean/loop/tasks/renumber-tasks.js";
+import { verificationReadiness } from "@ocean/loop/tasks/verification-readiness.js";
 import { verifyTask } from "@ocean/loop/tasks/verify-task.js";
 
 const execFile = promisify(execFileCallback);
@@ -194,7 +195,23 @@ export async function runTasksCommand(
       note: args[noteIndex + 1],
       next: nextIndex >= 0 ? args[nextIndex + 1] : undefined,
     });
-    console.log(JSON.stringify({ ...result, project: task.owner }, null, 2));
+    // Advisory: say now if `tasks complete` will not be able to verify this task (T-291).
+    // The checkpoint is already written: a failed check is one more warning, never an error.
+    const verification = await verificationReadiness(task.id, task.root).catch(
+      (error: unknown) => ({
+        ready: false,
+        warnings: [
+          `could not check: ${error instanceof Error ? error.message : String(error)}`,
+        ],
+      }),
+    );
+    console.log(
+      JSON.stringify({ ...result, project: task.owner, verification }, null, 2),
+    );
+    if (!verification.ready)
+      console.error(
+        `warning: ${task.id} verification: ${verification.warnings.join("; ")}`,
+      );
     return;
   }
   if (action === "verify") {

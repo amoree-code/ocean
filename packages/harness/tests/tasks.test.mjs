@@ -309,10 +309,16 @@ test("an id-based action finds a renumbered task by its old id", async () => {
   for (const id of ["T-300", "LB-001", "lb-1"]) {
     const result = run("checkpoint", id, "--note", `via ${id}`);
     assert.equal(result.status, 0, result.stderr);
-    assert.deepEqual(JSON.parse(result.stdout), {
-      checkpointed: "LB-001",
-      project: "lab",
-    });
+    const { checkpointed, project, verification } = JSON.parse(result.stdout);
+    assert.deepEqual(
+      { checkpointed, project },
+      {
+        checkpointed: "LB-001",
+        project: "lab",
+      },
+    );
+    // T-291: the record declares no verification, so the checkpoint says so (advisory).
+    assert.equal(verification.ready, false);
   }
   const text = await readFile(path.join(dir, "task.md"), "utf8");
   assert.match(text, /via T-300/);
