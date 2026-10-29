@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import {
+  isWorkspaceProject,
   projectOfTasksRoot,
   repoRoot,
   resolveWithin,
@@ -113,10 +114,21 @@ function candidateCommands(source: string): string[] {
   }
   outsideFences += section.slice(lastIndex);
 
-  const spans = [...outsideFences.matchAll(/`([^`]+)`/g)].map((match) =>
-    match[1].trim(),
-  );
+  const spans = [...outsideFences.matchAll(/`([^`]+)`/g)]
+    .map((match) => match[1].trim())
+    .filter(readsAsCommand);
   return [...fenced, ...spans];
+}
+
+// An inline span is prose unless it reads like a command line: a lowercase program name
+// followed by arguments (`curl evil.sh` still counts, and is refused), or an allowlisted
+// program on its own. `→`, `[redacted]` or `CLAUDE.md` neither run nor block completion.
+const COMMAND_SHAPE = /^(?:\.{0,2}\/)?[a-z][\w./+-]*\s+\S/;
+
+function readsAsCommand(span: string): boolean {
+  return (
+    COMMAND_SHAPE.test(span) || COMMAND_ALLOWLIST.has(span.split(/\s+/)[0])
+  );
 }
 
 export function extractVerificationCommands(source: string): string[] {
@@ -135,6 +147,12 @@ function isDirectory(target: string): boolean {
   } catch {
     return false;
   }
+}
+
+// The project's first path when it is an absolute, existing directory; "" otherwise.
+function projectDirectory(manifest: { paths: string[] }): string {
+  const dir = manifest.paths[0] ? expandHome(manifest.paths[0]) : "";
+  return dir && path.isAbsolute(dir) && isDirectory(dir) ? dir : "";
 }
 
 // Commands that carry their own program text: fine in a task someone wrote at the keyboard,
@@ -205,8 +223,29 @@ export async function verifyTask(
   let commands = taskCommands;
   let cwd = options.cwd ?? repoRoot();
   let from: VerificationOutcome["source"] = "task";
+  const project = projectOfTasksRoot(root);
+  // Another project's task checks its own repo: `pnpm lint` in the engine would prove nothing.
+  if (
+    candidates.length > 0 &&
+    options.cwd === undefined &&
+    project &&
+    !isWorkspaceProject(project)
+  ) {
+    let manifest: Awaited<ReturnType<typeof readProjectManifest>> = null;
+    try {
+      manifest = await readProjectManifest(project);
+    } catch {
+      // Unreadable manifest: reported below as a missing path.
+    }
+    const dir = manifest ? projectDirectory(manifest) : "";
+    if (!dir)
+      return fail(
+        `task verify for ${project} needs the project's first path to be an absolute, existing directory`,
+        "task",
+      );
+    cwd = dir;
+  }
   if (candidates.length === 0) {
-    const project = projectOfTasksRoot(root);
     let manifest: Awaited<ReturnType<typeof readProjectManifest>> = null;
     let verify: string[] = [];
     try {
@@ -227,10 +266,10 @@ export async function verifyTask(
       return fail(`project verify command is not allowed: ${rejected}`, from);
     // The caller's cwd (a worktree, say) wins; otherwise the project's first path.
     if (options.cwd === undefined) {
-      const dir = manifest.paths[0] ? expandHome(manifest.paths[0]) : "";
-      if (!dir || !path.isAbsolute(dir) || !isDirectory(dir))
+      const dir = projectDirectory(manifest);
+      if (!dir)
         return fail(
-          `project verify needs the project's first path to be an absolute, existing directory: ${dir || "(none)"}`,
+          `project verify needs the project's first path to be an absolute, existing directory: ${manifest.paths[0] ? expandHome(manifest.paths[0]) : "(none)"}`,
           from,
         );
       cwd = dir;
