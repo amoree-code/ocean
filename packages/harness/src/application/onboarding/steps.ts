@@ -178,7 +178,10 @@ export function buildSteps(deps: StepDependencies): OnboardingStep[] {
     },
     guided("hooks", "SessionStart auto-sync hook", [
       "Add before the exec in your session-bootstrap hook:",
-      'node "$HOME/ocean/kernel/packages/harness/dist/main.js" client sync >/dev/null 2>&1 &',
+      // T-294: the release build once one is current, never the checkout's dev build.
+      'ENTRY="$HOME/ocean/bridge/runtime/release/current/packages/harness/dist/main.js"',
+      '[ -f "$ENTRY" ] || ENTRY="$HOME/ocean/kernel/packages/harness/dist/main.js"',
+      'node "$ENTRY" client sync >/dev/null 2>&1 &',
     ]),
     guided("service", "Background service and schedules", [
       "Run: ocean service   (and ocean schedule for recurring jobs)",
