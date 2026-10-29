@@ -108,6 +108,11 @@ import { configureClaudeCodeWrapper } from "../../application/integrations/claud
 import { repairEngineEntries } from "../../application/integrations/engine-entry-repair.js";
 import { syncSkillFilter } from "../../application/integrations/skill-filter.js";
 import {
+  releaseRuntime,
+  releaseStatus,
+  useRelease,
+} from "../../application/runtime/runtime-release.js";
+import {
   listSchedules,
   runDueSchedules,
   runSchedule,
@@ -1047,6 +1052,40 @@ async function commandCatalog(): Promise<void> {
   );
 }
 
+// `ocean runtime release|status|use <id>` (T-294): the build sessions run, apart from the
+// kernel checkout. A release takes effect for shims once `client sync` runs from it.
+async function commandRuntime(): Promise<void> {
+  const action = process.argv[3] ?? "status";
+  if (action === "status") {
+    console.log(JSON.stringify(await releaseStatus(), null, 2));
+    return;
+  }
+  if (action === "release" || action === "use") {
+    const id = process.argv[4];
+    if (action === "use" && !id) {
+      console.error("Usage: ocean runtime use <release-id>");
+      process.exitCode = 2;
+      return;
+    }
+    const result =
+      action === "use" ? await useRelease(id) : await releaseRuntime();
+    const { entry } = await releaseStatus();
+    console.log(
+      JSON.stringify(
+        {
+          ...result,
+          next: `node ${entry} client sync   # points the shims at this release`,
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+  console.error("Usage: ocean runtime status|release|use <release-id>");
+  process.exitCode = 2;
+}
+
 async function commandEnv(): Promise<void> {
   console.log(await installShellPath());
 }
@@ -1403,6 +1442,7 @@ export const commandRegistry: Record<string, CommandHandler> = {
   skill: commandSkill,
   catalog: commandCatalog,
   env: commandEnv,
+  runtime: commandRuntime,
   update: () => commandUpdateOrRemove("update"),
   remove: () => commandUpdateOrRemove("remove"),
   doctor: commandDoctor,

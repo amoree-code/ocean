@@ -1,9 +1,21 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { enginePath, repoRoot } from "@ocean/core/shared/paths.js";
+import {
+  enginePath,
+  engineRoot,
+  registerEngineRoot,
+  repoRoot,
+} from "@ocean/core/shared/paths.js";
 import { repairEngineEntries } from "../dist/application/integrations/engine-entry-repair.js";
 
 const entry = enginePath("dist", "main.js");
@@ -95,4 +107,57 @@ test("another kernel package's unbuilt server and an unreadable config are not m
     assert.equal(await read(".cursor/mcp.json"), cursor);
     assert.equal(results["~/.codex/config.toml"].status, "unreadable");
   });
+});
+
+test("run from a release, the checkout's existing engine entry is repointed to current", async () => {
+  const workspace = await mkdtemp(
+    path.join(os.tmpdir(), "ocean-entry-release-"),
+  );
+  const releases = path.join(workspace, "bridge", "runtime", "release");
+  const release = path.join(releases, "abc123", "packages", "harness");
+  const checkoutEntry = path.join(
+    workspace,
+    "kernel",
+    "packages",
+    "harness",
+    "dist",
+    "main.js",
+  );
+  const current = path.join(
+    releases,
+    "current",
+    "packages",
+    "harness",
+    "dist",
+    "main.js",
+  );
+  for (const file of [checkoutEntry, path.join(release, "dist", "main.js")]) {
+    await mkdir(path.dirname(file), { recursive: true });
+    await writeFile(file, "// built\n");
+  }
+  await symlink("abc123", path.join(releases, "current"));
+  const original = engineRoot();
+  const saved = process.env.OCEAN_ROOT;
+  delete process.env.OCEAN_ROOT;
+  registerEngineRoot(release);
+  try {
+    const gemini = JSON.stringify({
+      mcpServers: { ocean: { args: [checkoutEntry, "obsidian", "mcp"] } },
+    });
+    await withHome({ ".gemini/settings.json": gemini }, async (home, read) => {
+      const result = byFile(await repairEngineEntries(home))[
+        "~/.gemini/settings.json"
+      ];
+      assert.equal(result.status, "updated");
+      assert.deepEqual(result.replaced, [checkoutEntry]);
+      assert.equal(
+        await read(".gemini/settings.json"),
+        gemini.replaceAll(checkoutEntry, current),
+      );
+    });
+  } finally {
+    registerEngineRoot(original);
+    if (saved !== undefined) process.env.OCEAN_ROOT = saved;
+    await rm(workspace, { recursive: true, force: true });
+  }
 });

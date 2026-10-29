@@ -4,9 +4,9 @@ import path from "node:path";
 import { registryFile } from "@ocean/core/shared/fs-utils.js";
 import {
   DAILY_DIR,
-  enginePath,
   INBOX_DIR,
   KNOWLEDGE_DIR,
+  liveEngineEntry,
   oceanPath,
   oceanRoot,
   PERSONAL_DIR,
@@ -69,7 +69,7 @@ async function installMacStartup(): Promise<void> {
   const label = "com.ocean.runtime";
   const plist = path.join(launchAgents, `${label}.plist`);
   const node = process.execPath;
-  const entry = enginePath("dist", "main.js");
+  const entry = liveEngineEntry();
   const contents = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -93,7 +93,7 @@ Description=Ocean local runtime
 [Service]
 Type=simple
 WorkingDirectory=${oceanRoot()}
-ExecStart=${process.execPath} ${enginePath("dist", "main.js")} service
+ExecStart=${process.execPath} ${liveEngineEntry()} service
 Restart=on-failure
 
 [Install]
@@ -113,7 +113,7 @@ async function installWindowsStartup(): Promise<void> {
     "Startup",
   );
   const launcher = path.join(startup, "ocean.cmd");
-  const contents = `@echo off\ncd /d "${oceanRoot()}"\n"${process.execPath}" "${enginePath("dist", "main.js")}" service\n`;
+  const contents = `@echo off\ncd /d "${oceanRoot()}"\n"${process.execPath}" "${liveEngineEntry()}" service\n`;
   await mkdir(startup, { recursive: true });
   await writeFile(launcher, contents);
 }

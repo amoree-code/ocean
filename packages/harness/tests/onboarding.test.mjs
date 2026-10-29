@@ -130,3 +130,21 @@ test("status lists every step without running any", async () => {
     assert.match(lines[1], /^skipped\s+b/);
   });
 });
+
+test("the hook step prints the release entry first, the checkout only as fallback", async () => {
+  const { buildSteps } = await import(
+    "../dist/application/onboarding/steps.js"
+  );
+  const hooks = buildSteps({ setup: async () => {}, wrappers: {} }).find(
+    (step) => step.id === "hooks",
+  );
+  const { io, lines } = fakeIO(true);
+  await hooks.run(io);
+  const text = lines.join("\n");
+  assert.match(
+    text,
+    /ENTRY="\$HOME\/ocean\/bridge\/runtime\/release\/current\//,
+  );
+  assert.match(text, /\[ -f "\$ENTRY" \] \|\| ENTRY="\$HOME\/ocean\/kernel\//);
+  assert.match(text, /node "\$ENTRY" client sync/);
+});
