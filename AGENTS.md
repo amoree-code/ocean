@@ -30,8 +30,10 @@ pnpm check:style      # biome check .
 
 ## Cut tokens before reading code
 
-1. `graft ask "<question>" --source` first, always — never grep or open files cold.
-   Full tool set: `skills/core/graft/SKILL.md`.
+1. When `graft` is installed and its graph is built (`graft build` creates the git-ignored
+   `graft/`), `graft ask "<question>" --source` first — never grep or open files cold.
+   Without it, search narrowly (`git grep`, a glob) instead of reading whole files.
+   Full tool set: `packages/harness/skills/core/graft/SKILL.md`.
 2. `catch-up` skill before touching anything you didn't just finish.
 3. `core-thinking` before executing; smallest valid solution, not the biggest.
 4. `verification` after — a claim isn't done until it's independently checked.
@@ -42,6 +44,8 @@ profile contract, a facts digest (<= 2 KB, with a pointer) and context reference
 assembled in `packages/loop/src/runs/prompt-assembly.ts` and
 `packages/context/src/context/context-references.ts`. `ocean context cost` reports each
 client's always-on bytes (rules, memory index, skill frontmatter).
+
+The section below applies only on a machine where `graft` is installed (`command -v graft`).
 
 <!-- graft:start -->
 ## Graft — repo context graph
