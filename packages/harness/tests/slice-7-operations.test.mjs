@@ -164,7 +164,7 @@ test("task.create requires explicit title and approval, then creates the next bo
     );
     assert.equal(decision.allowed, true, decision.reason);
     assert.equal(result.ok, true, result.reason);
-    assert.match(await readFile(target, "utf8"), /title: Improve onboarding/);
+    assert.match(await readFile(target, "utf8"), /title: "Improve onboarding"/);
     assert.match(target, /T-003/);
     assert.match(
       await readFile(target, "utf8"),
