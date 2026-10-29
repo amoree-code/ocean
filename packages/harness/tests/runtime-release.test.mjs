@@ -19,7 +19,7 @@ import {
   releaseRuntime,
   releaseStatus,
   useRelease,
-} from "../dist/application/runtime/runtime-release.js";
+} from "../dist/application/release/runtime-release.js";
 
 const git = (cwd, ...args) =>
   execFileSync("git", args, { cwd, encoding: "utf8" }).trim();

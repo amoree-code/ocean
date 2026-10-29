@@ -111,7 +111,7 @@ import {
   releaseRuntime,
   releaseStatus,
   useRelease,
-} from "../../application/runtime/runtime-release.js";
+} from "../../application/release/runtime-release.js";
 import {
   listSchedules,
   runDueSchedules,
