@@ -102,12 +102,14 @@ async function currentTarget(): Promise<string | null> {
   }
 }
 
-// Points `current` at `id` atomically: a new link is renamed over the old one.
+// Points `current` at `id`: a new link is renamed over the old one (atomic on POSIX).
 async function pointCurrent(id: string): Promise<void> {
   const link = path.join(releaseRoot(), "current");
   const next = `${link}.next`;
   await rm(next, { force: true });
   await symlink(id, next);
+  // Windows refuses to rename onto an existing link (EPERM), so there the old one goes first.
+  if (process.platform === "win32") await rm(link, { force: true });
   await rename(next, link);
 }
 
