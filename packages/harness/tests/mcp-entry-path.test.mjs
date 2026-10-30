@@ -164,3 +164,25 @@ test("run from a release, the checkout's existing engine entry is repointed to c
     await rm(workspace, { recursive: true, force: true });
   }
 });
+
+test("Antigravity's and Claude Desktop's MCP entries are repaired like the other clients'", async () => {
+  const config = JSON.stringify({
+    mcpServers: { ocean: { command: "node", args: [stale, "mcp", "serve"] } },
+  });
+  const antigravity = ".gemini/antigravity/mcp_config.json";
+  const desktop =
+    "Library/Application Support/Claude/claude_desktop_config.json";
+  await withHome(
+    { [antigravity]: config, [desktop]: config },
+    async (home, read) => {
+      const results = byFile(await repairEngineEntries(home));
+      for (const file of [antigravity, desktop]) {
+        assert.equal(results[`~/${file}`].status, "updated");
+        assert.equal(
+          await read(file),
+          config.replaceAll(inJson(stale), inJson(entry)),
+        );
+      }
+    },
+  );
+});
