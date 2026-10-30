@@ -5,6 +5,7 @@ import {
   brainRead,
   brainSearch,
 } from "@ocean/brain/brain/brain-service.js";
+import { writeMemoryRecord } from "@ocean/brain/memory/memory-write.js";
 import { promoteSessionToKnowledge } from "@ocean/brain/memory/session-promotion.js";
 import { isValidProjectId } from "@ocean/core/domain/context/project-id.js";
 import {
@@ -231,6 +232,22 @@ const tools = new McpToolRegistry([
         cwd: { type: "string" },
       },
       required: ["id"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "memory_write",
+    description:
+      "Save a durable fact to Ocean, the one memory every client shares; never keep it only in this client's own memory. Search first with brain_search: if a record already covers the topic, brain_read it and write the whole merged record back with mode `update`; if nothing does, mode `create` a new file in the section or project it belongs to (`02-personal/<section>/<name>.md` or `04-projects/<project>/memory/<name>.md`). If it contradicts a record, say so to the user instead of overwriting. Never secrets or temporary state.",
+    annotations: { readOnlyHint: false },
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: { type: "string" },
+        content: { type: "string" },
+        mode: { type: "string", enum: ["create", "update"] },
+      },
+      required: ["path", "content", "mode"],
       additionalProperties: false,
     },
   },
@@ -472,6 +489,15 @@ async function callTool(
           : undefined,
       indexPort: ports.brainIndex,
     });
+  if (name === "memory_write") {
+    if (args.mode !== "create" && args.mode !== "update")
+      throw new Error("mode must be create or update");
+    return writeMemoryRecord({
+      path: requiredArgument(args, "path"),
+      content: requiredArgument(args, "content"),
+      mode: args.mode,
+    });
+  }
   throw new Error(`Unknown MCP tool: ${name}`);
 }
 
