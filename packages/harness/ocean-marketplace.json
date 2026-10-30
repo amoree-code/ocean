@@ -221,7 +221,7 @@
         "path": "market/mcp/obsidian"
       },
       "integrity": {
-        "sha256": "e3b96130da7b6af6ffbb50f9c5c494cd29818fb2094dc3ca9f4151ed7e27f297"
+        "sha256": "d0c658f2aa5d54146900e98d3d8ce0df313e3799a754c872a568152ef9089705"
       },
       "spec": {
         "name": "dev.ocean/obsidian",
@@ -247,7 +247,7 @@
         ],
         "_meta": {
           "dev.ocean": {
-            "clientKey": "ocean"
+            "clientKey": "ocean-obsidian"
           }
         }
       }

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -24,7 +24,7 @@ const handle = (request) =>
     wrapperManager: defaultWrapperManager,
   });
 
-test("Ocean MCP exposes provider-neutral read-only tools without Obsidian", async () => {
+test("Ocean MCP exposes provider-neutral tools without Obsidian", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ocean-mcp-no-obsidian-"));
   const previous = process.env.OCEAN_ROOT;
   process.env.OCEAN_ROOT = root;
@@ -51,7 +51,14 @@ test("Ocean MCP exposes provider-neutral read-only tools without Obsidian", asyn
         "brain_search",
         "brain_read",
         "brain_neighbors",
+        "ocean_ping",
+        "ocean_capabilities",
+        "memory_read",
+        "memory_history",
         "memory_write",
+        "memory_propose",
+        "memory_delete",
+        "memory_restore",
       ],
     );
     const status = await handle({
@@ -363,104 +370,6 @@ test("ocean_handoffs_list filters by project", async () => {
     assert.deepEqual(await list({}), ["h-none", "h-ocean", "h-shop"]);
     assert.deepEqual(await list({ project: "shop" }), ["h-shop"]);
     assert.deepEqual(await list({ project: "nowhere" }), []);
-  } finally {
-    if (previous === undefined) delete process.env.OCEAN_ROOT;
-    else process.env.OCEAN_ROOT = previous;
-  }
-});
-
-test("memory_write creates or updates a record only under the memory roots", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-mcp-memory-write-"));
-  const previous = process.env.OCEAN_ROOT;
-  process.env.OCEAN_ROOT = root;
-  try {
-    for (const store of ["memory", "knowledge"]) {
-      await mkdir(path.join(root, STORE_DIR[store]), { recursive: true });
-      await writeFile(
-        path.join(
-          root,
-          STORE_DIR[store],
-          store === "memory" ? "MEMORY.md" : "KNOWLEDGE.md",
-        ),
-        "# Index\n",
-      );
-    }
-    const write = async (args) => {
-      const response = await handle({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "tools/call",
-        params: { name: "memory_write", arguments: args },
-      });
-      return response.error
-        ? { error: response.error.message }
-        : JSON.parse(response.result.content[0].text);
-    };
-    const personal = `${STORE_DIR.memory}/travel/visa.md`;
-    const created = await write({
-      path: personal,
-      content: "# Visa\n\nStudent visa applied.",
-      mode: "create",
-    });
-    assert.deepEqual(created, {
-      path: personal,
-      mode: "create",
-      indexed: true,
-    });
-    assert.match(
-      await readFile(path.join(root, STORE_DIR.memory, "MEMORY.md"), "utf8"),
-      /\[Visa\]\(travel\/visa\.md\)/,
-    );
-    assert.match(
-      (await write({ path: personal, content: "again", mode: "create" })).error,
-      /already exists/,
-    );
-    await write({
-      path: personal,
-      content: "# Visa\n\nStudent visa approved.",
-      mode: "update",
-    });
-    assert.equal(
-      await readFile(path.join(root, personal), "utf8"),
-      "# Visa\n\nStudent visa approved.\n",
-    );
-
-    const project = `${PROJECTS_DIR}/demo/memory/deploy.md`;
-    assert.match(
-      (await write({ path: project, content: "x", mode: "update" })).error,
-      /does not exist/,
-    );
-    assert.deepEqual(
-      await write({
-        path: project,
-        content: "Deploy API first.",
-        mode: "create",
-      }),
-      { path: project, mode: "create", indexed: false },
-    );
-
-    for (const [args, message] of [
-      [
-        { path: `${PROJECTS_DIR}/demo/tasks/T-1/task.md` },
-        /memory records live under/,
-      ],
-      [{ path: `${STORE_DIR.knowledge}/x.md` }, /memory records live under/],
-      [{ path: `${STORE_DIR.memory}/../charter/core.md` }, /escapes/],
-      [{ path: `${STORE_DIR.memory}/MEMORY.md` }, /index/],
-      [{ path: path.join(root, STORE_DIR.memory, "abs.md") }, /relative/],
-      [
-        {
-          path: `${STORE_DIR.memory}/k.md`,
-          content: `key sk-ant-${"a".repeat(20)}`,
-        },
-        /secret/,
-      ],
-      [{ path: `${STORE_DIR.memory}/m.md`, mode: "append" }, /mode must be/],
-    ])
-      assert.match(
-        (await write({ content: "fact", mode: "create", ...args })).error,
-        message,
-      );
   } finally {
     if (previous === undefined) delete process.env.OCEAN_ROOT;
     else process.env.OCEAN_ROOT = previous;

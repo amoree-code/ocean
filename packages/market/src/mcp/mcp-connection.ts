@@ -91,9 +91,13 @@ export function oceanMcpConfig(): { mcpServers: { ocean: StdioMcpServer } } {
   };
 }
 
-export function obsidianMcpConfig(): { mcpServers: { ocean: StdioMcpServer } } {
+// Keyed `ocean-obsidian`, never `ocean`: that key is the brain server's, and an Obsidian entry
+// under it left Gemini, Hermes and Antigravity without the memory tools (T-296).
+export function obsidianMcpConfig(): {
+  mcpServers: { "ocean-obsidian": StdioMcpServer };
+} {
   return mcpClientConfig("dev.ocean/obsidian") as {
-    mcpServers: { ocean: StdioMcpServer };
+    mcpServers: { "ocean-obsidian": StdioMcpServer };
   };
 }
 

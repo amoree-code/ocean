@@ -12,11 +12,41 @@ The server also exposes bounded read-only continuity surfaces: `ocean_task_get`,
 `ocean_handoffs_list`, `ocean_handoff_get`, `ocean_session_get`, and `ocean_session_events`,
 plus the `ocean://handoffs` resource (`ocean://status`, `ocean://profiles` and `ocean://tasks` are
 also listed).
-`memory_write` is its one memory-mutating tool: it creates or updates a single record under
-`02-personal/` or `04-projects/<project>/memory/` (search first; `create` refuses an existing
-record, `update` a missing one; secrets refused). The client's permission prompt is the gate.
 The server identifies itself as `ocean` in `initialize` `serverInfo`. Tool and prompt names are `ocean_*`. The generated config entry is keyed `ocean` (`mcpServers.ocean`) — that key is the client-owned identity of an installed entry, so re-running setup never adds a second server. A client still holding an entry under the legacy key from an older release should remove it. Every client receives the same Ocean-owned metadata; provider-native
-transcripts and credentials are not copied between clients.
+transcripts and credentials are not copied between clients. The Obsidian vault server is keyed
+`ocean-obsidian`; it never takes the `ocean` key, which belongs to the brain server.
+
+## Memory contract (T-296)
+
+`initialize` returns `instructions`: the same memory contract for every client (Ocean is the
+memory; search before answering; explicit saves with `memory_write`; inferred or imported facts
+with `memory_propose`; never secrets). `ocean_capabilities` reports the contract version and
+whether writes are on; `ocean_ping` is a cheap health check.
+
+| Tool | Effect |
+| ---- | ------ |
+| `memory_read` | one record with its `sha256` |
+| `memory_history` | audit entries, newest first; ids feed `memory_restore` |
+| `memory_write` | `create` (refuses an existing or same-name/same-title record unless `allowSimilar`) or `update` (needs `expectedHash`); the replaced content is kept |
+| `memory_propose` | a server-named candidate under `00-inbox/candidates/<date>/`, for review |
+| `memory_delete` | soft delete into trash; needs `expectedHash` |
+| `memory_restore` | puts back a deleted record or an earlier version |
+
+Writable roots, fixed in `packages/brain/src/memory/memory-paths.ts`: records under
+`02-personal/**` and `04-projects/<id>/memory/**` (caller-chosen, `.md`, never an index or
+`CONFLICTS.md`); candidates, versions, trash, the audit log and the client journal (server-named,
+under `00-inbox/candidates/` and `bridge/state/`). A symlink or hard link on the way, a path
+outside these roots, a known secret shape or more than 32 KB is refused. Errors carry a stable
+`error.data.code` (`EXISTS`, `EXISTS_SIMILAR`, `MISSING`, `OUT_OF_ROOT`, `PROTECTED`, `SYMLINK`,
+`HARDLINK`, `SECRET`, `CONFLICT`, `TOO_LARGE`, `INVALID`, `WRITES_OFF`).
+
+Nothing is hard-deleted over MCP. `ocean memory purge` (CLI) lists stored copies older than the
+retention period and removes them only with `--yes`. `bridge/config/memory.json` holds
+`{"mcpWrites": "on" | "off", "retentionDays": 90}`; `off` refuses every mutating tool.
+
+Tool annotations (`readOnlyHint`, `destructiveHint`) are hints for a client's permission UI, not
+enforcement: whether a client asks before a call is the client's behaviour and is not assumed.
+The server's own checks above are what bound a call.
 
 The server reads the private connection at `OCEAN_ROOT/bridge/integrations/obsidian/connection.json`. It never receives provider credentials. Keep the connection `read-only` until the client route is verified. Mutating tools require both client approval and an explicit `read-write` connection.
 

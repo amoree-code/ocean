@@ -1,98 +1,263 @@
-import { mkdir, stat } from "node:fs/promises";
+import { mkdir, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
-import { isValidProjectId } from "@ocean/core/domain/context/project-id.js";
+import { MemoryContractError } from "@ocean/core/domain/mcp/memory-contract.js";
 import { containsKnownSecret } from "@ocean/core/domain/redaction/redaction.js";
 import { atomicWrite, withFileLock } from "@ocean/core/shared/fs-utils.js";
+import { localDate } from "@ocean/core/shared/local-date.js";
 import {
   oceanPath,
   PERSONAL_DIR,
   PROJECTS_DIR,
-  resolveWithin,
 } from "@ocean/core/shared/paths.js";
 import { syncMemoryIndexes } from "./index-sync.js";
+import { appendAudit, newId, sha256, writeDurable } from "./memory-audit.js";
+import {
+  assertNoLinks,
+  candidateFile,
+  candidatesRoot,
+  permanentRecord,
+  storedCopy,
+} from "./memory-paths.js";
 
 const maxRecordBytes = 32_000;
 
 export type MemoryWriteMode = "create" | "update";
 
-// The two places a client may write a memory record: the personal store, or one project's
-// memory folder. Anything else (tasks, knowledge, charter, the index itself) is refused.
-function memoryTarget(relative: string): { file: string; personal: boolean } {
-  const parts = relative.split(/[\\/]+/).filter(Boolean);
-  if (path.isAbsolute(relative) || !relative.endsWith(".md") || !parts.length)
-    throw new Error("path must be a relative .md path");
-  if (parts.includes("..") || parts.includes("."))
-    throw new Error("Path escapes its allowed root");
-  if (parts.at(-1) === "MEMORY.md")
-    throw new Error("MEMORY.md is an index, not a record");
-  const normalized = parts.join("/");
-  const under = (dir: string) =>
-    normalized.startsWith(`${dir}/`)
-      ? normalized.slice(dir.length + 1).split("/")
-      : null;
-  const inPersonal = under(PERSONAL_DIR);
-  if (inPersonal)
-    return {
-      file: resolveWithin(oceanPath(PERSONAL_DIR), ...inPersonal),
-      personal: true,
-    };
-  const [project, folder, ...rest] = under(PROJECTS_DIR) ?? [];
-  if (
-    project &&
-    folder === "memory" &&
-    rest.length &&
-    isValidProjectId(project)
-  )
-    return {
-      file: resolveWithin(oceanPath(PROJECTS_DIR, project, "memory"), ...rest),
-      personal: false,
-    };
-  throw new Error(
-    `memory records live under ${PERSONAL_DIR}/ or ${PROJECTS_DIR}/<project>/memory/`,
-  );
+export function checkContent(content: string): void {
+  if (typeof content !== "string" || !content.trim())
+    throw new MemoryContractError("INVALID", "content is empty");
+  if (Buffer.byteLength(content) > maxRecordBytes)
+    throw new MemoryContractError(
+      "TOO_LARGE",
+      `content exceeds ${maxRecordBytes} bytes`,
+    );
+  if (containsKnownSecret(content))
+    throw new MemoryContractError(
+      "SECRET",
+      "content holds a secret; memory never stores one",
+    );
 }
 
-async function exists(file: string): Promise<boolean> {
+async function readIfPresent(file: string): Promise<string | null> {
   try {
-    await stat(file);
-    return true;
+    return await readFile(file, "utf8");
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw error;
   }
 }
 
-// Search-first writing is the caller's job: `create` refuses an existing record and `update`
-// refuses a missing one, so a client that skipped the search cannot silently fork or clobber.
+function withNewline(content: string): string {
+  return content.endsWith("\n") ? content : `${content}\n`;
+}
+
+export async function readMemoryRecord(
+  relative: string,
+): Promise<{ path: string; content: string; sha256: string }> {
+  const record = permanentRecord(relative);
+  const content = await readIfPresent(record.file);
+  if (content === null)
+    throw new MemoryContractError("MISSING", `${record.relative} not found`);
+  return { path: record.relative, content, sha256: sha256(content) };
+}
+
+async function markdownFiles(directory: string): Promise<string[]> {
+  let entries: import("node:fs").Dirent[];
+  try {
+    entries = await readdir(directory, { withFileTypes: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+  const files: string[] = [];
+  for (const entry of entries) {
+    if (entry.name.startsWith(".")) continue;
+    const full = path.join(directory, entry.name);
+    if (entry.isDirectory()) files.push(...(await markdownFiles(full)));
+    else if (entry.isFile() && entry.name.endsWith(".md")) files.push(full);
+  }
+  return files;
+}
+
+const normalize = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/\.md$/, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+
+function title(content: string): string {
+  const frontmatter = /^---\n([\s\S]*?)\n---/.exec(content)?.[1] ?? "";
+  return (
+    /^(?:name|title):\s*["']?(.+?)["']?\s*$/m.exec(frontmatter)?.[1] ??
+    /^#\s+(.+)$/m.exec(content)?.[1] ??
+    ""
+  );
+}
+
+// A new record whose file name or title matches an existing one is probably the same fact:
+// the caller must update that record, or say it is a different one (allowSimilar).
+async function similarRecords(
+  file: string,
+  content: string,
+): Promise<string[]> {
+  const projects = await readdir(oceanPath(PROJECTS_DIR), {
+    withFileTypes: true,
+  }).catch(() => []);
+  const roots = [
+    oceanPath(PERSONAL_DIR),
+    ...projects
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => oceanPath(PROJECTS_DIR, entry.name, "memory")),
+  ];
+  const name = normalize(path.basename(file));
+  const heading = normalize(title(content));
+  const matches: string[] = [];
+  for (const root of roots)
+    for (const existing of await markdownFiles(root)) {
+      // The target itself is not "similar": an exact existing path is EXISTS.
+      if (
+        existing === file ||
+        path.basename(existing).toLowerCase() === "memory.md"
+      )
+        continue;
+      const sameName = normalize(path.basename(existing)) === name;
+      const sameTitle =
+        heading !== "" &&
+        normalize(title(await readFile(existing, "utf8"))) === heading;
+      if (sameName || sameTitle)
+        matches.push(
+          path.relative(oceanPath(), existing).split(path.sep).join("/"),
+        );
+    }
+  return matches;
+}
+
+// An explicit save. Search-first is enforced by mode: `create` refuses an existing or similar
+// record, `update` needs the sha256 the caller read, so a stale or blind write cannot clobber.
+// The replaced content is kept in versions/ before the record changes.
 export async function writeMemoryRecord(options: {
   path: string;
   content: string;
   mode: MemoryWriteMode;
-}): Promise<{ path: string; mode: MemoryWriteMode; indexed: boolean }> {
-  const { file, personal } = memoryTarget(options.path);
-  if (!options.content.trim()) throw new Error("content is empty");
-  if (Buffer.byteLength(options.content) > maxRecordBytes)
-    throw new Error(`content exceeds ${maxRecordBytes} bytes`);
-  if (containsKnownSecret(options.content))
-    throw new Error("content holds a secret; memory never stores one");
-  await mkdir(path.dirname(file), { recursive: true });
-  await withFileLock(file, async () => {
-    const present = await exists(file);
-    if (options.mode === "create" && present)
-      throw new Error(
+  expectedHash?: string;
+  allowSimilar?: boolean;
+  source?: string;
+}): Promise<{
+  path: string;
+  mode: MemoryWriteMode;
+  sha256: string;
+  auditId: string;
+  indexed: boolean;
+}> {
+  const record = permanentRecord(options.path);
+  checkContent(options.content);
+  if (options.mode !== "create" && options.mode !== "update")
+    throw new MemoryContractError("INVALID", "mode must be create or update");
+  if (options.mode === "create" && !options.allowSimilar) {
+    const similar = await similarRecords(record.file, options.content);
+    if (similar.length)
+      throw new MemoryContractError(
+        "EXISTS_SIMILAR",
+        "a record with the same name or title exists; update it, or pass allowSimilar if this is a different fact",
+        { paths: similar },
+      );
+  }
+  const content = withNewline(options.content);
+  const id = newId();
+  await mkdir(path.dirname(record.file), { recursive: true });
+  assertNoLinks(record.root, record.file);
+  const { before, copy } = await withFileLock(record.file, async () => {
+    const current = await readIfPresent(record.file);
+    if (options.mode === "create" && current !== null)
+      throw new MemoryContractError(
+        "EXISTS",
         "record already exists; read it and write it back with mode update",
       );
-    if (options.mode === "update" && !present)
-      throw new Error("record does not exist; use mode create");
-    await atomicWrite(
-      file,
-      options.content.endsWith("\n") ? options.content : `${options.content}\n`,
-    );
+    if (options.mode === "update") {
+      if (current === null)
+        throw new MemoryContractError(
+          "MISSING",
+          "record does not exist; use mode create",
+        );
+      if (options.expectedHash !== sha256(current))
+        throw new MemoryContractError(
+          "CONFLICT",
+          "expectedHash does not match the record; read it again before updating",
+          { sha256: sha256(current) },
+        );
+    }
+    let copy: string | undefined;
+    if (current !== null) {
+      const stored = storedCopy("versions", id, record.relative);
+      await writeDurable(stored, current);
+      copy = path.relative(oceanPath(), stored).split(path.sep).join("/");
+    }
+    await atomicWrite(record.file, content);
+    return { before: current, copy };
   });
-  if (personal) await syncMemoryIndexes(true);
+  await appendAudit({
+    id,
+    action: options.mode,
+    path: record.relative,
+    source: options.source ?? "unknown",
+    origin: "explicit",
+    beforeSha: before === null ? null : sha256(before),
+    afterSha: sha256(content),
+    copy,
+  });
+  if (record.personal) await syncMemoryIndexes(true);
   return {
-    path: path.relative(oceanPath(), file).split(path.sep).join("/"),
+    path: record.relative,
     mode: options.mode,
-    indexed: personal,
+    sha256: sha256(content),
+    auditId: id,
+    indexed: record.personal,
   };
+}
+
+const singleLine = (value: string | undefined, field: string) => {
+  if (value === undefined) return "";
+  if (typeof value !== "string" || /[\r\n]/.test(value) || value.length > 200)
+    throw new MemoryContractError(
+      "INVALID",
+      `${field} must be one line of at most 200 characters`,
+    );
+  return value;
+};
+
+// An inferred or imported fact waits in candidates/ for the owner's review. The server names
+// the file; a proposed target is validated as a record path but never written here.
+export async function proposeMemory(options: {
+  content: string;
+  origin: "inferred" | "imported";
+  target?: string;
+  reason?: string;
+  source?: string;
+}): Promise<{ candidate: string; auditId: string }> {
+  checkContent(options.content);
+  if (options.origin !== "inferred" && options.origin !== "imported")
+    throw new MemoryContractError(
+      "INVALID",
+      "origin must be inferred or imported",
+    );
+  const target = options.target ? permanentRecord(options.target).relative : "";
+  const reason = singleLine(options.reason, "reason");
+  const source = singleLine(options.source, "source") || "unknown";
+  const id = newId();
+  const file = candidateFile(localDate(), id);
+  assertNoLinks(candidatesRoot(), file);
+  const body = `---\ncandidate: ${id}\norigin: ${options.origin}\nsource: ${JSON.stringify(source)}\ntarget: ${JSON.stringify(target)}\nreason: ${JSON.stringify(reason)}\ncreated: ${new Date().toISOString()}\n---\n\n${withNewline(options.content)}`;
+  await writeDurable(file, body);
+  const candidate = path.relative(oceanPath(), file).split(path.sep).join("/");
+  await appendAudit({
+    id,
+    action: "propose",
+    path: candidate,
+    source,
+    origin: options.origin,
+    beforeSha: null,
+    afterSha: sha256(body),
+  });
+  return { candidate, auditId: id };
 }

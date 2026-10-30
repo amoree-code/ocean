@@ -9,6 +9,12 @@ import {
   syncMemoryIndexes,
 } from "@ocean/brain/memory/index-sync.js";
 import {
+  deleteMemoryRecord,
+  memoryHistory,
+  purgeMemoryCopies,
+  restoreMemory,
+} from "@ocean/brain/memory/memory-trash.js";
+import {
   deleteProfileFact,
   readProfileFacts,
   writeProfileFact,
@@ -181,10 +187,67 @@ async function runFacts(args: string[]): Promise<void> {
   }
 }
 
+// The value after a flag, or undefined.
+function flagValue(args: string[], flag: string): string | undefined {
+  const index = args.indexOf(flag);
+  return index >= 0 ? args[index + 1] : undefined;
+}
+
+// Soft delete, history, restore and purge of memory records (T-296). Purge is CLI-only and
+// lists what it would drop until --yes confirms it.
+async function runRecordCommand(
+  action: "history" | "restore" | "delete" | "purge",
+  args: string[],
+): Promise<void> {
+  const positional = args.filter(
+    (arg, index) => !arg.startsWith("--") && !args[index - 1]?.startsWith("--"),
+  );
+  let result: unknown;
+  if (action === "history") {
+    const limit = Number(flagValue(args, "--limit") ?? 20);
+    result = await memoryHistory({ path: positional[0], limit });
+  } else if (action === "restore") {
+    if (!positional[0])
+      throw new Error(
+        "Usage: ocean memory restore <audit-id> [--hash <sha256>]",
+      );
+    result = await restoreMemory({
+      id: positional[0],
+      expectedHash: flagValue(args, "--hash"),
+      source: "cli",
+    });
+  } else if (action === "delete") {
+    const hash = flagValue(args, "--hash");
+    if (!positional[0] || !hash)
+      throw new Error("Usage: ocean memory delete <path> --hash <sha256>");
+    result = await deleteMemoryRecord({
+      path: positional[0],
+      expectedHash: hash,
+      source: "cli",
+    });
+  } else {
+    const days = flagValue(args, "--days");
+    result = await purgeMemoryCopies({
+      apply: args.includes("--yes"),
+      days: days === undefined ? undefined : Number(days),
+    });
+    if (!args.includes("--yes"))
+      console.error("Dry run: pass --yes to remove these copies for good.");
+  }
+  console.log(JSON.stringify(result, null, 2));
+}
+
 export async function runMemoryCommand(
   action: string,
   args: string[],
 ): Promise<void> {
+  if (
+    action === "history" ||
+    action === "restore" ||
+    action === "delete" ||
+    action === "purge"
+  )
+    return runRecordCommand(action, args);
   if (action === "reindex") return runReindex(args);
   if (action === "search") return runSearch(args);
   if (action === "read") return runRead(args);
@@ -218,7 +281,7 @@ export async function runMemoryCommand(
     return;
   }
   console.error(
-    "Usage: ocean memory doctor|sync [--apply]|facts <profile> [key] [value]|facts <profile> delete <key>|reindex [--no-vectors]|search <q> [--project <id>|--all] [--json]|read <id|path>|neighbors <id|path> [--depth N] [--project <id>|--all]",
+    "Usage: ocean memory doctor|sync [--apply]|history [path] [--limit N]|restore <id> [--hash <sha256>]|delete <path> --hash <sha256>|purge [--days N] [--yes]|facts <profile> [key] [value]|facts <profile> delete <key>|reindex [--no-vectors]|search <q> [--project <id>|--all] [--json]|read <id|path>|neighbors <id|path> [--depth N] [--project <id>|--all]",
   );
   process.exitCode = 1;
 }
