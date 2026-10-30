@@ -39,6 +39,12 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+// A JSON config stores a Windows path with every backslash escaped, so a path is searched in
+// both spellings and replaced in the spelling it was found in. On POSIX the two are the same.
+function asJson(value: string): string {
+  return JSON.stringify(value).slice(1, -1);
+}
+
 export async function repairEngineEntries(
   home = os.homedir(),
 ): Promise<EngineEntryRepair[]> {
@@ -49,17 +55,21 @@ export async function repairEngineEntries(
   const checkoutEntry = releaseWorkspace()
     ? path.join(repoRoot(), "packages", "harness", "dist", "main.js")
     : null;
+  const targets = [
+    ...FORMER_ENGINE_PACKAGES.map((name) =>
+      path.join(repoRoot(), "packages", name, "dist", "main.js"),
+    ),
+    ...(checkoutEntry ? [checkoutEntry] : []),
+  ];
   const stale = new RegExp(
-    [
-      ...FORMER_ENGINE_PACKAGES.map((name) =>
-        path.join(repoRoot(), "packages", name, "dist", "main.js"),
-      ),
-      ...(checkoutEntry ? [checkoutEntry] : []),
-    ]
+    [...new Set(targets.flatMap((target) => [target, asJson(target)]))]
       .map(escapeRegExp)
       .join("|"),
     "g",
   );
+  const pathOf = (found: string) =>
+    targets.find((target) => target === found || asJson(target) === found) ??
+    found;
   for (const relative of CLIENT_CONFIGS) {
     const file = path.join(home, relative);
     const display = `~/${relative}`;
@@ -76,23 +86,25 @@ export async function repairEngineEntries(
       });
       continue;
     }
-    const replaced = [
-      ...new Set(
-        [...text.matchAll(stale)]
-          .map((match) => match[0])
-          .filter(
-            (found) =>
-              found !== entry &&
-              (found === checkoutEntry || !existsSync(found)),
-          ),
-      ),
-    ];
+    const hits = [
+      ...new Set([...text.matchAll(stale)].map((match) => match[0])),
+    ].filter((found) => {
+      const target = pathOf(found);
+      return (
+        target !== entry && (target === checkoutEntry || !existsSync(target))
+      );
+    });
+    const replaced = [...new Set(hits.map(pathOf))];
     if (!replaced.length) {
       results.push({ file: display, status: "current", replaced });
       continue;
     }
     let next = text;
-    for (const found of replaced) next = next.replaceAll(found, entry);
+    for (const found of hits)
+      next = next.replaceAll(
+        found,
+        found === pathOf(found) ? entry : asJson(entry),
+      );
     await atomicWrite(file, next);
     results.push({ file: display, status: "updated", replaced });
   }

@@ -35,6 +35,9 @@ async function withHome(files, run) {
   }
 }
 
+// How a path reads inside JSON text: on Windows every backslash is escaped.
+const inJson = (value) => JSON.stringify(value).slice(1, -1);
+
 const byFile = (results) =>
   Object.fromEntries(results.map((result) => [result.file, result]));
 
@@ -60,7 +63,7 @@ test("a client's MCP entry that points at a moved engine file is repointed, noth
       assert.equal(first["~/.codex/config.toml"].status, "missing");
       assert.equal(
         await read(".gemini/settings.json"),
-        gemini.replaceAll(stale, entry),
+        gemini.replaceAll(inJson(stale), inJson(entry)),
       );
       assert.equal(
         await read(".hermes/config.yaml"),
@@ -152,7 +155,7 @@ test("run from a release, the checkout's existing engine entry is repointed to c
       assert.deepEqual(result.replaced, [checkoutEntry]);
       assert.equal(
         await read(".gemini/settings.json"),
-        gemini.replaceAll(checkoutEntry, current),
+        gemini.replaceAll(inJson(checkoutEntry), inJson(current)),
       );
     });
   } finally {
