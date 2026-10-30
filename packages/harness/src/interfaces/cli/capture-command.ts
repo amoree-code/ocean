@@ -4,6 +4,7 @@ import path from "node:path";
 import { syncCaptureInbox } from "@ocean/brain/capture/inbox-sync.js";
 import { syncMemoryIndexes } from "@ocean/brain/memory/index-sync.js";
 import { validateSessionEntryContract } from "@ocean/core/domain/sessions/entry-contract.js";
+import { localDate } from "@ocean/core/shared/local-date.js";
 import {
   KNOWLEDGE_DIR,
   oceanPath,
@@ -124,7 +125,7 @@ async function promote(
     const memoryRoot = path.resolve(oceanPath(PERSONAL_DIR)) + path.sep;
     if (!file.startsWith(memoryRoot))
       throw new Error(`Memory target must stay inside ${PERSONAL_DIR}.`);
-    const header = `\n\n## Captured note — ${new Date().toISOString().slice(0, 10)}\n\n${item.content.trim()}\n\n_Source: session-capture-${item.captureId}; review status: unverified._\n`;
+    const header = `\n\n## Captured note — ${localDate()}\n\n${item.content.trim()}\n\n_Source: session-capture-${item.captureId}; review status: unverified._\n`;
     await appendFile(file, header);
     await syncMemoryIndexes(true);
     return;
@@ -137,7 +138,7 @@ async function promote(
   if (target === "backlog") {
     await appendFile(
       oceanPath(PROJECTS_DIR, "backlog.md"),
-      `\n- [TODO] (P2) ${WORKSPACE_PROJECT_ID} — ${item.content.replace(/\s+/g, " ").trim()}  {${new Date().toISOString().slice(0, 10)}}\n`,
+      `\n- [TODO] (P2) ${WORKSPACE_PROJECT_ID} — ${item.content.replace(/\s+/g, " ").trim()}  {${localDate()}}\n`,
     );
     return;
   }

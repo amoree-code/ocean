@@ -6,6 +6,7 @@ import type {
   SessionEvent,
 } from "@ocean/core/domain/sessions/session.js";
 import { atomicWrite, withFileLock } from "@ocean/core/shared/fs-utils.js";
+import { localDate } from "@ocean/core/shared/local-date.js";
 import { DAILY_DIR, oceanPath } from "@ocean/core/shared/paths.js";
 import { findGitRoot } from "@ocean/core/shared/project-resolution.js";
 import type { LearnedSignal } from "./lesson-learning.js";
@@ -46,7 +47,7 @@ function withoutClientMarkup(text: string): string {
 function localStamp(now = new Date()): { date: string; time: string } {
   const pad = (value: number) => String(value).padStart(2, "0");
   return {
-    date: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
+    date: localDate(now),
     time: `${pad(now.getHours())}:${pad(now.getMinutes())}`,
   };
 }

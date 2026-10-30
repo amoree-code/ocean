@@ -7,6 +7,7 @@ import type {
   SessionEvent,
 } from "@ocean/core/domain/sessions/session.js";
 import { safeJsonParse } from "@ocean/core/shared/fs-utils.js";
+import { localDate, localMoment } from "@ocean/core/shared/local-date.js";
 import { oceanPath, oceanRoot, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 
 const maxSummaryBytes = 12_000;
@@ -136,9 +137,7 @@ export async function writeSessionSummary(input: {
   exitCode?: number;
   nextAction?: string;
 }): Promise<SessionSummaryResult> {
-  const date =
-    input.session.createdAt.slice(0, 10) ||
-    new Date().toISOString().slice(0, 10);
+  const date = localDate(localMoment(input.session.createdAt));
   const directory = oceanPath(SYSTEM_DIR, "sessions", "summaries");
   const file = path.join(directory, `${date}-${input.session.sessionId}.md`);
   await mkdir(directory, { recursive: true });

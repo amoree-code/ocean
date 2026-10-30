@@ -4,6 +4,7 @@ import { createInterface } from "node:readline/promises";
 import { listLessons, setLessonStatus } from "@ocean/brain/memory/lessons.js";
 import type { Session } from "@ocean/core/domain/sessions/session.js";
 import { withFileLock } from "@ocean/core/shared/fs-utils.js";
+import { localDate } from "@ocean/core/shared/local-date.js";
 import { DAILY_DIR, oceanPath } from "@ocean/core/shared/paths.js";
 import { openSessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
 import { listTasks } from "./tasks-command.js";
@@ -91,7 +92,7 @@ export async function runDailyCommand(
   } finally {
     store.close();
   }
-  const date = new Date().toISOString().slice(0, 10);
+  const date = localDate();
   const file = oceanPath(DAILY_DIR, `${date}.md`);
   const content = `${[
     `# Daily brief — ${date}`,

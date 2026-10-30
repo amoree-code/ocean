@@ -4,7 +4,12 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { writeBrainDump } from "@ocean/brain/memory/brain-dump.js";
+import { localDate, localTime } from "@ocean/core/shared/local-date.js";
 import { INBOX_DIR } from "@ocean/core/shared/paths.js";
+
+// The session's start on the machine's clock (T-297), as the file name stamps it.
+const started = new Date("2026-09-21T15:52:00.000Z");
+const stamp = `${localDate(started)}-${localTime(started).replace(":", "")}`;
 
 function baseSession(overrides = {}) {
   return {
@@ -51,7 +56,7 @@ test("names the file from the date, time, and a slug of the work log — not the
   const filename = path.basename(result.brainDumpPath);
   assert.equal(
     filename,
-    "2026-09-21-1552-wire-the-brain-dump-hook-for-desktop-sessions.md",
+    `${stamp}-wire-the-brain-dump-hook-for-desktop-sessions.md`,
   );
   assert.doesNotMatch(filename, /11112222-3333-4444-5555-666677778888/);
 
@@ -69,10 +74,7 @@ test("falls back to the project name, then the short session id, when the title 
     narrative: { workLog: "شنو صار اليوم" },
   });
   assert.ok(withProject);
-  assert.equal(
-    path.basename(withProject.brainDumpPath),
-    "2026-09-21-1552-ameer.md",
-  );
+  assert.equal(path.basename(withProject.brainDumpPath), `${stamp}-ameer.md`);
 
   const noProject = await writeBrainDump({
     session: baseSession({
@@ -84,10 +86,7 @@ test("falls back to the project name, then the short session id, when the title 
     narrative: { workLog: "شنو صار اليوم" },
   });
   assert.ok(noProject);
-  assert.equal(
-    path.basename(noProject.brainDumpPath),
-    "2026-09-21-1552-abcdef12.md",
-  );
+  assert.equal(path.basename(noProject.brainDumpPath), `${stamp}-abcdef12.md`);
 
   delete process.env.OCEAN_ROOT;
 });
@@ -112,11 +111,11 @@ test("appends a numeric suffix instead of overwriting when two sessions land on 
   assert.notEqual(first.brainDumpPath, second.brainDumpPath);
   assert.equal(
     path.basename(first.brainDumpPath),
-    "2026-09-21-1552-fix-the-login-bug.md",
+    `${stamp}-fix-the-login-bug.md`,
   );
   assert.equal(
     path.basename(second.brainDumpPath),
-    "2026-09-21-1552-fix-the-login-bug-2.md",
+    `${stamp}-fix-the-login-bug-2.md`,
   );
 
   const files = await readdir(path.join(root, INBOX_DIR, "brain-dump"));

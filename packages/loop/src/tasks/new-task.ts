@@ -1,5 +1,6 @@
 import { mkdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { localDate } from "@ocean/core/shared/local-date.js";
 import {
   oceanPath,
   PROJECTS_DIR,
@@ -46,7 +47,7 @@ export async function newTask(
     () => false,
   );
   if (!isProject) throw new Error(`No project ${projectId} in ${PROJECTS_DIR}`);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDate();
   const result = await withNextTaskId(projectId, async (id) => {
     const file = resolveWithin(
       oceanPath(PROJECTS_DIR),

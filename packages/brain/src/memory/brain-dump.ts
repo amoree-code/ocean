@@ -5,6 +5,11 @@ import type {
   Session,
   SessionEvent,
 } from "@ocean/core/domain/sessions/session.js";
+import {
+  localDate,
+  localMoment,
+  localTime,
+} from "@ocean/core/shared/local-date.js";
 import { INBOX_DIR, oceanPath, oceanRoot } from "@ocean/core/shared/paths.js";
 import { findGitRoot } from "@ocean/core/shared/project-resolution.js";
 import type { LearnedSignal } from "./lesson-learning.js";
@@ -121,10 +126,9 @@ export async function writeBrainDump(input: {
     nextAction &&
     nextAction !== "Review the summary and verify the next action.";
 
-  const time =
-    session.createdAt.slice(11, 16) || new Date().toISOString().slice(11, 16);
-  const date =
-    session.createdAt.slice(0, 10) || new Date().toISOString().slice(0, 10);
+  const started = localMoment(session.createdAt);
+  const time = localTime(started);
+  const date = localDate(started);
   const project =
     path.basename(session.workingDirectory) || session.workingDirectory;
   const status =

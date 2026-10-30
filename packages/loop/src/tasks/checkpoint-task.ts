@@ -1,4 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises";
+import { localDate } from "@ocean/core/shared/local-date.js";
 import { resolveWithin, workspaceTasksRoot } from "@ocean/core/shared/paths.js";
 
 export type CheckpointInput = {
@@ -21,7 +22,7 @@ export async function checkpointTask(
   if (!input.note?.trim()) throw new Error("Checkpoint requires a note.");
   const taskFile = resolveWithin(root, id, "task.md");
   let source = await readFile(taskFile, "utf8");
-  const date = input.date ?? new Date().toISOString().slice(0, 10);
+  const date = input.date ?? localDate();
   const entry = `- ${date} — ${input.note.trim()}`;
   if (/^## Log\s*$/m.test(source))
     source = source.replace(/^## Log\s*$/m, `## Log\n\n${entry}`);
