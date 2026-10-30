@@ -50,6 +50,29 @@ The server's own checks above are what bound a call.
 
 The server reads the private connection at `OCEAN_ROOT/bridge/integrations/obsidian/connection.json`. It never receives provider credentials. Keep the connection `read-only` until the client route is verified. Mutating tools require both client approval and an explicit `read-write` connection.
 
+## Wiring every client: `ocean clients` (T-296)
+
+`ocean clients detect|plan` lists every AI client and IDE Ocean knows (installed ones, with the
+evidence), its tier (`supported`, `context-file`, `unsupported`, `unknown`), the pending change to
+its `ocean` entry, its native-memory policy, and the reason or fallback for clients that cannot
+connect. `ocean clients apply` prints the plan; `--yes` writes it. Only Ocean-managed entries are
+touched: `ocean` (set to `node <current engine> mcp serve`), a legacy `ocean` that runs the Obsidian
+server (renamed `ocean-obsidian`), and dead entries of the retired atlas gateway. An entry with keys
+Ocean does not manage (`env`, headers, a TOML sub-table), a JSON file not in canonical form, or a
+YAML list is never rewritten: it becomes a manual step with the exact entry to add.
+
+Each write re-reads the file right before replacing it (a concurrent edit makes Ocean recompute),
+keeps the file's mode and writes through a symlink. Rollback uses
+`bridge/state/clients/journal.jsonl` (mode 0600): the before/after value of each managed entry
+only — never a copy of a client file — and a value that holds a credential shape is kept as a hash,
+so restoring it can only remove Ocean's entry. `ocean clients restore [--batch <id>]` undoes an
+apply; an entry the user changed since is reported as a conflict and left alone. `ocean clients
+repair` (run by `ocean client sync`) re-applies only clients approved by an earlier `apply --yes`.
+`ocean clients verify [<id>]` starts each client's configured command and checks it answers as the
+brain server — proof the entry launches, not that the app connects. `ocean doctor` fails for an
+installed supported client that is not wired or needs a manual edit, warns for an unknown
+capability, and reports unsupported clients with their fallback.
+
 ## One endpoint for every server: the MCP gateway
 
 `ocean mcp gateway` is a single stdio MCP server that routes the tools of every registered

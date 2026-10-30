@@ -94,6 +94,10 @@ import {
   watchObsidianVault,
 } from "@ocean/services/obsidian/vault-sync.js";
 import { writeObsidianNote } from "@ocean/services/obsidian/vault-writer.js";
+import {
+  clientFindings,
+  repairClients,
+} from "../../application/clients/clients.js";
 import { createWebhookGateway } from "../../application/gateway/webhook-gateway.js";
 import {
   findInstallSpec,
@@ -144,6 +148,7 @@ import { runAuthCommand } from "./auth-command.js";
 import { runBrowserCommand } from "./browser-command.js";
 import { runCaptureCommand } from "./capture-command.js";
 import { runClientTestCommand } from "./client-test-command.js";
+import { runClientsCommand } from "./clients-command.js";
 import { runContextCommand, runContextCostCommand } from "./context-command.js";
 import { runDailyCommand } from "./daily-command.js";
 import { runLifecycleCommand, runPolicyCommand } from "./governance-command.js";
@@ -260,6 +265,11 @@ async function commandClient(): Promise<void> {
     const charter = await syncCharterCopies();
     const skillFilter = await syncSkillFilter();
     const engineEntries = await repairEngineEntries();
+    // T-296: re-applies the `ocean` entry only for clients the owner approved with
+    // `ocean clients apply --yes`; never a client that was not approved.
+    const clients = await repairClients().catch((error: unknown) => ({
+      error: error instanceof Error ? error.message : String(error),
+    }));
     console.log(
       JSON.stringify(
         {
@@ -268,6 +278,7 @@ async function commandClient(): Promise<void> {
           charter,
           skillFilter,
           engineEntries,
+          clients,
         },
         null,
         2,
@@ -1127,6 +1138,8 @@ async function commandUpdateOrRemove(
 
 async function commandDoctor(): Promise<void> {
   const report = await workspaceReport(defaultWrapperManager);
+  // T-296: every installed AI client's `ocean` entry (supported fail, unknown warn).
+  report.findings.push(...(await clientFindings()));
   if (process.argv.includes("--json"))
     console.log(JSON.stringify(report, null, 2));
   else
@@ -1415,6 +1428,7 @@ export const commandRegistry: Record<string, CommandHandler> = {
   service: commandService,
   intercept: commandIntercept,
   client: commandClient,
+  clients: () => runClientsCommand(process.argv.slice(3)),
   install: commandInstall,
   auth: commandAuth,
   tasks: commandTasks,
