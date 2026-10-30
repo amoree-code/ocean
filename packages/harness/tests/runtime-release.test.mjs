@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readlink, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -20,6 +20,9 @@ import {
   releaseStatus,
   useRelease,
 } from "../dist/application/release/runtime-release.js";
+
+// Releases are exported with git; an image without it (the docker gate) cannot run these.
+const noGit = spawnSync("git", ["--version"]).status !== 0;
 
 const git = (cwd, ...args) =>
   execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
@@ -71,7 +74,9 @@ const steps = (calls, { failBuild = false } = {}) => ({
   },
 });
 
-test("a release exports, builds and starts origin/main's tree, then becomes current", async () => {
+test("a release exports, builds and starts origin/main's tree, then becomes current", {
+  skip: noGit,
+}, async () => {
   await withWorkspace(async ({ checkout }) => {
     const calls = [];
     const first = await releaseRuntime({
@@ -108,7 +113,9 @@ test("a release exports, builds and starts origin/main's tree, then becomes curr
   });
 });
 
-test("a failed build leaves current where it was and no partial tree behind", async () => {
+test("a failed build leaves current where it was and no partial tree behind", {
+  skip: noGit,
+}, async () => {
   await withWorkspace(async ({ checkout }) => {
     const good = await releaseRuntime({
       checkout,
@@ -147,7 +154,9 @@ test("a failed build leaves current where it was and no partial tree behind", as
   });
 });
 
-test("use rolls current to a built release and refuses one that is not built", async () => {
+test("use rolls current to a built release and refuses one that is not built", {
+  skip: noGit,
+}, async () => {
   await withWorkspace(async ({ checkout }) => {
     const first = await releaseRuntime({
       checkout,

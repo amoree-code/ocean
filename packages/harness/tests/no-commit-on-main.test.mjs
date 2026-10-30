@@ -8,6 +8,9 @@ import { repoRoot } from "@ocean/core/shared/paths.js";
 
 const guard = path.join(repoRoot(), "scripts", "no-commit-on-main.mjs");
 
+// The guard reads the branch through git; an image without it (the docker gate) cannot run these.
+const noGit = spawnSync("git", ["--version"]).status !== 0;
+
 const git = (cwd, ...args) => spawnSync("git", args, { cwd, encoding: "utf8" });
 
 async function repoOn(branch) {
@@ -19,13 +22,17 @@ async function repoOn(branch) {
 const run = (cwd) =>
   spawnSync(process.execPath, [guard], { cwd, encoding: "utf8" });
 
-test("a commit on main is refused with the way out", async () => {
+test("a commit on main is refused with the way out", {
+  skip: noGit,
+}, async () => {
   const result = run(await repoOn("main"));
   assert.equal(result.status, 1);
   assert.match(result.stderr, /Refusing to commit on main/);
 });
 
-test("a feature branch and a detached HEAD may commit", async () => {
+test("a feature branch and a detached HEAD may commit", {
+  skip: noGit,
+}, async () => {
   assert.equal(run(await repoOn("feat/t1-x")).status, 0);
   const cwd = await repoOn("main");
   git(
