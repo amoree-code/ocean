@@ -17,6 +17,7 @@ import {
   atomicWrite,
   FRONTMATTER_READ_BYTES,
 } from "@ocean/core/shared/fs-utils.js";
+import { localDate } from "@ocean/core/shared/local-date.js";
 import {
   KNOWLEDGE_DIR,
   oceanRoot,
@@ -275,7 +276,7 @@ function recordDocument(
   provenance: OperationRecord["provenance"],
   correctionOf?: string,
 ): string {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDate();
   const correction = correctionOf ? `\ncorrection_of: ${correctionOf}` : "";
   return `---\nid: ${slug}\ntitle: ${slug}\nsummary: ""\ntags: []\ntype: ${recordType}\nconfidence: unknown\ncreated: ${today}\nupdated: ${today}\nlast_confirmed_at: ${today}\nprovenance: ${provenance}\nstatus: current${correction}\n---\n\n${content.trim()}\n`;
 }

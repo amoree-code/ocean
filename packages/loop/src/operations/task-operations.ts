@@ -8,6 +8,7 @@ import {
   atomicWrite,
   FRONTMATTER_READ_BYTES,
 } from "@ocean/core/shared/fs-utils.js";
+import { localDate } from "@ocean/core/shared/local-date.js";
 import { PROJECTS_DIR, projectFolder } from "@ocean/core/shared/paths.js";
 import { withNextTaskId } from "@ocean/core/shared/project-resolution.js";
 import {
@@ -204,7 +205,7 @@ export async function taskCreate(
     );
   // Resolve the folder once so the id and the write target can never disagree.
   const folder = projectFolder(project.projectId);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDate();
   const objective = (options.content ?? title).trim().replace(/[\r\n]+/g, " ");
   // The approval is bound to the path of the id that was predicted when it was granted. The id
   // is issued under the projects lock, so a creator that lost the race is refused (and consumes

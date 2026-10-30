@@ -1,4 +1,5 @@
 import { readdir, readFile, writeFile } from "node:fs/promises";
+import { localDate } from "@ocean/core/shared/local-date.js";
 import { resolveWithin } from "@ocean/core/shared/paths.js";
 
 // Keep equal to CLAIM_TTL_MS in scripts/validate-tasks.mjs (a test pins the two together).
@@ -122,11 +123,7 @@ export async function claimTask(
         );
     }
   const claim: Claim = { by: input.by, at: now.toISOString(), paths };
-  await writeFile(
-    taskFile,
-    withClaim(source, claim, now.toISOString().slice(0, 10)),
-    "utf8",
-  );
+  await writeFile(taskFile, withClaim(source, claim, localDate(now)), "utf8");
   // Read-modify-write is not atomic: if a concurrent claim landed between our read and write,
   // the file now names someone else. Re-read so the loser finds out instead of assuming it won.
   const written = parseClaim(
@@ -155,10 +152,6 @@ export async function releaseTask(
     throw new Error(
       `${id} is claimed by ${held.by}; only that owner can release it (or use --force).`,
     );
-  await writeFile(
-    taskFile,
-    withClaim(source, null, now.toISOString().slice(0, 10)),
-    "utf8",
-  );
+  await writeFile(taskFile, withClaim(source, null, localDate(now)), "utf8");
   return { released: true, id, was: held.by };
 }
