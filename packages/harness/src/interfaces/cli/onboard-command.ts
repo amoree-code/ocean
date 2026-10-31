@@ -4,6 +4,7 @@ import {
   planClients,
   verifyClient,
 } from "../../application/clients/clients.js";
+import { applyHooks, planHooks } from "../../application/clients/hooks.js";
 import {
   loadOnboardingState,
   type OnboardingState,
@@ -37,6 +38,8 @@ const stepDependencies = () => ({
     plan: () => planClients(),
     apply: (clients: string[]) => applyClients({ clients }),
     verify: (client: string) => verifyClient(client),
+    hooks: () => planHooks(),
+    applyHooks: async (batch: string) => (await applyHooks({ batch })).results,
   },
 });
 

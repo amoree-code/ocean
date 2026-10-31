@@ -5,13 +5,19 @@ import {
   restoreClients,
   verifyClient,
 } from "../../application/clients/clients.js";
+import {
+  applyHooks,
+  planHooks,
+  restoreHooks,
+} from "../../application/clients/hooks.js";
 
 const usage =
   "Usage: ocean clients detect|plan [--json] | apply [--client <id>…] [--yes] | verify [<id>…] | repair | restore [--batch <id>]";
 
-// `ocean clients` (T-296 P2): every installed AI client's `ocean` MCP entry. `apply` shows the
-// plan until --yes; `repair` only re-applies clients already approved; `restore` undoes an apply
-// batch from the journal.
+// `ocean clients` (T-296 P2/P3b): every installed AI client's `ocean` MCP entry and, where the
+// client has a verified session-start event, Ocean's session hook. `apply` shows the plan until
+// --yes; `repair` only re-applies clients already approved; `restore` undoes an apply batch
+// (entries and hooks) from the journal.
 export async function runClientsCommand(args: string[]): Promise<void> {
   const [action = "detect", ...rest] = args;
   const json = rest.includes("--json");
@@ -30,10 +36,19 @@ export async function runClientsCommand(args: string[]): Promise<void> {
           }${ops ? ` → ${ops}` : ""}${plan.reason ? ` (${plan.reason})` : ""}`,
         );
       }
+      if (action === "plan")
+        for (const hook of await planHooks())
+          console.log(
+            `${`${hook.client} hook`.padEnd(15)} ${hook.status.padEnd(14)} ${hook.file} SessionStart${
+              hook.reason ? ` (${hook.reason})` : ""
+            }${hook.snippet ? `; add ${hook.snippet}` : ""}`,
+          );
       return;
     }
     result =
-      action === "detect" ? plans.filter((plan) => plan.installed) : plans;
+      action === "detect"
+        ? plans.filter((plan) => plan.installed)
+        : { clients: plans, hooks: await planHooks() };
   } else if (action === "apply") {
     const clients = values("--client");
     if (!rest.includes("--yes")) {
@@ -42,13 +57,22 @@ export async function runClientsCommand(args: string[]): Promise<void> {
           plan.status === "change" &&
           (!clients.length || clients.includes(plan.client)),
       );
-      console.log(JSON.stringify({ dryRun: true, pending }, null, 2));
+      const hooks = (await planHooks()).filter(
+        (hook) =>
+          hook.status === "change" &&
+          (!clients.length || clients.includes(hook.client)),
+      );
+      console.log(JSON.stringify({ dryRun: true, pending, hooks }, null, 2));
       console.error("Dry run: pass --yes to write these client configs.");
       return;
     }
-    result = await applyClients({
-      clients: clients.length ? clients : undefined,
-    });
+    const selected = clients.length ? clients : undefined;
+    const applied = await applyClients({ clients: selected });
+    result = {
+      ...applied,
+      hooks: (await applyHooks({ clients: selected, batch: applied.batch }))
+        .results,
+    };
   } else if (action === "verify") {
     const ids = rest.filter((arg) => !arg.startsWith("--"));
     const targets = ids.length
@@ -60,9 +84,12 @@ export async function runClientsCommand(args: string[]): Promise<void> {
     for (const id of targets)
       (result as unknown[]).push(await verifyClient(id));
   } else if (action === "repair") result = await repairClients();
-  else if (action === "restore")
-    result = await restoreClients({ batch: values("--batch")[0] });
-  else {
+  else if (action === "restore") {
+    const restored = await restoreClients({ batch: values("--batch")[0] });
+    result = restored.batch
+      ? { ...restored, hooks: await restoreHooks({ batch: restored.batch }) }
+      : restored;
+  } else {
     console.error(usage);
     process.exitCode = 1;
     return;

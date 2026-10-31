@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { learnFromSession } from "@ocean/brain/memory/lesson-learning.js";
@@ -699,10 +700,26 @@ async function commandProject(): Promise<void> {
   }
 }
 
+// `--repair` (the hook entries `ocean clients` writes, T-296): `client sync` in the background,
+// as the Claude Code bootstrap script does; it never delays or fails the session.
+function startBackgroundSync(): void {
+  try {
+    spawn(process.execPath, [process.argv[1], "client", "sync"], {
+      detached: true,
+      stdio: "ignore",
+    })
+      .on("error", () => {})
+      .unref();
+  } catch {
+    // no repair this time; the next session start tries again
+  }
+}
+
 async function commandHook(): Promise<void> {
   const action = process.argv[3] ?? "";
   if (action === "session-start") {
     const flags = process.argv.slice(4);
+    if (flags.includes("--repair")) startBackgroundSync();
     const inline = flags.find((arg) => arg.startsWith("--client="));
     const clientIndex = flags.indexOf("--client");
     const client = inline
@@ -746,7 +763,7 @@ async function commandHook(): Promise<void> {
   }
 }
 
-const sessionStartUsage = `Usage: ocean hook session-start [--client ${SESSION_START_CLIENTS.join("|")}]`;
+const sessionStartUsage = `Usage: ocean hook session-start [--client ${SESSION_START_CLIENTS.join("|")}] [--repair]`;
 
 async function commandIntent(): Promise<void> {
   const action = process.argv[3] ?? "classify";

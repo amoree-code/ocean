@@ -150,8 +150,8 @@ test("the hook step prints the release entry first, the checkout only as fallbac
 });
 
 // T-296 P3: the connect step over fake client operations — never a real client config.
-function fakeClients(plans) {
-  const calls = { apply: [], verify: [] };
+function fakeClients(plans, hooks = []) {
+  const calls = { apply: [], verify: [], applyHooks: [] };
   return {
     calls,
     clients: {
@@ -166,6 +166,13 @@ function fakeClients(plans) {
       verify: async (client) => {
         calls.verify.push(client);
         return { ok: client !== "codex", detail: "checked" };
+      },
+      hooks: async () => hooks,
+      applyHooks: async (batch) => {
+        calls.applyHooks.push(batch);
+        return hooks
+          .filter((hook) => hook.status === "change")
+          .map((hook) => ({ client: hook.client, result: "written" }));
       },
     },
   };
@@ -183,11 +190,11 @@ const plan = (client, status, extra = {}) => ({
   ...extra,
 });
 
-async function connectStep(plans) {
+async function connectStep(plans, hooks) {
   const { buildSteps } = await import(
     "../dist/application/onboarding/steps.js"
   );
-  const fake = fakeClients(plans);
+  const fake = fakeClients(plans, hooks);
   const step = buildSteps({
     setup: async () => {},
     wrappers: {},
@@ -244,4 +251,42 @@ test("connect with nothing pending asks nothing and is done", async () => {
   assert.equal(await step.run(io), "done");
   assert.deepEqual(calls.apply, []);
   assert.match(lines.join("\n"), /already connected/);
+});
+
+test("connect puts session hooks in the same review and applies them under the same batch", async () => {
+  const hooks = [
+    { client: "codex", file: "~/.codex/hooks.json", status: "change" },
+    {
+      client: "claude-code",
+      file: "~/.claude/settings.json",
+      status: "current",
+    },
+    {
+      client: "gemini",
+      file: "~/.gemini/settings.json",
+      status: "manual",
+      reason: "not canonical",
+      snippet: "hooks.SessionStart += {}",
+    },
+  ];
+  const { step, calls } = await connectStep([plan("codex", "current")], hooks);
+  const asked = [];
+  const { io, lines } = fakeIO(true);
+  io.ask = async (question, fallback) => {
+    asked.push(question);
+    return fallback;
+  };
+  assert.equal(await step.run(io), "done");
+  assert.equal(asked.length, 1);
+  assert.match(asked[0], /0 MCP entries, 1 session hooks/);
+  assert.deepEqual(calls.apply, [[]]);
+  assert.deepEqual(calls.applyHooks, ["b1"]);
+  const text = lines.join("\n");
+  assert.match(text, /codex session hook\s+will add a SessionStart hook/);
+  assert.match(text, /claude-code session hook\s+present/);
+  assert.match(
+    text,
+    /gemini session hook\s+hand edit needed \(not canonical\); add hooks/,
+  );
+  assert.match(text, /codex session hook: written/);
 });

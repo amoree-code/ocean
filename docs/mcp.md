@@ -79,6 +79,17 @@ check to do by hand. Without a terminal (or with `--yes`) the step writes nothin
 commands instead. `apply` refuses an engine that lives in a temporary directory (a scratch
 worktree): every client wired to it would stop starting Ocean once that directory is gone.
 
+Session-start hooks go through the same plan, apply and restore, for every client whose
+session-start event is verified: Claude Code (`~/.claude/settings.json`), Codex
+(`~/.codex/hooks.json`) and Gemini CLI (`~/.gemini/settings.json`; 0.58 reads the same
+`hookSpecificOutput.additionalContext`). A client that already runs an Ocean hook (the
+`ocean-session-bootstrap` script or any `hook session-start` command) is left alone; otherwise one
+group is appended after the existing ones — other tools' hooks are never edited — running
+`node <engine> hook session-start --client <id> --repair`, where `--repair` starts `client sync` in
+the background. A file not in canonical JSON form gets a manual step with the exact group instead.
+`ocean clients restore` removes the groups an apply added, and a group the user changed since is
+reported as a conflict.
+
 ## One endpoint for every server: the MCP gateway
 
 `ocean mcp gateway` is a single stdio MCP server that routes the tools of every registered
