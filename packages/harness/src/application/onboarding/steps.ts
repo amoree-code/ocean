@@ -1,6 +1,10 @@
-import { writeFile } from "node:fs/promises";
+import { stat, writeFile } from "node:fs/promises";
 import type { ProviderRecord } from "@ocean/core/domain/providers/provider.js";
-import { oceanPath, PERSONAL_DIR } from "@ocean/core/shared/paths.js";
+import {
+  oceanPath,
+  PERSONAL_DIR,
+  SYSTEM_DIR,
+} from "@ocean/core/shared/paths.js";
 import {
   copyClientSkills,
   populateSkillHub,
@@ -25,6 +29,8 @@ export type OnboardingStep = {
   // `optional` steps are skipped (not run) when non-interactive.
   optional: boolean;
   run(io: OnboardingIO): Promise<"done" | "skipped">;
+  // A completed step whose world changed (a new client) says why it should run again.
+  reopen?(): Promise<string | null>;
 };
 
 // The wrapper operations the steps run. The CLI passes the wrapper manager's, so this
@@ -50,6 +56,8 @@ export type OnboardingClients = {
   // Native-memory policies (P4), same batch.
   native(): Promise<NativePlan[]>;
   applyNative(batch: string): Promise<{ client: string; result: string }[]>;
+  // Clients the owner already approved; a pending change for any other reopens the review.
+  approved(): Promise<string[]>;
 };
 
 export type StepDependencies = {
@@ -79,6 +87,21 @@ function connectStep(clients: OnboardingClients): OnboardingStep {
     id: "connect",
     title: "Connect AI clients to Ocean (one review, one apply)",
     optional: false,
+    // Drift of an approved client is repaired by `client sync`; only a new one needs a review.
+    async reopen() {
+      const approved = new Set(await clients.approved());
+      const fresh = (await clients.plan())
+        .filter(
+          (plan) =>
+            plan.installed &&
+            plan.status === "change" &&
+            !approved.has(plan.client),
+        )
+        .map((plan) => plan.client);
+      return fresh.length
+        ? `new client(s) to connect: ${fresh.join(", ")}`
+        : null;
+    },
     async run(io) {
       const plans = (await clients.plan()).filter((plan) => plan.installed);
       for (const plan of plans)
@@ -180,6 +203,31 @@ function guided(
   };
 }
 
+// §3.7 step 2: sessions should run a release build, not a development checkout. Building one
+// needs the network and is owner-run, so the step checks and names the command.
+const releaseStep: OnboardingStep = {
+  id: "release",
+  title: "Release build (what every client runs)",
+  optional: false,
+  async run(io) {
+    const current = oceanPath(SYSTEM_DIR, "runtime", "release", "current");
+    if (
+      await stat(current).then(
+        () => true,
+        () => false,
+      )
+    ) {
+      io.say("  A current release exists; clients are wired to it.");
+      return "done";
+    }
+    io.say(
+      "  No release yet. Run: ocean runtime release   (builds origin/main; needs the network)",
+    );
+    io.say("  Then: ocean onboard --reset release");
+    return "skipped";
+  },
+};
+
 export function buildSteps(deps: StepDependencies): OnboardingStep[] {
   return [
     {
@@ -191,6 +239,7 @@ export function buildSteps(deps: StepDependencies): OnboardingStep[] {
         return "done";
       },
     },
+    releaseStep,
     {
       id: "identity",
       title: "Identity (who Ocean works for)",

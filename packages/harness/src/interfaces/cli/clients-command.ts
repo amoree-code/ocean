@@ -1,6 +1,8 @@
 import {
   applyClients,
+  confirmClient,
   planClients,
+  recordVerification,
   repairClients,
   restoreClients,
   verifyClient,
@@ -17,7 +19,7 @@ import {
 } from "../../application/clients/native.js";
 
 const usage =
-  "Usage: ocean clients detect|plan [--json] | apply [--client <id>…] [--yes] | verify [<id>…] | repair | restore [--batch <id>]";
+  "Usage: ocean clients detect|plan [--json] | apply [--client <id>…] [--yes] | verify [<id>…] | confirm <id>… | repair | restore [--batch <id>]";
 
 // `ocean clients` (T-296 P2/P3b): every installed AI client's `ocean` MCP entry and, where the
 // client has a verified session-start event, Ocean's session hook. `apply` shows the plan until
@@ -108,8 +110,16 @@ export async function runClientsCommand(args: string[]): Promise<void> {
           .filter((plan) => plan.installed && plan.status === "current")
           .map((plan) => plan.client);
     result = [];
-    for (const id of targets)
-      (result as unknown[]).push(await verifyClient(id));
+    for (const id of targets) {
+      const check = await verifyClient(id);
+      await recordVerification(id, check.ok);
+      (result as unknown[]).push(check);
+    }
+  } else if (action === "confirm") {
+    const ids = rest.filter((arg) => !arg.startsWith("--"));
+    if (!ids.length) throw new Error("Usage: ocean clients confirm <id>…");
+    for (const id of ids) await confirmClient(id);
+    result = { confirmed: ids };
   } else if (action === "repair") result = await repairClients();
   else if (action === "restore") {
     const restored = await restoreClients({ batch: values("--batch")[0] });

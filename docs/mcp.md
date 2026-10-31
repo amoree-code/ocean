@@ -73,10 +73,19 @@ brain server — proof the entry launches, not that the app connects. `ocean doc
 installed supported client that is not wired or needs a manual edit, warns for an unknown
 capability, and reports unsupported clients with their fallback.
 
+The state file `bridge/state/clients/clients.json` records the clients approved by an apply, the
+last `ocean clients verify` result of each, and the date the owner confirmed a client inside its
+app (`ocean clients confirm <id>` after restarting it and asking it to call `ocean_ping`). Until
+that confirmation, `ocean doctor` warns `CLIENT_CHECK_PENDING` for a wired client: a config that
+launches the server is not yet proof that the app uses it.
+
 `ocean onboard` runs the same plan as its `connect` step: one consolidated review of every detected
 client, one confirmation that applies all of them, then `verify` per written client and the in-app
 check to do by hand. Without a terminal (or with `--yes`) the step writes nothing and prints the
-commands instead. `apply` refuses an engine that lives in a temporary directory (a scratch
+commands instead. A completed `connect` step reopens on the next `ocean onboard` only when a new,
+not yet approved client needs a change; an approved client that drifted is repaired by `ocean
+client sync` without asking. A `release` step checks for a current release build and names
+`ocean runtime release` (owner-run, needs the network) when there is none. `apply` refuses an engine that lives in a temporary directory (a scratch
 worktree): every client wired to it would stop starting Ocean once that directory is gone.
 
 Session-start hooks go through the same plan, apply and restore, for every client whose
