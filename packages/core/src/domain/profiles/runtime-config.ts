@@ -2,7 +2,8 @@ import { z } from "zod";
 import { assertProfileName } from "./profile.js";
 
 // bridge/config/runtime.json (T-245 Phase 5). Paths are derived from the Ocean root, never
-// configured, so the only setting is which profile runs when none is named.
+// configured: the settings are which profile runs when none is named, and whether a run for a
+// task may use the suggested profile instead (T-296, off unless set).
 const runtimeConfigSchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -14,6 +15,7 @@ const runtimeConfigSchema = z
         return false;
       }
     }, "Invalid profile name"),
+    autoProfile: z.boolean().optional(),
   })
   .strict();
 

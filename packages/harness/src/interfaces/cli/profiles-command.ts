@@ -1,3 +1,4 @@
+import { selectProfileForTask } from "../../application/profiles/profile-suggestion.js";
 import {
   applyProfileUpgrade,
   planProfileUpgrade,
@@ -7,7 +8,7 @@ import {
 import { loadProfile } from "../../infrastructure/filesystem/profile-loader.js";
 
 const usage =
-  "Usage: ocean profiles validate | ocean profiles upgrade --check | --apply | --rollback";
+  "Usage: ocean profiles validate | upgrade --check | --apply | --rollback | suggest --task <id> [--profile <name>]";
 
 function print(value: unknown): void {
   console.log(JSON.stringify(value, null, 2));
@@ -16,6 +17,21 @@ function print(value: unknown): void {
 export async function runProfilesCommand(args: string[]): Promise<void> {
   const [action, mode] = args;
   try {
+    if (action === "suggest") {
+      const value = (flag: string) => {
+        const index = args.indexOf(flag);
+        return index >= 0 ? args[index + 1] : undefined;
+      };
+      const task = value("--task");
+      if (!task) throw new Error(usage);
+      print(
+        await selectProfileForTask(task, {
+          cwd: process.cwd(),
+          override: value("--profile"),
+        }),
+      );
+      return;
+    }
     if (action === "validate") {
       const results = await validateProfiles(loadProfile);
       print(results);

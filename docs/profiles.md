@@ -156,3 +156,19 @@ runtime skill loading does not invoke CI tooling.
 Completed sessions can produce a bounded, redacted skill candidate with
 `ocean skill learn <session-id>`. The candidate is stored privately with its source session
 and remains inactive until an owner explicitly runs `ocean skill review <id> promoted`.
+
+## Suggesting a profile for a task (T-296)
+
+`ocean profiles suggest --task <id> [--profile <name>]` reads the task record and applies a fixed
+rule table (`packages/core/src/domain/profiles/profile-selection.ts`): the declared `kind` first,
+then the title and objective — security → `security-auditor`, review → `reviewer`, tests →
+`tester`, delivery → `devops`, research → `researcher`, planning → `strategist`, implementation
+→ `developer`. The first matching rule wins; no match, or a profile that is not installed, gives
+`default`. `class: high` or `risk: high` adds "verify before completing" to the reason. An
+explicit `--profile` always wins. Every selection, suggested or overridden, is appended to
+`bridge/state/profiles/selections.jsonl`.
+
+`ocean run --task <id>` without `--profile` uses the suggestion only when
+`bridge/config/runtime.json` sets `"autoProfile": true`; otherwise `defaultProfile` applies as
+before. The suggestion never widens a run on its own: it names an installed profile, whose own
+`writePolicy` and allowed paths still bound what the run may do.

@@ -112,6 +112,7 @@ import { syncCharterCopies } from "../../application/integrations/charter-copies
 import { configureClaudeCodeWrapper } from "../../application/integrations/claude-vscode.js";
 import { repairEngineEntries } from "../../application/integrations/engine-entry-repair.js";
 import { syncSkillFilter } from "../../application/integrations/skill-filter.js";
+import { selectProfileForTask } from "../../application/profiles/profile-suggestion.js";
 import {
   releaseRuntime,
   releaseStatus,
@@ -1217,12 +1218,14 @@ async function commandRun(): Promise<void> {
     return;
   }
   // runtime.json is read only when it is needed, so a broken one cannot block an explicit run.
-  const profileName = resolveProfileName(
-    explicitProfile,
-    explicitProfile ? null : await loadRuntimeConfig(),
-  );
+  const runtimeConfig = explicitProfile ? null : await loadRuntimeConfig();
   const client = clientIndex >= 0 ? process.argv[clientIndex + 1] : undefined;
   const taskId = taskIndex >= 0 ? process.argv[taskIndex + 1] : undefined;
+  // T-296: with `autoProfile` on, a run for a task without --profile takes the suggested one.
+  const profileName =
+    runtimeConfig?.autoProfile && taskId
+      ? (await selectProfileForTask(taskId, { cwd: process.cwd() })).profile
+      : resolveProfileName(explicitProfile, runtimeConfig);
   const handoffId =
     handoffIndex >= 0 ? process.argv[handoffIndex + 1] : undefined;
   const prompt =
