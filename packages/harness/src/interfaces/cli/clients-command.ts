@@ -1,10 +1,12 @@
 import {
   applyClients,
   confirmClient,
+  defaultClientEnv,
   planClients,
   recordVerification,
   repairClients,
   restoreClients,
+  temporaryEntryProblem,
   verifyClient,
 } from "../../application/clients/clients.js";
 import {
@@ -33,6 +35,10 @@ export async function runClientsCommand(args: string[]): Promise<void> {
   let result: unknown;
   if (action === "detect" || action === "plan") {
     const plans = await planClients();
+    // `apply` refuses a temporary engine; the plan says so up front (T-300).
+    const problem = temporaryEntryProblem(defaultClientEnv().entry);
+    if (problem && action === "plan")
+      console.error(`Warning: apply would refuse this plan — ${problem}`);
     if (!json) {
       for (const plan of plans) {
         if (action === "detect" && !plan.installed) continue;

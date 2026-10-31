@@ -202,6 +202,49 @@ test("doctor: a settable switch left unset fails, toggles and harvest warn, a se
   });
 });
 
+test("Hermes: its YAML switches are read, never written; both off is current (T-300)", async () => {
+  const yaml = (enabled, profile) =>
+    `model: x\nmemory:\n  # Ocean is the memory home\n  memory_enabled: ${enabled}\n  user_profile_enabled: ${profile}  # owner\nother:\n  memory_enabled: true\n`;
+  const hermes = async (text) => {
+    const { root, env, home } = await fixture({ ".hermes/config.yaml": text });
+    return withRoot(root, async () => {
+      const plan = (await planNative(env)).find(
+        (item) => item.client === "hermes",
+      );
+      const finding = (await nativeFindings(env)).find((item) =>
+        item.message.startsWith("hermes "),
+      );
+      await applyNative({ env });
+      return { plan, finding, after: await read(home, ".hermes/config.yaml") };
+    });
+  };
+
+  const half = await hermes(yaml("false", "true"));
+  assert.equal(half.plan.status, "manual");
+  assert.equal(half.finding.code, "NATIVE_COMPETING");
+  assert.equal(half.finding.severity, "FAIL");
+  assert.doesNotMatch(half.finding.message, /undefined/);
+  assert.match(
+    half.finding.message,
+    /memory\.memory_enabled: false, memory\.user_profile_enabled: false in ~\/\.hermes\/config\.yaml/,
+  );
+  assert.equal(
+    half.after,
+    yaml("false", "true"),
+    "apply never writes the YAML",
+  );
+
+  const off = await hermes(yaml("false", "false"));
+  assert.equal(off.plan.status, "current");
+  assert.equal(off.finding.code, "NATIVE_POLICY_SET");
+
+  // A key of the same name in another section does not count.
+  const elsewhere = await hermes(
+    "memory:\n  user_profile_enabled: false\nother:\n  memory_enabled: false\n",
+  );
+  assert.equal(elsewhere.plan.status, "manual");
+});
+
 test("harvest proposes each native memory once, skips oversized and secret texts, never in a dry run", async () => {
   const { home, root } = await fixture();
   const put = async (file, text) => {

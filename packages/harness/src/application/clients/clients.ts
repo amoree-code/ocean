@@ -658,11 +658,22 @@ export type ClientFinding = {
 };
 
 // Doctor view: a supported client that is installed but not wired fails; unsupported clients
-// are reported with their fallback; an unknown capability is a warning, never a pass.
+// are reported with their fallback; an unknown capability is a warning, never a pass. On this
+// machine's real env, an engine in a temporary directory is named first: every plan below then
+// points at a build that will disappear (T-300).
 export async function clientFindings(
-  env: ClientEnv = defaultClientEnv(),
+  env?: ClientEnv,
 ): Promise<ClientFinding[]> {
   const findings: ClientFinding[] = [];
+  const problem = env ? null : temporaryEntryProblem(defaultClientEnv().entry);
+  if (problem)
+    findings.push({
+      code: "CLIENT_ENGINE_TEMPORARY",
+      severity: "WARN",
+      message: `the client plans below are for a temporary engine — ${problem}`,
+      fixable: false,
+    });
+  env ??= defaultClientEnv();
   const { confirmed } = await readClientState();
   for (const plan of await planClients(env)) {
     if (!plan.installed) continue;
