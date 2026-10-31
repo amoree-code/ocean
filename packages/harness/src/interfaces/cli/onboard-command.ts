@@ -2,6 +2,8 @@ import { createInterface } from "node:readline/promises";
 import {
   applyClients,
   planClients,
+  readClientState,
+  recordVerification,
   verifyClient,
 } from "../../application/clients/clients.js";
 import { applyHooks, planHooks } from "../../application/clients/hooks.js";
@@ -38,7 +40,12 @@ const stepDependencies = () => ({
   clients: {
     plan: () => planClients(),
     apply: (clients: string[]) => applyClients({ clients }),
-    verify: (client: string) => verifyClient(client),
+    verify: async (client: string) => {
+      const check = await verifyClient(client);
+      await recordVerification(client, check.ok);
+      return check;
+    },
+    approved: async () => Object.keys((await readClientState()).approved),
     hooks: () => planHooks(),
     applyHooks: async (batch: string) => (await applyHooks({ batch })).results,
     native: () => planNative(),
@@ -86,6 +93,13 @@ export async function onboard(options: OnboardOptions = {}): Promise<void> {
       if (!steps.some((step) => step.id === options.reset))
         throw new Error(`Unknown onboarding step '${options.reset}'`);
       delete state.steps[options.reset];
+    }
+    for (const step of steps) {
+      if (!state.steps[step.id] || !step.reopen) continue;
+      const reason = await step.reopen();
+      if (!reason) continue;
+      io.say(`Reopening ${step.id}: ${reason}`);
+      delete state.steps[step.id];
     }
     const pending = steps.filter((step) => !state.steps[step.id]);
     if (pending.length === 0) {

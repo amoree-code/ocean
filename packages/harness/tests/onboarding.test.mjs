@@ -150,7 +150,7 @@ test("the hook step prints the release entry first, the checkout only as fallbac
 });
 
 // T-296 P3: the connect step over fake client operations — never a real client config.
-function fakeClients(plans, hooks = [], native = []) {
+function fakeClients(plans, hooks = [], native = [], approved = []) {
   const calls = { apply: [], verify: [], applyHooks: [], applyNative: [] };
   return {
     calls,
@@ -168,6 +168,7 @@ function fakeClients(plans, hooks = [], native = []) {
         return { ok: client !== "codex", detail: "checked" };
       },
       hooks: async () => hooks,
+      approved: async () => approved,
       native: async () => native,
       applyNative: async (batch) => {
         calls.applyNative.push(batch);
@@ -330,4 +331,63 @@ test("connect lists native-memory policies and applies the settable ones in the 
   assert.match(text, /cursor native memory\s+you: turn off Memories/);
   assert.match(text, /codex native memory\s+governed/);
   assert.match(text, /gemini native memory: written/);
+});
+
+test("a completed connect step reopens only for a new, unapproved client", async () => {
+  const { buildSteps } = await import(
+    "../dist/application/onboarding/steps.js"
+  );
+  const make = (plans, approved) =>
+    buildSteps({
+      setup: async () => {},
+      wrappers: {},
+      clients: fakeClients(plans, [], [], approved).clients,
+    }).find((item) => item.id === "connect");
+  assert.equal(
+    await make([plan("cursor", "change")], ["cursor"]).reopen(),
+    null,
+  );
+  assert.equal(await make([plan("cursor", "current")], []).reopen(), null);
+  assert.match(
+    await make(
+      [plan("cursor", "change"), plan("qwen", "change")],
+      ["cursor"],
+    ).reopen(),
+    /new client\(s\) to connect: qwen/,
+  );
+  // onboard() turns that reason into a rerun of the step alone.
+  await withTempRoot(async () => {
+    const calls = [];
+    const steps = fakeSteps(calls);
+    steps[0].reopen = async () => null;
+    steps[2].reopen = async () => "new client(s) to connect: qwen";
+    await onboard({ io: fakeIO(true).io, steps });
+    calls.length = 0;
+    const second = fakeIO(true);
+    await onboard({ io: second.io, steps });
+    assert.deepEqual(calls, ["c"]);
+    assert.match(second.lines.join("\n"), /Reopening c: new client/);
+  });
+});
+
+test("the release step passes with a current release and names the command without one", async () => {
+  const { buildSteps } = await import(
+    "../dist/application/onboarding/steps.js"
+  );
+  const step = buildSteps({
+    setup: async () => {},
+    wrappers: {},
+    clients: {},
+  }).find((item) => item.id === "release");
+  await withTempRoot(async () => {
+    const { io, lines } = fakeIO(true);
+    assert.equal(await step.run(io), "skipped");
+    assert.match(lines.join("\n"), /ocean runtime release/);
+    const { mkdir } = await import("node:fs/promises");
+    await mkdir(
+      path.join(process.env.OCEAN_ROOT, "bridge/runtime/release/current"),
+      { recursive: true },
+    );
+    assert.equal(await step.run(fakeIO(true).io), "done");
+  });
 });

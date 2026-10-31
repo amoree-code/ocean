@@ -16,8 +16,11 @@ import test from "node:test";
 import {
   applyClients,
   clientFindings,
+  confirmClient,
   edit,
   planClients,
+  readClientState,
+  recordVerification,
   repairClients,
   restoreClients,
   temporaryEntryProblem,
@@ -519,10 +522,23 @@ test("doctor findings fail unwired supported clients, warn unknown, report unsup
       after.filter((finding) => finding.severity === "FAIL").length,
       2,
     );
+    // Wired but not yet checked in the app: a warning until the owner confirms it.
     assert.equal(
-      after.filter((finding) => finding.code === "CLIENT_WIRED").length,
+      after.filter((finding) => finding.code === "CLIENT_CHECK_PENDING").length,
       8,
     );
+    await confirmClient("cursor");
+    const confirmed = await clientFindings(env);
+    assert.equal(
+      confirmed.filter((finding) => finding.code === "CLIENT_WIRED").length,
+      1,
+    );
+    await recordVerification("cursor", true);
+    const state = await readClientState();
+    assert.deepEqual(Object.keys(state.confirmed), ["cursor"]);
+    assert.equal(state.verified.cursor.ok, true);
+    assert.ok(state.approved.cursor, "confirm and verify keep the approvals");
+    await assert.rejects(confirmClient("nope"), /unknown client/);
   });
 });
 

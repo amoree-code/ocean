@@ -270,25 +270,63 @@ function stateFile(): string {
   return oceanPath(SYSTEM_DIR, "state", "clients", "clients.json");
 }
 
-async function approvedClients(): Promise<
-  Record<string, { approvedAt: string }>
-> {
+// bridge/state/clients/clients.json: which clients the owner approved, the last scripted
+// verification of each, and the date the owner confirmed it works inside the app (§3.7 record).
+export type ClientState = {
+  approved: Record<string, { approvedAt: string }>;
+  verified: Record<string, { verifiedAt: string; ok: boolean }>;
+  confirmed: Record<string, { confirmedAt: string }>;
+};
+
+export async function readClientState(): Promise<ClientState> {
   const text = await readText(stateFile());
-  return text ? (JSON.parse(text).approved ?? {}) : {};
+  const parsed = text ? JSON.parse(text) : {};
+  return {
+    approved: parsed.approved ?? {},
+    verified: parsed.verified ?? {},
+    confirmed: parsed.confirmed ?? {},
+  };
 }
 
-async function approve(ids: string[]): Promise<void> {
+async function approvedClients(): Promise<ClientState["approved"]> {
+  return (await readClientState()).approved;
+}
+
+async function updateClientState(
+  change: (state: ClientState) => void,
+): Promise<void> {
   const file = stateFile();
   await mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
   await withFileLock(file, async () => {
-    const approved = await approvedClients();
+    const state = await readClientState();
+    change(state);
+    await atomicWrite(file, `${JSON.stringify(state, null, 2)}\n`, 0o600);
+  });
+}
+
+async function approve(ids: string[]): Promise<void> {
+  if (!ids.length) return;
+  await updateClientState((state) => {
     for (const id of ids)
-      approved[id] = { approvedAt: new Date().toISOString() };
-    await atomicWrite(
-      file,
-      `${JSON.stringify({ approved }, null, 2)}\n`,
-      0o600,
-    );
+      state.approved[id] = { approvedAt: new Date().toISOString() };
+  });
+}
+
+export async function recordVerification(
+  client: string,
+  ok: boolean,
+): Promise<void> {
+  await updateClientState((state) => {
+    state.verified[client] = { verifiedAt: new Date().toISOString(), ok };
+  });
+}
+
+// The owner checked the client inside its app (restart, ask it to call ocean_ping).
+export async function confirmClient(client: string): Promise<void> {
+  if (!CLIENT_ADAPTERS.some((adapter) => adapter.id === client))
+    throw new Error(`unknown client '${client}'`);
+  await updateClientState((state) => {
+    state.confirmed[client] = { confirmedAt: new Date().toISOString() };
   });
 }
 
@@ -625,16 +663,26 @@ export async function clientFindings(
   env: ClientEnv = defaultClientEnv(),
 ): Promise<ClientFinding[]> {
   const findings: ClientFinding[] = [];
+  const { confirmed } = await readClientState();
   for (const plan of await planClients(env)) {
     if (!plan.installed) continue;
     const name = `${plan.label} (${plan.client})`;
     if (plan.status === "current")
-      findings.push({
-        code: "CLIENT_WIRED",
-        severity: "OK",
-        message: `${name}: \`ocean\` entry current`,
-        fixable: false,
-      });
+      findings.push(
+        confirmed[plan.client]
+          ? {
+              code: "CLIENT_WIRED",
+              severity: "OK",
+              message: `${name}: \`ocean\` entry current, checked in the app ${confirmed[plan.client].confirmedAt.slice(0, 10)}`,
+              fixable: false,
+            }
+          : {
+              code: "CLIENT_CHECK_PENDING",
+              severity: "WARN",
+              message: `${name}: \`ocean\` entry current; in-app check not recorded — restart it, ask it to call ocean_ping, then \`ocean clients confirm ${plan.client}\``,
+              fixable: false,
+            },
+      );
     else if (plan.status === "change")
       findings.push({
         code: "CLIENT_NOT_WIRED",
