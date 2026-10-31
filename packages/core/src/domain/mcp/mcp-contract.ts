@@ -5,7 +5,15 @@ export const mcpToolSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
   inputSchema: z.record(z.string(), z.unknown()).optional(),
-  annotations: z.object({ readOnlyHint: z.boolean().optional() }).optional(),
+  // Hints for the client's own permission UI. They are not enforcement: the server's own
+  // checks (roots, secrets, the writes switch) decide what a call may do.
+  annotations: z
+    .object({
+      readOnlyHint: z.boolean().optional(),
+      destructiveHint: z.boolean().optional(),
+      idempotentHint: z.boolean().optional(),
+    })
+    .optional(),
 });
 export type McpTool = z.infer<typeof mcpToolSchema>;
 export const mcpApprovalSchema = z.object({

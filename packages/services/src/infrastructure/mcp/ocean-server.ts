@@ -5,12 +5,28 @@ import {
   brainRead,
   brainSearch,
 } from "@ocean/brain/brain/brain-service.js";
+import { memorySettings } from "@ocean/brain/memory/memory-audit.js";
+import {
+  deleteMemoryRecord,
+  memoryHistory,
+  restoreMemory,
+} from "@ocean/brain/memory/memory-trash.js";
+import {
+  proposeMemory,
+  readMemoryRecord,
+  writeMemoryRecord,
+} from "@ocean/brain/memory/memory-write.js";
 import { promoteSessionToKnowledge } from "@ocean/brain/memory/session-promotion.js";
 import { isValidProjectId } from "@ocean/core/domain/context/project-id.js";
 import {
   actionFingerprint,
   mcpApprovalSchema,
 } from "@ocean/core/domain/mcp/mcp-contract.js";
+import {
+  MEMORY_CONTRACT_VERSION,
+  MEMORY_INSTRUCTIONS,
+  MemoryContractError,
+} from "@ocean/core/domain/mcp/memory-contract.js";
 import type { BrainIndexPort } from "@ocean/core/domain/ports/brain-index-port.js";
 import type { WrapperManagerPort } from "@ocean/core/domain/ports/platform-ports.js";
 import type { SessionStoreFactory } from "@ocean/core/domain/ports/session-store-port.js";
@@ -36,7 +52,7 @@ type Response = {
   jsonrpc: "2.0";
   id?: number;
   result?: unknown;
-  error?: { code: number; message: string };
+  error?: { code: number; message: string; data?: Record<string, unknown> };
 };
 
 const tools = new McpToolRegistry([
@@ -234,6 +250,112 @@ const tools = new McpToolRegistry([
       additionalProperties: false,
     },
   },
+  {
+    name: "ocean_ping",
+    description: "Cheap health check: answers when the server is up.",
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      type: "object",
+      properties: {},
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "ocean_capabilities",
+    description:
+      "The memory contract version, the tool names and whether memory writes are enabled.",
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      type: "object",
+      properties: {},
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "memory_read",
+    description:
+      "Read one memory record (02-personal/... or 04-projects/<project>/memory/...) with its sha256, which memory_write update, memory_delete and memory_restore need as expectedHash.",
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      type: "object",
+      properties: { path: { type: "string" } },
+      required: ["path"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "memory_history",
+    description:
+      "Audit entries (newest first) for one record path, or for all records; ids feed memory_restore.",
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      type: "object",
+      properties: { path: { type: "string" }, limit: { type: "number" } },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "memory_write",
+    description:
+      "Save a fact the user explicitly asked to remember or change. Search first (brain_search): if a record covers it, memory_read it and write the merged record back with mode `update` and its sha256 as expectedHash; otherwise mode `create` in `02-personal/<section>/<name>.md` or `04-projects/<project>/memory/<name>.md`. Inferred or imported facts go to memory_propose instead. Never secrets or temporary state.",
+    annotations: { readOnlyHint: false, destructiveHint: true },
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: { type: "string" },
+        content: { type: "string" },
+        mode: { type: "string", enum: ["create", "update"] },
+        expectedHash: { type: "string" },
+        allowSimilar: { type: "boolean" },
+      },
+      required: ["path", "content", "mode"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "memory_propose",
+    description:
+      "Queue a fact you inferred, or one imported from another tool's memory, for the user's review. It is not memory until approved. Optionally name the record it should become (target) and why (reason).",
+    annotations: { readOnlyHint: false, destructiveHint: false },
+    inputSchema: {
+      type: "object",
+      properties: {
+        content: { type: "string" },
+        origin: { type: "string", enum: ["inferred", "imported"] },
+        target: { type: "string" },
+        reason: { type: "string" },
+      },
+      required: ["content", "origin"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "memory_delete",
+    description:
+      "Soft-delete one record the user asked to remove: it moves to Ocean's trash and memory_restore brings it back. Needs the record's sha256 from memory_read as expectedHash.",
+    annotations: { readOnlyHint: false, destructiveHint: true },
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: { type: "string" },
+        expectedHash: { type: "string" },
+      },
+      required: ["path", "expectedHash"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "memory_restore",
+    description:
+      "Put back the content a memory_history entry preserved (a deleted record, or the version an update or restore replaced). When the record exists, pass its current sha256 as expectedHash.",
+    annotations: { readOnlyHint: false, destructiveHint: true },
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "string" }, expectedHash: { type: "string" } },
+      required: ["id"],
+      additionalProperties: false,
+    },
+  },
 ]);
 
 const resources = [
@@ -306,6 +428,17 @@ async function profiles(): Promise<string[]> {
     throw error;
   }
 }
+
+const MUTATING_TOOLS = new Set([
+  "memory_write",
+  "memory_propose",
+  "memory_delete",
+  "memory_restore",
+]);
+
+// The connected client's name from `initialize` (one stdio server per client), recorded as the
+// source of every memory change it makes.
+let clientName = "unknown";
 
 async function callTool(
   name: string,
@@ -472,6 +605,57 @@ async function callTool(
           : undefined,
       indexPort: ports.brainIndex,
     });
+  if (name === "ocean_ping") return { ok: true };
+  if (name === "ocean_capabilities")
+    return {
+      contract: MEMORY_CONTRACT_VERSION,
+      tools: tools.list().map((tool) => tool.name),
+      writes: (await memorySettings()).mcpWrites,
+    };
+  if (name === "memory_read")
+    return readMemoryRecord(requiredArgument(args, "path"));
+  if (name === "memory_history")
+    return memoryHistory({
+      path: typeof args.path === "string" ? args.path : undefined,
+      limit: typeof args.limit === "number" ? args.limit : undefined,
+    });
+  if (MUTATING_TOOLS.has(name) && !(await memorySettings()).mcpWrites)
+    throw new MemoryContractError(
+      "WRITES_OFF",
+      "memory writes over MCP are off (bridge/config/memory.json)",
+    );
+  const source = clientName;
+  const text = (key: string) =>
+    typeof args[key] === "string" ? (args[key] as string) : undefined;
+  if (name === "memory_write")
+    return writeMemoryRecord({
+      path: requiredArgument(args, "path"),
+      content: requiredArgument(args, "content"),
+      mode: args.mode as "create" | "update",
+      expectedHash: text("expectedHash"),
+      allowSimilar: args.allowSimilar === true,
+      source,
+    });
+  if (name === "memory_propose")
+    return proposeMemory({
+      content: requiredArgument(args, "content"),
+      origin: args.origin as "inferred" | "imported",
+      target: text("target"),
+      reason: text("reason"),
+      source,
+    });
+  if (name === "memory_delete")
+    return deleteMemoryRecord({
+      path: requiredArgument(args, "path"),
+      expectedHash: requiredArgument(args, "expectedHash"),
+      source,
+    });
+  if (name === "memory_restore")
+    return restoreMemory({
+      id: requiredArgument(args, "id"),
+      expectedHash: text("expectedHash"),
+      source,
+    });
   throw new Error(`Unknown MCP tool: ${name}`);
 }
 
@@ -564,7 +748,10 @@ export async function handleOceanMcpRequest(
   ports: OceanMcpPorts,
 ): Promise<Response | null> {
   if (request.method === "notifications/initialized") return null;
-  if (request.method === "initialize")
+  if (request.method === "initialize") {
+    const info = request.params?.clientInfo as { name?: unknown } | undefined;
+    if (typeof info?.name === "string" && /^[\w .@/-]{1,64}$/.test(info.name))
+      clientName = info.name;
     return {
       jsonrpc: "2.0",
       id: request.id,
@@ -572,8 +759,10 @@ export async function handleOceanMcpRequest(
         protocolVersion: "2025-06-18",
         capabilities: { tools: {}, resources: {}, prompts: {} },
         serverInfo: { name: "ocean", version: "0.3.6" },
+        instructions: MEMORY_INSTRUCTIONS,
       },
     };
+  }
   if (request.method === "tools/list")
     return { jsonrpc: "2.0", id: request.id, result: { tools: tools.list() } };
   if (request.method === "resources/list")
@@ -658,6 +847,9 @@ export async function handleOceanMcpRequest(
       error: {
         code: -32000,
         message: error instanceof Error ? error.message : String(error),
+        ...(error instanceof MemoryContractError
+          ? { data: { code: error.code, ...error.details } }
+          : {}),
       },
     };
   }

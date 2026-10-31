@@ -24,7 +24,7 @@ const handle = (request) =>
     wrapperManager: defaultWrapperManager,
   });
 
-test("Ocean MCP exposes provider-neutral read-only tools without Obsidian", async () => {
+test("Ocean MCP exposes provider-neutral tools without Obsidian", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ocean-mcp-no-obsidian-"));
   const previous = process.env.OCEAN_ROOT;
   process.env.OCEAN_ROOT = root;
@@ -51,6 +51,14 @@ test("Ocean MCP exposes provider-neutral read-only tools without Obsidian", asyn
         "brain_search",
         "brain_read",
         "brain_neighbors",
+        "ocean_ping",
+        "ocean_capabilities",
+        "memory_read",
+        "memory_history",
+        "memory_write",
+        "memory_propose",
+        "memory_delete",
+        "memory_restore",
       ],
     );
     const status = await handle({

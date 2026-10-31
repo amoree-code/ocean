@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, renameSync } from "node:fs";
 import {
+  chmod,
   link,
   mkdir,
   readFile,
+  realpath,
   rename,
   rm,
   stat,
@@ -18,15 +20,28 @@ import { LEGACY_REGISTRY_DIR, oceanPath, REGISTRY_DIR } from "./paths.js";
 
 // Atomic write: content lands in a sibling temp file and is renamed into place, so a failure
 // (disk full, OOM kill, thrown error) never leaves the target truncated or partially written.
+// A symlinked target is written through to the file it names, so the link survives, and an
+// existing file keeps its permission bits unless a mode is given (T-296): renaming a fresh
+// temp over a 0600 client config used to leave it at the umask default.
 export async function atomicWrite(
   target: string,
   content: string,
   mode?: number,
 ): Promise<number> {
-  const temp = `${target}.ocean-tmp-${process.pid}-${Date.now()}`;
+  let destination = target;
+  let keep = mode;
   try {
-    await writeFile(temp, content, { encoding: "utf8", mode });
-    await rename(temp, target);
+    destination = await realpath(target);
+    if (keep === undefined) keep = (await stat(destination)).mode & 0o7777;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  const temp = `${destination}.ocean-tmp-${process.pid}-${Date.now()}`;
+  try {
+    await writeFile(temp, content, { encoding: "utf8", mode: keep });
+    // writeFile's mode is masked by the umask; chmod sets the exact bits.
+    if (keep !== undefined) await chmod(temp, keep);
+    await rename(temp, destination);
     return Buffer.byteLength(content, "utf8");
   } catch (error) {
     await rm(temp, { force: true });
