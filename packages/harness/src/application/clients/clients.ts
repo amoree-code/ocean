@@ -62,17 +62,20 @@ export type ClientPlan = {
   snippet?: string;
 };
 
-type JournalEntry = {
+// `hook-add` entries belong to hooks.ts (a session-start hook group); restoreClients skips them.
+export type JournalEntry = {
   batch: string;
   ts: string;
   client: string;
   file: string;
-  op: Op["kind"];
+  op: Op["kind"] | "hook-add";
   key: string;
   to?: string;
   before: ServerValue | null;
   beforeSha?: string;
   after: ServerValue | null;
+  // hook-add: the object keys the add created, removed again on restore once empty.
+  created?: string[];
   restoreOf?: string;
 };
 
@@ -301,7 +304,7 @@ async function appendJournal(entries: JournalEntry[]): Promise<void> {
   );
 }
 
-async function readJournal(): Promise<JournalEntry[]> {
+export async function readJournal(): Promise<JournalEntry[]> {
   const text = await readText(clientJournalFile());
   return (text ?? "")
     .split("\n")
@@ -332,7 +335,7 @@ function simulate(state: Map<string, ServerValue>, op: Op): void {
   }
 }
 
-const newBatch = () =>
+export const newBatch = () =>
   `${new Date()
     .toISOString()
     .replace(/[-:TZ]/g, "")
@@ -372,14 +375,19 @@ export async function edit(
 
 // `durable` (default: on for this machine's real env) refuses an engine in a temporary directory.
 export async function applyClients(
-  options: { clients?: string[]; env?: ClientEnv; durable?: boolean } = {},
+  options: {
+    clients?: string[];
+    env?: ClientEnv;
+    durable?: boolean;
+    batch?: string;
+  } = {},
 ): Promise<{ batch: string; results: { client: string; result: string }[] }> {
   const env = options.env ?? defaultClientEnv();
   if (options.durable ?? !options.env) {
     const problem = temporaryEntryProblem(env.entry);
     if (problem) throw new Error(`Refusing to wire clients: ${problem}`);
   }
-  const batch = newBatch();
+  const batch = options.batch ?? newBatch();
   const results: { client: string; result: string }[] = [];
   for (const plan of await planClients(env)) {
     if (options.clients && !options.clients.includes(plan.client)) continue;
@@ -449,7 +457,9 @@ export async function restoreClients(
   const restored: string[] = [];
   const conflicts: string[] = [];
   if (!batch) return { batch, restored, conflicts };
-  const entries = journal.filter((entry) => entry.batch === batch).reverse();
+  const entries = journal
+    .filter((entry) => entry.batch === batch && entry.op !== "hook-add")
+    .reverse();
   const undo = newBatch();
   for (const file of [...new Set(entries.map((entry) => entry.file))]) {
     const adapter = CLIENT_ADAPTERS.find((item) => item.config?.file === file);

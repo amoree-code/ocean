@@ -190,10 +190,16 @@ export async function claudeSessionStartHook(
 }
 
 // Clients that take the bootstrap through their own hooks instead of a same-name shim (T-266).
-// Codex reads Claude Code's hookSpecificOutput shape. Hermes injects context only from a
-// pre_llm_call shell hook, as {"context": "..."} (hermes agent/shell_hooks.py _parse_response);
-// that hook fires on every turn, so only the first turn gets the bootstrap.
-export const SESSION_START_CLIENTS = ["claude", "codex", "hermes"] as const;
+// Codex and Gemini CLI (0.58: fireSessionStartEvent → getAdditionalContext, T-296) read Claude
+// Code's hookSpecificOutput shape. Hermes injects context only from a pre_llm_call shell hook,
+// as {"context": "..."} (hermes agent/shell_hooks.py _parse_response); that hook fires on every
+// turn, so only the first turn gets the bootstrap.
+export const SESSION_START_CLIENTS = [
+  "claude",
+  "codex",
+  "gemini",
+  "hermes",
+] as const;
 export type SessionStartClient = (typeof SESSION_START_CLIENTS)[number];
 
 export function isSessionStartClient(

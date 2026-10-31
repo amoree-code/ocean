@@ -7,6 +7,7 @@ import {
 } from "@ocean/market/skills/skill-hub.js";
 import { connectObsidianVault } from "@ocean/services/obsidian/vault-discovery.js";
 import type { ClientPlan } from "../clients/clients.js";
+import type { HookPlan } from "../clients/hooks.js";
 
 // Bump when a step is added; completed steps stay completed, only new ids run.
 export const ONBOARDING_VERSION = 3;
@@ -42,6 +43,9 @@ export type OnboardingClients = {
     clients: string[],
   ): Promise<{ batch: string; results: { client: string; result: string }[] }>;
   verify(client: string): Promise<{ ok: boolean; detail: string }>;
+  // Session-start hooks (P3b), applied under the same batch as the entries.
+  hooks(): Promise<HookPlan[]>;
+  applyHooks(batch: string): Promise<{ client: string; result: string }[]>;
 };
 
 export type StepDependencies = {
@@ -63,8 +67,9 @@ function describeClient(plan: ClientPlan): string {
   return `${plan.status}: ${plan.reason}; fallback: ${plan.fallback}`;
 }
 
-// T-296 §3.7: one consolidated review of every detected client, one confirmation for all of
-// them. Without a terminal nothing is written: client configs change only on an explicit yes.
+// T-296 §3.7: one consolidated review of every detected client (MCP entry and session hook), one
+// confirmation for all of them. Without a terminal nothing is written: client configs change
+// only on an explicit yes.
 function connectStep(clients: OnboardingClients): OnboardingStep {
   return {
     id: "connect",
@@ -78,8 +83,20 @@ function connectStep(clients: OnboardingClients): OnboardingStep {
         io.say(
           `  Hand edit for ${plan.label} (${plan.file}): add ${plan.snippet}`,
         );
+      const hooks = await clients.hooks();
+      for (const hook of hooks)
+        io.say(
+          `  ${`${hook.client} session hook`.padEnd(34)} ${
+            hook.status === "current"
+              ? "present"
+              : hook.status === "change"
+                ? `will add a SessionStart hook in ${hook.file}`
+                : `hand edit needed (${hook.reason})${hook.snippet ? `; add ${hook.snippet}` : ""}`
+          }`,
+        );
       const pending = plans.filter((plan) => plan.status === "change");
-      if (pending.length === 0) {
+      const pendingHooks = hooks.filter((hook) => hook.status === "change");
+      if (pending.length + pendingHooks.length === 0) {
         io.say("  Every client Ocean can wire is already connected.");
         return "done";
       }
@@ -92,13 +109,15 @@ function connectStep(clients: OnboardingClients): OnboardingStep {
       if (
         !(await yes(
           io,
-          `  Apply these changes to ${pending.length} client configs?`,
+          `  Apply these changes (${pending.length} MCP entries, ${pendingHooks.length} session hooks)?`,
         ))
       )
         return "skipped";
       const { batch, results } = await clients.apply(
         pending.map((plan) => plan.client),
       );
+      for (const { client, result } of await clients.applyHooks(batch))
+        io.say(`  ${client} session hook: ${result}`);
       io.say(`  Undo with: ocean clients restore --batch ${batch}`);
       for (const { client, result } of results) {
         if (result !== "written") {

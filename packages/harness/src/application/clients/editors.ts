@@ -25,24 +25,30 @@ export type Editor = {
 
 // --- JSON: parse and re-serialize, only when the file is already in that exact form ----------
 
+// Parses a JSON file that re-serializes to exactly its own bytes; anything else is a manual edit.
+export function canonicalJson(text: string): {
+  parsed: Record<string, unknown>;
+  render(value: unknown): string;
+} {
+  const source = text.trim() ? text : "{}\n";
+  const parsed = JSON.parse(source) as Record<string, unknown>;
+  const indent = /\n(\t| +)"/.exec(source)?.[1] ?? "  ";
+  const trailing = source.endsWith("\n");
+  const render = (value: unknown) =>
+    `${JSON.stringify(value, null, indent)}${trailing ? "\n" : ""}`;
+  if (render(parsed) !== source)
+    throw new ManualEdit(
+      "the file is not in canonical JSON form; rewriting it would change unrelated bytes",
+    );
+  return { parsed, render };
+}
+
 export function jsonEditor(
   tablePath: string[],
   toNative: (value: ServerValue) => unknown = (value) => value,
   fromNative: (node: unknown) => ServerValue = (node) => node as ServerValue,
 ): Editor {
-  const parse = (text: string) => {
-    const source = text.trim() ? text : "{}\n";
-    const parsed = JSON.parse(source) as Record<string, unknown>;
-    const indent = /\n(\t| +)"/.exec(source)?.[1] ?? "  ";
-    const trailing = source.endsWith("\n");
-    const render = (value: unknown) =>
-      `${JSON.stringify(value, null, indent)}${trailing ? "\n" : ""}`;
-    if (render(parsed) !== source)
-      throw new ManualEdit(
-        "the file is not in canonical JSON form; rewriting it would change unrelated bytes",
-      );
-    return { parsed, render };
-  };
+  const parse = canonicalJson;
   const table = (root: Record<string, unknown>, create: boolean) => {
     let node: Record<string, unknown> = root;
     for (const key of tablePath) {

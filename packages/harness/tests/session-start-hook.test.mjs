@@ -98,6 +98,24 @@ test("ocean hook session-start --client codex keeps the hookSpecificOutput shape
   assert.match(parsed.hookSpecificOutput.additionalContext, /^ocean=1 /);
 });
 
+test("ocean hook session-start --client gemini keeps the hookSpecificOutput shape Gemini reads", () => {
+  const result = spawnSync(
+    process.execPath,
+    [
+      path.resolve("dist/main.js"),
+      "hook",
+      "session-start",
+      "--client",
+      "gemini",
+    ],
+    { input: JSON.stringify({ cwd: os.tmpdir() }), encoding: "utf8" },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  const parsed = JSON.parse(result.stdout.trim());
+  assert.equal(parsed.hookSpecificOutput.hookEventName, "SessionStart");
+  assert.match(parsed.hookSpecificOutput.additionalContext, /^ocean=1 /);
+});
+
 test("ocean hook session-start --client hermes emits Hermes' {context} shape only", () => {
   const result = spawnSync(
     process.execPath,
@@ -165,7 +183,7 @@ test("ocean hook session-start rejects an unknown or missing --client value", ()
     );
     assert.equal(result.status, 1);
     assert.equal(result.stdout, "");
-    assert.match(result.stderr, /--client claude\|codex\|hermes/);
+    assert.match(result.stderr, /--client claude\|codex\|gemini\|hermes/);
   }
 });
 
