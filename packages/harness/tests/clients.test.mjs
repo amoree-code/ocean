@@ -20,6 +20,7 @@ import {
   planClients,
   repairClients,
   restoreClients,
+  temporaryEntryProblem,
   verifyClient,
 } from "../dist/application/clients/clients.js";
 
@@ -552,5 +553,36 @@ test("verify proves the configured command answers as the brain server", async (
     const wrong = await verifyClient("gemini", live);
     assert.equal(wrong.ok, false, wrong.detail);
     assert.equal((await verifyClient("aider", live)).ok, false);
+  });
+});
+
+test("an engine in a temporary directory is refused before any client file is touched", async () => {
+  const { home, root, env } = await fixtureHome();
+  await withRoot(root, async () => {
+    const scratch = {
+      ...env,
+      entry: {
+        command: "/opt/test/node",
+        args: [
+          path.join(os.tmpdir(), "wt/packages/harness/dist/main.js"),
+          "mcp",
+          "serve",
+        ],
+      },
+    };
+    await assert.rejects(
+      applyClients({ env: scratch, durable: true }),
+      /Refusing to wire clients: .*temporary directory/,
+    );
+    assert.equal(
+      await readFile(path.join(home, ".gemini/settings.json"), "utf8"),
+      FIXTURES[".gemini/settings.json"],
+    );
+    assert.equal(temporaryEntryProblem(ENTRY), null);
+    assert.match(
+      temporaryEntryProblem({ args: ["/private/tmp/x/main.js"] }),
+      /temporary directory/,
+    );
+    assert.equal(temporaryEntryProblem({ args: ["/tmpfoo/main.js"] }), null);
   });
 });

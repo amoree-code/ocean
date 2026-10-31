@@ -1,5 +1,10 @@
 import { createInterface } from "node:readline/promises";
 import {
+  applyClients,
+  planClients,
+  verifyClient,
+} from "../../application/clients/clients.js";
+import {
   loadOnboardingState,
   type OnboardingState,
   saveOnboardingState,
@@ -27,6 +32,11 @@ const stepDependencies = () => ({
     syncProviderWrappers,
     installShellIntegration,
     wrapperDoctor: () => wrapperDoctor(),
+  },
+  clients: {
+    plan: () => planClients(),
+    apply: (clients: string[]) => applyClients({ clients }),
+    verify: (client: string) => verifyClient(client),
   },
 });
 
