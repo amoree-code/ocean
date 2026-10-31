@@ -191,6 +191,11 @@ export function storedCopy(
   return file;
 }
 
+// Content hashes of harvested native-memory texts → their candidate (T-296 P4).
+export function harvestLedgerFile(): string {
+  return stateDir("memory", "harvest.json");
+}
+
 export function auditFile(): string {
   return stateDir("memory", "audit.jsonl");
 }

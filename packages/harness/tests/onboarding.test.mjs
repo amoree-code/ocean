@@ -150,8 +150,8 @@ test("the hook step prints the release entry first, the checkout only as fallbac
 });
 
 // T-296 P3: the connect step over fake client operations — never a real client config.
-function fakeClients(plans, hooks = []) {
-  const calls = { apply: [], verify: [], applyHooks: [] };
+function fakeClients(plans, hooks = [], native = []) {
+  const calls = { apply: [], verify: [], applyHooks: [], applyNative: [] };
   return {
     calls,
     clients: {
@@ -168,6 +168,13 @@ function fakeClients(plans, hooks = []) {
         return { ok: client !== "codex", detail: "checked" };
       },
       hooks: async () => hooks,
+      native: async () => native,
+      applyNative: async (batch) => {
+        calls.applyNative.push(batch);
+        return native
+          .filter((item) => item.status === "change")
+          .map((item) => ({ client: item.client, result: "written" }));
+      },
       applyHooks: async (batch) => {
         calls.applyHooks.push(batch);
         return hooks
@@ -190,11 +197,11 @@ const plan = (client, status, extra = {}) => ({
   ...extra,
 });
 
-async function connectStep(plans, hooks) {
+async function connectStep(plans, hooks, native) {
   const { buildSteps } = await import(
     "../dist/application/onboarding/steps.js"
   );
-  const fake = fakeClients(plans, hooks);
+  const fake = fakeClients(plans, hooks, native);
   const step = buildSteps({
     setup: async () => {},
     wrappers: {},
@@ -278,7 +285,7 @@ test("connect puts session hooks in the same review and applies them under the s
   };
   assert.equal(await step.run(io), "done");
   assert.equal(asked.length, 1);
-  assert.match(asked[0], /0 MCP entries, 1 session hooks/);
+  assert.match(asked[0], /0 MCP entries, 1 session hooks, 0 native-memory/);
   assert.deepEqual(calls.apply, [[]]);
   assert.deepEqual(calls.applyHooks, ["b1"]);
   const text = lines.join("\n");
@@ -289,4 +296,38 @@ test("connect puts session hooks in the same review and applies them under the s
     /gemini session hook\s+hand edit needed \(not canonical\); add hooks/,
   );
   assert.match(text, /codex session hook: written/);
+});
+
+test("connect lists native-memory policies and applies the settable ones in the same batch", async () => {
+  const native = [
+    {
+      client: "gemini",
+      status: "change",
+      file: "~/.gemini/settings.json",
+      setting: 'tools.exclude += "save_memory"',
+    },
+    {
+      client: "cursor",
+      status: "toggle",
+      reason: "turn off Memories in Cursor settings",
+    },
+    {
+      client: "codex",
+      status: "current",
+      setting: "[memories] use_memories = false",
+    },
+  ];
+  const { step, calls } = await connectStep(
+    [plan("gemini", "current")],
+    [],
+    native,
+  );
+  const { io, lines } = fakeIO(true);
+  assert.equal(await step.run(io), "done");
+  assert.deepEqual(calls.applyNative, ["b1"]);
+  const text = lines.join("\n");
+  assert.match(text, /gemini native memory\s+will set tools\.exclude/);
+  assert.match(text, /cursor native memory\s+you: turn off Memories/);
+  assert.match(text, /codex native memory\s+governed/);
+  assert.match(text, /gemini native memory: written/);
 });

@@ -157,7 +157,7 @@ export const CLIENT_ADAPTERS: ClientAdapter[] = [
     tier: "supported",
     detect: { binaries: ["qwen"], paths: [".qwen/settings.json"] },
     config: { file: ".qwen/settings.json", editor: jsonEditor(["mcpServers"]) },
-    nativeMemory: "unknown",
+    nativeMemory: "disable",
   },
   {
     id: "continue",

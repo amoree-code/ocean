@@ -5,6 +5,7 @@ import {
   verifyClient,
 } from "../../application/clients/clients.js";
 import { applyHooks, planHooks } from "../../application/clients/hooks.js";
+import { applyNative, planNative } from "../../application/clients/native.js";
 import {
   loadOnboardingState,
   type OnboardingState,
@@ -40,6 +41,9 @@ const stepDependencies = () => ({
     verify: (client: string) => verifyClient(client),
     hooks: () => planHooks(),
     applyHooks: async (batch: string) => (await applyHooks({ batch })).results,
+    native: () => planNative(),
+    applyNative: async (batch: string) =>
+      (await applyNative({ batch })).results,
   },
 });
 

@@ -99,6 +99,7 @@ import {
   clientFindings,
   repairClients,
 } from "../../application/clients/clients.js";
+import { nativeFindings } from "../../application/clients/native.js";
 import { createWebhookGateway } from "../../application/gateway/webhook-gateway.js";
 import {
   findInstallSpec,
@@ -1157,7 +1158,10 @@ async function commandUpdateOrRemove(
 async function commandDoctor(): Promise<void> {
   const report = await workspaceReport(defaultWrapperManager);
   // T-296: every installed AI client's `ocean` entry (supported fail, unknown warn).
-  report.findings.push(...(await clientFindings()));
+  report.findings.push(
+    ...(await clientFindings()),
+    ...(await nativeFindings()),
+  );
   if (process.argv.includes("--json"))
     console.log(JSON.stringify(report, null, 2));
   else
