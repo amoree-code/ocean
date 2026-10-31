@@ -8,6 +8,7 @@ import {
 import { connectObsidianVault } from "@ocean/services/obsidian/vault-discovery.js";
 import type { ClientPlan } from "../clients/clients.js";
 import type { HookPlan } from "../clients/hooks.js";
+import type { NativePlan } from "../clients/native.js";
 
 // Bump when a step is added; completed steps stay completed, only new ids run.
 export const ONBOARDING_VERSION = 3;
@@ -46,6 +47,9 @@ export type OnboardingClients = {
   // Session-start hooks (P3b), applied under the same batch as the entries.
   hooks(): Promise<HookPlan[]>;
   applyHooks(batch: string): Promise<{ client: string; result: string }[]>;
+  // Native-memory policies (P4), same batch.
+  native(): Promise<NativePlan[]>;
+  applyNative(batch: string): Promise<{ client: string; result: string }[]>;
 };
 
 export type StepDependencies = {
@@ -94,9 +98,23 @@ function connectStep(clients: OnboardingClients): OnboardingStep {
                 : `hand edit needed (${hook.reason})${hook.snippet ? `; add ${hook.snippet}` : ""}`
           }`,
         );
+      const native = await clients.native();
+      for (const item of native)
+        io.say(
+          `  ${`${item.client} native memory`.padEnd(34)} ${
+            item.status === "current"
+              ? "governed"
+              : item.status === "change"
+                ? `will set ${item.setting} in ${item.file}`
+                : item.status === "manual"
+                  ? `hand edit: ${item.setting} in ${item.file} (${item.reason})`
+                  : `you: ${item.reason}`
+          }`,
+        );
       const pending = plans.filter((plan) => plan.status === "change");
       const pendingHooks = hooks.filter((hook) => hook.status === "change");
-      if (pending.length + pendingHooks.length === 0) {
+      const pendingNative = native.filter((item) => item.status === "change");
+      if (pending.length + pendingHooks.length + pendingNative.length === 0) {
         io.say("  Every client Ocean can wire is already connected.");
         return "done";
       }
@@ -109,7 +127,7 @@ function connectStep(clients: OnboardingClients): OnboardingStep {
       if (
         !(await yes(
           io,
-          `  Apply these changes (${pending.length} MCP entries, ${pendingHooks.length} session hooks)?`,
+          `  Apply these changes (${pending.length} MCP entries, ${pendingHooks.length} session hooks, ${pendingNative.length} native-memory settings)?`,
         ))
       )
         return "skipped";
@@ -118,6 +136,8 @@ function connectStep(clients: OnboardingClients): OnboardingStep {
       );
       for (const { client, result } of await clients.applyHooks(batch))
         io.say(`  ${client} session hook: ${result}`);
+      for (const { client, result } of await clients.applyNative(batch))
+        io.say(`  ${client} native memory: ${result}`);
       io.say(`  Undo with: ocean clients restore --batch ${batch}`);
       for (const { client, result } of results) {
         if (result !== "written") {

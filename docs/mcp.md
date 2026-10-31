@@ -90,6 +90,33 @@ the background. A file not in canonical JSON form gets a manual step with the ex
 `ocean clients restore` removes the groups an apply added, and a group the user changed since is
 reported as a conflict.
 
+## Native memory: one source of truth (T-296)
+
+Each client's own memory store is governed so it cannot become a second source of truth. `ocean
+clients plan` lists the policy per client, and `apply --yes` / `restore` handle it in the same
+batch as the MCP entries and hooks (journal op `native-set`, before/after of the one setting):
+
+| Client | Policy | What Ocean sets |
+|---|---|---|
+| Claude Code | redirect to staging | `autoMemoryDirectory` = `<ws>/00-inbox/native/claude-code` in `~/.claude/settings.json` (manual step when the file is not canonical JSON) |
+| Codex | disable | `[memories] generate_memories = false, use_memories = false` in `~/.codex/config.toml` |
+| Gemini CLI, Qwen Code | disable | `save_memory` added to `tools.exclude` |
+| Hermes | disable (manual) | `memory.memory_enabled: false`, `memory.user_profile_enabled: false` — YAML is not rewritten |
+| Claude Desktop / claude.ai, Cursor, ChatGPT | owner toggle | nothing local: the memory lives on the server |
+| Antigravity | harvest | no switch exists |
+
+`ocean doctor` fails (`NATIVE_COMPETING`) for a switch Ocean can set but has not, and warns for
+toggles and harvest-only stores. Whether a client really stops writing its own store is proven
+only by a session in that client.
+
+`ocean memory harvest [--source <id>] [--yes]` turns the stores' texts (Claude Code staging and
+per-project memory files, `~/.codex/memories`, `~/.gemini/memory` and the "Gemini Added
+Memories" section of `GEMINI.md`, `~/.hermes/memories`, Antigravity's brain notes) into
+candidates for `ocean memory review`; `ocean memory import-claude <export-dir> [--yes]` does the
+same for a claude.ai export's `projects.json` (shape assumed, read defensively). Both are dry
+runs until `--yes`, skip texts over 32 KB, refuse secrets, and keep a ledger of content hashes so
+a rerun proposes nothing twice. ChatGPT's export format is not known yet and has no importer.
+
 ## Retrieval and review of memory (T-296)
 
 The search index covers `02-personal/`, `05-knowledge/` and every project's

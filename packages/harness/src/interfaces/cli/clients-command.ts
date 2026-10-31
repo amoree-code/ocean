@@ -10,6 +10,11 @@ import {
   planHooks,
   restoreHooks,
 } from "../../application/clients/hooks.js";
+import {
+  applyNative,
+  planNative,
+  restoreNative,
+} from "../../application/clients/native.js";
 
 const usage =
   "Usage: ocean clients detect|plan [--json] | apply [--client <id>…] [--yes] | verify [<id>…] | repair | restore [--batch <id>]";
@@ -37,6 +42,15 @@ export async function runClientsCommand(args: string[]): Promise<void> {
         );
       }
       if (action === "plan")
+        for (const native of await planNative())
+          console.log(
+            `${`${native.client} memory`.padEnd(15)} ${native.status.padEnd(14)} ${
+              native.setting
+                ? `${native.file} ${native.setting}`
+                : (native.reason ?? "")
+            }${native.setting && native.reason ? ` (${native.reason})` : ""}`,
+          );
+      if (action === "plan")
         for (const hook of await planHooks())
           console.log(
             `${`${hook.client} hook`.padEnd(15)} ${hook.status.padEnd(14)} ${hook.file} SessionStart${
@@ -48,7 +62,11 @@ export async function runClientsCommand(args: string[]): Promise<void> {
     result =
       action === "detect"
         ? plans.filter((plan) => plan.installed)
-        : { clients: plans, hooks: await planHooks() };
+        : {
+            clients: plans,
+            hooks: await planHooks(),
+            native: await planNative(),
+          };
   } else if (action === "apply") {
     const clients = values("--client");
     if (!rest.includes("--yes")) {
@@ -62,7 +80,14 @@ export async function runClientsCommand(args: string[]): Promise<void> {
           hook.status === "change" &&
           (!clients.length || clients.includes(hook.client)),
       );
-      console.log(JSON.stringify({ dryRun: true, pending, hooks }, null, 2));
+      const native = (await planNative()).filter(
+        (plan) =>
+          plan.status === "change" &&
+          (!clients.length || clients.includes(plan.client)),
+      );
+      console.log(
+        JSON.stringify({ dryRun: true, pending, hooks, native }, null, 2),
+      );
       console.error("Dry run: pass --yes to write these client configs.");
       return;
     }
@@ -71,6 +96,8 @@ export async function runClientsCommand(args: string[]): Promise<void> {
     result = {
       ...applied,
       hooks: (await applyHooks({ clients: selected, batch: applied.batch }))
+        .results,
+      native: (await applyNative({ clients: selected, batch: applied.batch }))
         .results,
     };
   } else if (action === "verify") {
@@ -87,7 +114,11 @@ export async function runClientsCommand(args: string[]): Promise<void> {
   else if (action === "restore") {
     const restored = await restoreClients({ batch: values("--batch")[0] });
     result = restored.batch
-      ? { ...restored, hooks: await restoreHooks({ batch: restored.batch }) }
+      ? {
+          ...restored,
+          hooks: await restoreHooks({ batch: restored.batch }),
+          native: await restoreNative({ batch: restored.batch }),
+        }
       : restored;
   } else {
     console.error(usage);

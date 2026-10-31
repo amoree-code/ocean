@@ -19,6 +19,12 @@ import {
 } from "@ocean/brain/memory/index-sync.js";
 import { memoryDigest } from "@ocean/brain/memory/memory-digest.js";
 import {
+  HARVEST_SOURCES,
+  type HarvestSource,
+  harvestMemory,
+  importClaudeExport,
+} from "@ocean/brain/memory/memory-harvest.js";
+import {
   approveCandidate,
   listCandidates,
   rejectCandidate,
@@ -332,6 +338,36 @@ export async function runMemoryCommand(
     return runRecordCommand(action, args);
   if (action === "reindex") return runReindex(args);
   if (action === "review") return runReview(args);
+  if (action === "harvest") {
+    const source = flagValue(args, "--source");
+    if (source && !HARVEST_SOURCES.includes(source as HarvestSource))
+      throw new Error(`--source must be one of ${HARVEST_SOURCES.join(", ")}`);
+    const items = await harvestMemory({
+      sources: source ? [source as HarvestSource] : undefined,
+      apply: args.includes("--yes"),
+    });
+    console.log(JSON.stringify(items, null, 2));
+    if (!args.includes("--yes"))
+      console.error(
+        "Dry run: pass --yes to propose the new ones as candidates.",
+      );
+    return;
+  }
+  if (action === "import-claude") {
+    const directory = args.find((arg) => !arg.startsWith("--"));
+    if (!directory)
+      throw new Error("Usage: ocean memory import-claude <export-dir> [--yes]");
+    console.log(
+      JSON.stringify(
+        await importClaudeExport(directory, { apply: args.includes("--yes") }),
+        null,
+        2,
+      ),
+    );
+    if (!args.includes("--yes"))
+      console.error("Dry run: pass --yes to propose them as candidates.");
+    return;
+  }
   if (action === "eval") return runEval(args);
   if (action === "digest") {
     const lines = await memoryDigest({ stale: await indexIsStale() });
@@ -370,7 +406,7 @@ export async function runMemoryCommand(
     return;
   }
   console.error(
-    "Usage: ocean memory doctor|sync [--apply]|review [list|approve <id> [--to <path>]|reject <id>]|eval <questions.json> [--k N] [--min R]|digest|history [path] [--limit N]|restore <id> [--hash <sha256>]|delete <path> --hash <sha256>|purge [--days N] [--yes]|facts <profile> [key] [value]|facts <profile> delete <key>|reindex [--no-vectors]|search <q> [--project <id>|--all] [--json]|read <id|path>|neighbors <id|path> [--depth N] [--project <id>|--all]",
+    "Usage: ocean memory doctor|sync [--apply]|review [list|approve <id> [--to <path>]|reject <id>]|eval <questions.json> [--k N] [--min R]|digest|harvest [--source <id>] [--yes]|import-claude <export-dir> [--yes]|history [path] [--limit N]|restore <id> [--hash <sha256>]|delete <path> --hash <sha256>|purge [--days N] [--yes]|facts <profile> [key] [value]|facts <profile> delete <key>|reindex [--no-vectors]|search <q> [--project <id>|--all] [--json]|read <id|path>|neighbors <id|path> [--depth N] [--project <id>|--all]",
   );
   process.exitCode = 1;
 }

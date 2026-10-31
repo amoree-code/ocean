@@ -62,13 +62,14 @@ export type ClientPlan = {
   snippet?: string;
 };
 
-// `hook-add` entries belong to hooks.ts (a session-start hook group); restoreClients skips them.
+// `hook-add` entries belong to hooks.ts (a session-start hook group) and `native-set` to native.ts
+// (a native-memory setting); restoreClients skips both.
 export type JournalEntry = {
   batch: string;
   ts: string;
   client: string;
   file: string;
-  op: Op["kind"] | "hook-add";
+  op: Op["kind"] | "hook-add" | "native-set";
   key: string;
   to?: string;
   before: ServerValue | null;
@@ -458,7 +459,12 @@ export async function restoreClients(
   const conflicts: string[] = [];
   if (!batch) return { batch, restored, conflicts };
   const entries = journal
-    .filter((entry) => entry.batch === batch && entry.op !== "hook-add")
+    .filter(
+      (entry) =>
+        entry.batch === batch &&
+        entry.op !== "hook-add" &&
+        entry.op !== "native-set",
+    )
     .reverse();
   const undo = newBatch();
   for (const file of [...new Set(entries.map((entry) => entry.file))]) {
