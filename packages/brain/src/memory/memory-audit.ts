@@ -14,7 +14,10 @@ export type MemoryAction =
   | "propose"
   | "delete"
   | "restore"
-  | "purge";
+  | "purge"
+  // Candidate review (T-296 P5): the candidate moved to trash after approve or reject.
+  | "approve"
+  | "reject";
 
 export type AuditEntry = {
   id: string;

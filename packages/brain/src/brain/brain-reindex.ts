@@ -12,6 +12,7 @@ import {
   INDEX_DIR,
   KNOWLEDGE_DIR,
   oceanRoot,
+  PROJECTS_DIR,
   resolveWithin,
   STORE_DIR,
 } from "@ocean/core/shared/paths.js";
@@ -53,23 +54,51 @@ async function walk(root: string, depth = 0): Promise<string[]> {
   return files;
 }
 
-// Cheap staleness probe: hashes every markdown file's bytes under brain/02-personal and
-// brain/05-knowledge, in the same (sorted path, sha256) shape reindexBrain folds into
-// meta.corpus_hash, without parsing frontmatter or building chunks. Used by brainSearch to
-// report `stale: true` when the index is older than the files it was built from, without
-// paying for a full reindex on every search.
+// Every indexed markdown file as (store prefix, store path, file): the memory and knowledge
+// stores, and each project's memory folder as `project/<id>/…` (T-296) — scoped to that
+// project unless the record declares otherwise. `_template` and dot folders are not projects.
+type CorpusFile = { prefix: string; storePath: string; file: string };
+
+async function corpusFiles(root: string): Promise<CorpusFile[]> {
+  const found: CorpusFile[] = [];
+  const add = async (prefix: string, storeRoot: string) => {
+    for (const file of await walk(storeRoot))
+      found.push({
+        prefix,
+        storePath: `${prefix}/${path.relative(storeRoot, file).split(path.sep).join("/")}`,
+        file,
+      });
+  };
+  for (const store of STORES)
+    await add(store, resolveWithin(root, STORE_DIR[store]));
+  const projects = await readdir(resolveWithin(root, PROJECTS_DIR), {
+    withFileTypes: true,
+  }).catch(() => []);
+  for (const entry of projects.sort((a, b) => a.name.localeCompare(b.name)))
+    if (
+      entry.isDirectory() &&
+      !entry.name.startsWith(".") &&
+      !entry.name.startsWith("_")
+    )
+      await add(
+        `project/${entry.name}`,
+        resolveWithin(root, PROJECTS_DIR, entry.name, "memory"),
+      );
+  return found;
+}
+
+// Cheap staleness probe: hashes every indexed markdown file's bytes, in the same (sorted path,
+// sha256) shape reindexBrain folds into meta.corpus_hash, without parsing frontmatter or
+// building chunks. Used by brainSearch to report `stale: true` when the index is older than the
+// files it was built from, without paying for a full reindex on every search.
 export async function computeCorpusHash(root = oceanRoot()): Promise<string> {
   const entries: Array<{ storePath: string; contentHash: string }> = [];
-  for (const store of STORES) {
-    const storeRoot = resolveWithin(root, STORE_DIR[store]);
-    for (const file of await walk(storeRoot)) {
-      const relative = `${store}/${path.relative(storeRoot, file).split(path.sep).join("/")}`;
-      const source = await readFile(file, "utf8");
-      entries.push({
-        storePath: relative,
-        contentHash: createHash("sha256").update(source).digest("hex"),
-      });
-    }
+  for (const { storePath, file } of await corpusFiles(root)) {
+    const source = await readFile(file, "utf8");
+    entries.push({
+      storePath,
+      contentHash: createHash("sha256").update(source).digest("hex"),
+    });
   }
   entries.sort((a, b) => a.storePath.localeCompare(b.storePath));
   return createHash("sha256")
@@ -82,8 +111,8 @@ export async function computeCorpusHash(root = oceanRoot()): Promise<string> {
 }
 
 type WalkedDoc = {
-  storePath: string; // "memory/foo.md" | "knowledge/decisions/bar.md"
-  store: (typeof STORES)[number];
+  storePath: string; // "memory/foo.md" | "knowledge/decisions/bar.md" | "project/p/x.md"
+  store: string; // the store prefix: "memory" | "knowledge" | "project/<id>"
   record: ReturnType<typeof normalizeRecord>["record"];
   conformance: BrainConformance;
   rawScope: string | undefined;
@@ -119,7 +148,7 @@ export type ReindexResult = {
 // Exactly two or more stem matches is reported separately as ambiguous, not silently guessed.
 function resolveLink(
   targetRaw: string,
-  sourceStore: (typeof STORES)[number],
+  sourceStore: string,
   byId: Map<string, string>,
   byPath: Map<string, string>,
   byStem: Map<string, string[]>,
@@ -149,38 +178,35 @@ export async function reindexBrain(
 
   const walked: WalkedDoc[] = [];
   let totalSeen = 0;
-  for (const store of STORES) {
-    const storeRoot = resolveWithin(root, STORE_DIR[store]);
-    const files = await walk(storeRoot);
-    for (const file of files) {
-      totalSeen += 1;
-      if (totalSeen > MAX_FILES)
-        throw new Error(
-          `brain reindex found more than ${MAX_FILES} markdown files under ${STORE_DIR[store]} — refusing to index an unbounded corpus`,
-        );
-      const relative = `${store}/${path.relative(storeRoot, file).split(path.sep).join("/")}`;
-      const source = await readFile(file, "utf8");
-      const { record, conformance, body, rawScope } = normalizeRecord(
-        relative,
-        source,
+  for (const { prefix: store, storePath: relative, file } of await corpusFiles(
+    root,
+  )) {
+    totalSeen += 1;
+    if (totalSeen > MAX_FILES)
+      throw new Error(
+        `brain reindex found more than ${MAX_FILES} markdown files — refusing to index an unbounded corpus`,
       );
-      const links = extractWikilinks(body).map((link) => ({
-        targetRaw: link.target,
-        heading: link.heading,
-        alias: link.alias,
-      }));
-      walked.push({
-        storePath: relative,
-        store,
-        record,
-        conformance,
-        rawScope,
-        body,
-        contentHash: createHash("sha256").update(source).digest("hex"),
-        bytes: Buffer.byteLength(source, "utf8"),
-        links,
-      });
-    }
+    const source = await readFile(file, "utf8");
+    const { record, conformance, body, rawScope } = normalizeRecord(
+      relative,
+      source,
+    );
+    const links = extractWikilinks(body).map((link) => ({
+      targetRaw: link.target,
+      heading: link.heading,
+      alias: link.alias,
+    }));
+    walked.push({
+      storePath: relative,
+      store,
+      record,
+      conformance,
+      rawScope,
+      body,
+      contentHash: createHash("sha256").update(source).digest("hex"),
+      bytes: Buffer.byteLength(source, "utf8"),
+      links,
+    });
   }
   walked.sort((a, b) => a.storePath.localeCompare(b.storePath));
 

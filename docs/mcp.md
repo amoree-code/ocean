@@ -90,6 +90,27 @@ the background. A file not in canonical JSON form gets a manual step with the ex
 `ocean clients restore` removes the groups an apply added, and a group the user changed since is
 reported as a conflict.
 
+## Retrieval and review of memory (T-296)
+
+The search index covers `02-personal/`, `05-knowledge/` and every project's
+`04-projects/<id>/memory/` (store path `project/<id>/…`). A project record without a declared
+`scope` belongs to `project:<id>`, so a scoped search from another project never sees it. Each hit
+carries `file` (the workspace path to cite) and `updated`; `stale: true` says the files changed
+since the last `ocean memory reindex` (MCP writes do not reindex: a reindex without the embedder
+would drop the vectors). Full-text search first requires every query word; when that finds fewer
+hits than asked for, it fills up with any-word matches ranked by bm25, so a natural question still
+finds its record.
+
+- `ocean memory eval <questions.json> [--k 5] [--min 0.9]` — recall@k over
+  `[{question, expect, project?}]`; the owner keeps a private set in the workspace. The kernel
+  tests hold a synthetic set with the same 0.9 gate.
+- `ocean memory review [list] | approve <id> [--to <record>] | reject <id>` — candidates from
+  `memory_propose` and imports. Approve goes through the same validated write path as an explicit
+  save; an existing record gets the candidate appended under its current hash. Reviewed candidates
+  move to trash with an audit entry. To edit one, edit its file, then approve it.
+- `ocean memory digest` — at most five lines for `/day-start`: open conflicts, candidates older
+  than three days, a stale index, projects without memory records, yesterday's direct writes.
+
 ## One endpoint for every server: the MCP gateway
 
 `ocean mcp gateway` is a single stdio MCP server that routes the tools of every registered

@@ -15,6 +15,7 @@ import {
   resolveStorePath,
   resolveWithin,
   STORE_DIR,
+  storeRelativeToRoot,
 } from "@ocean/core/shared/paths.js";
 import { normalizeForSearch, normalizeRecord } from "./brain-markdown.js";
 import {
@@ -52,6 +53,9 @@ export type BrainSearchOptions = {
 export type BrainSearchHit = {
   id: string;
   path: string;
+  // Workspace-relative file a memory answer cites (T-296), and its declared update date.
+  file: string;
+  updated: string | null;
   title: string;
   summary: string;
   type: string;
@@ -192,6 +196,8 @@ export async function brainSearch(
       results.push({
         id: String(doc.id),
         path: String(doc.path),
+        file: storeRelativeToRoot(String(doc.path)),
+        updated: (doc.updated as string | null) ?? null,
         title: String(doc.title),
         summary: String(doc.summary),
         type: String(doc.type),

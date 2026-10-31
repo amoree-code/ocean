@@ -205,19 +205,27 @@ export const STORE_DIR = {
 } as const;
 
 // Brain-index records are "<store>/<path inside store>" ("memory/x.md", "knowledge/decisions/y.md").
+// Project memory (T-296) is "project/<id>/<path>" for 04-projects/<id>/memory/<path>.
 // These map that convention back to the real PARA location.
-export function resolveStorePath(root: string, storePath: string): string {
+function storeParts(storePath: string): string[] {
   const [store, ...rest] = storePath.split("/");
+  if (store === "project") {
+    const [project, ...inside] = rest;
+    if (!project || project === "." || project === "..")
+      throw new Error(`invalid project store path '${storePath}'`);
+    return [PROJECTS_DIR, project, "memory", ...inside];
+  }
   const dir = STORE_DIR[store as keyof typeof STORE_DIR];
   if (!dir) throw new Error(`unknown brain store '${store}'`);
-  return resolveWithin(root, dir, ...rest);
+  return [dir, ...rest];
+}
+
+export function resolveStorePath(root: string, storePath: string): string {
+  return resolveWithin(root, ...storeParts(storePath));
 }
 
 export function storeRelativeToRoot(storePath: string): string {
-  const [store, ...rest] = storePath.split("/");
-  const dir = STORE_DIR[store as keyof typeof STORE_DIR];
-  if (!dir) throw new Error(`unknown brain store '${store}'`);
-  return [dir, ...rest].join("/");
+  return storeParts(storePath).join("/");
 }
 
 export function oceanEnv(

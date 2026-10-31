@@ -1,4 +1,13 @@
-import { reindexBrain } from "@ocean/brain/brain/brain-reindex.js";
+import { readFile } from "node:fs/promises";
+import {
+  type EvalCase,
+  evaluateRecall,
+} from "@ocean/brain/brain/brain-eval.js";
+import {
+  brainIndexPath,
+  computeCorpusHash,
+  reindexBrain,
+} from "@ocean/brain/brain/brain-reindex.js";
 import {
   brainNeighbors,
   brainRead,
@@ -8,6 +17,12 @@ import {
   doctorMemoryIndexes,
   syncMemoryIndexes,
 } from "@ocean/brain/memory/index-sync.js";
+import { memoryDigest } from "@ocean/brain/memory/memory-digest.js";
+import {
+  approveCandidate,
+  listCandidates,
+  rejectCandidate,
+} from "@ocean/brain/memory/memory-review.js";
 import {
   deleteMemoryRecord,
   memoryHistory,
@@ -237,6 +252,73 @@ async function runRecordCommand(
   console.log(JSON.stringify(result, null, 2));
 }
 
+// Candidate review (T-296 P5): list, approve into a record, or reject. Edit = edit the candidate
+// file, then approve it.
+async function runReview(args: string[]): Promise<void> {
+  const [verb = "list", id] = args;
+  if (verb === "list") {
+    const candidates = await listCandidates();
+    if (args.includes("--json")) {
+      console.log(JSON.stringify(candidates, null, 2));
+      return;
+    }
+    if (!candidates.length) console.log("No memory candidates to review.");
+    for (const item of candidates)
+      console.log(
+        `${item.id}  ${item.origin.padEnd(8)} ${item.target || "(no target)"}  ${item.file}${item.reason ? ` — ${item.reason}` : ""}`,
+      );
+    return;
+  }
+  if ((verb === "approve" || verb === "reject") && id) {
+    const result =
+      verb === "approve"
+        ? await approveCandidate({ id, to: flagValue(args, "--to") })
+        : await rejectCandidate(id);
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+  console.error(
+    "Usage: ocean memory review [list] [--json] | approve <id> [--to <record path>] | reject <id>",
+  );
+  process.exitCode = 1;
+}
+
+// Recall@k over a JSON list of {question, expect, project?}; fails below --min.
+async function runEval(args: string[]): Promise<void> {
+  const file = args.find(
+    (arg, index) => !arg.startsWith("--") && !args[index - 1]?.startsWith("--"),
+  );
+  if (!file) {
+    console.error(
+      "Usage: ocean memory eval <questions.json> [--k N] [--min 0.9] [--vectors]",
+    );
+    process.exitCode = 1;
+    return;
+  }
+  const cases = JSON.parse(await readFile(file, "utf8")) as EvalCase[];
+  const result = await evaluateRecall(cases, {
+    indexPort: defaultBrainIndexPort,
+    embedder: args.includes("--vectors") ? await createOllamaEmbedder() : null,
+    k: Number(flagValue(args, "--k") ?? 5),
+  });
+  console.log(JSON.stringify(result, null, 2));
+  if (result.recall < Number(flagValue(args, "--min") ?? 0.9))
+    process.exitCode = 1;
+}
+
+async function indexIsStale(): Promise<boolean | null> {
+  try {
+    const reader = defaultBrainIndexPort.openIndexReadOnly(brainIndexPath());
+    try {
+      return reader.meta.corpusHash !== (await computeCorpusHash());
+    } finally {
+      reader.close();
+    }
+  } catch {
+    return null;
+  }
+}
+
 export async function runMemoryCommand(
   action: string,
   args: string[],
@@ -249,6 +331,13 @@ export async function runMemoryCommand(
   )
     return runRecordCommand(action, args);
   if (action === "reindex") return runReindex(args);
+  if (action === "review") return runReview(args);
+  if (action === "eval") return runEval(args);
+  if (action === "digest") {
+    const lines = await memoryDigest({ stale: await indexIsStale() });
+    console.log(lines.length ? lines.join("\n") : "memory: nothing to review");
+    return;
+  }
   if (action === "search") return runSearch(args);
   if (action === "read") return runRead(args);
   if (action === "neighbors") return runNeighbors(args);
@@ -281,7 +370,7 @@ export async function runMemoryCommand(
     return;
   }
   console.error(
-    "Usage: ocean memory doctor|sync [--apply]|history [path] [--limit N]|restore <id> [--hash <sha256>]|delete <path> --hash <sha256>|purge [--days N] [--yes]|facts <profile> [key] [value]|facts <profile> delete <key>|reindex [--no-vectors]|search <q> [--project <id>|--all] [--json]|read <id|path>|neighbors <id|path> [--depth N] [--project <id>|--all]",
+    "Usage: ocean memory doctor|sync [--apply]|review [list|approve <id> [--to <path>]|reject <id>]|eval <questions.json> [--k N] [--min R]|digest|history [path] [--limit N]|restore <id> [--hash <sha256>]|delete <path> --hash <sha256>|purge [--days N] [--yes]|facts <profile> [key] [value]|facts <profile> delete <key>|reindex [--no-vectors]|search <q> [--project <id>|--all] [--json]|read <id|path>|neighbors <id|path> [--depth N] [--project <id>|--all]",
   );
   process.exitCode = 1;
 }

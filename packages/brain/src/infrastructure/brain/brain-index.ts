@@ -271,33 +271,44 @@ export class BrainIndexReader implements BrainIndexReaderPort {
     // Tokens are matched as quoted prefixes (`"token"*`), ANDed together (FTS5's default):
     // exact-token phrase matching is too strict for agglutinative languages like Sorani,
     // where a query word is frequently a prefix of the inflected form actually stored.
-    const tokens = normalizedQuery
-      .split(/\s+/)
+    const words = normalizedQuery
+      .split(/[^\p{L}\p{N}_-]+/u)
       .map((token) => token.trim())
-      .filter(Boolean)
-      .map((token) => `"${token.replace(/"/g, '""')}"*`);
-    if (tokens.length === 0) return [];
+      .filter(Boolean);
+    const quote = (token: string) => `"${token.replace(/"/g, '""')}"*`;
+    if (words.length === 0) return [];
     // Filtered in SQL, before LIMIT, so another project's records cannot crowd out the hits.
     const scopeFilter = scopes
       ? ` AND c.doc_id IN (SELECT doc_id FROM docs WHERE scope IN (${scopes.map(() => "?").join(",")}))`
       : "";
-    try {
-      const rows = this.db
-        .prepare(`
-          SELECT c.chunk_id AS chunkId, c.doc_id AS docId, bm25(chunks_fts) AS rank
-          FROM chunks_fts JOIN chunks c ON c.chunk_id = chunks_fts.rowid
-          WHERE chunks_fts MATCH ?${scopeFilter}
-          ORDER BY rank LIMIT ?
-        `)
-        .all(tokens.join(" "), ...(scopes ?? []), limit) as Array<{
-        chunkId: number;
-        docId: number;
-        rank: number;
-      }>;
-      return rows;
-    } catch {
-      return [];
-    }
+    const run = (match: string, max: number): FtsHit[] => {
+      try {
+        return this.db
+          .prepare(`
+            SELECT c.chunk_id AS chunkId, c.doc_id AS docId, bm25(chunks_fts) AS rank
+            FROM chunks_fts JOIN chunks c ON c.chunk_id = chunks_fts.rowid
+            WHERE chunks_fts MATCH ?${scopeFilter}
+            ORDER BY rank LIMIT ?
+          `)
+          .all(match, ...(scopes ?? []), max) as FtsHit[];
+      } catch {
+        return [];
+      }
+    };
+    const all = run(words.map(quote).join(" "), limit);
+    if (all.length >= limit) return all;
+    // A question rarely shares every word with its answer (T-296 eval: natural questions found
+    // nothing). Fill up with any-word matches, bm25-ranked so rarer shared words weigh more;
+    // one-letter prefixes would match everything and are left out.
+    const anyWord = words.filter((word) => word.length > 1);
+    if (anyWord.length < 2) return all;
+    const seen = new Set(all.map((hit) => hit.chunkId));
+    return [
+      ...all,
+      ...run(anyWord.map(quote).join(" OR "), limit).filter(
+        (hit) => !seen.has(hit.chunkId),
+      ),
+    ].slice(0, limit);
   }
 
   vecQuery(embedding: Float32Array, limit: number): VecHit[] {

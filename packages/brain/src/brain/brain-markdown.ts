@@ -119,7 +119,13 @@ export function normalizeRecord(
   );
 
   const scopeField = declaredOrAliased("scope");
-  const scope = normalizeScope(scopeField.value);
+  // A project memory record (project/<id>/…, T-296) without a declared scope belongs to its
+  // project, never to every project.
+  const owningProject = /^project\/([^/]+)\//.exec(relPath)?.[1];
+  const scope = normalizeScope(
+    scopeField.value ??
+      (owningProject ? `project:${owningProject}` : undefined),
+  );
 
   const record = validateBrainRecord({
     id,
@@ -145,7 +151,10 @@ export function normalizeRecord(
     updated: updatedField.state,
     lastConfirmedAt: lastConfirmedField.state,
     // An invalid scope is counted by reindex's invalidScopes, not as a conformance state.
-    scope: scope.state === "defaulted" ? "defaulted" : "declared",
+    scope:
+      scopeField.value === undefined || scope.state === "defaulted"
+        ? "defaulted"
+        : "declared",
   };
 
   return { record, conformance, body, rawScope: scopeField.value };
