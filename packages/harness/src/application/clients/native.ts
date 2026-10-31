@@ -17,7 +17,8 @@ import { canonicalJson, ManualEdit } from "./editors.js";
 // becoming a second source of truth. Ocean sets only the switch it manages — Claude Code's
 // memory directory → the staging folder, Gemini's and Qwen's `save_memory` tool excluded, Codex's
 // `[memories]` off — journaled under the apply batch like the MCP entries and hooks. Hermes'
-// YAML and any non-canonical JSON become a manual step with the exact setting; clients whose
+// YAML is read, never written: a manual step until its switches are off, then current. Any
+// non-canonical JSON becomes a manual step with the exact setting too; clients whose
 // memory lives on a server (Desktop/claude.ai, Cursor, ChatGPT) get the toggle to flip by hand,
 // and Antigravity, which has no switch, is harvested into candidates instead.
 
@@ -33,8 +34,17 @@ type TomlSetting = {
   section: string;
   values: Record<string, boolean>;
 };
+// A YAML switch Ocean only reads (T-300): `<section>:` at the top level, its keys one level in.
+type YamlCheck = {
+  client: string;
+  kind: "yaml";
+  file: string;
+  section: string;
+  values: Record<string, boolean>;
+};
 type NativeAdapter =
   | ({ client: string } & (JsonSetting | TomlSetting))
+  | YamlCheck
   | { client: string; kind: "manual" | "toggle" | "harvest"; text: string };
 
 export const NATIVE_ADAPTERS: NativeAdapter[] = [
@@ -68,8 +78,10 @@ export const NATIVE_ADAPTERS: NativeAdapter[] = [
   },
   {
     client: "hermes",
-    kind: "manual",
-    text: "in ~/.hermes/config.yaml set memory.memory_enabled: false and memory.user_profile_enabled: false",
+    kind: "yaml",
+    file: ".hermes/config.yaml",
+    section: "memory",
+    values: { memory_enabled: false, user_profile_enabled: false },
   },
   {
     client: "claude-desktop",
@@ -95,7 +107,7 @@ export const NATIVE_ADAPTERS: NativeAdapter[] = [
 
 type SettingAdapter = { client: string } & (JsonSetting | TomlSetting);
 const hasSetting = (adapter: NativeAdapter): adapter is SettingAdapter =>
-  "file" in adapter;
+  "file" in adapter && adapter.kind !== "yaml";
 
 export type NativePlan = {
   client: string;
@@ -254,6 +266,36 @@ function planOne(
   return plan;
 }
 
+function yamlValues(text: string, section: string) {
+  const lines = text.split("\n");
+  const start = lines.findIndex((line) => line.trimEnd() === `${section}:`);
+  const values: Record<string, string> = {};
+  if (start < 0) return values;
+  for (const line of lines.slice(start + 1)) {
+    if (!line.trim() || line.trimStart().startsWith("#")) continue;
+    if (!/^\s/.test(line)) break;
+    const match = /^\s+([A-Za-z0-9_-]+):\s*([^\s#]+)/.exec(line);
+    if (match && !(match[1] in values)) values[match[1]] = match[2];
+  }
+  return values;
+}
+
+function planYaml(text: string, adapter: YamlCheck): NativePlan {
+  const values = yamlValues(text, adapter.section);
+  const done = Object.entries(adapter.values).every(
+    ([key, value]) => values[key] === String(value),
+  );
+  return {
+    client: adapter.client,
+    status: done ? "current" : "manual",
+    file: `~/${adapter.file}`,
+    setting: Object.entries(adapter.values)
+      .map(([key, value]) => `${adapter.section}.${key}: ${value}`)
+      .join(", "),
+    ...(done ? {} : { reason: "Ocean does not rewrite YAML; set it by hand" }),
+  };
+}
+
 export async function planNative(
   env: ClientEnv = defaultClientEnv(),
 ): Promise<NativePlan[]> {
@@ -265,7 +307,11 @@ export async function planNative(
   const plans: NativePlan[] = [];
   for (const adapter of NATIVE_ADAPTERS) {
     if (!installed.has(adapter.client)) continue;
-    if (!hasSetting(adapter))
+    if (adapter.kind === "yaml")
+      plans.push(
+        planYaml(await readText(path.join(env.home, adapter.file)), adapter),
+      );
+    else if (!hasSetting(adapter))
       plans.push({
         client: adapter.client,
         status: adapter.kind,
