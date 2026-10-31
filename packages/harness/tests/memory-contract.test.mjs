@@ -322,7 +322,8 @@ test("create and update are search-first, versioned and audited", async () => {
       await readFile(path.join(root, update.copy), "utf8"),
       read.content,
     );
-    assert.equal((await stat(auditFile())).mode & 0o777, 0o600);
+    if (process.platform !== "win32")
+      assert.equal((await stat(auditFile())).mode & 0o777, 0o600);
     assert.doesNotMatch(await readFile(auditFile(), "utf8"), /Approved/);
   });
 });
@@ -525,19 +526,25 @@ test("staging and journal roots are fixed and outside the permanent roots", asyn
   });
 });
 
+// Windows has no owner/group/other bits: chmod only toggles read-only, and stat reports 0o666.
+const assertMode = async (file, mode, message) => {
+  if (process.platform !== "win32")
+    assert.equal((await stat(file)).mode & 0o777, mode, message);
+};
+
 test("atomicWrite keeps an existing file's mode and writes through a symlink", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "ocean-atomic-"));
   const file = path.join(dir, "config.json");
   await writeFile(file, "{}\n");
   await chmod(file, 0o600);
   await atomicWrite(file, '{"a":1}\n');
-  assert.equal((await stat(file)).mode & 0o777, 0o600);
+  await assertMode(file, 0o600);
   await atomicWrite(file, '{"a":2}\n', 0o640);
-  assert.equal((await stat(file)).mode & 0o777, 0o640);
+  await assertMode(file, 0o640);
   const linkPath = path.join(dir, "linked.json");
   await symlink(file, linkPath);
   await atomicWrite(linkPath, '{"a":3}\n');
   assert.equal((await lstat(linkPath)).isSymbolicLink(), true);
   assert.equal(await readFile(file, "utf8"), '{"a":3}\n');
-  assert.equal((await stat(file)).mode & 0o777, 0o640);
+  await assertMode(file, 0o640);
 });

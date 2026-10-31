@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { accessSync, constants, existsSync } from "node:fs";
+import { accessSync, constants, existsSync, realpathSync } from "node:fs";
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -147,23 +147,46 @@ function staleAtlas(key: string, value: ServerValue): boolean {
   );
 }
 
+// Windows' tmpdir can be an 8.3 short path (C:\\Users\\RUNNER~1\\...) while an engine's path is the
+// long form of the same directory.
+function realTemporaryDir(): string[] {
+  try {
+    return [realpathSync.native(os.tmpdir())];
+  } catch {
+    return [];
+  }
+}
+
 // A build in a temporary directory (a scratch worktree) disappears with it, and every client
 // wired to it would then fail to start Ocean.
 const TEMPORARY_ROOTS = [
   os.tmpdir(),
+  ...realTemporaryDir(),
   "/tmp",
   "/private/tmp",
   "/var/folders",
   "/private/var/folders",
 ];
 
+// `paths` is a parameter so the Windows rules (separator, case, drives) are testable anywhere.
+export function isWithinDir(
+  dir: string,
+  file: string,
+  paths: path.PlatformPath = path,
+): boolean {
+  const relative = paths.relative(dir, file);
+  return (
+    relative !== ".." &&
+    !relative.startsWith(`..${paths.sep}`) &&
+    !paths.isAbsolute(relative)
+  );
+}
+
 export function temporaryEntryProblem(entry: ServerValue): string | null {
   const program = Array.isArray(entry.args) ? entry.args[0] : undefined;
   if (typeof program !== "string") return null;
   const resolved = path.resolve(program);
-  const root = TEMPORARY_ROOTS.find(
-    (dir) => resolved === dir || resolved.startsWith(`${path.resolve(dir)}/`),
-  );
+  const root = TEMPORARY_ROOTS.find((dir) => isWithinDir(dir, resolved));
   return root
     ? `the Ocean engine ${resolved} is in a temporary directory (${root}); run this from the release (\`ocean runtime release\`) or the workspace kernel checkout`
     : null;

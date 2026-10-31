@@ -6,6 +6,7 @@ Docs-only or CI-only PRs may add the `skip-changelog` label instead.
 
 ## Unreleased
 
+- fix(T-302): `ocean clients apply`, its session hooks and the doctor warning now see an engine in a temporary directory on Windows, where the check matched only `/` and so never fired, leaving clients wired to a build that disappears; the Windows gate also stops asserting POSIX file modes and a `/`-only path (PR pending)
 - feat(T-305): `ocean pull` keeps claude.ai and ChatGPT current by itself: it reads what Claude Desktop and the Chromium browsers (Chrome, Arc, Brave, Edge) cached of their pages — read-only, the key first and the body only for conversation lists, projects, memory and custom instructions, never a URL naming a token, OAuth or session — merges conversations into the server snapshots (a project set earlier is kept, a conversation in a provider project goes where its name points) and proposes memory and instruction texts once through the import ledger; `ocean pull` reports `server` counts (#239)
 - feat(T-305): `ocean pull` also indexes conversations that live only on a provider's servers (claude.ai, ChatGPT): a capture writes one snapshot per client to `bridge/state/history/server/<client>.jsonl` (id, title, url, updated, optional project and tags) and every rebuild keeps those lines, linked and searchable, instead of dropping them (#238)
 - feat(T-305): `ocean pull` also indexes Antigravity's conversations, from its summaries database (title or first prompt, workspace, date; read from a private copy while the app keeps it open) (PR pending)

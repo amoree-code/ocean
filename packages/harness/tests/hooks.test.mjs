@@ -210,7 +210,8 @@ test("a missing hooks file is created 0600; restore removes the keys the add cre
     await rm(path.join(home, ".codex/hooks.json"));
     const { batch } = await applyHooks({ env, clients: ["codex"] });
     const file = path.join(home, ".codex/hooks.json");
-    assert.equal((await stat(file)).mode & 0o777, 0o600);
+    if (process.platform !== "win32")
+      assert.equal((await stat(file)).mode & 0o777, 0o600);
     assert.equal(
       JSON.parse(await readFile(file, "utf8")).hooks.SessionStart.length,
       1,
