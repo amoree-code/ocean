@@ -27,6 +27,10 @@ const CLIENT_CONFIGS = [
   ".codex/config.toml",
   ".claude.json",
   ".cursor/mcp.json",
+  ".gemini/antigravity/mcp_config.json",
+  // Claude Desktop: macOS, then Windows.
+  "Library/Application Support/Claude/claude_desktop_config.json",
+  "AppData/Roaming/Claude/claude_desktop_config.json",
 ];
 
 export type EngineEntryRepair = {
