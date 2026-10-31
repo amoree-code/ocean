@@ -36,6 +36,8 @@ run `ocean mcp browser-service uninstall`, or turn the debugging server off in C
 
 **Recovery.** launchd restarts the bridge. If the upstream process dies, the call in flight fails
 and is not retried, because it may already have acted on a page; the next call starts a new one.
+A refused connection to Chrome is retried a few times, because no page was touched. **Page ids do
+not survive a reconnect and can then name a different tab**, so call `list_pages` again first.
 
 **Privacy.** Upstream CrUX lookups and usage statistics are off. Logs carry no page content.
 

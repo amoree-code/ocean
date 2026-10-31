@@ -39,6 +39,16 @@ function fakeClients(behaviours) {
         forwardToolCall: async (name, args) => {
           client.calls.push({ name, args });
           if (behaviour.dies) throw new Error("MCP server stopped");
+          if (client.calls.length <= (behaviour.refusals ?? 0))
+            return {
+              isError: true,
+              content: [{ type: "text", text: "Could not connect to Chrome." }],
+            };
+          if (behaviour.pageError)
+            return {
+              isError: true,
+              content: [{ type: "text", text: "No such element" }],
+            };
           return { content: [{ type: "text", text: "done" }] };
         },
         close: () => {
@@ -152,6 +162,46 @@ test("an upstream that failed to start is tried again on the next request", asyn
   assert.equal(recovered.body.result.content[0].text, "done");
   assert.equal(made[0].closed, true);
   assert.equal(made.length, 2);
+  bridge.close();
+});
+
+test("a refused Chrome connection is retried, since nothing reached a page", async () => {
+  const { client, made } = fakeClients([{ refusals: 2 }]);
+  const bridge = new BrowserBridge({ client, member, connectRetryMs: 1 });
+  const result = await post(bridge, call(1));
+  assert.equal(result.body.result.content[0].text, "done");
+  assert.equal(made[0].calls.length, 3);
+  bridge.close();
+});
+
+test("a Chrome that stays unreachable is reported after the bounded retries", async () => {
+  const { client, made } = fakeClients([{ refusals: 99 }]);
+  const bridge = new BrowserBridge({ client, member, connectRetryMs: 1 });
+  const result = await post(bridge, call(1));
+  assert.equal(result.body.result.isError, true);
+  assert.match(result.body.result.content[0].text, /Could not connect/);
+  assert.equal(made[0].calls.length, 5);
+  bridge.close();
+});
+
+test("any other tool error is returned once, never retried", async () => {
+  const { client, made } = fakeClients([{ pageError: true }]);
+  const bridge = new BrowserBridge({ client, member, connectRetryMs: 1 });
+  const result = await post(bridge, call(1));
+  assert.match(result.body.result.content[0].text, /No such element/);
+  assert.equal(made[0].calls.length, 1);
+  bridge.close();
+});
+
+test("initialize warns that page ids do not survive a reconnect", async () => {
+  const { client } = fakeClients([]);
+  const bridge = new BrowserBridge({ client, member });
+  const { body } = await post(bridge, {
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+  });
+  assert.match(body.result.instructions, /list_pages/);
   bridge.close();
 });
 
