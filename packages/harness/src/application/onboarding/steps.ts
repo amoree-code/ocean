@@ -6,9 +6,10 @@ import {
   populateSkillHub,
 } from "@ocean/market/skills/skill-hub.js";
 import { connectObsidianVault } from "@ocean/services/obsidian/vault-discovery.js";
+import type { ClientPlan } from "../clients/clients.js";
 
 // Bump when a step is added; completed steps stay completed, only new ids run.
-export const ONBOARDING_VERSION = 2;
+export const ONBOARDING_VERSION = 3;
 
 export type OnboardingIO = {
   interactive: boolean;
@@ -34,13 +35,87 @@ export type OnboardingWrappers = {
   wrapperDoctor(): Promise<string[]>;
 };
 
+// The client-config operations of `ocean clients` (T-296), passed in like the wrappers.
+export type OnboardingClients = {
+  plan(): Promise<ClientPlan[]>;
+  apply(
+    clients: string[],
+  ): Promise<{ batch: string; results: { client: string; result: string }[] }>;
+  verify(client: string): Promise<{ ok: boolean; detail: string }>;
+};
+
 export type StepDependencies = {
   setup(): Promise<void>;
   wrappers: OnboardingWrappers;
+  clients: OnboardingClients;
 };
 
 async function yes(io: OnboardingIO, question: string): Promise<boolean> {
   return (await io.ask(`${question} [Y/n] `, "y")).trim().toLowerCase() !== "n";
+}
+
+function describeClient(plan: ClientPlan): string {
+  if (plan.status === "current") return "connected";
+  if (plan.status === "change")
+    return `will ${plan.ops.map((op) => `${op.kind} ${op.key}`).join(", ")} in ${plan.file}`;
+  if (plan.status === "manual") return `hand edit needed (${plan.reason})`;
+  if (plan.status === "unknown") return `unknown: ${plan.reason}`;
+  return `${plan.status}: ${plan.reason}; fallback: ${plan.fallback}`;
+}
+
+// T-296 §3.7: one consolidated review of every detected client, one confirmation for all of
+// them. Without a terminal nothing is written: client configs change only on an explicit yes.
+function connectStep(clients: OnboardingClients): OnboardingStep {
+  return {
+    id: "connect",
+    title: "Connect AI clients to Ocean (one review, one apply)",
+    optional: false,
+    async run(io) {
+      const plans = (await clients.plan()).filter((plan) => plan.installed);
+      for (const plan of plans)
+        io.say(`  ${plan.label.padEnd(34)} ${describeClient(plan)}`);
+      for (const plan of plans.filter((item) => item.status === "manual"))
+        io.say(
+          `  Hand edit for ${plan.label} (${plan.file}): add ${plan.snippet}`,
+        );
+      const pending = plans.filter((plan) => plan.status === "change");
+      if (pending.length === 0) {
+        io.say("  Every client Ocean can wire is already connected.");
+        return "done";
+      }
+      if (!io.interactive) {
+        io.say(
+          "  Review: ocean clients plan   Apply: ocean clients apply --yes",
+        );
+        return "skipped";
+      }
+      if (
+        !(await yes(
+          io,
+          `  Apply these changes to ${pending.length} client configs?`,
+        ))
+      )
+        return "skipped";
+      const { batch, results } = await clients.apply(
+        pending.map((plan) => plan.client),
+      );
+      io.say(`  Undo with: ocean clients restore --batch ${batch}`);
+      for (const { client, result } of results) {
+        if (result !== "written") {
+          io.say(`  ${client}: ${result}`);
+          continue;
+        }
+        const check = await clients.verify(client);
+        io.say(
+          `  ${client}: ${check.ok ? "PROVEN" : "NOT READY"} — ${check.detail}`,
+        );
+      }
+      io.say(
+        '  In-app check (you): restart each client, then ask it to call `ocean_ping` and `brain_search` for "Ocean".',
+      );
+      return "done";
+    },
+  };
 }
 
 // A guided step prints the exact command instead of running it: these touch client
@@ -153,10 +228,7 @@ export function buildSteps(deps: StepDependencies): OnboardingStep[] {
         return "done";
       },
     },
-    guided("mcp", "MCP config for your clients", [
-      "Run: ocean mcp config",
-      "Paste the JSON into each client's MCP settings.",
-    ]),
+    connectStep(deps.clients),
     guided("auth", "Provider authentication", [
       "Run: ocean auth",
       "Credentials stay in the OS keychain or environment, never in files.",

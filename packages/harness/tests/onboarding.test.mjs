@@ -148,3 +148,100 @@ test("the hook step prints the release entry first, the checkout only as fallbac
   assert.match(text, /\[ -f "\$ENTRY" \] \|\| ENTRY="\$HOME\/ocean\/kernel\//);
   assert.match(text, /node "\$ENTRY" client sync/);
 });
+
+// T-296 P3: the connect step over fake client operations — never a real client config.
+function fakeClients(plans) {
+  const calls = { apply: [], verify: [] };
+  return {
+    calls,
+    clients: {
+      plan: async () => plans,
+      apply: async (ids) => {
+        calls.apply.push(ids);
+        return {
+          batch: "b1",
+          results: ids.map((client) => ({ client, result: "written" })),
+        };
+      },
+      verify: async (client) => {
+        calls.verify.push(client);
+        return { ok: client !== "codex", detail: "checked" };
+      },
+    },
+  };
+}
+
+const plan = (client, status, extra = {}) => ({
+  client,
+  label: client,
+  installed: true,
+  status,
+  ops: status === "change" ? [{ kind: "set", key: "ocean" }] : [],
+  file: `~/.${client}`,
+  reason: "why",
+  fallback: "other way",
+  ...extra,
+});
+
+async function connectStep(plans) {
+  const { buildSteps } = await import(
+    "../dist/application/onboarding/steps.js"
+  );
+  const fake = fakeClients(plans);
+  const step = buildSteps({
+    setup: async () => {},
+    wrappers: {},
+    clients: fake.clients,
+  }).find((item) => item.id === "connect");
+  return { step, calls: fake.calls };
+}
+
+const PLANS = [
+  plan("cursor", "change"),
+  plan("codex", "change"),
+  plan("claude-code", "current"),
+  plan("opencode", "manual", { snippet: '{"ocean":{}}' }),
+  plan("chatgpt", "unsupported"),
+  plan("ghost", "change", { installed: false }),
+];
+
+test("connect shows one review and applies every pending client on one yes", async () => {
+  const { step, calls } = await connectStep(PLANS);
+  const asked = [];
+  const { io, lines } = fakeIO(true);
+  io.ask = async (question, fallback) => {
+    asked.push(question);
+    return fallback;
+  };
+  assert.equal(await step.run(io), "done");
+  assert.equal(asked.length, 1);
+  assert.deepEqual(calls.apply, [["cursor", "codex"]]);
+  assert.deepEqual(calls.verify, ["cursor", "codex"]);
+  const text = lines.join("\n");
+  assert.match(text, /claude-code\s+connected/);
+  assert.match(text, /Hand edit for opencode .*\{"ocean":\{\}\}/);
+  assert.match(text, /chatgpt\s+unsupported: why; fallback: other way/);
+  assert.doesNotMatch(text, /ghost/);
+  assert.match(text, /restore --batch b1/);
+  assert.match(text, /cursor: PROVEN/);
+  assert.match(text, /codex: NOT READY/);
+  assert.match(text, /ocean_ping/);
+});
+
+test("connect writes nothing without a terminal or when declined", async () => {
+  const quiet = await connectStep(PLANS);
+  assert.equal(await quiet.step.run(fakeIO(false).io), "skipped");
+  assert.deepEqual(quiet.calls.apply, []);
+  const declined = await connectStep(PLANS);
+  assert.equal(await declined.step.run(fakeIO(true, ["n"]).io), "skipped");
+  assert.deepEqual(declined.calls.apply, []);
+});
+
+test("connect with nothing pending asks nothing and is done", async () => {
+  const { step, calls } = await connectStep([plan("cursor", "current")]);
+  const { io, lines } = fakeIO(true);
+  io.ask = async () => assert.fail("must not prompt");
+  assert.equal(await step.run(io), "done");
+  assert.deepEqual(calls.apply, []);
+  assert.match(lines.join("\n"), /already connected/);
+});

@@ -143,6 +143,28 @@ function staleAtlas(key: string, value: ServerValue): boolean {
   );
 }
 
+// A build in a temporary directory (a scratch worktree) disappears with it, and every client
+// wired to it would then fail to start Ocean.
+const TEMPORARY_ROOTS = [
+  os.tmpdir(),
+  "/tmp",
+  "/private/tmp",
+  "/var/folders",
+  "/private/var/folders",
+];
+
+export function temporaryEntryProblem(entry: ServerValue): string | null {
+  const program = Array.isArray(entry.args) ? entry.args[0] : undefined;
+  if (typeof program !== "string") return null;
+  const resolved = path.resolve(program);
+  const root = TEMPORARY_ROOTS.find(
+    (dir) => resolved === dir || resolved.startsWith(`${path.resolve(dir)}/`),
+  );
+  return root
+    ? `the Ocean engine ${resolved} is in a temporary directory (${root}); run this from the release (\`ocean runtime release\`) or the workspace kernel checkout`
+    : null;
+}
+
 async function readText(file: string): Promise<string | null> {
   try {
     return await readFile(file, "utf8");
@@ -348,10 +370,15 @@ export async function edit(
   );
 }
 
+// `durable` (default: on for this machine's real env) refuses an engine in a temporary directory.
 export async function applyClients(
-  options: { clients?: string[]; env?: ClientEnv } = {},
+  options: { clients?: string[]; env?: ClientEnv; durable?: boolean } = {},
 ): Promise<{ batch: string; results: { client: string; result: string }[] }> {
   const env = options.env ?? defaultClientEnv();
+  if (options.durable ?? !options.env) {
+    const problem = temporaryEntryProblem(env.entry);
+    if (problem) throw new Error(`Refusing to wire clients: ${problem}`);
+  }
   const batch = newBatch();
   const results: { client: string; result: string }[] = [];
   for (const plan of await planClients(env)) {
@@ -402,7 +429,7 @@ export async function applyClients(
 }
 
 // Re-applies the desired entry for clients the owner already approved; never a new client.
-export async function repairClients(env: ClientEnv = defaultClientEnv()) {
+export async function repairClients(env?: ClientEnv) {
   const approved = Object.keys(await approvedClients());
   if (!approved.length) return { batch: null, results: [] };
   return applyClients({ clients: approved, env });

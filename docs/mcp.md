@@ -73,6 +73,12 @@ brain server — proof the entry launches, not that the app connects. `ocean doc
 installed supported client that is not wired or needs a manual edit, warns for an unknown
 capability, and reports unsupported clients with their fallback.
 
+`ocean onboard` runs the same plan as its `connect` step: one consolidated review of every detected
+client, one confirmation that applies all of them, then `verify` per written client and the in-app
+check to do by hand. Without a terminal (or with `--yes`) the step writes nothing and prints the
+commands instead. `apply` refuses an engine that lives in a temporary directory (a scratch
+worktree): every client wired to it would stop starting Ocean once that directory is gone.
+
 ## One endpoint for every server: the MCP gateway
 
 `ocean mcp gateway` is a single stdio MCP server that routes the tools of every registered
