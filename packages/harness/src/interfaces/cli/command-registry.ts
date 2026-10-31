@@ -55,6 +55,7 @@ import {
   planRetention,
   simulateRetention,
 } from "@ocean/loop/sessions/session-retention.js";
+import { browserBridgeConfig } from "@ocean/market/mcp/browser-bridge.js";
 import {
   mcpClientConfig,
   oceanMcpConfig,
@@ -148,6 +149,11 @@ import {
   wrapperStatus,
 } from "../../infrastructure/wrappers/wrapper-manager.js";
 import { runAuthCommand } from "./auth-command.js";
+import {
+  browserBridgeFindings,
+  runBrowserBridgeCommand,
+  runBrowserServiceCommand,
+} from "./browser-bridge-command.js";
 import { runBrowserCommand } from "./browser-command.js";
 import { runCaptureCommand } from "./capture-command.js";
 import { runClientTestCommand } from "./client-test-command.js";
@@ -460,9 +466,14 @@ async function commandMcp(): Promise<void> {
       wrapperManager: defaultWrapperManager,
     });
   else if (action === "gateway") await runMcpGatewayCommand();
+  else if (action === "browser-config")
+    console.log(JSON.stringify(browserBridgeConfig(), null, 2));
+  else if (action === "browser-bridge") await runBrowserBridgeCommand();
+  else if (action === "browser-service")
+    await runBrowserServiceCommand(process.argv[4] ?? "");
   else {
     console.error(
-      "Usage: ocean mcp config|playwright-config|gateway-config|serve|gateway",
+      "Usage: ocean mcp config|playwright-config|gateway-config|browser-config|browser-bridge|browser-service install|uninstall|serve|gateway",
     );
     process.exitCode = 1;
   }
@@ -1161,6 +1172,7 @@ async function commandDoctor(): Promise<void> {
   report.findings.push(
     ...(await clientFindings()),
     ...(await nativeFindings()),
+    ...(await browserBridgeFindings()),
   );
   if (process.argv.includes("--json"))
     console.log(JSON.stringify(report, null, 2));

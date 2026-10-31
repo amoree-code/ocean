@@ -245,6 +245,8 @@ export class McpGateway {
       version?: string;
       timeoutMs?: number;
       log?: (line: string) => void;
+      serverName?: string;
+      instructions?: string;
     },
   ) {}
 
@@ -360,9 +362,12 @@ export class McpGateway {
           protocolVersion: "2025-06-18",
           capabilities: { tools: {} },
           serverInfo: {
-            name: "ocean-gateway",
+            name: this.options.serverName ?? "ocean-gateway",
             version: this.options.version ?? "0.0.0",
           },
+          ...(this.options.instructions
+            ? { instructions: this.options.instructions }
+            : {}),
         };
       case "ping":
         return {};
