@@ -183,10 +183,13 @@ export function stage(root, scratch) {
   return { head, dirty, files, denied, unlisted, sha256: hash.digest("hex") };
 }
 
-const GATE_NAMES = ["gitleaks", "trufflehog", "privacy"];
-// The in-repo privacy scan is not optional; only the external scanners can be skipped.
+const GATE_NAMES = ["gitleaks", "trufflehog", "privacy", "template"];
+// The in-repo scans are not optional; only the external scanners can be skipped.
 const SKIPPABLE = ["gitleaks", "trufflehog"];
 const privacyScan = fileURLToPath(new URL("scan-privacy.mjs", import.meta.url));
+const templatePurity = fileURLToPath(
+  new URL("check-template-purity.mjs", import.meta.url),
+);
 
 // Each gate scans the scratch tree. Output is never echoed: a scanner's own report can contain
 // the secret it found, so only the verdict (and, for the privacy scan, paths and finding types)
@@ -239,6 +242,18 @@ const gateCommands = {
   privacy: (scratch) => ({
     bin: process.execPath,
     args: [privacyScan, scratch],
+    findingsExit: 1,
+    findings: (run) => JSON.parse(run.stderr).findings,
+  }),
+  // T-296: the shipped workspace template holds only generic defaults and empty private files.
+  template: (scratch) => ({
+    bin: process.execPath,
+    args: [
+      templatePurity,
+      "--root",
+      path.join(scratch, "packages", "harness", "templates", "workspace"),
+      "--optional",
+    ],
     findingsExit: 1,
     findings: (run) => JSON.parse(run.stderr).findings,
   }),

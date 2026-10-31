@@ -37,6 +37,7 @@ On the scratch export, in order, stopping at the first failure:
 | `gitleaks` | `gitleaks dir` (>= 8.19) | Pinned to a trusted config outside the export; `gitleaks:allow` comments and an exported `.gitleaksignore` are ignored. |
 | `trufflehog` | `trufflehog filesystem` | `--no-verification` (a found credential is never sent to its provider), `--no-ignore-tag`. |
 | `privacy` | `pnpm check:privacy` | Credential patterns, real private paths, personal data. |
+| `template` | `scripts/check-template-purity.mjs` | The shipped workspace template matches its manifest classes (generic defaults, empty private files); an export without the template passes. Not skippable. |
 
 A scanner that is not installed **fails** the run. `--skip gitleaks,trufflehog` skips the
 external scanners for a local dry run and marks the result `complete: false`; the `privacy`

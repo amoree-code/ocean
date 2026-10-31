@@ -28,6 +28,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
       - run: pnpm check:skills
       - run: pnpm check:privacy
+      - run: pnpm check:template
       - run: pnpm check:tasks
       - run: pnpm check:deps
       - run: pnpm build

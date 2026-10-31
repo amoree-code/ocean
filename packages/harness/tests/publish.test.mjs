@@ -323,7 +323,12 @@ test("a clean export passes; skipped scanners make it incomplete", {
     assert.equal(out.complete, false);
     assert.deepEqual(
       out.gates.map((g) => `${g.gate}:${g.status}`),
-      ["gitleaks:skipped", "trufflehog:skipped", "privacy:passed"],
+      [
+        "gitleaks:skipped",
+        "trufflehog:skipped",
+        "privacy:passed",
+        "template:passed",
+      ],
     );
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -369,7 +374,7 @@ test("scanner verdicts decide the run (stub scanners)", {
     assert.equal(hit.err.error, "gate failed: trufflehog");
     assert.deepEqual(
       hit.err.gates.map((g) => g.status),
-      ["passed", "failed", "not-run"],
+      ["passed", "failed", "not-run", "not-run"],
     );
   } finally {
     runEnv = {};

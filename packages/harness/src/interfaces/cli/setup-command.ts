@@ -18,6 +18,7 @@ import {
   WORKSPACE_PROJECT_ID,
 } from "@ocean/core/shared/paths.js";
 import { connectObsidianVault } from "@ocean/services/obsidian/vault-discovery.js";
+import { seedWorkspaceTemplate } from "../../application/layout/workspace-template.js";
 import {
   installShellIntegration,
   syncProviderWrappers,
@@ -130,6 +131,8 @@ export async function setup(options: SetupOptions = {}): Promise<void> {
       `${PROJECTS_DIR}/${projectFolder(WORKSPACE_PROJECT_ID)}/tasks`,
     ].map((directory) => mkdir(oceanPath(directory), { recursive: true })),
   );
+  // T-296: charter, policies, templates and indexes for a new workspace; existing files are kept.
+  await seedWorkspaceTemplate();
   for (const file of REGISTRY_FILES) registryFile(file);
   await Promise.all(
     stateDirectories.map((directory) =>
