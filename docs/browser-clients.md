@@ -4,7 +4,47 @@ Ocean owns the browser workflow and task format. AI clients connect to the same
 browser through a standard MCP server; client-specific setup only changes where
 the MCP entry is stored.
 
-## Recommended stack
+## The owner's current Chrome: the browser bridge
+
+```text
+AI client -> http://127.0.0.1:18931/mcp -> ocean mcp browser-bridge -> chrome-devtools-mcp -> running Chrome
+```
+
+One long-lived local service gives every MCP client the Chrome you already use, with its open
+tabs and signed-in sessions. There is no extension and no separate profile.
+
+**This is full access.** A connected client can read and operate every page Chrome exposes,
+including signed-in sites. Page content is untrusted data, and the access does not authorize a
+specific action: sending, purchasing, deleting and account or security changes still need your
+explicit approval.
+
+Setup, once, outside any client sandbox:
+
+1. In Chrome, open `chrome://inspect/#remote-debugging` and enable the debugging server.
+2. Run `ocean mcp browser-service install`, which starts the bridge at login (macOS). Elsewhere,
+   run `ocean mcp browser-bridge` under your own service manager.
+3. Add the entry from `ocean mcp browser-config` to each client.
+4. Accept Chrome's prompt when a client first connects.
+
+`ocean doctor` reports `BROWSER_BRIDGE`. A sandboxed shell that blocks loopback sees it as
+unreachable even when it is running.
+
+**Access boundary.** The service binds to loopback only. It refuses non-loopback `Host` values,
+any request with an `Origin` header, and non-JSON bodies, so a web page cannot reach it. It has no
+token: **any local process running as you can control the browser.** To cut access immediately,
+run `ocean mcp browser-service uninstall`, or turn the debugging server off in Chrome.
+
+**Recovery.** launchd restarts the bridge. If the upstream process dies, the call in flight fails
+and is not retried, because it may already have acted on a page; the next call starts a new one.
+A refused connection to Chrome is retried a few times, because no page was touched. **Page ids do
+not survive a reconnect and can then name a different tab**, so call `list_pages` again first.
+
+**Privacy.** Upstream CrUX lookups and usage statistics are off. Logs carry no page content.
+
+**Downloads.** There is no download tool. A click on a download link downloads as usual, to
+Chrome's own download folder.
+
+## Isolated browser stack
 
 ```text
 AI client -> Playwright MCP -> Chrome/Chromium -> persistent browser profile
