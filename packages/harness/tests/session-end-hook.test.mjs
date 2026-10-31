@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { localDate } from "@ocean/core/shared/local-date.js";
 import { INBOX_DIR, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import {
   claudeSessionEndHook,
@@ -91,7 +92,7 @@ test("claudeSessionEndHook registers a desktop session from its transcript and r
   assert.equal(saved.closeoutStatus, "completed");
   store.close();
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDate();
   const summary = await readFile(
     path.join(
       root,
