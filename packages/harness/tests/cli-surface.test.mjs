@@ -38,6 +38,7 @@ test("CLI help exposes every top-level command", () => {
     "gateway",
     "schedule",
     "client",
+    "clients",
     "install",
     "update",
     "remove",
