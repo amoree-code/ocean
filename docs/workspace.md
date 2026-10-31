@@ -61,6 +61,12 @@ the same three constants, so they track any future layout change):
 - Creates `bridge/config/startup`, `bridge/profiles`, `bridge/sessions`, `bridge/registry`,
   `bridge/integrations`, `bridge/archive` and `bridge/runtime/{shims,temporary}` under the
   workspace root.
+- Copies the workspace template (`packages/harness/templates/workspace/`, T-296): the generic
+  `charter/core.md` and `charter/policies/`, `06-templates/`, `bridge/config/`, the index files
+  (`02-personal/MEMORY.md`, `05-knowledge/KNOWLEDGE.md`, `04-projects/PROJECTS.md`,
+  `00-inbox/INBOX.md`), empty private files with placeholders only, and the required empty
+  directories (`00-inbox/candidates`, `00-inbox/native`, `04-projects/_template/…`). A file that
+  already exists is never replaced.
 - Writes `bridge/profiles/default.json` from the template in `packages/harness/templates/`,
   without overwriting existing files.
 - Installs a per-OS startup entry that launches `kernel/packages/harness/dist/main.js service`
@@ -72,6 +78,22 @@ the same three constants, so they track any future layout change):
 Startup always points at `kernel/packages/harness/dist/main.js` (the built engine), never at
 `src/`, and always runs with the private workspace directory as its current working
 directory.
+
+### The template and its purity check
+
+Every template file has a class in `templates/workspace/MANIFEST.json`: `default` (generic
+operational content), `private-empty` (headings, comments and `<placeholder>` tokens only) or
+`keep` (an empty `.gitkeep`). `pnpm check:template` (`scripts/check-template-purity.mjs`, run in
+CI and as a publish gate) proves each file matches its class, that the manifest and the tree
+agree, and that no file holds an e-mail address, a home path, a phone number or a credential
+shape. The `.gitkeep` files only keep empty directories in git; they provide no privacy.
+
+Owner mode, local only: `node scripts/check-template-purity.mjs --private ~/ocean` also rejects
+any term from `charter/policies/privacy-terms.txt` and any run of 12 words shared with the
+workspace's private records (`01-daily`, `02-personal`, `03-professional`, `04-projects`,
+`05-knowledge`, `sessions`), ignoring runs that also stand in the policies, templates or config.
+It prints `{file, line, rule}` only, never the matched text. Run it before publishing a change to
+the template.
 
 ## Task completion and archive
 

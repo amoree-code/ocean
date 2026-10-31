@@ -1,0 +1,3 @@
+# Private terms, one per line: names, places, employers, project codenames.
+# `node scripts/check-template-purity.mjs --private <workspace>` rejects any of them in a shared file.
+# <term>
