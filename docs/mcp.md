@@ -96,6 +96,9 @@ session-start event is verified: Claude Code (`~/.claude/settings.json`), Codex
 group is appended after the existing ones — other tools' hooks are never edited — running
 `node <engine> hook session-start --client <id> --repair`, where `--repair` starts `client sync` in
 the background. A file not in canonical JSON form gets a manual step with the exact group instead.
+On Windows the line is quoted for each client's shell: `cmd.exe` for Codex and PowerShell for Gemini
+CLI and Claude Code, whose hook sets `shell: "powershell"` so it behaves the same with or without Git
+Bash.
 `ocean clients restore` removes the groups an apply added, and a group the user changed since is
 reported as a conflict.
 

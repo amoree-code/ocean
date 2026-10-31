@@ -18,29 +18,48 @@ import { canonicalJson, ManualEdit } from "./editors.js";
 // Ocean hook is added, as one new group after the user's own: existing groups — other tools'
 // hooks, or an Ocean hook that already runs — are never edited.
 
+// Each client runs a hook line in its own shell on Windows, and no quoting works in all of them.
+// Claude Code: Git Bash, or PowerShell without it, so its hook names PowerShell (`shell`). Codex:
+// %COMSPEC% /C "<line>". Gemini CLI: PowerShell -Command.
+
 type HookGroup = Record<string, unknown>;
+
+type WindowsShell = "cmd" | "powershell";
 
 type HookAdapter = {
   client: string;
   // The `--client` value of `ocean hook session-start`.
   hookClient: string;
   file: string;
-  group(command: string): HookGroup;
+  windowsShell: WindowsShell;
+  group(command: string, windows: boolean): HookGroup;
 };
+
+// `platform` is for tests; the running platform otherwise.
+type HookEnv = ClientEnv & { platform?: NodeJS.Platform };
 
 export const HOOK_ADAPTERS: HookAdapter[] = [
   {
     client: "claude-code",
     hookClient: "claude",
     file: ".claude/settings.json",
-    group: (command) => ({
-      hooks: [{ type: "command", command, timeout: 10 }],
+    windowsShell: "powershell",
+    group: (command, windows) => ({
+      hooks: [
+        {
+          type: "command",
+          command,
+          ...(windows ? { shell: "powershell" } : {}),
+          timeout: 10,
+        },
+      ],
     }),
   },
   {
     client: "codex",
     hookClient: "codex",
     file: ".codex/hooks.json",
+    windowsShell: "cmd",
     group: (command) => ({
       matcher: "startup|resume",
       hooks: [
@@ -57,6 +76,7 @@ export const HOOK_ADAPTERS: HookAdapter[] = [
     client: "gemini",
     hookClient: "gemini",
     file: ".gemini/settings.json",
+    windowsShell: "powershell",
     // Gemini's hook timeout is in milliseconds.
     group: (command) => ({
       matcher: "*",
@@ -79,11 +99,32 @@ export type HookPlan = {
 const shellWord = (word: string) =>
   /^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replace(/'/g, `'\\''`)}'`;
 
+// A Windows path cannot hold `"`. PowerShell also closes a string on the typographic quotes.
+const cmdWord = (word: string) => `"${word}"`;
+const powershellWord = (word: string) =>
+  `'${word.replace(/['\u2018\u2019\u201a\u201b]/g, "$&$&")}'`;
+
+const isWindows = (env: HookEnv) =>
+  (env.platform ?? process.platform) === "win32";
+
 // `--repair` also starts `client sync` in the background, which re-applies approved clients.
-export function hookCommand(env: ClientEnv, hookClient: string): string {
+export function hookCommand(env: HookEnv, hookClient: string): string {
   const program = Array.isArray(env.entry.args) ? env.entry.args[0] : "";
-  return `${[String(env.entry.command), String(program)].map(shellWord).join(" ")} hook session-start --client ${hookClient} --repair`;
+  const words = [String(env.entry.command), String(program)];
+  const shell = isWindows(env)
+    ? HOOK_ADAPTERS.find((item) => item.hookClient === hookClient)?.windowsShell
+    : undefined;
+  const invocation =
+    shell === "cmd"
+      ? words.map(cmdWord).join(" ")
+      : shell === "powershell"
+        ? `& ${words.map(powershellWord).join(" ")}`
+        : words.map(shellWord).join(" ");
+  return `${invocation} hook session-start --client ${hookClient} --repair`;
 }
+
+const hookGroup = (adapter: HookAdapter, env: HookEnv) =>
+  adapter.group(hookCommand(env, adapter.hookClient), isWindows(env));
 
 // The SessionStart group list, `[]` when absent; null when the file holds another shape there.
 function sessionGroups(root: Record<string, unknown>): unknown[] | null {
@@ -116,7 +157,7 @@ async function readText(file: string): Promise<string> {
   }
 }
 
-function planOne(text: string, adapter: HookAdapter, env: ClientEnv): HookPlan {
+function planOne(text: string, adapter: HookAdapter, env: HookEnv): HookPlan {
   const plan: HookPlan = {
     client: adapter.client,
     file: `~/${adapter.file}`,
@@ -136,7 +177,7 @@ function planOne(text: string, adapter: HookAdapter, env: ClientEnv): HookPlan {
       reason: `hooks.${EVENT} is not a list`,
     };
   if (hasOceanHook(groups)) return { ...plan, status: "current" };
-  const group = adapter.group(hookCommand(env, adapter.hookClient));
+  const group = hookGroup(adapter, env);
   try {
     canonicalJson(text);
   } catch (error) {
@@ -152,7 +193,7 @@ function planOne(text: string, adapter: HookAdapter, env: ClientEnv): HookPlan {
 }
 
 export async function planHooks(
-  env: ClientEnv = defaultClientEnv(),
+  env: HookEnv = defaultClientEnv(),
 ): Promise<HookPlan[]> {
   const installed = new Set(
     (await planClients(env))
@@ -177,7 +218,7 @@ export async function planHooks(
 export async function applyHooks(
   options: {
     clients?: string[];
-    env?: ClientEnv;
+    env?: HookEnv;
     batch?: string;
     durable?: boolean;
   } = {},
@@ -209,7 +250,7 @@ export async function applyHooks(
           hooks[EVENT] = [];
           created.push(EVENT);
         }
-        const group = adapter.group(hookCommand(env, adapter.hookClient));
+        const group = hookGroup(adapter, env);
         (hooks[EVENT] as unknown[]).push(group);
         return {
           next: render(parsed),
