@@ -13,6 +13,7 @@ import { withFileLock } from "@ocean/core/shared/fs-utils.js";
 import { oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import { buildHistoryIndex } from "./history-index.js";
 import { loadProjectIndex, placeMemory } from "./project-match.js";
+import { captureServerHistory, type ServerCapture } from "./server-capture.js";
 
 // `ocean pull` (T-305): one command brings everything every AI client on this machine holds into
 // Ocean — each client's own memory and the instruction files the owner wrote (as candidates for
@@ -46,6 +47,8 @@ export type PullResult = {
   skipped?: string;
   memory?: Record<string, Counts>;
   exports?: ExportFound[];
+  // claude.ai and ChatGPT, from what Claude Desktop and the browsers cached of their pages.
+  server?: ServerCapture["snapshots"];
   history?: Record<string, number>;
   // project → memory by status and conversations by client.
   projects?: Record<
@@ -162,6 +165,8 @@ async function pullOnce(options: PullOptions): Promise<PullResult> {
     exports.push(imported.found);
     items.push(...imported.items);
   }
+  const server = await captureServerHistory({ home, apply, classify });
+  items.push(...server.items);
   const conversations = await buildHistoryIndex({ home, write: apply });
   const history: Record<string, number> = {};
   const byProject: NonNullable<PullResult["projects"]> = {};
@@ -185,6 +190,7 @@ async function pullOnce(options: PullOptions): Promise<PullResult> {
     applied: apply,
     memory: tally(items),
     exports,
+    server: server.snapshots,
     history,
     projects: byProject,
     unassignedFolders: [...loose]
