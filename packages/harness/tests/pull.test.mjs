@@ -16,6 +16,7 @@ import {
   buildHistoryIndex,
   historyIndexFile,
   searchHistory,
+  serverHistoryDir,
 } from "../dist/application/pull/history-index.js";
 import { lastPullRecord, pull } from "../dist/application/pull/pull.js";
 
@@ -561,5 +562,55 @@ test("history: Antigravity's conversations come from its summaries database", as
         date: "2026-09-16",
       },
     ]);
+  });
+});
+
+test("history: server-side conversations come from snapshots, with their link and project", async () => {
+  const base = await mkdtemp(path.join(os.tmpdir(), "ocean-pull-server-"));
+  const home = path.join(base, "home");
+  await mkdir(home, { recursive: true });
+  await withRoot(path.join(base, "ocean"), async () => {
+    await mkdir(serverHistoryDir(), { recursive: true });
+    await writeFile(
+      path.join(serverHistoryDir(), "claude-ai.jsonl"),
+      jsonl(
+        {
+          id: "c1",
+          title: `IELTS speaking ${TOKEN}`,
+          url: "https://claude.ai/chat/c1",
+          updated: "2026-09-20T08:00:00Z",
+          project: "ocean-ielts",
+          tags: ["letspeak"],
+        },
+        { id: "c2", title: "No link" },
+        "not json",
+      ),
+    );
+    const entries = (await buildHistoryIndex({ home, write: true })).map(
+      ({ client, id, project, tags, title, file, date }) => ({
+        client,
+        id,
+        project,
+        tags,
+        title,
+        file,
+        date,
+      }),
+    );
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].title.includes(TOKEN), false);
+    assert.deepEqual(
+      { ...entries[0], title: undefined },
+      {
+        client: "claude-ai",
+        id: "c1",
+        project: "ocean-ielts",
+        tags: ["letspeak"],
+        title: undefined,
+        file: "https://claude.ai/chat/c1",
+        date: "2026-09-20",
+      },
+    );
+    assert.equal((await searchHistory("ielts letspeak")).length, 1);
   });
 });
