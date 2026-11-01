@@ -42,7 +42,11 @@ outside these roots, a known secret shape or more than 32 KB is refused. Errors 
 
 Nothing is hard-deleted over MCP. `ocean memory purge` (CLI) lists stored copies older than the
 retention period and removes them only with `--yes`. `bridge/config/memory.json` holds
-`{"mcpWrites": "on" | "off", "retentionDays": 90}`; `off` refuses every mutating tool.
+`{"mcpWrites": "on" | "off", "retentionDays": 90, "pullAutoApprove": "off" | "on"}`; `mcpWrites: off`
+refuses every mutating tool. `pullAutoApprove: on` (default `off`, for a machine whose accounts are
+all the owner's) lets `ocean pull --yes` approve what it just proposed through the same write path,
+as new records only: a candidate with no target, one that would add to an existing record, a
+similar record or a refusal stays for `ocean memory review`; the run's record says which.
 
 Tool annotations (`readOnlyHint`, `destructiveHint`) are hints for a client's permission UI, not
 enforcement: whether a client asks before a call is the client's behaviour and is not assumed.

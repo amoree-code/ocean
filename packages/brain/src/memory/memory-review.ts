@@ -97,6 +97,7 @@ async function candidate(id: string): Promise<Candidate> {
 async function retire(
   item: Candidate,
   action: "approve" | "reject",
+  source = "owner-review",
 ): Promise<string> {
   const id = newId();
   const copy = storedCopy("trash", id, item.file);
@@ -107,7 +108,7 @@ async function retire(
     id,
     action,
     path: item.file,
-    source: "owner-review",
+    source,
     origin: item.origin === "imported" ? "imported" : "inferred",
     beforeSha: sha256(text),
     afterSha: null,
@@ -117,11 +118,15 @@ async function retire(
 }
 
 // Writes the candidate's content to `to` (default: its proposed target). A new record is
-// created; an existing one gets the content appended, guarded by its current hash.
+// created; an existing one gets the content appended, guarded by its current hash — unless
+// `createOnly` (an approval nobody looked at), which leaves that one to the owner's review.
 export async function approveCandidate(options: {
   id: string;
   to?: string;
+  createOnly?: boolean;
+  source?: string;
 }): Promise<{ path: string; mode: "create" | "update"; auditId: string }> {
+  const source = options.source ?? "owner-review";
   const item = await candidate(options.id);
   const target = options.to ?? item.target;
   if (!target)
@@ -134,21 +139,26 @@ export async function approveCandidate(options: {
       return null;
     throw error;
   });
+  if (existing && options.createOnly)
+    throw new MemoryContractError(
+      "CONFLICT",
+      `${target} exists; adding to it needs review`,
+    );
   const written = existing
     ? await writeMemoryRecord({
         path: target,
         content: `${existing.content.replace(/\n*$/, "\n\n")}${item.content}`,
         mode: "update",
         expectedHash: existing.sha256,
-        source: "owner-review",
+        source,
       })
     : await writeMemoryRecord({
         path: target,
         content: item.content,
         mode: "create",
-        source: "owner-review",
+        source,
       });
-  await retire(item, "approve");
+  await retire(item, "approve", source);
   return {
     path: written.path,
     mode: written.mode,
