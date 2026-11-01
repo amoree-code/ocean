@@ -181,6 +181,9 @@ type Parsed = {
   updated?: string;
   title?: string;
   cliSession?: string;
+  // Set by a server snapshot, which has no folder to match.
+  project?: string;
+  tags?: string[];
 };
 type Reader = {
   client: string;
@@ -446,6 +449,43 @@ async function openCodeEntries(
   }
 }
 
+// Conversations that live only on a provider's servers (claude.ai, ChatGPT) have no local file.
+// A capture writes one snapshot per client, `<system>/state/history/server/<client>.jsonl`, one
+// line per conversation: {id, title, url, updated, project?, tags?}. The index keeps the link.
+export const serverHistoryDir = () =>
+  oceanPath(SYSTEM_DIR, "state", "history", "server");
+
+async function serverEntries(): Promise<
+  (Parsed & { client: string; file: string; version: string })[]
+> {
+  const directory = serverHistoryDir();
+  const names = await readdir(directory).catch((): string[] => []);
+  const rows: (Parsed & { client: string; file: string; version: string })[] =
+    [];
+  for (const name of names.filter((name) => name.endsWith(".jsonl"))) {
+    const text = await readFile(path.join(directory, name), "utf8").catch(
+      () => "",
+    );
+    for (const row of records(text.split("\n"))) {
+      if (typeof row.id !== "string" || typeof row.url !== "string") continue;
+      const updated = at(row.updated);
+      rows.push({
+        client: name.slice(0, -".jsonl".length),
+        id: row.id,
+        file: row.url,
+        updated,
+        title: title(row.title),
+        project: typeof row.project === "string" ? row.project : undefined,
+        tags: Array.isArray(row.tags)
+          ? row.tags.filter((tag): tag is string => typeof tag === "string")
+          : undefined,
+        version: updated ?? "",
+      });
+    }
+  }
+  return rows;
+}
+
 async function readIndex(): Promise<HistoryEntry[]> {
   const text = await readFile(historyIndexFile(), "utf8").catch(() => "");
   return records(text.split("\n")) as HistoryEntry[];
@@ -475,10 +515,11 @@ export async function buildHistoryIndex(
     const place = placeFolder(projects, parsed.cwd);
     const known = previous.get(file);
     const updated = parsed.updated ?? fallback.updated;
+    const tags = parsed.tags ?? place.tags;
     entries.push({
       client,
-      project: place.project ?? "unassigned",
-      ...(place.tags?.length ? { tags: place.tags } : {}),
+      project: parsed.project ?? place.project ?? "unassigned",
+      ...(tags?.length ? { tags } : {}),
       pull: true,
       date: updated.slice(0, 10),
       title: parsed.title ?? "",
@@ -525,6 +566,12 @@ export async function buildHistoryIndex(
     });
   for (const row of await antigravityEntries(home))
     add("antigravity", shown(row.file), row, {
+      updated: new Date(0).toISOString(),
+      bytes: 0,
+      version: row.version,
+    });
+  for (const row of await serverEntries())
+    add(row.client, row.file, row, {
       updated: new Date(0).toISOString(),
       bytes: 0,
       version: row.version,
