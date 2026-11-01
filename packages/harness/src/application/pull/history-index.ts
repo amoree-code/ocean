@@ -1,9 +1,19 @@
 import { createReadStream } from "node:fs";
-import { mkdir, open, readdir, readFile, stat } from "node:fs/promises";
+import {
+  copyFile,
+  mkdir,
+  mkdtemp,
+  open,
+  readdir,
+  readFile,
+  rm,
+  stat,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { Transform } from "node:stream";
+import { fileURLToPath } from "node:url";
 import zlib from "node:zlib";
 import { redactSecrets } from "@ocean/core/domain/redaction/redaction.js";
 import { atomicWrite } from "@ocean/core/shared/fs-utils.js";
@@ -346,6 +356,68 @@ const readers: Reader[] = [
   },
 ];
 
+// Antigravity lists its conversations in one SQLite file (the transcripts are protobuf). It is
+// read from a private copy: the app keeps it open, and reading in place may need to write its
+// lock files.
+async function antigravityEntries(
+  home: string,
+): Promise<(Parsed & { file: string; version: string })[]> {
+  const folder = path.join(home, ".gemini", "antigravity");
+  const file = path.join(folder, "conversation_summaries.db");
+  if (!(await stat(file).catch(() => null))) return [];
+  const scratch = await mkdtemp(path.join(os.tmpdir(), "ocean-agy-"));
+  let db: DatabaseSync | undefined;
+  try {
+    for (const suffix of ["", "-wal", "-shm"])
+      await copyFile(
+        `${file}${suffix}`,
+        path.join(scratch, `summaries.db${suffix}`),
+      ).catch(() => undefined);
+    db = new DatabaseSync(path.join(scratch, "summaries.db"), {
+      readOnly: true,
+    });
+    const rows = db
+      .prepare(
+        "select conversation_id, title, preview, last_modified_time, workspace_uris from conversation_summaries",
+      )
+      .all() as Record<string, unknown>[];
+    const transcripts = new Set(
+      await readdir(path.join(folder, "conversations")).catch(() => []),
+    );
+    return rows.map((row) => {
+      const id = String(row.conversation_id);
+      let cwd: string | undefined;
+      try {
+        const uri = (
+          JSON.parse(String(row.workspace_uris || "[]")) as string[]
+        )[0];
+        cwd = uri?.startsWith("file:") ? fileURLToPath(uri) : undefined;
+      } catch {
+        // no workspace recorded
+      }
+      const transcript = [`${id}.pb`, `${id}.db`].find((name) =>
+        transcripts.has(name),
+      );
+      return {
+        id,
+        file: transcript
+          ? path.join(folder, "conversations", transcript)
+          : `${file}#${id}`,
+        cwd,
+        updated: at(String(row.last_modified_time ?? "").replace(" ", "T")),
+        title: title(String(row.title || row.preview || "")),
+        version: String(row.last_modified_time),
+      };
+    });
+  } catch {
+    // another schema: nothing indexed this time
+    return [];
+  } finally {
+    db?.close();
+    await rm(scratch, { recursive: true, force: true });
+  }
+}
+
 // OpenCode keeps its sessions in one SQLite file; each row is a conversation.
 async function openCodeEntries(
   home: string,
@@ -447,6 +519,12 @@ export async function buildHistoryIndex(
     }
   for (const row of await openCodeEntries(home))
     add("opencode", shown(row.file), row, {
+      updated: new Date(0).toISOString(),
+      bytes: 0,
+      version: row.version,
+    });
+  for (const row of await antigravityEntries(home))
+    add("antigravity", shown(row.file), row, {
       updated: new Date(0).toISOString(),
       bytes: 0,
       version: row.version,

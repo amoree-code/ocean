@@ -505,3 +505,61 @@ test("pull --yes: two runs at once propose each item once", async () => {
     assert.equal((await listCandidates()).length, 8);
   });
 });
+
+test("history: Antigravity's conversations come from its summaries database", async () => {
+  const { DatabaseSync } = await import("node:sqlite");
+  const base = await mkdtemp(path.join(os.tmpdir(), "ocean-pull-agy-"));
+  const home = path.join(base, "home");
+  const folder = path.join(home, ".gemini/antigravity");
+  await mkdir(path.join(folder, "conversations"), { recursive: true });
+  await writeFile(path.join(folder, "conversations/a1.pb"), "binary");
+  const db = new DatabaseSync(path.join(folder, "conversation_summaries.db"));
+  db.exec(
+    "create table conversation_summaries (conversation_id text, title text, preview text, last_modified_time datetime, workspace_uris text)",
+  );
+  db.prepare("insert into conversation_summaries values (?, ?, ?, ?, ?)").run(
+    "a1",
+    "",
+    "Refactor the parser",
+    "2026-09-16 18:43:39.327565+00:00",
+    JSON.stringify(["file:///work/app"]),
+  );
+  db.prepare("insert into conversation_summaries values (?, ?, ?, ?, ?)").run(
+    "a2",
+    "Named one",
+    "ignored preview",
+    "2026-09-17 10:00:00+00:00",
+    "",
+  );
+  db.close();
+  await withRoot(path.join(base, "ocean"), async () => {
+    const entries = (await buildHistoryIndex({ home })).map(
+      ({ client, id, cwd, title, file, date }) => ({
+        client,
+        id,
+        cwd,
+        title,
+        file,
+        date,
+      }),
+    );
+    assert.deepEqual(entries, [
+      {
+        client: "antigravity",
+        id: "a2",
+        cwd: undefined,
+        title: "Named one",
+        file: "~/.gemini/antigravity/conversation_summaries.db#a2",
+        date: "2026-09-17",
+      },
+      {
+        client: "antigravity",
+        id: "a1",
+        cwd: "/work/app",
+        title: "Refactor the parser",
+        file: "~/.gemini/antigravity/conversations/a1.pb",
+        date: "2026-09-16",
+      },
+    ]);
+  });
+});
