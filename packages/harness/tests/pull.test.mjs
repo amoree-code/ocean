@@ -614,3 +614,192 @@ test("history: server-side conversations come from snapshots, with their link an
     assert.equal((await searchHistory("ielts letspeak")).length, 1);
   });
 });
+
+// A Chromium "simple cache" entry file: header, key (the URL), body, end record, response
+// headers, end record — the layout Claude Desktop and Chrome write.
+function cacheEntry(url, value, encoding) {
+  const key = Buffer.from(`1/0/_dk_https://site https://site ${url}`, "latin1");
+  const header = Buffer.alloc(24);
+  header.writeBigUInt64LE(0xfcfb6d1ba7725c30n, 0);
+  header.writeUInt32LE(5, 8);
+  header.writeUInt32LE(key.length, 12);
+  const raw = Buffer.from(JSON.stringify(value));
+  const body =
+    encoding === "br"
+      ? zlib.brotliCompressSync(raw)
+      : encoding === "gzip"
+        ? zlib.gzipSync(raw)
+        : raw;
+  const end = Buffer.concat([
+    Buffer.from("d8410d97456ffaf4", "hex"),
+    Buffer.alloc(12),
+  ]);
+  const headers = Buffer.from(
+    `HTTP/1.1 200\0content-type: application/json\0${encoding ? `content-encoding: ${encoding}\0` : ""}date: Sat, 01 Nov 2026 10:00:00 GMT\0`,
+    "latin1",
+  );
+  return Buffer.concat([header, key, body, end, headers, end]);
+}
+
+test("pull --yes: claude.ai and ChatGPT come from Desktop's and the browsers' caches", async () => {
+  const base = await mkdtemp(path.join(os.tmpdir(), "ocean-pull-cache-"));
+  const home = path.join(base, "home");
+  const root = path.join(base, "ocean");
+  const org = "11111111-2222-4333-8444-555555555555";
+  const project = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+  const [inProject, loose, hidden] = [
+    "c1c1c1c1-0000-4000-8000-000000000001",
+    "c2c2c2c2-0000-4000-8000-000000000002",
+    "c9c9c9c9-0000-4000-8000-000000000009",
+  ];
+  const put = async (dir, name, buffer) => {
+    await mkdir(dir, { recursive: true });
+    await writeFile(path.join(dir, name), buffer);
+  };
+  const desktop = path.join(
+    home,
+    "Library/Application Support/Claude/Cache/Cache_Data",
+  );
+  const api = `https://claude.ai/api/organizations/${org}`;
+  await put(
+    desktop,
+    "a_0",
+    cacheEntry(
+      `${api}/projects?limit=30`,
+      [{ uuid: project, name: "Letspeak" }],
+      "gzip",
+    ),
+  );
+  await put(
+    desktop,
+    "b_0",
+    cacheEntry(
+      `${api}/chat_conversations_v2?limit=30`,
+      {
+        data: [
+          {
+            uuid: inProject,
+            name: "IELTS speaking",
+            updated_at: "2026-10-29T08:00:00Z",
+            project_uuid: project,
+          },
+          {
+            uuid: loose,
+            name: "Renamed chat",
+            updated_at: "2026-10-30T08:00:00Z",
+          },
+        ],
+      },
+      "br",
+    ),
+  );
+  await put(
+    desktop,
+    "c_0",
+    cacheEntry(`${api}/memory`, {
+      memory: "Ameer is preparing for IELTS.",
+      updated_at: "2026-09-01T00:00:00Z",
+    }),
+  );
+  // A URL naming a token is never opened, whatever it holds.
+  await put(
+    desktop,
+    "d_0",
+    cacheEntry(`${api}/chat_conversations?oauth_token=1`, [
+      { uuid: hidden, name: "never read" },
+    ]),
+  );
+  await put(desktop, "e_1", Buffer.from("not an entry"));
+  const chrome = path.join(
+    home,
+    "Library/Caches/Google/Chrome/Profile 1/Cache/Cache_Data",
+  );
+  await put(
+    chrome,
+    "f_0",
+    cacheEntry("https://chatgpt.com/backend-api/conversations?offset=0", {
+      items: [{ id: "g-1", title: "Budget table", update_time: 1790000000.5 }],
+    }),
+  );
+  await put(
+    chrome,
+    "g_0",
+    cacheEntry("https://chatgpt.com/backend-api/memories?include=1", {
+      memories: [{ content: "Uses Notion for budgets." }],
+    }),
+  );
+  await withRoot(root, async () => {
+    await mkdir(path.join(root, "04-projects/letspeak"), { recursive: true });
+    await writeFile(
+      path.join(root, "04-projects/letspeak/project.json"),
+      JSON.stringify({ id: "letspeak", name: "letspeak", paths: [] }),
+    );
+    // Placed by hand earlier: kept; the newer title still replaces the old one.
+    await mkdir(serverHistoryDir(), { recursive: true });
+    await writeFile(
+      path.join(serverHistoryDir(), "claude-ai.jsonl"),
+      jsonl({
+        id: loose,
+        title: "Old title",
+        url: `https://claude.ai/chat/${loose}`,
+        updated: "2026-10-01T00:00:00Z",
+        project: "personal",
+        tags: ["claude.ai"],
+      }),
+    );
+
+    const first = await pull({ home, apply: true });
+    assert.deepEqual(first.server, {
+      "claude-ai": { conversations: 2, new: 1 },
+      chatgpt: { conversations: 1, new: 1 },
+    });
+    const claude = (
+      await readFile(path.join(serverHistoryDir(), "claude-ai.jsonl"), "utf8")
+    )
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    assert.deepEqual(
+      claude.map(({ id, title, project, tags }) => ({
+        id,
+        title,
+        project,
+        tags,
+      })),
+      [
+        {
+          id: loose,
+          title: "Renamed chat",
+          project: "personal",
+          tags: ["claude.ai"],
+        },
+        {
+          id: inProject,
+          title: "IELTS speaking",
+          project: "letspeak",
+          tags: ["claude.ai", "Letspeak"],
+        },
+      ],
+    );
+    assert.equal(
+      (await searchHistory("budget table"))[0]?.file,
+      "https://chatgpt.com/c/g-1",
+    );
+    assert.equal((await searchHistory("never read")).length, 0);
+    const texts = (await listCandidates()).map((item) => item.content);
+    assert.ok(
+      texts.some((text) => text.includes("Ameer is preparing for IELTS.")),
+    );
+    assert.ok(
+      texts.some((text) => text.includes("- Uses Notion for budgets.")),
+    );
+
+    // Nothing is proposed or added twice.
+    const second = await pull({ home, apply: true });
+    assert.deepEqual(second.server, {
+      "claude-ai": { conversations: 2, new: 0 },
+      chatgpt: { conversations: 1, new: 0 },
+    });
+    assert.equal((await listCandidates()).length, texts.length);
+  });
+});

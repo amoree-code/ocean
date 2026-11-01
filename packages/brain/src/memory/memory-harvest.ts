@@ -32,7 +32,7 @@ export const HARVEST_SOURCES: HarvestSource[] = [
 ];
 
 export type HarvestItem = {
-  source: HarvestSource | "claude.ai";
+  source: HarvestSource | ImportSource;
   file: string;
   bytes: number;
   status: "new" | "seen" | "too-large" | "secret" | "proposed";
@@ -346,8 +346,7 @@ export async function importClaudeExport(
     problems.push("projects.json is not a list");
     return { items, problems };
   }
-  const ledger = await readLedger();
-  const texts: { label: string; text: string; name: string }[] = [];
+  const texts: ImportText[] = [];
   for (const raw of projects as Record<string, unknown>[]) {
     const name = typeof raw?.name === "string" ? raw.name : "untitled";
     const parts = [
@@ -374,16 +373,35 @@ export async function importClaudeExport(
         });
       }
   }
+  return { items: await proposeImported(texts, options), problems };
+}
+
+export type ImportSource = "claude.ai" | "chatgpt";
+export type ImportText = {
+  label: string;
+  text: string;
+  // A project name the text belongs to, for `classify`.
+  name?: string;
+  source?: ImportSource;
+};
+
+// Texts read from a provider (an export, or what a cache kept of its pages) → candidates, each
+// proposed once: the ledger remembers every text, also across spacing and case.
+export async function proposeImported(
+  texts: ImportText[],
+  options: { apply?: boolean; classify?: Classify } = {},
+): Promise<HarvestItem[]> {
+  const items: HarvestItem[] = [];
+  const ledger = await readLedger();
   const seen = new Set<string>();
-  for (const { label, text, name } of texts) {
+  for (const { label, text, name, source = "claude.ai" } of texts) {
     const keys = [sha256(text), normalizedKey(text)];
     const placed = placementMeta(
-      { client: "claude.ai", file: label, text },
-      options.classify?.({ client: "claude.ai", file: label, text, name }) ??
-        {},
+      { client: source, file: label, text },
+      options.classify?.({ client: source, file: label, text, name }) ?? {},
     );
     const item: HarvestItem = {
-      source: "claude.ai",
+      source,
       file: label,
       bytes: Buffer.byteLength(text, "utf8"),
       status: keys.some((key) => ledger[key] || seen.has(key))
@@ -400,7 +418,7 @@ export async function importClaudeExport(
         const proposed = await proposeMemory({
           content: text,
           origin: "imported",
-          source: "claude.ai",
+          source,
           reason: label.slice(0, 200),
           target: placed.target,
           meta: placed.meta,
@@ -420,5 +438,5 @@ export async function importClaudeExport(
       mode: 0o600,
     });
   }
-  return { items, problems };
+  return items;
 }
