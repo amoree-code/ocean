@@ -9,6 +9,7 @@ import {
   harvestMemory,
   importClaudeExport,
 } from "@ocean/brain/memory/memory-harvest.js";
+import { withFileLock } from "@ocean/core/shared/fs-utils.js";
 import { oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import { buildHistoryIndex } from "./history-index.js";
 import { loadProjectIndex, placeMemory } from "./project-match.js";
@@ -130,9 +131,18 @@ async function importExport(
   };
 }
 
-export async function pull(
-  options: { apply?: boolean; daily?: boolean; home?: string } = {},
-): Promise<PullResult> {
+type PullOptions = { apply?: boolean; daily?: boolean; home?: string };
+
+// Clients starting at the same moment each start a pull: an applying run holds a lock, and the
+// daily check is made inside it, so a second run waits and then finds the pull done instead of
+// proposing the same items again.
+export async function pull(options: PullOptions = {}): Promise<PullResult> {
+  if (!options.apply) return pullOnce(options);
+  await mkdir(path.dirname(stampFile()), { recursive: true, mode: 0o700 });
+  return withFileLock(stampFile(), () => pullOnce(options));
+}
+
+async function pullOnce(options: PullOptions): Promise<PullResult> {
   const apply = Boolean(options.apply);
   const home = options.home ?? os.homedir();
   if (options.daily) {

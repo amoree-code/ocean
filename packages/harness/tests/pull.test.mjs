@@ -493,3 +493,15 @@ test("placement: folder names match without regard to case, as on macOS", async 
   };
   assert.equal(placeFolder(index, "/h/Ocean-UIUX-MCP/src").project, "mcp");
 });
+
+test("pull --yes: two runs at once propose each item once", async () => {
+  const { home, root } = await fixture();
+  await withRoot(root, async () => {
+    const [first, second] = await Promise.all([
+      pull({ home, apply: true, daily: true }),
+      pull({ home, apply: true, daily: true }),
+    ]);
+    assert.equal([first, second].filter((run) => run.skipped).length, 1);
+    assert.equal((await listCandidates()).length, 8);
+  });
+});
