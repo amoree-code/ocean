@@ -16,6 +16,13 @@ test("a 0600 file under the user profile grants nothing to other users", {
   try {
     const file = path.join(dir, "state.json");
     await writeFile(file, "{}\n", { mode: 0o600 });
+    // A PSModulePath inherited from PowerShell 7 (as on CI runners) stops Windows PowerShell
+    // from loading its own Get-Acl module; without it, powershell.exe uses its defaults.
+    const env = Object.fromEntries(
+      Object.entries(process.env).filter(
+        ([key]) => key.toLowerCase() !== "psmodulepath",
+      ),
+    );
     const sddl = execFileSync(
       "powershell.exe",
       [
@@ -24,7 +31,7 @@ test("a 0600 file under the user profile grants nothing to other users", {
         "-Command",
         "(Get-Acl -LiteralPath $env:OCEAN_ACL_FILE).Sddl",
       ],
-      { encoding: "utf8", env: { ...process.env, OCEAN_ACL_FILE: file } },
+      { encoding: "utf8", env: { ...env, OCEAN_ACL_FILE: file } },
     );
     assert.match(sddl, /D:/);
     assert.doesNotMatch(sddl, OPEN_TO_OTHERS);
