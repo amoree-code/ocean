@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 import zlib from "node:zlib";
 import { splitMarkdown } from "@ocean/brain/memory/memory-harvest.js";
 import { listCandidates } from "@ocean/brain/memory/memory-review.js";
@@ -28,6 +29,12 @@ const jsonl = (...lines) =>
 const TOKEN = `ghp_${"k".repeat(36)}`;
 const group = (title) =>
   `# ${title}\n\n${`Learned fact about ${title}. `.repeat(600)}\n`;
+
+// Windows resolves `/work/app` to `D:\work\app` and shows home paths with `\`; Claude Code
+// names a project's folder after its full path either way.
+const abs = (folder) => path.resolve(folder);
+const shown = (file) => path.join("~", file);
+const claudeSlug = (folder) => abs(folder).replace(/[^A-Za-z0-9]/g, "-");
 
 async function fixture() {
   const base = await mkdtemp(path.join(os.tmpdir(), "ocean-pull-"));
@@ -79,7 +86,7 @@ async function fixture() {
   await put(".gemini/memory/dup.md", "PREFERS   pnpm over NPM.\n");
   // Claude Code's memory for the app folder.
   await put(
-    ".claude/projects/-work-app/memory/stack.md",
+    `.claude/projects/${claudeSlug("/work/app")}/memory/stack.md`,
     "# Stack\n\nNext.js 15.\n",
   );
   // Instructions: Ocean's generated block and includes are not imported; the owner's text is.
@@ -90,7 +97,7 @@ async function fixture() {
   await put(".claude/CLAUDE.md", "@~/ocean/charter/core.md\n");
   // Conversations, one per client format.
   await put(
-    ".claude/projects/-work-app/s1.jsonl",
+    `.claude/projects/${claudeSlug("/work/app")}/s1.jsonl`,
     jsonl(
       {
         type: "user",
@@ -209,7 +216,7 @@ test("pull: a dry run sorts every source by project and writes nothing", async (
       history: { gemini: 1 },
     });
     assert.deepEqual(dry.unassignedFolders, [
-      { folder: "/work/ui", conversations: 1 },
+      { folder: abs("/work/ui"), conversations: 1 },
     ]);
     assert.equal(dry.exports[0].items, 2);
     assert.deepEqual(dry.exports[0].unread, ["conversations.json"]);
@@ -238,7 +245,7 @@ test("pull --yes: candidates say where they came from, the index is sorted and s
     assert.equal(stack.meta.title, "Stack");
     assert.equal(
       stack.meta.file,
-      "~/.claude/projects/-work-app/memory/stack.md",
+      shown(`.claude/projects/${claudeSlug("/work/app")}/memory/stack.md`),
     );
     assert.match(stack.meta.date, /^\d{4}-\d\d-\d\d$/);
     assert.match(
@@ -249,7 +256,7 @@ test("pull --yes: candidates say where they came from, the index is sorted and s
       (item) => item.meta.title === "Task Group: app login",
     );
     assert.equal(login.meta.project, "app");
-    assert.equal(login.meta.file, "~/.codex/memories/MEMORY.md#1");
+    assert.equal(login.meta.file, `${shown(".codex/memories/MEMORY.md")}#1`);
     const habits = candidates.find(
       (item) => item.meta.title === "Task Group: habits",
     );
@@ -273,7 +280,7 @@ test("pull --yes: candidates say where they came from, the index is sorted and s
     assert.equal(hit.client, "claude-code");
     assert.equal(hit.project, "app");
     assert.deepEqual(hit.tags, ["company"]);
-    assert.equal(hit.cwd, "/work/app/web");
+    assert.equal(hit.cwd, abs("/work/app/web"));
     assert.equal(hit.pull, true);
     assert.deepEqual(hit.alsoIn, ["claude-desktop"]);
     assert.match(hit.title, /^Fix the login flow/);
@@ -352,7 +359,7 @@ test("history: Codex's zstd-compressed sessions are indexed with their title", {
         {
           client: "codex",
           id: "z1",
-          cwd: "/work/old",
+          cwd: abs("/work/old"),
           title: "Migrate the database",
         },
       ],
@@ -451,19 +458,19 @@ test("placement: the longest project name in a heading wins; generic current fol
     "../dist/application/pull/project-match.js"
   );
   const index = {
-    home: "/h",
+    home: abs("/h"),
     projects: [
       {
         id: "ocean",
         names: ["ocean", "atlas"],
         tags: [],
-        folders: ["/h/ocean"],
+        folders: [abs("/h/ocean")],
       },
       {
         id: "ocean-ielts",
         names: ["ocean-ielts"],
         tags: ["personal"],
-        folders: ["/h/ielts/dashboard"],
+        folders: [abs("/h/ielts/dashboard")],
       },
     ],
   };
@@ -487,9 +494,14 @@ test("placement: folder names match without regard to case, as on macOS", async 
     "../dist/application/pull/project-match.js"
   );
   const index = {
-    home: "/h",
+    home: abs("/h"),
     projects: [
-      { id: "mcp", names: ["mcp"], tags: [], folders: ["/h/ocean-UIUX-MCP"] },
+      {
+        id: "mcp",
+        names: ["mcp"],
+        tags: [],
+        folders: [abs("/h/ocean-UIUX-MCP")],
+      },
     ],
   };
   assert.equal(placeFolder(index, "/h/Ocean-UIUX-MCP/src").project, "mcp");
@@ -523,7 +535,7 @@ test("history: Antigravity's conversations come from its summaries database", as
     "",
     "Refactor the parser",
     "2026-09-16 18:43:39.327565+00:00",
-    JSON.stringify(["file:///work/app"]),
+    JSON.stringify([pathToFileURL(abs("/work/app")).href]),
   );
   db.prepare("insert into conversation_summaries values (?, ?, ?, ?, ?)").run(
     "a2",
@@ -550,15 +562,15 @@ test("history: Antigravity's conversations come from its summaries database", as
         id: "a2",
         cwd: undefined,
         title: "Named one",
-        file: "~/.gemini/antigravity/conversation_summaries.db#a2",
+        file: `${shown(".gemini/antigravity/conversation_summaries.db")}#a2`,
         date: "2026-09-17",
       },
       {
         client: "antigravity",
         id: "a1",
-        cwd: "/work/app",
+        cwd: abs("/work/app"),
         title: "Refactor the parser",
-        file: "~/.gemini/antigravity/conversations/a1.pb",
+        file: shown(".gemini/antigravity/conversations/a1.pb"),
         date: "2026-09-16",
       },
     ]);

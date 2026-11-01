@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import {
   chmod,
   mkdir,
@@ -81,7 +82,13 @@ async function fixtureHome({ claude = CLAUDE_SETTINGS } = {}) {
   return {
     home,
     root,
-    env: { home, pathDirs: [bin], appDirs: [], entry: ENTRY },
+    env: {
+      home,
+      pathDirs: [bin],
+      appDirs: [],
+      entry: ENTRY,
+      platform: "linux",
+    },
   };
 }
 
@@ -210,7 +217,8 @@ test("a missing hooks file is created 0600; restore removes the keys the add cre
     await rm(path.join(home, ".codex/hooks.json"));
     const { batch } = await applyHooks({ env, clients: ["codex"] });
     const file = path.join(home, ".codex/hooks.json");
-    assert.equal((await stat(file)).mode & 0o777, 0o600);
+    if (process.platform !== "win32")
+      assert.equal((await stat(file)).mode & 0o777, 0o600);
     assert.equal(
       JSON.parse(await readFile(file, "utf8")).hooks.SessionStart.length,
       1,
@@ -257,4 +265,107 @@ test("hooks are refused for an engine in a temporary directory; paths with space
       `'/My Apps/node' '/o'\\''k/main.js' hook session-start --client codex --repair`,
     );
   });
+});
+
+const WIN_ENTRY = {
+  command: "C:\\Program Files\\nodejs\\node.exe",
+  args: ["C:\\Ocean's dir\\main.js", "mcp", "serve"],
+};
+const HOOK_ARGS = ["hook", "session-start", "--client"];
+
+test("on Windows each client's hook line is quoted for the shell that client uses", () => {
+  const env = { entry: WIN_ENTRY, platform: "win32" };
+  assert.equal(
+    hookCommand(env, "codex"),
+    `"C:\\Program Files\\nodejs\\node.exe" "C:\\Ocean's dir\\main.js" hook session-start --client codex --repair`,
+  );
+  for (const client of ["claude", "gemini"])
+    assert.equal(
+      hookCommand(env, client),
+      `& 'C:\\Program Files\\nodejs\\node.exe' 'C:\\Ocean''s dir\\main.js' hook session-start --client ${client} --repair`,
+    );
+  assert.match(
+    hookCommand(
+      { platform: "win32", entry: { command: "n", args: ["a\u2019b"] } },
+      "gemini",
+    ),
+    /'a\u2019\u2019b'/,
+  );
+});
+
+test("on Windows apply names PowerShell for Claude Code only", async () => {
+  const { root, env, home } = await fixtureHome({
+    claude: json({ hooks: { SessionStart: [] } }),
+  });
+  await withRoot(root, async () => {
+    await applyHooks({ env: { ...env, entry: WIN_ENTRY, platform: "win32" } });
+    const added = async (file) =>
+      JSON.parse(await read(home, file)).hooks.SessionStart.at(-1).hooks[0];
+    const claude = await added(".claude/settings.json");
+    assert.equal(claude.shell, "powershell");
+    assert.match(claude.command, /^& '/);
+    assert.equal((await added(".codex/hooks.json")).shell, undefined);
+    assert.equal((await added(".gemini/settings.json")).shell, undefined);
+  });
+});
+
+test("off Windows no hook names a shell", async () => {
+  const { root, env, home } = await fixtureHome({
+    claude: json({ hooks: { SessionStart: [] } }),
+  });
+  await withRoot(root, async () => {
+    await applyHooks({ env });
+    const settings = JSON.parse(await read(home, ".claude/settings.json"));
+    assert.equal(settings.hooks.SessionStart.at(-1).hooks[0].shell, undefined);
+  });
+});
+
+// Real shells, invoked the way each client invokes them. Only the Windows CI job can run this.
+test("on Windows the hook line reaches the program through cmd and PowerShell", {
+  skip: process.platform !== "win32",
+}, async () => {
+  const base = await mkdtemp(path.join(os.tmpdir(), "ocean-hook-shell-"));
+  const dir = path.join(base, "o'cean \u2019dir & co");
+  await mkdir(dir);
+  const script = path.join(dir, "print-args.mjs");
+  await writeFile(
+    script,
+    "console.log(JSON.stringify(process.argv.slice(2)));\n",
+  );
+  const env = {
+    platform: "win32",
+    entry: { command: process.execPath, args: [script] },
+  };
+  const expectArgs = (result, client) => {
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout), [
+      ...HOOK_ARGS,
+      client,
+      "--repair",
+    ]);
+  };
+  // Codex: build_command, raw_arg(format!("\"{command_line}\"")).
+  expectArgs(
+    spawnSync(
+      process.env.ComSpec ?? "cmd.exe",
+      ["/C", `"${hookCommand(env, "codex")}"`],
+      { encoding: "utf8", windowsVerbatimArguments: true },
+    ),
+    "codex",
+  );
+  // Gemini CLI's executeCommandHook appends the exit-code line; Claude Code runs the line as is.
+  for (const shell of ["powershell.exe", "pwsh.exe"]) {
+    const result = spawnSync(
+      shell,
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        `${hookCommand(env, "gemini")}; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }`,
+      ],
+      { encoding: "utf8" },
+    );
+    if (result.error?.code === "ENOENT" && shell === "pwsh.exe") continue;
+    expectArgs(result, "gemini");
+  }
 });
