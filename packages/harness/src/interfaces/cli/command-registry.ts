@@ -138,7 +138,10 @@ import {
   defaultWrapperManager,
 } from "../../composition/runtime.js";
 import { loadRuntimeConfig } from "../../infrastructure/filesystem/runtime-config-loader.js";
-import { runService } from "../../infrastructure/process/service.js";
+import {
+  runService,
+  startBackgroundPull,
+} from "../../infrastructure/process/service.js";
 import { loadProviderRegistry } from "../../infrastructure/providers/provider-registry.js";
 import {
   installShellPath,
@@ -711,22 +714,6 @@ async function commandProject(): Promise<void> {
       "Usage: ocean project resolve [path]|bind <name> <path> [--add]|register [path]|unbind <path>|rename <id> <new-id>|list|migrate [--write]|index [--write]",
     );
     process.exitCode = 1;
-  }
-}
-
-// Every session start also runs the daily `ocean pull --yes` in the background (T-305); it
-// returns at once when the last pull is under a day old. OCEAN_NO_PULL_ON_START=1 turns it off.
-function startBackgroundPull(): void {
-  if (process.env.OCEAN_NO_PULL_ON_START === "1") return;
-  try {
-    spawn(process.execPath, [process.argv[1], "pull", "--yes", "--daily"], {
-      detached: true,
-      stdio: "ignore",
-    })
-      .on("error", () => {})
-      .unref();
-  } catch {
-    // no pull this time; the next session start tries again
   }
 }
 

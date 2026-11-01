@@ -114,11 +114,14 @@ batch as the MCP entries and hooks (journal op `native-set`, before/after of the
 | Codex | disable | `[memories] generate_memories = false, use_memories = false` in `~/.codex/config.toml` |
 | Gemini CLI, Qwen Code | disable | `save_memory` added to `tools.exclude` |
 | Hermes | disable (manual) | `memory.memory_enabled: false`, `memory.user_profile_enabled: false` — YAML is not rewritten |
-| Claude Desktop / claude.ai, Cursor, ChatGPT | owner toggle | nothing local: the memory lives on the server |
+| Claude Desktop / claude.ai, ChatGPT | capture | nothing: memory stays on; the daily `ocean pull` proposes it from Claude Desktop's and the browsers' caches |
+| Cursor | uncaptured | nothing: memory stays on; its Memories live in the app, where Ocean cannot read them |
 | Antigravity | harvest | no switch exists |
 
-`ocean doctor` fails (`NATIVE_COMPETING`) for a switch Ocean can set but has not, and warns for
-toggles and harvest-only stores. Whether a client really stops writing its own store is proven
+Memory that lives on a provider's server is never switched off: Ocean absorbs it instead.
+`ocean doctor` fails (`NATIVE_COMPETING`) for a switch Ocean can set but has not, passes a captured
+server store (`NATIVE_CAPTURED`), and warns for one it cannot read (`NATIVE_UNCAPTURED`) and for
+harvest-only stores. Whether a client really stops writing its own store is proven
 only by a session in that client.
 
 `ocean memory harvest [--source <id>] [--yes]` turns the stores' texts (Claude Code staging and

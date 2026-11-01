@@ -94,7 +94,7 @@ test("plan names each client's native-memory policy", async () => {
       gemini: "change",
       qwen: "change",
       hermes: "manual",
-      cursor: "toggle",
+      cursor: "uncaptured",
       antigravity: "harvest",
     });
     const claude = plans.find((plan) => plan.client === "claude-code");
@@ -184,7 +184,26 @@ test("a canonical Claude settings file gets the staging directory, and restore r
   });
 });
 
-test("doctor: a settable switch left unset fails, toggles and harvest warn, a set switch passes", async () => {
+test("server memory is never switched off: Claude Desktop is captured by the pull, doctor passes", async () => {
+  const { root, env } = await fixture({
+    "Library/Application Support/Claude/claude_desktop_config.json": "{}",
+  });
+  await withRoot(root, async () => {
+    const desktop = (await planNative(env)).find(
+      (plan) => plan.client === "claude-desktop",
+    );
+    assert.equal(desktop.status, "capture");
+    assert.match(desktop.reason, /ocean pull/);
+    assert.doesNotMatch(desktop.reason, /turn off/);
+    const finding = (await nativeFindings(env)).find((item) =>
+      item.message.startsWith("claude-desktop "),
+    );
+    assert.equal(finding.code, "NATIVE_CAPTURED");
+    assert.equal(finding.severity, "OK");
+  });
+});
+
+test("doctor: a settable switch left unset fails, uncaptured and harvest warn, a set switch passes", async () => {
   const { root, env } = await fixture();
   await withRoot(root, async () => {
     const before = await nativeFindings(env);
@@ -195,7 +214,7 @@ test("doctor: a settable switch left unset fails, toggles and harvest warn, a se
       before.find((item) => item.message.startsWith("codex ")).severity,
       "FAIL",
     );
-    assert.equal(code("cursor"), "NATIVE_TOGGLE_PENDING");
+    assert.equal(code("cursor"), "NATIVE_UNCAPTURED");
     assert.equal(code("antigravity"), "NATIVE_HARVEST");
     await applyNative({ env, clients: ["codex"] });
     const after = await nativeFindings(env);

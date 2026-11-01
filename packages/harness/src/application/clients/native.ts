@@ -18,9 +18,10 @@ import { canonicalJson, ManualEdit } from "./editors.js";
 // memory directory → the staging folder, Gemini's and Qwen's `save_memory` tool excluded, Codex's
 // `[memories]` off — journaled under the apply batch like the MCP entries and hooks. Hermes'
 // YAML is read, never written: a manual step until its switches are off, then current. Any
-// non-canonical JSON becomes a manual step with the exact setting too; clients whose
-// memory lives on a server (Desktop/claude.ai, Cursor, ChatGPT) get the toggle to flip by hand,
-// and Antigravity, which has no switch, is harvested into candidates instead.
+// non-canonical JSON becomes a manual step with the exact setting too. Memory that lives on a
+// server is never switched off (owner, T-305): Desktop/claude.ai and ChatGPT are captured by the
+// daily `ocean pull`, Cursor's is out of reach and only reported, and Antigravity, which has no
+// switch, is harvested into candidates instead.
 
 type JsonSetting = {
   kind: "json-set" | "json-add";
@@ -45,7 +46,11 @@ type YamlCheck = {
 type NativeAdapter =
   | ({ client: string } & (JsonSetting | TomlSetting))
   | YamlCheck
-  | { client: string; kind: "manual" | "toggle" | "harvest"; text: string };
+  | {
+      client: string;
+      kind: "manual" | "capture" | "uncaptured" | "harvest";
+      text: string;
+    };
 
 export const NATIVE_ADAPTERS: NativeAdapter[] = [
   {
@@ -85,18 +90,18 @@ export const NATIVE_ADAPTERS: NativeAdapter[] = [
   },
   {
     client: "claude-desktop",
-    kind: "toggle",
-    text: "turn off memory in Claude settings (account-wide, also claude.ai); import the export with `ocean memory import-claude`",
+    kind: "capture",
+    text: "left on: the daily `ocean pull` proposes its memory and project instructions (also claude.ai) from Claude Desktop's and the browsers' caches for review",
   },
   {
     client: "cursor",
-    kind: "toggle",
-    text: "turn off Memories in Cursor settings",
+    kind: "uncaptured",
+    text: "left on: Cursor keeps its Memories in the app, where Ocean cannot read them; its chats are indexed by `ocean pull`",
   },
   {
     client: "chatgpt",
-    kind: "toggle",
-    text: "turn off Memory in ChatGPT settings",
+    kind: "capture",
+    text: "left on: the daily `ocean pull` proposes its memory and custom instructions from the browsers' chatgpt.com caches for review",
   },
   {
     client: "antigravity",
@@ -111,7 +116,13 @@ const hasSetting = (adapter: NativeAdapter): adapter is SettingAdapter =>
 
 export type NativePlan = {
   client: string;
-  status: "current" | "change" | "manual" | "toggle" | "harvest";
+  status:
+    | "current"
+    | "change"
+    | "manual"
+    | "capture"
+    | "uncaptured"
+    | "harvest";
   file?: string;
   setting?: string;
   reason?: string;
@@ -480,8 +491,9 @@ export async function restoreNative(options: {
   return { restored, conflicts };
 }
 
-// Doctor view (§3.8): a switch Ocean can set but has not is a competing source (FAIL); a toggle
-// on a server or a store with no switch cannot be checked from here (WARN).
+// Doctor view (§3.8): a switch Ocean can set but has not is a competing source (FAIL); a server
+// store `ocean pull` captures is governed (OK); one it cannot read, or a store with no switch
+// that is harvested by hand, is a WARN.
 export async function nativeFindings(
   env: ClientEnv = defaultClientEnv(),
 ): Promise<ClientFinding[]> {
@@ -501,9 +513,16 @@ export async function nativeFindings(
         message: `${name}: competing source — ${plan.status === "change" ? `run \`ocean clients apply --yes\` (${plan.setting} in ${plan.file})` : `hand edit: ${plan.setting} in ${plan.file} (${plan.reason})`}`,
         fixable: plan.status === "change",
       };
+    if (plan.status === "capture")
+      return {
+        code: "NATIVE_CAPTURED",
+        severity: "OK" as const,
+        message: `${name}: ${plan.reason}`,
+        fixable: false,
+      };
     return {
       code:
-        plan.status === "toggle" ? "NATIVE_TOGGLE_PENDING" : "NATIVE_HARVEST",
+        plan.status === "uncaptured" ? "NATIVE_UNCAPTURED" : "NATIVE_HARVEST",
       severity: "WARN" as const,
       message: `${name}: ${plan.reason}`,
       fixable: false,
