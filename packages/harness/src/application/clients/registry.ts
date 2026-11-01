@@ -1,10 +1,10 @@
 import {
   type Editor,
   jsonEditor,
-  manualEditor,
   type ServerValue,
   tomlEditor,
   yamlEditor,
+  yamlListEditor,
 } from "./editors.js";
 
 // Every AI client and IDE Ocean knows how to find (T-296 P2). One row per client: where it is
@@ -164,7 +164,10 @@ export const CLIENT_ADAPTERS: ClientAdapter[] = [
     label: "Continue (VS Code)",
     tier: "supported",
     detect: { paths: [".continue/config.yaml"] },
-    config: { file: ".continue/config.yaml", editor: manualEditor },
+    config: {
+      file: ".continue/config.yaml",
+      editor: yamlListEditor("mcpServers"),
+    },
     nativeMemory: "none",
     reason: "its mcpServers is a YAML list; Ocean does not rewrite it",
   },
