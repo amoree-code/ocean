@@ -139,6 +139,7 @@ import {
 } from "../../composition/runtime.js";
 import { loadRuntimeConfig } from "../../infrastructure/filesystem/runtime-config-loader.js";
 import {
+  restartService,
   runService,
   startBackgroundPull,
 } from "../../infrastructure/process/service.js";
@@ -278,6 +279,12 @@ async function commandClient(): Promise<void> {
     const charter = await syncCharterCopies();
     const skillFilter = await syncSkillFilter();
     const engineEntries = await repairEngineEntries();
+    // T-305: a repointed service start file only takes effect once the service restarts.
+    const service = engineEntries.some(
+      (repair) => repair.kind === "service" && repair.status === "updated",
+    )
+      ? await restartService()
+      : undefined;
     // T-296: re-applies the `ocean` entry only for clients the owner approved with
     // `ocean clients apply --yes`; never a client that was not approved.
     const clients = await repairClients().catch((error: unknown) => ({
@@ -291,6 +298,7 @@ async function commandClient(): Promise<void> {
           charter,
           skillFilter,
           engineEntries,
+          service,
           clients,
         },
         null,
@@ -1099,7 +1107,8 @@ async function commandCatalog(): Promise<void> {
 }
 
 // `ocean runtime release|status|use <id>` (T-294): the build sessions run, apart from the
-// kernel checkout. A release takes effect for shims once `client sync` runs from it.
+// kernel checkout. A release takes effect for shims once `client sync` runs from it, and for the
+// always-on service once it restarts, which a changed `current` does here (T-305).
 async function commandRuntime(): Promise<void> {
   const action = process.argv[3] ?? "status";
   if (action === "status") {
@@ -1116,10 +1125,13 @@ async function commandRuntime(): Promise<void> {
     const result =
       action === "use" ? await useRelease(id) : await releaseRuntime();
     const { entry } = await releaseStatus();
+    const service =
+      result.previous === result.current ? undefined : await restartService();
     console.log(
       JSON.stringify(
         {
           ...result,
+          service,
           next: `node ${entry} client sync   # points the shims at this release`,
         },
         null,

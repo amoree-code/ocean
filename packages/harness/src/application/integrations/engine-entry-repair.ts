@@ -33,8 +33,18 @@ const CLIENT_CONFIGS = [
   "AppData/Roaming/Claude/claude_desktop_config.json",
 ];
 
+// The always-on service's start files as `ocean setup` writes them (macOS, Linux, Windows). One
+// written before releases existed kept launching the checkout, so no release ever reached the
+// service (T-305); an updated one needs the service restarted to take effect.
+const SERVICE_FILES = [
+  "Library/LaunchAgents/com.ocean.runtime.plist",
+  ".config/systemd/user/ocean.service",
+  "AppData/Roaming/Microsoft/Windows/Start Menu/Programs/Startup/ocean.cmd",
+];
+
 export type EngineEntryRepair = {
   file: string;
+  kind: "client" | "service";
   status: "updated" | "current" | "missing" | "unreadable";
   replaced: string[];
 };
@@ -74,7 +84,17 @@ export async function repairEngineEntries(
   const pathOf = (found: string) =>
     targets.find((target) => target === found || asJson(target) === found) ??
     found;
-  for (const relative of CLIENT_CONFIGS) {
+  const files = [
+    ...CLIENT_CONFIGS.map((relative) => ({
+      relative,
+      kind: "client" as const,
+    })),
+    ...SERVICE_FILES.map((relative) => ({
+      relative,
+      kind: "service" as const,
+    })),
+  ];
+  for (const { relative, kind } of files) {
     const file = path.join(home, relative);
     const display = `~/${relative}`;
     let text: string;
@@ -85,6 +105,7 @@ export async function repairEngineEntries(
       const missing = (error as NodeJS.ErrnoException).code === "ENOENT";
       results.push({
         file: display,
+        kind,
         status: missing ? "missing" : "unreadable",
         replaced: [],
       });
@@ -100,7 +121,7 @@ export async function repairEngineEntries(
     });
     const replaced = [...new Set(hits.map(pathOf))];
     if (!replaced.length) {
-      results.push({ file: display, status: "current", replaced });
+      results.push({ file: display, kind, status: "current", replaced });
       continue;
     }
     let next = text;
@@ -110,7 +131,7 @@ export async function repairEngineEntries(
         found === pathOf(found) ? entry : asJson(entry),
       );
     await atomicWrite(file, next);
-    results.push({ file: display, status: "updated", replaced });
+    results.push({ file: display, kind, status: "updated", replaced });
   }
   return results;
 }

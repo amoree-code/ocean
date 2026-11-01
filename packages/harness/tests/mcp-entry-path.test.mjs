@@ -158,6 +158,20 @@ test("run from a release, the checkout's existing engine entry is repointed to c
         gemini.replaceAll(inJson(checkoutEntry), inJson(current)),
       );
     });
+    // A service start file written by an old setup launched the checkout (T-305).
+    const plistFile = "Library/LaunchAgents/com.ocean.runtime.plist";
+    const plist = `<plist><dict><key>ProgramArguments</key><array><string>/usr/bin/node</string><string>${checkoutEntry}</string><string>service</string></array></dict></plist>\n`;
+    await withHome({ [plistFile]: plist }, async (home, read) => {
+      const result = byFile(await repairEngineEntries(home))[`~/${plistFile}`];
+      assert.equal(result.kind, "service");
+      assert.equal(result.status, "updated");
+      assert.equal(
+        await read(plistFile),
+        plist.replaceAll(checkoutEntry, current),
+      );
+      const again = byFile(await repairEngineEntries(home))[`~/${plistFile}`];
+      assert.equal(again.status, "current");
+    });
   } finally {
     registerEngineRoot(original);
     if (saved !== undefined) process.env.OCEAN_ROOT = saved;
