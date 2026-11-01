@@ -13,7 +13,7 @@ const commandGroups = [
   ],
   [
     "Knowledge",
-    "memory, observe, capture, handoff, idea, daily, skill, catalog",
+    "memory, pull, observe, capture, handoff, idea, daily, skill, catalog",
   ],
   ["Integrations", "obsidian, hook, migrate, layout, env"],
 ] as const;

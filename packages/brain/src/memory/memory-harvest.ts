@@ -10,14 +10,16 @@ import { proposeMemory } from "./memory-write.js";
 // P4). A harvested file never becomes a record by itself: it is proposed (origin `imported`)
 // for the owner's review, through proposeMemory's checks (size, secrets). A ledger of content
 // hashes keeps a rerun from proposing the same text twice. The dry run names files and sizes,
-// never their content.
+// never their content. A text over the candidate limit is split at its headings into parts, each
+// proposed on its own (T-305: Codex keeps one MEMORY.md of hundreds of kilobytes).
 
 export type HarvestSource =
   | "claude-code"
   | "codex"
   | "gemini"
   | "hermes"
-  | "antigravity";
+  | "antigravity"
+  | "instructions";
 
 export const HARVEST_SOURCES: HarvestSource[] = [
   "claude-code",
@@ -25,6 +27,7 @@ export const HARVEST_SOURCES: HarvestSource[] = [
   "gemini",
   "hermes",
   "antigravity",
+  "instructions",
 ];
 
 export type HarvestItem = {
@@ -53,6 +56,58 @@ async function filesIn(directory: string, depth = 0): Promise<string[]> {
   return found;
 }
 
+// Global instruction files the owner may have written by hand. The block Ocean generates from
+// its own charter (`ai-sync` markers) and `@` includes of it are Ocean's already, not imported.
+const INSTRUCTION_FILES = [
+  ".claude/CLAUDE.md",
+  ".codex/AGENTS.md",
+  ".gemini/GEMINI.md",
+  ".qwen/QWEN.md",
+  ".config/opencode/AGENTS.md",
+];
+const GENERATED_BLOCK =
+  /<!-- ai-sync:generated -->[\s\S]*?<!-- ai-sync:end -->/g;
+const GEMINI_MEMORIES =
+  /^## Gemini Added Memories\s*\n([\s\S]*?)(?=^## |$(?![\s\S]))/m;
+
+function ownedText(text: string): string {
+  return text
+    .replace(GENERATED_BLOCK, "")
+    .replace(GEMINI_MEMORIES, "")
+    .split("\n")
+    .filter((line) => !line.trim().startsWith("@"))
+    .join("\n")
+    .trim();
+}
+
+// A text over `max` bytes, cut at the shallowest heading level that splits it; a part still too
+// large is cut at the next level, then between paragraphs.
+export function splitMarkdown(text: string, max = MAX_BYTES): string[] {
+  const size = (value: string) => Buffer.byteLength(value, "utf8");
+  if (size(text) <= max) return [text];
+  for (const level of [1, 2, 3, 4]) {
+    const marker = new RegExp(`^#{${level}} `, "m");
+    const parts = text
+      .split(new RegExp(`(?=^#{${level}} )`, "m"))
+      .filter((part) => part.trim());
+    if (parts.length > 1 && parts.some((part) => marker.test(part)))
+      return parts.flatMap((part) => splitMarkdown(part, max));
+  }
+  // No heading left to cut at: group whole paragraphs. One paragraph still over the limit stays
+  // whole and is reported too large; text is never cut mid-paragraph.
+  const out: string[] = [];
+  let current = "";
+  for (const piece of text.split(/(?<=\n\n)/)) {
+    if (current && size(current + piece) > max) {
+      out.push(current);
+      current = "";
+    }
+    current += piece;
+  }
+  if (current.trim()) out.push(current);
+  return out;
+}
+
 // The texts each source holds, as (label, text) pairs. Missing stores are simply empty.
 async function sourceTexts(
   source: HarvestSource,
@@ -75,7 +130,26 @@ async function sourceTexts(
     return read(files);
   }
   if (source === "codex")
-    return read(await filesIn(path.join(home, ".codex", "memories")));
+    // raw_memories.md concatenates the per-session rollout summaries: history, indexed by
+    // `ocean pull`, not memory.
+    return read(
+      (await filesIn(path.join(home, ".codex", "memories"))).filter(
+        (file) => path.basename(file) !== "raw_memories.md",
+      ),
+    );
+  if (source === "instructions") {
+    const texts: { file: string; text: string }[] = [];
+    for (const relative of INSTRUCTION_FILES) {
+      const file = path.join(home, relative);
+      const text = ownedText(await readFile(file, "utf8").catch(() => ""));
+      // Headings alone (what is left around a removed block) say nothing.
+      if (text.split("\n").some((line) => line.trim() && !/^#+\s/.test(line)))
+        texts.push({ file, text });
+    }
+    for (const file of await filesIn(path.join(home, ".cursor", "rules")))
+      texts.push({ file, text: await readFile(file, "utf8") });
+    return texts;
+  }
   if (source === "hermes")
     return read(await filesIn(path.join(home, ".hermes", "memories")));
   if (source === "antigravity")
@@ -85,10 +159,9 @@ async function sourceTexts(
   const texts = await read(await filesIn(path.join(home, ".gemini", "memory")));
   // Gemini's save_memory appends under this heading in GEMINI.md.
   const geminiMd = path.join(home, ".gemini", "GEMINI.md");
-  const section =
-    /^## Gemini Added Memories\s*\n([\s\S]*?)(?=^## |$(?![\s\S]))/m.exec(
-      await readFile(geminiMd, "utf8").catch(() => ""),
-    )?.[1];
+  const section = GEMINI_MEMORIES.exec(
+    await readFile(geminiMd, "utf8").catch(() => ""),
+  )?.[1];
   if (section?.trim()) texts.push({ file: geminiMd, text: section.trim() });
   return texts;
 }
@@ -107,13 +180,21 @@ export async function harvestMemory(
   const items: HarvestItem[] = [];
   const shown = (file: string) =>
     file.startsWith(home) ? `~${file.slice(home.length)}` : file;
+  const parts = async (source: HarvestSource) =>
+    (await sourceTexts(source, home)).flatMap(({ file, text }) => {
+      const pieces = splitMarkdown(text);
+      return pieces.map((piece, index) => ({
+        file: pieces.length > 1 ? `${shown(file)}#${index + 1}` : shown(file),
+        text: piece,
+      }));
+    });
   for (const source of options.sources ?? HARVEST_SOURCES) {
-    for (const { file, text } of await sourceTexts(source, home)) {
+    for (const { file, text } of await parts(source)) {
       const bytes = Buffer.byteLength(text, "utf8");
       const hash = sha256(text);
       const item: HarvestItem = {
         source,
-        file: shown(file),
+        file,
         bytes,
         status: "new",
       };
@@ -126,7 +207,7 @@ export async function harvestMemory(
             content: text,
             origin: "imported",
             source,
-            reason: `harvested from ${shown(file)}`.slice(0, 200),
+            reason: `harvested from ${file}`.slice(0, 200),
           });
           ledger[hash] = proposed.candidate;
           item.status = "proposed";
