@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { writeFileSync } from "node:fs";
+import { realpathSync, writeFileSync } from "node:fs";
 import {
   chmod,
   lstat,
@@ -18,6 +18,7 @@ import {
   clientFindings,
   confirmClient,
   edit,
+  isWithinDir,
   planClients,
   readClientState,
   recordVerification,
@@ -33,6 +34,12 @@ const FAKE_TOKEN = `sk-ant-${"f".repeat(24)}`;
 const FAKE_KEY = `ghp_${"k".repeat(36)}`;
 // Built at runtime so the source holds no literal address for the privacy scan.
 const FAKE_EMAIL = ["someone", "example.test"].join("@");
+// Windows has no owner/group/other bits: chmod only toggles read-only, and stat reports 0o666.
+const assertMode = async (file, mode, message) => {
+  if (process.platform !== "win32")
+    assert.equal((await stat(file)).mode & 0o777, mode, message);
+};
+
 const ENTRY = {
   command: "/opt/test/node",
   args: ["/release/current/packages/harness/dist/main.js", "mcp", "serve"],
@@ -317,11 +324,7 @@ test("apply writes only Ocean's entries, keeps modes and links, and is idempoten
       ".codex/config.toml",
       "Library/Application Support/Claude/claude_desktop_config.json",
     ])
-      assert.equal(
-        (await stat(path.join(home, relative))).mode & 0o777,
-        0o600,
-        relative,
-      );
+      await assertMode(path.join(home, relative), 0o600, relative);
     assert.equal(
       (await lstat(path.join(home, ".cursor/mcp.json"))).isSymbolicLink(),
       true,
@@ -371,7 +374,7 @@ test("the journal and state hold no client secrets and are owner-only", async ()
           new RegExp(secret.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
           `${file} holds ${secret}`,
         );
-      assert.equal((await stat(file)).mode & 0o777, 0o600);
+      await assertMode(file, 0o600);
     }
   });
 });
@@ -620,5 +623,28 @@ test("an engine in a temporary directory is refused before any client file is to
       /temporary directory/,
     );
     assert.equal(temporaryEntryProblem({ args: ["/tmpfoo/main.js"] }), null);
+    assert.match(
+      temporaryEntryProblem({
+        args: [path.join(realpathSync.native(os.tmpdir()), "wt/main.js")],
+      }),
+      /temporary directory/,
+    );
   });
+});
+
+test("the temporary-directory check follows each platform's path rules", () => {
+  const temp = "C:\\Users\\me\\AppData\\Local\\Temp";
+  const inWindows = (file) => isWithinDir(temp, file, path.win32);
+  assert.equal(inWindows(temp), true);
+  assert.equal(inWindows(`${temp}\\wt\\main.js`), true);
+  assert.equal(inWindows(`${temp.toLowerCase()}\\wt\\main.js`), true);
+  assert.equal(inWindows("C:/Users/me/AppData/Local/Temp/wt/main.js"), true);
+  assert.equal(inWindows(`${temp}2\\main.js`), false);
+  assert.equal(
+    inWindows("D:\\Users\\me\\AppData\\Local\\Temp\\main.js"),
+    false,
+  );
+  assert.equal(isWithinDir("/tmp", "/tmp/wt/main.js", path.posix), true);
+  assert.equal(isWithinDir("/tmp", "/tmpfoo/main.js", path.posix), false);
+  assert.equal(isWithinDir("/tmp", "/TMP/main.js", path.posix), false);
 });

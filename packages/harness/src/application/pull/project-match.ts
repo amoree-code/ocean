@@ -68,17 +68,21 @@ export async function loadProjectIndex(
   return { projects, home };
 }
 
+// `folder` is `root` or below it, in the platform's own separator (Windows resolves to `\`).
+const under = (folder: string, root: string) =>
+  folder === root ||
+  folder.startsWith(root.endsWith(path.sep) ? root : `${root}${path.sep}`);
+
 // macOS folder names ignore case: ~/Documents/ameer/Ocean-UIUX-MCP is the bound ocean-UIUX-MCP.
 const within = (folder: string, root: string) =>
-  lower(folder) === lower(root) || lower(folder).startsWith(`${lower(root)}/`);
+  under(lower(folder), lower(root));
 
 function isScratch(folder: string, home: string): boolean {
   const roots = [
     os.tmpdir(),
-    "/tmp",
-    "/private/tmp",
-    "/var/folders",
-    "/private/var/folders",
+    ...["/tmp", "/private/tmp", "/var/folders", "/private/var/folders"].map(
+      (root) => path.resolve(root),
+    ),
     path.join(
       home,
       "Library",
@@ -88,9 +92,9 @@ function isScratch(folder: string, home: string): boolean {
     ),
   ];
   return (
-    folder === "/" ||
+    folder === path.parse(folder).root ||
     folder === home ||
-    roots.some((root) => folder === root || folder.startsWith(`${root}/`)) ||
+    roots.some((root) => under(folder, root)) ||
     /(^|[-_/])scratch([-_/]|$)/i.test(path.basename(folder))
   );
 }
@@ -156,7 +160,9 @@ export function placeMemory(
   origin: { client: string; file: string; text: string; name?: string },
 ): Placement {
   if (origin.client === "claude-code") {
-    const dir = /\.claude\/projects\/([^/]+)\/memory\//.exec(origin.file)?.[1];
+    const dir = /\.claude[\\/]projects[\\/]([^\\/]+)[\\/]memory[\\/]/.exec(
+      origin.file,
+    )?.[1];
     if (dir) {
       let best: { id: string; tags: string[]; length: number } | undefined;
       for (const project of index.projects)

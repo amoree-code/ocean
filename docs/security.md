@@ -22,6 +22,24 @@ workspace outside of `engine/` (see [workspace.md](workspace.md)), which:
   `projects/*`, and `system/*`) even if a workspace is ever accidentally nested inside a clone.
 - Is created by `ocean setup` with `config` restricted to `0700` permissions.
 
+## Owner-only files on Windows
+
+Ocean writes `clients.json`, the client journal, the memory audit and new client configs with mode
+`0600`, and directories with `0700`. Windows ignores those modes: Node can only change a file's
+write permission there. Owner-only access comes from the ACL a file inherits instead.
+
+Under the user profile that is enough. `%USERPROFILE%` grants the user, `SYSTEM` and
+`Administrators`, and other standard users get nothing, which matches what `0600` gives on POSIX,
+where root can also read the file. `windows-profile-acl.test.mjs` checks this on the Windows CI job.
+
+Outside the profile it is not enough. With `OCEAN_ROOT` on another drive or directly under `C:\`,
+files inherit that location's ACL, which often lets other local users read them, and Ocean does not
+detect this. Keep the workspace under the profile, or restrict the folder yourself:
+
+```powershell
+icacls D:\ocean /inheritance:r /grant:r "${env:USERNAME}:(OI)(CI)F" "SYSTEM:(OI)(CI)F"
+```
+
 ## Filesystem access
 
 Profiles declare `allowedPaths`, and a headless prompt only references a `contextSources`

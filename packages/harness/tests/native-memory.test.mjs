@@ -98,9 +98,13 @@ test("plan names each client's native-memory policy", async () => {
       antigravity: "harvest",
     });
     const claude = plans.find((plan) => plan.client === "claude-code");
-    assert.match(
+    const [key, value] = claude.setting.split(" = ");
+    assert.equal(key, "autoMemoryDirectory");
+    assert.ok(
+      JSON.parse(value).endsWith(
+        path.join("00-inbox", "native", "claude-code"),
+      ),
       claude.setting,
-      /autoMemoryDirectory = ".*00-inbox\/native\/claude-code"/,
     );
     assert.match(claude.reason, /canonical/);
   });
