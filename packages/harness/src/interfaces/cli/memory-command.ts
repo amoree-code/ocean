@@ -263,7 +263,11 @@ async function runRecordCommand(
 async function runReview(args: string[]): Promise<void> {
   const [verb = "list", id] = args;
   if (verb === "list") {
-    const candidates = await listCandidates();
+    // `--project <id>`: the candidates `ocean pull` filed under that project (T-305).
+    const project = flagValue(args, "--project");
+    const candidates = (await listCandidates()).filter(
+      (item) => !project || item.meta.project === project,
+    );
     if (args.includes("--json")) {
       console.log(JSON.stringify(candidates, null, 2));
       return;
@@ -271,7 +275,7 @@ async function runReview(args: string[]): Promise<void> {
     if (!candidates.length) console.log("No memory candidates to review.");
     for (const item of candidates)
       console.log(
-        `${item.id}  ${item.origin.padEnd(8)} ${item.target || "(no target)"}  ${item.file}${item.reason ? ` — ${item.reason}` : ""}`,
+        `${item.id}  ${item.origin.padEnd(8)} ${typeof item.meta.project === "string" ? `[${item.meta.project}] ` : ""}${item.target || "(no target)"}  ${item.file}${item.reason ? ` — ${item.reason}` : ""}`,
       );
     return;
   }
@@ -284,7 +288,7 @@ async function runReview(args: string[]): Promise<void> {
     return;
   }
   console.error(
-    "Usage: ocean memory review [list] [--json] | approve <id> [--to <record path>] | reject <id>",
+    "Usage: ocean memory review [list] [--project <id>] [--json] | approve <id> [--to <record path>] | reject <id>",
   );
   process.exitCode = 1;
 }

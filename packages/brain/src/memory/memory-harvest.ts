@@ -2,9 +2,10 @@ import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { MemoryContractError } from "@ocean/core/domain/mcp/memory-contract.js";
+import { PROJECTS_DIR } from "@ocean/core/shared/paths.js";
 import { sha256 } from "./memory-audit.js";
 import { harvestLedgerFile, stagingDir } from "./memory-paths.js";
-import { proposeMemory } from "./memory-write.js";
+import { type CandidateMeta, proposeMemory } from "./memory-write.js";
 
 // One-time and repeatable harvest of clients' own memory stores into candidates (T-296 §3.5,
 // P4). A harvested file never becomes a record by itself: it is proposed (origin `imported`)
@@ -31,12 +32,76 @@ export const HARVEST_SOURCES: HarvestSource[] = [
 ];
 
 export type HarvestItem = {
-  source: HarvestSource;
+  source: HarvestSource | "claude.ai";
   file: string;
   bytes: number;
   status: "new" | "seen" | "too-large" | "secret" | "proposed";
   candidate?: string;
+  project?: string;
+  title?: string;
 };
+
+// Where a harvested text belongs, decided by the caller (T-305: `ocean pull` matches folders and
+// names to the owner's projects). `project` is an Ocean project id, or a bucket such as
+// `unassigned`; only a real project gets a record target.
+export type Placement = {
+  project?: string;
+  tags?: string[];
+  cwd?: string;
+  target?: boolean;
+};
+export type Classify = (origin: {
+  client: string;
+  file: string;
+  text: string;
+  name?: string;
+}) => Placement;
+
+// The same text with other spacing or letter case is the same memory.
+const normalizedKey = (text: string) =>
+  `n:${sha256(text.toLowerCase().replace(/\s+/g, " ").trim())}`;
+
+// A short label: the first heading, else a frontmatter name, else the first line.
+export function textTitle(text: string): string {
+  const heading = /^#{1,6}\s+(.+)$/m.exec(text)?.[1];
+  const name = /^name:\s*["']?(.+?)["']?\s*$/m.exec(text)?.[1];
+  const first = text
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => line && line !== "---");
+  return (heading ?? name ?? first ?? "").slice(0, 100);
+}
+
+const slug = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 50) || "note";
+
+// The frontmatter a pulled candidate carries, and the record it would become.
+function placementMeta(
+  origin: { client: string; file: string; text: string; date?: string },
+  placement: Placement,
+): { meta: CandidateMeta; target?: string; project: string; title: string } {
+  const project = placement.project ?? "unassigned";
+  const title = textTitle(origin.text);
+  const meta: CandidateMeta = {
+    client: origin.client,
+    project,
+    ...(placement.tags?.length ? { tags: placement.tags } : {}),
+    ...(placement.cwd ? { cwd: placement.cwd } : {}),
+    pull: true,
+    pulled_at: new Date().toISOString(),
+    ...(origin.date ? { date: origin.date } : {}),
+    title,
+    file: origin.file,
+  };
+  const target = placement.target
+    ? `${PROJECTS_DIR}/${project}/memory/${slug(title)}-${sha256(origin.text).slice(0, 6)}.md`
+    : undefined;
+  return { meta, target, project, title };
+}
 
 const MAX_BYTES = 32_000;
 const TEXT = /\.(md|txt)$/i;
@@ -173,33 +238,58 @@ async function readLedger(): Promise<Record<string, string>> {
 }
 
 export async function harvestMemory(
-  options: { sources?: HarvestSource[]; apply?: boolean; home?: string } = {},
+  options: {
+    sources?: HarvestSource[];
+    apply?: boolean;
+    home?: string;
+    classify?: Classify;
+  } = {},
 ): Promise<HarvestItem[]> {
   const home = options.home ?? os.homedir();
   const ledger = await readLedger();
   const items: HarvestItem[] = [];
   const shown = (file: string) =>
     file.startsWith(home) ? `~${file.slice(home.length)}` : file;
-  const parts = async (source: HarvestSource) =>
-    (await sourceTexts(source, home)).flatMap(({ file, text }) => {
+  const parts = async (source: HarvestSource) => {
+    const out: { path: string; file: string; text: string; date?: string }[] =
+      [];
+    for (const { file, text } of await sourceTexts(source, home)) {
+      const date = (await stat(file).catch(() => null))?.mtime
+        .toISOString()
+        .slice(0, 10);
       const pieces = splitMarkdown(text);
-      return pieces.map((piece, index) => ({
-        file: pieces.length > 1 ? `${shown(file)}#${index + 1}` : shown(file),
-        text: piece,
-      }));
-    });
+      pieces.forEach((piece, index) => {
+        out.push({
+          path: file,
+          file: pieces.length > 1 ? `${shown(file)}#${index + 1}` : shown(file),
+          text: piece,
+          date,
+        });
+      });
+    }
+    return out;
+  };
+  // Keys proposed in this run too, so one text found twice is proposed once.
+  const seen = new Set<string>();
   for (const source of options.sources ?? HARVEST_SOURCES) {
-    for (const { file, text } of await parts(source)) {
+    for (const { path: origin, file, text, date } of await parts(source)) {
+      if (!text.trim()) continue;
       const bytes = Buffer.byteLength(text, "utf8");
-      const hash = sha256(text);
+      const keys = [sha256(text), normalizedKey(text)];
+      const placed = placementMeta(
+        { client: source, file, text, date },
+        options.classify?.({ client: source, file: origin, text }) ?? {},
+      );
       const item: HarvestItem = {
         source,
         file,
         bytes,
         status: "new",
+        project: placed.project,
+        title: placed.title,
       };
-      if (!text.trim()) continue;
-      if (ledger[hash]) item.status = "seen";
+      if (keys.some((key) => ledger[key] || seen.has(key)))
+        item.status = "seen";
       else if (bytes > MAX_BYTES) item.status = "too-large";
       else if (options.apply)
         try {
@@ -208,14 +298,17 @@ export async function harvestMemory(
             origin: "imported",
             source,
             reason: `harvested from ${file}`.slice(0, 200),
+            target: placed.target,
+            meta: placed.meta,
           });
-          ledger[hash] = proposed.candidate;
+          for (const key of keys) ledger[key] = proposed.candidate;
           item.status = "proposed";
           item.candidate = proposed.candidate;
         } catch (error) {
           if (!(error instanceof MemoryContractError)) throw error;
           item.status = error.code === "SECRET" ? "secret" : "too-large";
         }
+      for (const key of keys) seen.add(key);
       items.push(item);
     }
   }
@@ -233,7 +326,7 @@ export async function harvestMemory(
 // and each doc becomes a candidate; anything unreadable is reported, never guessed.
 export async function importClaudeExport(
   directory: string,
-  options: { apply?: boolean } = {},
+  options: { apply?: boolean; classify?: Classify } = {},
 ): Promise<{ items: HarvestItem[]; problems: string[] }> {
   const problems: string[] = [];
   const items: HarvestItem[] = [];
@@ -254,7 +347,7 @@ export async function importClaudeExport(
     return { items, problems };
   }
   const ledger = await readLedger();
-  const texts: { label: string; text: string }[] = [];
+  const texts: { label: string; text: string; name: string }[] = [];
   for (const raw of projects as Record<string, unknown>[]) {
     const name = typeof raw?.name === "string" ? raw.name : "untitled";
     const parts = [
@@ -267,26 +360,41 @@ export async function importClaudeExport(
     texts.push({
       label: `claude.ai project ${name}`,
       text: parts.join("\n\n"),
+      name,
     });
     for (const doc of Array.isArray(raw.docs) ? raw.docs : [])
-      if (typeof doc?.content === "string" && doc.content.trim())
-        texts.push({
-          label: `claude.ai project ${name} doc ${String(doc.filename ?? "")}`,
-          text: doc.content,
+      if (typeof doc?.content === "string" && doc.content.trim()) {
+        const pieces = splitMarkdown(doc.content);
+        pieces.forEach((piece, index) => {
+          texts.push({
+            label: `claude.ai project ${name} doc ${String(doc.filename ?? "")}${pieces.length > 1 ? `#${index + 1}` : ""}`,
+            text: piece,
+            name,
+          });
         });
+      }
   }
-  for (const { label, text } of texts) {
-    const hash = sha256(text);
+  const seen = new Set<string>();
+  for (const { label, text, name } of texts) {
+    const keys = [sha256(text), normalizedKey(text)];
+    const placed = placementMeta(
+      { client: "claude.ai", file: label, text },
+      options.classify?.({ client: "claude.ai", file: label, text, name }) ??
+        {},
+    );
     const item: HarvestItem = {
-      source: "claude-code",
+      source: "claude.ai",
       file: label,
       bytes: Buffer.byteLength(text, "utf8"),
-      status: ledger[hash]
+      status: keys.some((key) => ledger[key] || seen.has(key))
         ? "seen"
         : Buffer.byteLength(text, "utf8") > MAX_BYTES
           ? "too-large"
           : "new",
+      project: placed.project,
+      title: placed.title,
     };
+    for (const key of keys) seen.add(key);
     if (item.status === "new" && options.apply)
       try {
         const proposed = await proposeMemory({
@@ -294,8 +402,10 @@ export async function importClaudeExport(
           origin: "imported",
           source: "claude.ai",
           reason: label.slice(0, 200),
+          target: placed.target,
+          meta: placed.meta,
         });
-        ledger[hash] = proposed.candidate;
+        for (const key of keys) ledger[key] = proposed.candidate;
         item.status = "proposed";
         item.candidate = proposed.candidate;
       } catch (error) {

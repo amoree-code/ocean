@@ -153,12 +153,19 @@ export type ProjectManifest = {
   // which validate. A typo here must never unbind the project.
   rules?: unknown;
   verify?: unknown;
+  // Labels for the project (company, personal, …) and folders it lived in before, which no
+  // longer exist; `ocean pull` files old conversations and memory under the project by them
+  // (T-305). Kept as written like rules; read through projectTags/projectFormerPaths.
+  tags?: unknown;
+  formerPaths?: unknown;
 };
 
 export const MAX_PROJECT_RULES = 10;
 export const MAX_PROJECT_RULE_BYTES = 200;
 export const MAX_PROJECT_VERIFY = 5;
 export const MAX_PROJECT_VERIFY_BYTES = 300;
+export const MAX_PROJECT_TAGS = 10;
+export const MAX_PROJECT_FORMER_PATHS = 20;
 
 const MANIFEST_FILE = "project.json";
 
@@ -257,6 +264,23 @@ export function projectVerify(
   );
 }
 
+export function projectTags(manifest: Pick<ProjectManifest, "tags">): string[] {
+  return lineList("tags", manifest.tags, MAX_PROJECT_TAGS, 40).map((tag) =>
+    tag.toLowerCase(),
+  );
+}
+
+export function projectFormerPaths(
+  manifest: Pick<ProjectManifest, "formerPaths">,
+): string[] {
+  return lineList(
+    "formerPaths",
+    manifest.formerPaths,
+    MAX_PROJECT_FORMER_PATHS,
+    500,
+  );
+}
+
 function parseManifest(folder: string, raw: string) {
   const parsed = JSON.parse(raw) as Partial<ProjectManifest>;
   if (
@@ -291,6 +315,10 @@ function parseManifest(folder: string, raw: string) {
     ...(parsed.nextTask !== undefined ? { nextTask: parsed.nextTask } : {}),
     ...(parsed.rules !== undefined ? { rules: parsed.rules } : {}),
     ...(parsed.verify !== undefined ? { verify: parsed.verify } : {}),
+    ...(parsed.tags !== undefined ? { tags: parsed.tags } : {}),
+    ...(parsed.formerPaths !== undefined
+      ? { formerPaths: parsed.formerPaths }
+      : {}),
   } satisfies ProjectManifest;
 }
 

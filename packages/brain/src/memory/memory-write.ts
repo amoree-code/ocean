@@ -226,6 +226,33 @@ const singleLine = (value: string | undefined, field: string) => {
   return value;
 };
 
+// Where a candidate came from, for the owner to sort by (T-305: client, project, file, date).
+// Internal callers only; never taken from an MCP client.
+export type CandidateMeta = Record<string, string | boolean | string[]>;
+const RESERVED = new Set([
+  "candidate",
+  "origin",
+  "source",
+  "target",
+  "reason",
+  "created",
+]);
+
+function metaLines(meta: CandidateMeta | undefined): string {
+  let lines = "";
+  for (const [key, value] of Object.entries(meta ?? {})) {
+    const rendered = JSON.stringify(value);
+    if (
+      !/^[a-z][a-z_]{0,30}$/.test(key) ||
+      RESERVED.has(key) ||
+      rendered.length > 600
+    )
+      throw new MemoryContractError("INVALID", `bad candidate field '${key}'`);
+    lines += `${key}: ${rendered}\n`;
+  }
+  return lines;
+}
+
 // An inferred or imported fact waits in candidates/ for the owner's review. The server names
 // the file; a proposed target is validated as a record path but never written here.
 export async function proposeMemory(options: {
@@ -234,8 +261,10 @@ export async function proposeMemory(options: {
   target?: string;
   reason?: string;
   source?: string;
+  meta?: CandidateMeta;
 }): Promise<{ candidate: string; auditId: string }> {
   checkContent(options.content);
+  const extra = metaLines(options.meta);
   if (options.origin !== "inferred" && options.origin !== "imported")
     throw new MemoryContractError(
       "INVALID",
@@ -247,7 +276,7 @@ export async function proposeMemory(options: {
   const id = newId();
   const file = candidateFile(localDate(), id);
   assertNoLinks(candidatesRoot(), file);
-  const body = `---\ncandidate: ${id}\norigin: ${options.origin}\nsource: ${JSON.stringify(source)}\ntarget: ${JSON.stringify(target)}\nreason: ${JSON.stringify(reason)}\ncreated: ${new Date().toISOString()}\n---\n\n${withNewline(options.content)}`;
+  const body = `---\ncandidate: ${id}\norigin: ${options.origin}\nsource: ${JSON.stringify(source)}\ntarget: ${JSON.stringify(target)}\nreason: ${JSON.stringify(reason)}\ncreated: ${new Date().toISOString()}\n${extra}---\n\n${withNewline(options.content)}`;
   await writeDurable(file, body);
   const candidate = path.relative(oceanPath(), file).split(path.sep).join("/");
   await appendAudit({
