@@ -3,12 +3,14 @@ import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { memorySettings } from "@ocean/brain/memory/memory-audit.js";
 import {
   type Classify,
   type HarvestItem,
   harvestMemory,
   importClaudeExport,
 } from "@ocean/brain/memory/memory-harvest.js";
+import { approveCandidate } from "@ocean/brain/memory/memory-review.js";
 import { withFileLock } from "@ocean/core/shared/fs-utils.js";
 import { oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import { buildHistoryIndex } from "./history-index.js";
@@ -57,8 +59,37 @@ export type PullResult = {
   >;
   // Conversation folders no project claims, most used first, to bind or ignore.
   unassignedFolders?: { folder: string; conversations: number }[];
+  // `pullAutoApprove` on: this run's candidates written as new records, and those left for review.
+  autoApproved?: { approved: number; review: number };
   record?: string;
 };
+
+type Approval = { approved?: string; review?: string };
+
+// With `pullAutoApprove: "on"` in bridge/config/memory.json, what this run proposed goes through
+// the same validated write path as an owner's approval, but only as a new record: no target, an
+// existing record to add to, a similar record or a refusal leaves the candidate for review.
+async function autoApprove(
+  items: HarvestItem[],
+): Promise<Map<string, Approval>> {
+  const approvals = new Map<string, Approval>();
+  for (const item of items) {
+    if (item.status !== "proposed" || !item.candidate) continue;
+    try {
+      const written = await approveCandidate({
+        id: path.basename(item.candidate, ".md"),
+        createOnly: true,
+        source: "pull-auto-approve",
+      });
+      approvals.set(item.candidate, { approved: written.path });
+    } catch (error) {
+      approvals.set(item.candidate, {
+        review: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  return approvals;
+}
 
 function tally(items: HarvestItem[]): PullResult["memory"] {
   const counts: NonNullable<PullResult["memory"]> = {};
@@ -198,6 +229,17 @@ async function pullOnce(options: PullOptions): Promise<PullResult> {
       .slice(0, 15)
       .map(([folder, count]) => ({ folder, conversations: count })),
   };
+  const approvals =
+    apply && (await memorySettings()).pullAutoApprove
+      ? await autoApprove(items)
+      : undefined;
+  if (approvals) {
+    const approved = [...approvals.values()].filter((item) => item.approved);
+    result.autoApproved = {
+      approved: approved.length,
+      review: approvals.size - approved.length,
+    };
+  }
   if (apply) {
     // The run's record: every item read and what became of it.
     const at = new Date().toISOString();
@@ -205,7 +247,18 @@ async function pullOnce(options: PullOptions): Promise<PullResult> {
     await mkdir(runsDir(), { recursive: true, mode: 0o700 });
     await writeFile(
       record,
-      `${JSON.stringify({ at, ...result, items }, null, 2)}\n`,
+      `${JSON.stringify(
+        {
+          at,
+          ...result,
+          items: items.map((item) => ({
+            ...item,
+            ...approvals?.get(item.candidate ?? ""),
+          })),
+        },
+        null,
+        2,
+      )}\n`,
       { mode: 0o600 },
     );
     result.record = path.relative(oceanPath(), record);

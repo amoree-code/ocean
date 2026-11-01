@@ -33,7 +33,12 @@ export type AuditEntry = {
   restoredFrom?: string;
 };
 
-export type MemorySettings = { mcpWrites: boolean; retentionDays: number };
+export type MemorySettings = {
+  mcpWrites: boolean;
+  retentionDays: number;
+  // `ocean pull` approves what it proposes as new records (T-305); off by default, for review.
+  pullAutoApprove: boolean;
+};
 
 export const DEFAULT_RETENTION_DAYS = 90;
 
@@ -102,7 +107,8 @@ export async function readAudit(): Promise<AuditEntry[]> {
     .map((line) => JSON.parse(line) as AuditEntry);
 }
 
-// bridge/config/memory.json — optional; without it MCP writes are on and copies are kept 90 days.
+// bridge/config/memory.json — optional; without it MCP writes are on, copies are kept 90 days and
+// pulled memory waits for review.
 export async function memorySettings(): Promise<MemorySettings> {
   const file = oceanPath(SYSTEM_DIR, "config", "memory.json");
   let input: Record<string, unknown>;
@@ -110,17 +116,27 @@ export async function memorySettings(): Promise<MemorySettings> {
     input = JSON.parse(await readFile(file, "utf8")) as Record<string, unknown>;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT")
-      return { mcpWrites: true, retentionDays: DEFAULT_RETENTION_DAYS };
+      return {
+        mcpWrites: true,
+        retentionDays: DEFAULT_RETENTION_DAYS,
+        pullAutoApprove: false,
+      };
     throw new Error(`Invalid memory settings in ${file}`);
   }
   const writes = input.mcpWrites ?? "on";
   const days = input.retentionDays ?? DEFAULT_RETENTION_DAYS;
+  const pullApprove = input.pullAutoApprove ?? "off";
   if (
     (writes !== "on" && writes !== "off") ||
+    (pullApprove !== "on" && pullApprove !== "off") ||
     typeof days !== "number" ||
     !Number.isInteger(days) ||
     days < 1
   )
     throw new Error(`Invalid memory settings in ${file}`);
-  return { mcpWrites: writes === "on", retentionDays: days };
+  return {
+    mcpWrites: writes === "on",
+    retentionDays: days,
+    pullAutoApprove: pullApprove === "on",
+  };
 }

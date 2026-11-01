@@ -42,7 +42,11 @@ outside these roots, a known secret shape or more than 32 KB is refused. Errors 
 
 Nothing is hard-deleted over MCP. `ocean memory purge` (CLI) lists stored copies older than the
 retention period and removes them only with `--yes`. `bridge/config/memory.json` holds
-`{"mcpWrites": "on" | "off", "retentionDays": 90}`; `off` refuses every mutating tool.
+`{"mcpWrites": "on" | "off", "retentionDays": 90, "pullAutoApprove": "off" | "on"}`; `mcpWrites: off`
+refuses every mutating tool. `pullAutoApprove: on` (default `off`, for a machine whose accounts are
+all the owner's) lets `ocean pull --yes` approve what it just proposed through the same write path,
+as new records only: a candidate with no target, one that would add to an existing record, a
+similar record or a refusal stays for `ocean memory review`; the run's record says which.
 
 Tool annotations (`readOnlyHint`, `destructiveHint`) are hints for a client's permission UI, not
 enforcement: whether a client asks before a call is the client's behaviour and is not assumed.
@@ -114,11 +118,14 @@ batch as the MCP entries and hooks (journal op `native-set`, before/after of the
 | Codex | disable | `[memories] generate_memories = false, use_memories = false` in `~/.codex/config.toml` |
 | Gemini CLI, Qwen Code | disable | `save_memory` added to `tools.exclude` |
 | Hermes | disable (manual) | `memory.memory_enabled: false`, `memory.user_profile_enabled: false` — YAML is not rewritten |
-| Claude Desktop / claude.ai, Cursor, ChatGPT | owner toggle | nothing local: the memory lives on the server |
+| Claude Desktop / claude.ai, ChatGPT | capture | nothing: memory stays on; the daily `ocean pull` proposes it from Claude Desktop's and the browsers' caches |
+| Cursor | uncaptured | nothing: memory stays on; its Memories live in the app, where Ocean cannot read them |
 | Antigravity | harvest | no switch exists |
 
-`ocean doctor` fails (`NATIVE_COMPETING`) for a switch Ocean can set but has not, and warns for
-toggles and harvest-only stores. Whether a client really stops writing its own store is proven
+Memory that lives on a provider's server is never switched off: Ocean absorbs it instead.
+`ocean doctor` fails (`NATIVE_COMPETING`) for a switch Ocean can set but has not, passes a captured
+server store (`NATIVE_CAPTURED`), and warns for one it cannot read (`NATIVE_UNCAPTURED`) and for
+harvest-only stores. Whether a client really stops writing its own store is proven
 only by a session in that client.
 
 `ocean memory harvest [--source <id>] [--yes]` turns the stores' texts (Claude Code staging and

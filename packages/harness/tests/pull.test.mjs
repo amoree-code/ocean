@@ -6,7 +6,14 @@ import test from "node:test";
 import { pathToFileURL } from "node:url";
 import zlib from "node:zlib";
 import { splitMarkdown } from "@ocean/brain/memory/memory-harvest.js";
-import { listCandidates } from "@ocean/brain/memory/memory-review.js";
+import {
+  approveCandidate,
+  listCandidates,
+} from "@ocean/brain/memory/memory-review.js";
+import {
+  readMemoryRecord,
+  writeMemoryRecord,
+} from "@ocean/brain/memory/memory-write.js";
 import {
   listProjectManifests,
   projectFormerPaths,
@@ -307,6 +314,64 @@ test("pull --yes: candidates say where they came from, the index is sorted and s
     assert.deepEqual(again.memory.codex, { seen: 4 });
     assert.equal(again.exports[0].new, 0);
     assert.equal((await listCandidates()).length, 8);
+  });
+});
+
+test("pull --yes with pullAutoApprove on: new records are written, the rest waits for review", async () => {
+  const { home, root } = await fixture();
+  await withRoot(root, async () => {
+    await mkdir(path.join(root, "bridge", "config"), { recursive: true });
+    await writeFile(
+      path.join(root, "bridge", "config", "memory.json"),
+      JSON.stringify({ pullAutoApprove: "on" }),
+    );
+    const result = await pull({ home, apply: true });
+    const record = await lastPullRecord();
+    const proposed = record.items.filter((item) => item.candidate);
+    assert.equal(
+      result.autoApproved.approved + result.autoApproved.review,
+      proposed.length,
+    );
+    const approved = proposed.filter((item) => item.approved);
+    assert.equal(approved.length, result.autoApproved.approved);
+    assert.ok(approved.length > 0);
+    for (const item of approved)
+      assert.ok((await readMemoryRecord(item.approved)).content);
+    // Left for review: no target to write to, and nothing else.
+    const left = await listCandidates();
+    assert.equal(left.length, result.autoApproved.review);
+    assert.ok(left.every((item) => item.target === ""));
+    assert.ok(
+      proposed
+        .filter((item) => item.review)
+        .every((item) => /target/.test(item.review)),
+    );
+  });
+});
+
+test("pull --yes leaves memory for review by default; an unreviewed approval never adds to a record", async () => {
+  const { home, root } = await fixture();
+  await withRoot(root, async () => {
+    const result = await pull({ home, apply: true });
+    assert.equal(result.autoApproved, undefined);
+    const stack = (await listCandidates()).find((item) =>
+      item.content.includes("Next.js 15"),
+    );
+    await writeMemoryRecord({
+      path: stack.target,
+      content: "# Stack\n\nWritten by the owner.\n",
+      mode: "create",
+      source: "test",
+    });
+    await assert.rejects(
+      approveCandidate({ id: stack.id, createOnly: true }),
+      (error) => error.code === "CONFLICT",
+    );
+    assert.ok((await listCandidates()).some((item) => item.id === stack.id));
+    assert.equal(
+      (await readMemoryRecord(stack.target)).content,
+      "# Stack\n\nWritten by the owner.\n",
+    );
   });
 });
 

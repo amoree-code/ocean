@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
@@ -73,6 +73,46 @@ test("service stays running until signaled, then exits cleanly", async () => {
   assert.equal(code, 0);
   assert.match(stdout, /Ocean runtime is running/);
   assert.match(stdout, /Ocean runtime stopped/);
+});
+
+// T-305: the always-on service runs the daily pull too, so a Desktop-only user is pulled.
+test("service starts the daily pull; OCEAN_NO_PULL_ON_START=1 turns it off", async () => {
+  const runService = async (extra) => {
+    const base = await mkdtemp(path.join(os.tmpdir(), "ocean-service-pull-"));
+    const root = path.join(base, "root");
+    const home = path.join(base, "home");
+    await mkdir(root, { recursive: true });
+    await mkdir(home, { recursive: true });
+    // clear-ocean-env turns the pull off for every spawned process; this test owns the switch.
+    const { OCEAN_NO_PULL_ON_START: _off, ...inherited } = process.env;
+    const child = spawn(process.execPath, [mainScript, "service"], {
+      stdio: "ignore",
+      env: {
+        ...inherited,
+        HOME: home,
+        USERPROFILE: home,
+        OCEAN_ROOT: root,
+        OCEAN_SERVICE_TEST_SHUTDOWN_MS: "8000",
+        ...extra,
+      },
+    });
+    const exited = new Promise((resolve) => child.once("exit", resolve));
+    const stamp = path.join(root, SYSTEM_DIR, "state", "pull", "last.json");
+    const deadline = Date.now() + 20_000;
+    let pulled = false;
+    while (!pulled && Date.now() < deadline) {
+      pulled = await stat(stamp).then(
+        () => true,
+        () => false,
+      );
+      if (!pulled && child.exitCode !== null) break;
+      if (!pulled) await delay(100);
+    }
+    await exited;
+    return pulled;
+  };
+  assert.equal(await runService({}), true);
+  assert.equal(await runService({ OCEAN_NO_PULL_ON_START: "1" }), false);
 });
 
 test("persists and runs a due local schedule once", async () => {

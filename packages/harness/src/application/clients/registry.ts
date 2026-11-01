@@ -22,7 +22,8 @@ export type NativeMemoryPolicy =
   | "redirect-staging"
   | "disable"
   | "harvest"
-  | "owner-toggle"
+  | "capture"
+  | "uncaptured"
   | "none"
   | "unknown";
 
@@ -84,7 +85,7 @@ export const CLIENT_ADAPTERS: ClientAdapter[] = [
       file: "Library/Application Support/Claude/claude_desktop_config.json",
       editor: jsonEditor(["mcpServers"]),
     },
-    nativeMemory: "owner-toggle",
+    nativeMemory: "capture",
   },
   {
     id: "codex",
@@ -130,7 +131,7 @@ export const CLIENT_ADAPTERS: ClientAdapter[] = [
       paths: [".cursor/mcp.json"],
     },
     config: { file: ".cursor/mcp.json", editor: jsonEditor(["mcpServers"]) },
-    nativeMemory: "owner-toggle",
+    nativeMemory: "uncaptured",
   },
   {
     id: "hermes",
@@ -186,9 +187,10 @@ export const CLIENT_ADAPTERS: ClientAdapter[] = [
     label: "ChatGPT desktop",
     tier: "unsupported",
     detect: { apps: ["ChatGPT.app"] },
-    nativeMemory: "owner-toggle",
+    nativeMemory: "capture",
     reason: "cannot launch a local MCP server",
-    fallback: "export the account data and import it as candidates",
+    fallback:
+      "`ocean pull` captures its conversations and memory from the browsers' caches",
   },
   {
     id: "warp",

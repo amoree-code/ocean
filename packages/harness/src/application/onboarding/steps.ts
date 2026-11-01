@@ -131,7 +131,9 @@ function connectStep(clients: OnboardingClients): OnboardingStep {
                 ? `will set ${item.setting} in ${item.file}`
                 : item.status === "manual"
                   ? `hand edit: ${item.setting} in ${item.file} (${item.reason})`
-                  : `you: ${item.reason}`
+                  : item.status === "capture"
+                    ? `captured: ${item.reason}`
+                    : `you: ${item.reason}`
           }`,
         );
       const pending = plans.filter((plan) => plan.status === "change");

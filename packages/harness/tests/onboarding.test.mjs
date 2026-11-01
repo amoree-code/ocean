@@ -309,8 +309,13 @@ test("connect lists native-memory policies and applies the settable ones in the 
     },
     {
       client: "cursor",
-      status: "toggle",
-      reason: "turn off Memories in Cursor settings",
+      status: "uncaptured",
+      reason: "left on: Cursor keeps its Memories in the app",
+    },
+    {
+      client: "chatgpt",
+      status: "capture",
+      reason: "left on: the daily `ocean pull` proposes its memory",
     },
     {
       client: "codex",
@@ -328,7 +333,8 @@ test("connect lists native-memory policies and applies the settable ones in the 
   assert.deepEqual(calls.applyNative, ["b1"]);
   const text = lines.join("\n");
   assert.match(text, /gemini native memory\s+will set tools\.exclude/);
-  assert.match(text, /cursor native memory\s+you: turn off Memories/);
+  assert.match(text, /cursor native memory\s+you: left on/);
+  assert.match(text, /chatgpt native memory\s+captured: left on/);
   assert.match(text, /codex native memory\s+governed/);
   assert.match(text, /gemini native memory: written/);
 });
