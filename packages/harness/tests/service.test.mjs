@@ -21,6 +21,7 @@ import {
   saveSchedule,
 } from "../dist/application/scheduler/local-scheduler.js";
 import { createAgentRuntime } from "../dist/composition/runtime.js";
+import { restartService } from "../dist/infrastructure/process/service.js";
 
 // Test shims: scheduler/gateway now take an AgentRuntimeDeps bag; wrap a bare
 // provider executor into a runtime so the test bodies keep passing an executor.
@@ -113,6 +114,65 @@ test("service starts the daily pull; OCEAN_NO_PULL_ON_START=1 turns it off", asy
   };
   assert.equal(await runService({}), true);
   assert.equal(await runService({ OCEAN_NO_PULL_ON_START: "1" }), false);
+});
+
+test("restartService reloads the installed service, says when there is none, and never throws", async () => {
+  const home = await mkdtemp(path.join(os.tmpdir(), "ocean-service-restart-"));
+  const calls = [];
+  const run = async (command, args) => {
+    calls.push([command, ...args].join(" "));
+  };
+  assert.equal(
+    await restartService({ home, platform: "darwin", run }),
+    "not-installed",
+  );
+  assert.equal(
+    await restartService({ home, platform: "linux", run }),
+    "not-installed",
+  );
+  assert.deepEqual(calls, []);
+  const plist = path.join(
+    home,
+    "Library",
+    "LaunchAgents",
+    "com.ocean.runtime.plist",
+  );
+  const unit = path.join(home, ".config", "systemd", "user", "ocean.service");
+  for (const file of [plist, unit]) {
+    await mkdir(path.dirname(file), { recursive: true });
+    await writeFile(file, "");
+  }
+  assert.equal(
+    await restartService({ home, platform: "darwin", run }),
+    "restarted",
+  );
+  assert.match(calls[0], /^launchctl bootout gui\/\S*\/com\.ocean\.runtime$/);
+  assert.equal(
+    calls[1],
+    `launchctl bootstrap ${calls[1].split(" ")[2]} ${plist}`,
+  );
+  calls.length = 0;
+  assert.equal(
+    await restartService({ home, platform: "linux", run }),
+    "restarted",
+  );
+  assert.deepEqual(calls, [
+    "systemctl --user daemon-reload",
+    "systemctl --user try-restart ocean.service",
+  ]);
+  const failing = async () => {
+    throw new Error("Operation not permitted");
+  };
+  const failed = await restartService({
+    home,
+    platform: "darwin",
+    run: failing,
+  });
+  assert.match(
+    failed.failed,
+    /^Operation not permitted — the service is stopped; start it with: launchctl bootstrap gui\/\S* /,
+  );
+  assert.ok(failed.failed.endsWith(plist));
 });
 
 test("persists and runs a due local schedule once", async () => {
