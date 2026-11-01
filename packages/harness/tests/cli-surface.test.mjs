@@ -46,6 +46,7 @@ test("CLI help exposes every top-level command", () => {
     "mcp",
     "browser",
     "memory",
+    "pull",
     "observe",
     "capture",
     "handoff",

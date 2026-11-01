@@ -19,31 +19,49 @@ export type Candidate = {
   target: string;
   reason: string;
   created: string;
+  // Any other frontmatter field, as written: where `ocean pull` says the candidate came from.
+  meta: Record<string, unknown>;
   content: string;
 };
 
 function parse(text: string): Omit<Candidate, "id" | "file" | "day"> | null {
   const match = /^---\n([\s\S]*?)\n---\n\n?/.exec(text);
   if (!match) return null;
-  const fields: Record<string, string> = {};
+  const fields: Record<string, unknown> = {};
   for (const line of match[1].split("\n")) {
     const index = line.indexOf(":");
     if (index < 0) continue;
     const raw = line.slice(index + 1).trim();
-    let value = raw;
+    let value: unknown = raw;
     try {
-      value = raw.startsWith('"') ? JSON.parse(raw) : raw;
+      value =
+        /^["[]/.test(raw) || raw === "true" || raw === "false"
+          ? JSON.parse(raw)
+          : raw;
     } catch {
       // a hand-edited value stays as written
     }
     fields[line.slice(0, index).trim()] = value;
   }
+  const known = [
+    "candidate",
+    "origin",
+    "source",
+    "target",
+    "reason",
+    "created",
+  ];
+  const field = (key: string) =>
+    typeof fields[key] === "string" ? (fields[key] as string) : "";
   return {
-    origin: fields.origin ?? "",
-    source: fields.source ?? "",
-    target: fields.target ?? "",
-    reason: fields.reason ?? "",
-    created: fields.created ?? "",
+    origin: field("origin"),
+    source: field("source"),
+    target: field("target"),
+    reason: field("reason"),
+    created: field("created"),
+    meta: Object.fromEntries(
+      Object.entries(fields).filter(([key]) => !known.includes(key)),
+    ),
     content: text.slice(match[0].length),
   };
 }

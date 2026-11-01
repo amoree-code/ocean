@@ -173,6 +173,7 @@ import { runObserveCommand } from "./observe-command.js";
 import { manageClients, runOnboardCommand } from "./onboard-command.js";
 import { runOperateCommand } from "./operate-command.js";
 import { runProfilesCommand } from "./profiles-command.js";
+import { runPullCommand } from "./pull-command.js";
 import { setup } from "./setup-command.js";
 import { runTasksCommand } from "./tasks-command.js";
 
@@ -713,6 +714,22 @@ async function commandProject(): Promise<void> {
   }
 }
 
+// Every session start also runs the daily `ocean pull --yes` in the background (T-305); it
+// returns at once when the last pull is under a day old. OCEAN_NO_PULL_ON_START=1 turns it off.
+function startBackgroundPull(): void {
+  if (process.env.OCEAN_NO_PULL_ON_START === "1") return;
+  try {
+    spawn(process.execPath, [process.argv[1], "pull", "--yes", "--daily"], {
+      detached: true,
+      stdio: "ignore",
+    })
+      .on("error", () => {})
+      .unref();
+  } catch {
+    // no pull this time; the next session start tries again
+  }
+}
+
 // `--repair` (the hook entries `ocean clients` writes, T-296): `client sync` in the background,
 // as the Claude Code bootstrap script does; it never delays or fails the session.
 function startBackgroundSync(): void {
@@ -733,6 +750,7 @@ async function commandHook(): Promise<void> {
   if (action === "session-start") {
     const flags = process.argv.slice(4);
     if (flags.includes("--repair")) startBackgroundSync();
+    startBackgroundPull();
     const inline = flags.find((arg) => arg.startsWith("--client="));
     const clientIndex = flags.indexOf("--client");
     const client = inline
@@ -1474,6 +1492,7 @@ export const commandRegistry: Record<string, CommandHandler> = {
   migrate: commandMigrate,
   layout: commandLayout,
   memory: commandMemory,
+  pull: () => runPullCommand(process.argv.slice(3)),
   mcp: commandMcp,
   market: commandMarket,
   obsidian: commandObsidian,
