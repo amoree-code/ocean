@@ -358,11 +358,66 @@ export function yamlEditor(table: string): Editor {
   };
 }
 
-// A client whose server table the editors cannot write (e.g. a YAML list): reads nothing,
-// every change is a manual step.
-export const manualEditor: Editor = {
-  servers: () => null,
-  apply() {
-    throw new ManualEdit("this client's config format is edited by hand");
-  },
-};
+// --- YAML list: a top-level `<table>:` list of `- name: <key>` entries, read only -------------
+
+// Reads the list so a hand-made entry can be checked; every change stays a manual step.
+export function yamlListEditor(table: string): Editor {
+  const indentOf = (line: string) => line.length - line.trimStart().length;
+  return {
+    servers(text) {
+      const lines = text.split("\n");
+      const top = lines.findIndex((line) => line.trimEnd() === `${table}:`);
+      const servers = new Map<string, ServerValue>();
+      if (top < 0) return servers;
+      const items: ServerValue[] = [];
+      let current: ServerValue | null = null;
+      let list: unknown[] | null = null;
+      let itemIndent = -1;
+      try {
+        for (const line of lines.slice(top + 1)) {
+          const text = line.trim();
+          if (text === "" || text.startsWith("#")) continue;
+          const indent = indentOf(line);
+          if (indent === 0) break;
+          if (
+            text.startsWith("- ") &&
+            (itemIndent < 0 || indent === itemIndent)
+          ) {
+            itemIndent = indent;
+            current = {};
+            list = null;
+            const match = /^- ([A-Za-z0-9_-]+):\s*(.*)$/.exec(text);
+            if (!match) return null;
+            current[match[1]] = parseScalar(match[2]);
+            items.push(current);
+            continue;
+          }
+          if (!current) return null;
+          if (list && text.startsWith("- ")) {
+            list.push(parseScalar(text.slice(2)));
+            continue;
+          }
+          const match = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(text);
+          if (!match) return null;
+          if (match[2] === "") {
+            list = [];
+            current[match[1]] = list;
+          } else {
+            list = null;
+            current[match[1]] = parseScalar(match[2]);
+          }
+        }
+      } catch {
+        return null;
+      }
+      for (const { name, ...value } of items)
+        if (typeof name === "string") servers.set(name, value);
+      return servers;
+    },
+    apply() {
+      throw new ManualEdit(
+        `${table} is a YAML list; Ocean does not rewrite it`,
+      );
+    },
+  };
+}

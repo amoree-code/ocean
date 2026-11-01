@@ -394,6 +394,26 @@ test("an entry with keys Ocean does not manage is a manual step, never rewritten
   });
 });
 
+test("a hand-made `ocean` entry in Continue's YAML list reads as current; a wrong one stays manual", async () => {
+  const { home, root, env } = await fixtureHome();
+  const file = path.join(home, ".continue/config.yaml");
+  const continueStatus = async () =>
+    (await planClients(env)).find((plan) => plan.client === "continue").status;
+  await withRoot(root, async () => {
+    const flow = `name: test\nmcpServers:\n  - name: other\n    command: /x\n  - name: ocean\n    command: ${ENTRY.command}\n    args: ${JSON.stringify(ENTRY.args)}\n`;
+    await writeFile(file, flow);
+    assert.equal(await continueStatus(), "current");
+    const block = `mcpServers:\n  - command: "${ENTRY.command}"\n    name: ocean\n    args:\n${ENTRY.args.map((arg) => `      - ${arg}\n`).join("")}models: []\n`;
+    await writeFile(file, block);
+    assert.equal(await continueStatus(), "current");
+    const stale = flow.replace("- name: ocean", "- name: Ocean");
+    await writeFile(file, stale);
+    assert.equal(await continueStatus(), "manual");
+    await applyClients({ env });
+    assert.equal(await readFile(file, "utf8"), stale);
+  });
+});
+
 test("a file changed between read and write is re-read, never overwritten", async () => {
   const { root } = await fixtureHome();
   const file = path.join(root, "client.json");

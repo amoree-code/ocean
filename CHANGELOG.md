@@ -6,6 +6,7 @@ Docs-only or CI-only PRs may add the `skip-changelog` label instead.
 
 ## Unreleased
 
+- fix(T-296): `ocean clients plan` and `ocean doctor` read Continue's `mcpServers` YAML list (never writing it), so a hand-added `ocean` entry shows as current instead of a permanent `CLIENT_MANUAL` failure (#240)
 - fix(T-305): `ocean pull` places Claude Code memory and conversation folders on Windows too: folder, scratch and Claude-project matching follow the platform separator (`\`) instead of `/`, and the pull tests no longer assume POSIX paths (#241)
 - fix(T-303): session hooks added on Windows now run: the command single-quoted every path for a POSIX shell, but Codex runs it in `cmd.exe`, Gemini CLI in PowerShell and Claude Code in PowerShell without Git Bash, so it is now quoted per client and Claude Code's hook names PowerShell. A hook already in a client's file is not rewritten; run `ocean clients restore`, then apply again
 - fix(T-302): `ocean clients apply`, its session hooks and the doctor warning now see an engine in a temporary directory on Windows, where the check matched only `/` and so never fired, leaving clients wired to a build that disappears; the Windows gate also stops asserting POSIX file modes and a `/`-only path (PR pending)
