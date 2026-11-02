@@ -16,7 +16,8 @@ import { canonicalJson, ManualEdit } from "./editors.js";
 // Claude Code and Codex read `hookSpecificOutput.additionalContext`; so does Gemini CLI 0.58
 // (fireSessionStartEvent → getAdditionalContext, wrapped in <hook_context>). Only a missing
 // Ocean hook is added, as one new group after the user's own: existing groups — other tools'
-// hooks, or an Ocean hook that already runs — are never edited.
+// hooks, or an Ocean hook that already runs — are never edited. Claude Code and Codex also get
+// the session-end hook, which records the finished session (`ocean hook session-end`).
 
 // Each client runs a hook line in its own shell on Windows, and no quoting works in all of them.
 // Claude Code: Git Bash, or PowerShell without it, so its hook names PowerShell (`shell`). Codex:
@@ -26,13 +27,33 @@ type HookGroup = Record<string, unknown>;
 
 type WindowsShell = "cmd" | "powershell";
 
+export type HookEvent = "SessionStart" | "SessionEnd";
+
+// The `ocean hook` action each event runs, and what an Ocean hook for it already looks like.
+const EVENTS: Record<
+  HookEvent,
+  { action: string; flags: string; pattern: RegExp }
+> = {
+  SessionStart: {
+    action: "session-start",
+    flags: " --repair",
+    pattern: /ocean-session-bootstrap|\bhook session-start\b/,
+  },
+  SessionEnd: {
+    action: "session-end",
+    flags: "",
+    pattern: /ocean-session-close|\bhook session-end\b/,
+  },
+};
+
 type HookAdapter = {
   client: string;
-  // The `--client` value of `ocean hook session-start`.
+  // The `--client` value of `ocean hook session-start|session-end`.
   hookClient: string;
   file: string;
   windowsShell: WindowsShell;
-  group(command: string, windows: boolean): HookGroup;
+  events: HookEvent[];
+  group(command: string, windows: boolean, event: HookEvent): HookGroup;
 };
 
 // `platform` is for tests; the running platform otherwise.
@@ -44,6 +65,7 @@ export const HOOK_ADAPTERS: HookAdapter[] = [
     hookClient: "claude",
     file: ".claude/settings.json",
     windowsShell: "powershell",
+    events: ["SessionStart", "SessionEnd"],
     group: (command, windows) => ({
       hooks: [
         {
@@ -60,23 +82,28 @@ export const HOOK_ADAPTERS: HookAdapter[] = [
     hookClient: "codex",
     file: ".codex/hooks.json",
     windowsShell: "cmd",
-    group: (command) => ({
-      matcher: "startup|resume",
-      hooks: [
-        {
-          type: "command",
-          command,
-          timeout: 10,
-          statusMessage: "Loading Ocean context",
-        },
-      ],
-    }),
+    events: ["SessionStart", "SessionEnd"],
+    group: (command, _windows, event) =>
+      event === "SessionEnd"
+        ? { hooks: [{ type: "command", command, timeout: 10 }] }
+        : {
+            matcher: "startup|resume",
+            hooks: [
+              {
+                type: "command",
+                command,
+                timeout: 10,
+                statusMessage: "Loading Ocean context",
+              },
+            ],
+          },
   },
   {
     client: "gemini",
     hookClient: "gemini",
     file: ".gemini/settings.json",
     windowsShell: "powershell",
+    events: ["SessionStart"],
     // Gemini's hook timeout is in milliseconds.
     group: (command) => ({
       matcher: "*",
@@ -85,11 +112,9 @@ export const HOOK_ADAPTERS: HookAdapter[] = [
   },
 ];
 
-const EVENT = "SessionStart";
-const OCEAN_HOOK = /ocean-session-bootstrap|\bhook session-start\b/;
-
 export type HookPlan = {
   client: string;
+  event: HookEvent;
   file: string;
   status: "current" | "change" | "manual";
   reason?: string;
@@ -108,7 +133,11 @@ const isWindows = (env: HookEnv) =>
   (env.platform ?? process.platform) === "win32";
 
 // `--repair` also starts `client sync` in the background, which re-applies approved clients.
-export function hookCommand(env: HookEnv, hookClient: string): string {
+export function hookCommand(
+  env: HookEnv,
+  hookClient: string,
+  event: HookEvent = "SessionStart",
+): string {
   const program = Array.isArray(env.entry.args) ? env.entry.args[0] : "";
   const words = [String(env.entry.command), String(program)];
   const shell = isWindows(env)
@@ -120,30 +149,39 @@ export function hookCommand(env: HookEnv, hookClient: string): string {
       : shell === "powershell"
         ? `& ${words.map(powershellWord).join(" ")}`
         : words.map(shellWord).join(" ");
-  return `${invocation} hook session-start --client ${hookClient} --repair`;
+  const { action, flags } = EVENTS[event];
+  return `${invocation} hook ${action} --client ${hookClient}${flags}`;
 }
 
-const hookGroup = (adapter: HookAdapter, env: HookEnv) =>
-  adapter.group(hookCommand(env, adapter.hookClient), isWindows(env));
+const hookGroup = (adapter: HookAdapter, env: HookEnv, event: HookEvent) =>
+  adapter.group(
+    hookCommand(env, adapter.hookClient, event),
+    isWindows(env),
+    event,
+  );
 
-// The SessionStart group list, `[]` when absent; null when the file holds another shape there.
-function sessionGroups(root: Record<string, unknown>): unknown[] | null {
+// The event's group list, `[]` when absent; null when the file holds another shape there.
+function sessionGroups(
+  root: Record<string, unknown>,
+  event: string,
+): unknown[] | null {
   const hooks = root.hooks;
   if (hooks === undefined) return [];
   if (!hooks || typeof hooks !== "object" || Array.isArray(hooks)) return null;
-  const groups = (hooks as Record<string, unknown>)[EVENT];
+  const groups = (hooks as Record<string, unknown>)[event];
   if (groups === undefined) return [];
   return Array.isArray(groups) ? groups : null;
 }
 
-const hasOceanHook = (groups: unknown[]) =>
+const hasOceanHook = (groups: unknown[], event: HookEvent) =>
   groups.some((group) => {
     const hooks = (group as { hooks?: unknown } | null)?.hooks;
     return (
       Array.isArray(hooks) &&
       hooks.some(
         (hook: { command?: unknown } | null) =>
-          typeof hook?.command === "string" && OCEAN_HOOK.test(hook.command),
+          typeof hook?.command === "string" &&
+          EVENTS[event].pattern.test(hook.command),
       )
     );
   });
@@ -157,9 +195,15 @@ async function readText(file: string): Promise<string> {
   }
 }
 
-function planOne(text: string, adapter: HookAdapter, env: HookEnv): HookPlan {
+function planOne(
+  text: string,
+  adapter: HookAdapter,
+  env: HookEnv,
+  event: HookEvent,
+): HookPlan {
   const plan: HookPlan = {
     client: adapter.client,
+    event,
     file: `~/${adapter.file}`,
     status: "change",
   };
@@ -169,15 +213,15 @@ function planOne(text: string, adapter: HookAdapter, env: HookEnv): HookPlan {
   } catch {
     return { ...plan, status: "manual", reason: "the file is not valid JSON" };
   }
-  const groups = sessionGroups(root);
+  const groups = sessionGroups(root, event);
   if (!groups)
     return {
       ...plan,
       status: "manual",
-      reason: `hooks.${EVENT} is not a list`,
+      reason: `hooks.${event} is not a list`,
     };
-  if (hasOceanHook(groups)) return { ...plan, status: "current" };
-  const group = hookGroup(adapter, env);
+  if (hasOceanHook(groups, event)) return { ...plan, status: "current" };
+  const group = hookGroup(adapter, env, event);
   try {
     canonicalJson(text);
   } catch (error) {
@@ -186,7 +230,7 @@ function planOne(text: string, adapter: HookAdapter, env: HookEnv): HookPlan {
       ...plan,
       status: "manual",
       reason: error.message,
-      snippet: `hooks.${EVENT} += ${JSON.stringify(group)}`,
+      snippet: `hooks.${event} += ${JSON.stringify(group)}`,
     };
   }
   return plan;
@@ -201,15 +245,12 @@ export async function planHooks(
       .map((plan) => plan.client),
   );
   const plans: HookPlan[] = [];
-  for (const adapter of HOOK_ADAPTERS)
-    if (installed.has(adapter.client))
-      plans.push(
-        planOne(
-          await readText(path.join(env.home, adapter.file)),
-          adapter,
-          env,
-        ),
-      );
+  for (const adapter of HOOK_ADAPTERS) {
+    if (!installed.has(adapter.client)) continue;
+    const text = await readText(path.join(env.home, adapter.file));
+    for (const event of adapter.events)
+      plans.push(planOne(text, adapter, env, event));
+  }
   return plans;
 }
 
@@ -222,14 +263,17 @@ export async function applyHooks(
     batch?: string;
     durable?: boolean;
   } = {},
-): Promise<{ batch: string; results: { client: string; result: string }[] }> {
+): Promise<{
+  batch: string;
+  results: { client: string; event: HookEvent; result: string }[];
+}> {
   const env = options.env ?? defaultClientEnv();
   if (options.durable ?? !options.env) {
     const problem = temporaryEntryProblem(env.entry);
     if (problem) throw new Error(`Refusing to add session hooks: ${problem}`);
   }
   const batch = options.batch ?? newBatch();
-  const results: { client: string; result: string }[] = [];
+  const results: { client: string; event: HookEvent; result: string }[] = [];
   for (const plan of await planHooks(env)) {
     if (options.clients && !options.clients.includes(plan.client)) continue;
     if (plan.status !== "change") continue;
@@ -238,7 +282,8 @@ export async function applyHooks(
     const result = await edit(
       path.join(env.home, adapter.file),
       (text) => {
-        if (planOne(text, adapter, env).status !== "change") return null;
+        const { event } = plan;
+        if (planOne(text, adapter, env, event).status !== "change") return null;
         const { parsed, render } = canonicalJson(text);
         const created: string[] = [];
         if (parsed.hooks === undefined) {
@@ -246,12 +291,12 @@ export async function applyHooks(
           created.push("hooks");
         }
         const hooks = parsed.hooks as Record<string, unknown>;
-        if (hooks[EVENT] === undefined) {
-          hooks[EVENT] = [];
-          created.push(EVENT);
+        if (hooks[event] === undefined) {
+          hooks[event] = [];
+          created.push(event);
         }
-        const group = hookGroup(adapter, env);
-        (hooks[EVENT] as unknown[]).push(group);
+        const group = hookGroup(adapter, env, event);
+        (hooks[event] as unknown[]).push(group);
         return {
           next: render(parsed),
           entries: [
@@ -259,7 +304,7 @@ export async function applyHooks(
               client: adapter.client,
               file: adapter.file,
               op: "hook-add",
-              key: EVENT,
+              key: event,
               before: null,
               after: group,
               created,
@@ -269,7 +314,7 @@ export async function applyHooks(
       },
       batch,
     );
-    results.push({ client: plan.client, result });
+    results.push({ client: plan.client, event: plan.event, result });
   }
   return { batch, results };
 }
@@ -293,7 +338,7 @@ export async function restoreHooks(options: {
   const conflicts: string[] = [];
   const undo = newBatch();
   for (const entry of entries) {
-    const label = `${entry.client}:hook`;
+    const label = `${entry.client}:${entry.key === "SessionEnd" ? "end-hook" : "hook"}`;
     // Set per attempt: edit() may run the change again when the file moved under it.
     const outcome = { restored: false };
     await edit(
@@ -307,15 +352,17 @@ export async function restoreHooks(options: {
           return null;
         }
         const { parsed, render } = document;
-        const groups = sessionGroups(parsed);
+        // Batches journaled before SessionEnd existed carry SessionStart as their key.
+        const event = entry.key ?? "SessionStart";
+        const groups = sessionGroups(parsed, event);
         const index =
           groups?.findIndex((group) => isDeepStrictEqual(group, entry.after)) ??
           -1;
         if (!groups || index < 0) return null;
         groups.splice(index, 1);
         const hooks = parsed.hooks as Record<string, unknown>;
-        if (entry.created?.includes(EVENT) && groups.length === 0)
-          delete hooks[EVENT];
+        if (entry.created?.includes(event) && groups.length === 0)
+          delete hooks[event];
         if (entry.created?.includes("hooks") && !Object.keys(hooks).length)
           delete parsed.hooks;
         outcome.restored = true;

@@ -46,9 +46,11 @@ export type OnboardingClients = {
     clients: string[],
   ): Promise<{ batch: string; results: { client: string; result: string }[] }>;
   verify(client: string): Promise<{ ok: boolean; detail: string }>;
-  // Session-start hooks (P3b), applied under the same batch as the entries.
+  // Session-start and session-end hooks (P3b), applied under the same batch as the entries.
   hooks(): Promise<HookPlan[]>;
-  applyHooks(batch: string): Promise<{ client: string; result: string }[]>;
+  applyHooks(
+    batch: string,
+  ): Promise<{ client: string; event: string; result: string }[]>;
   // Native-memory policies (P4), same batch.
   native(): Promise<NativePlan[]>;
   applyNative(batch: string): Promise<{ client: string; result: string }[]>;
@@ -109,11 +111,11 @@ function connectStep(clients: OnboardingClients): OnboardingStep {
       const hooks = await clients.hooks();
       for (const hook of hooks)
         io.say(
-          `  ${`${hook.client} session hook`.padEnd(34)} ${
+          `  ${`${hook.client} ${hook.event} hook`.padEnd(34)} ${
             hook.status === "current"
               ? "present"
               : hook.status === "change"
-                ? `will add a SessionStart hook in ${hook.file}`
+                ? `will add a ${hook.event} hook in ${hook.file}`
                 : `hand edit needed (${hook.reason})${hook.snippet ? `; add ${hook.snippet}` : ""}`
           }`,
         );
@@ -155,8 +157,8 @@ function connectStep(clients: OnboardingClients): OnboardingStep {
       const { batch, results } = await clients.apply(
         pending.map((plan) => plan.client),
       );
-      for (const { client, result } of await clients.applyHooks(batch))
-        io.say(`  ${client} session hook: ${result}`);
+      for (const { client, event, result } of await clients.applyHooks(batch))
+        io.say(`  ${client} ${event} hook: ${result}`);
       for (const { client, result } of await clients.applyNative(batch))
         io.say(`  ${client} native memory: ${result}`);
       io.say(`  Undo with: ocean clients restore --batch ${batch}`);
