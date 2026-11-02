@@ -19,6 +19,7 @@ import {
   resolveObsidianNotePath,
   writeObsidianNote,
 } from "../../obsidian/vault-writer.js";
+import { serverVersion } from "./server-version.js";
 import { McpToolRegistry } from "./tool-registry.js";
 
 type Request = {
@@ -243,7 +244,7 @@ export async function handleObsidianMcpRequest(
       result: {
         protocolVersion: "2025-06-18",
         capabilities: { tools: {} },
-        serverInfo: { name: "ocean-obsidian", version: "0.3.6" },
+        serverInfo: { name: "ocean-obsidian", version: await serverVersion() },
       },
     };
   if (request.method === "tools/list")

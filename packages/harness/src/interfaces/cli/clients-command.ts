@@ -1,7 +1,12 @@
 import {
+  readCallLedger,
+  summarizeCallLedger,
+} from "@ocean/services/infrastructure/mcp/call-ledger.js";
+import {
   applyClients,
   confirmClient,
   defaultClientEnv,
+  type EvidenceLabel,
   planClients,
   recordVerification,
   repairClients,
@@ -21,7 +26,7 @@ import {
 } from "../../application/clients/native.js";
 
 const usage =
-  "Usage: ocean clients detect|plan [--json] | apply [--client <id>…] [--yes] | verify [<id>…] | confirm <id>… | repair | restore [--batch <id>]";
+  "Usage: ocean clients detect|plan [--json] | apply [--client <id>…] [--yes] | verify [<id>…] | confirm <id>… --label in-app|headless|connected|blocked [--via <evidence>] [--reason <why>] | ledger | repair | restore [--batch <id>]";
 
 // `ocean clients` (T-296 P2/P3b): every installed AI client's `ocean` MCP entry and, where the
 // client has a verified session-start event, Ocean's session hook. `apply` shows the plan until
@@ -122,11 +127,26 @@ export async function runClientsCommand(args: string[]): Promise<void> {
       (result as unknown[]).push(check);
     }
   } else if (action === "confirm") {
-    const ids = rest.filter((arg) => !arg.startsWith("--"));
-    if (!ids.length) throw new Error("Usage: ocean clients confirm <id>…");
-    for (const id of ids) await confirmClient(id);
-    result = { confirmed: ids };
-  } else if (action === "repair") result = await repairClients();
+    const flags = ["--label", "--via", "--reason"];
+    const ids = rest.filter(
+      (arg, index) => !arg.startsWith("--") && !flags.includes(rest[index - 1]),
+    );
+    const label = values("--label")[0];
+    if (!ids.length || !label)
+      throw new Error(
+        "Usage: ocean clients confirm <id>… --label in-app|headless|connected|blocked [--via <evidence>] [--reason <why>]",
+      );
+    for (const id of ids)
+      await confirmClient(id, {
+        label: label as EvidenceLabel,
+        via: values("--via")[0],
+        reason: values("--reason")[0],
+      });
+    result = { confirmed: ids, label };
+  } else if (action === "ledger")
+    // Which client called which Ocean tool, and when last — the in-app evidence (T-307).
+    result = summarizeCallLedger(await readCallLedger());
+  else if (action === "repair") result = await repairClients();
   else if (action === "restore") {
     const restored = await restoreClients({ batch: values("--batch")[0] });
     result = restored.batch

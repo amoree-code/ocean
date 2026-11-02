@@ -225,7 +225,7 @@ test("plan classifies every installed client and names each change", async () =>
       continue: "manual",
       aider: "context-file",
       chatgpt: "unsupported",
-      xcode: "unknown",
+      xcode: "unsupported",
     });
     const ops = (id) =>
       plans
@@ -523,16 +523,13 @@ test("doctor findings fail unwired supported clients, warn unknown, report unsup
       before.filter((finding) => finding.code === code).length;
     assert.equal(by("CLIENT_NOT_WIRED"), 8);
     assert.equal(by("CLIENT_MANUAL"), 2);
-    assert.equal(by("CLIENT_UNKNOWN"), 1);
-    assert.equal(by("CLIENT_UNSUPPORTED"), 2);
+    // Warp and Xcode stay unsupported until their MCP support is verified (T-307).
+    assert.equal(by("CLIENT_UNKNOWN"), 0);
+    assert.equal(by("CLIENT_UNSUPPORTED"), 3);
     assert.ok(
       before
         .filter((finding) => finding.code === "CLIENT_NOT_WIRED")
         .every((finding) => finding.severity === "FAIL"),
-    );
-    assert.equal(
-      before.find((finding) => finding.code === "CLIENT_UNKNOWN").severity,
-      "WARN",
     );
     assert.ok(
       before
@@ -550,18 +547,58 @@ test("doctor findings fail unwired supported clients, warn unknown, report unsup
       after.filter((finding) => finding.code === "CLIENT_CHECK_PENDING").length,
       8,
     );
-    await confirmClient("cursor");
+    // Only an in-app confirmation reads as "checked in the app" (T-307).
+    await confirmClient("cursor", {
+      label: "in-app",
+      via: "ledger brain_search 2026-11-02T10:00Z",
+    });
+    await confirmClient("codex", {
+      label: "headless",
+      via: "codex exec ocean_ping",
+    });
+    await confirmClient("hermes", {
+      label: "blocked",
+      reason: "chat needs a provider login",
+    });
     const confirmed = await clientFindings(env);
+    const finding = (client) =>
+      confirmed.find((item) => item.message.includes(`(${client})`));
     assert.equal(
-      confirmed.filter((finding) => finding.code === "CLIENT_WIRED").length,
+      confirmed.filter((item) => item.code === "CLIENT_WIRED").length,
       1,
     );
+    assert.match(finding("cursor").message, /checked in the app .*ledger/);
+    assert.equal(finding("codex").code, "CLIENT_CHECK_PENDING");
+    assert.match(finding("codex").message, /headless only/);
+    assert.doesNotMatch(finding("codex").message, /checked in the app/);
+    assert.equal(finding("hermes").code, "CLIENT_BLOCKED");
+    assert.match(finding("hermes").message, /provider login/);
     await recordVerification("cursor", true);
     const state = await readClientState();
-    assert.deepEqual(Object.keys(state.confirmed), ["cursor"]);
+    assert.deepEqual(Object.keys(state.confirmed).sort(), [
+      "codex",
+      "cursor",
+      "hermes",
+    ]);
+    assert.equal(state.confirmed.cursor.label, "in-app");
     assert.equal(state.verified.cursor.ok, true);
     assert.ok(state.approved.cursor, "confirm and verify keep the approvals");
-    await assert.rejects(confirmClient("nope"), /unknown client/);
+    await assert.rejects(
+      confirmClient("nope", { label: "in-app", via: "x" }),
+      /unknown client/,
+    );
+    await assert.rejects(
+      confirmClient("cursor", { label: "in-app" }),
+      /needs --via/,
+    );
+    await assert.rejects(
+      confirmClient("cursor", { label: "blocked" }),
+      /needs --reason/,
+    );
+    await assert.rejects(
+      confirmClient("cursor", { label: "checked" }),
+      /unknown evidence label/,
+    );
   });
 });
 

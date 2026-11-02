@@ -40,6 +40,8 @@ import {
 import { openSessionStoreReadOnly } from "@ocean/loop/infrastructure/persistence/session-store.js";
 import { listTasksForFolder } from "@ocean/loop/tasks/list-tasks.js";
 import { hasFailures, workspaceReport } from "../../doctor/workspace-doctor.js";
+import { recordMcpCall } from "./call-ledger.js";
+import { serverVersion } from "./server-version.js";
 import { McpToolRegistry } from "./tool-registry.js";
 
 type Request = {
@@ -448,7 +450,7 @@ async function callTool(
   if (name === "ocean_status")
     return {
       name: "Ocean",
-      version: "0.3.6",
+      version: await serverVersion(),
       workspace: oceanPath(),
       mcp: "stdio",
     };
@@ -683,7 +685,7 @@ async function readResource(
     const report = await workspaceReport(ports.wrapperManager);
     value = {
       name: "Ocean",
-      version: "0.3.6",
+      version: await serverVersion(),
       workspace: oceanPath(),
       healthy: !hasFailures(report.findings),
       findings: report.findings,
@@ -758,7 +760,7 @@ export async function handleOceanMcpRequest(
       result: {
         protocolVersion: "2025-06-18",
         capabilities: { tools: {}, resources: {}, prompts: {} },
-        serverInfo: { name: "ocean", version: "0.3.6" },
+        serverInfo: { name: "ocean", version: await serverVersion() },
         instructions: MEMORY_INSTRUCTIONS,
       },
     };
@@ -769,16 +771,13 @@ export async function handleOceanMcpRequest(
     return { jsonrpc: "2.0", id: request.id, result: { resources } };
   if (request.method === "resources/read") {
     try {
-      return {
-        jsonrpc: "2.0",
-        id: request.id,
-        result: {
-          contents: [
-            await readResource(String(request.params?.uri ?? ""), ports),
-          ],
-        },
-      };
+      const contents = [
+        await readResource(String(request.params?.uri ?? ""), ports),
+      ];
+      await recordMcpCall(clientName, "resources/read", true);
+      return { jsonrpc: "2.0", id: request.id, result: { contents } };
     } catch (error) {
+      await recordMcpCall(clientName, "resources/read", false);
       return {
         jsonrpc: "2.0",
         id: request.id,
@@ -793,15 +792,14 @@ export async function handleOceanMcpRequest(
     return { jsonrpc: "2.0", id: request.id, result: { prompts } };
   if (request.method === "prompts/get") {
     try {
-      return {
-        jsonrpc: "2.0",
-        id: request.id,
-        result: await getPrompt(
-          String(request.params?.name ?? ""),
-          (request.params?.arguments ?? {}) as Record<string, unknown>,
-        ),
-      };
+      const result = await getPrompt(
+        String(request.params?.name ?? ""),
+        (request.params?.arguments ?? {}) as Record<string, unknown>,
+      );
+      await recordMcpCall(clientName, "prompts/get", true);
+      return { jsonrpc: "2.0", id: request.id, result };
     } catch (error) {
+      await recordMcpCall(clientName, "prompts/get", false);
       return {
         jsonrpc: "2.0",
         id: request.id,
@@ -822,25 +820,27 @@ export async function handleOceanMcpRequest(
       },
     };
   const name = request.params?.name;
-  if (typeof name !== "string" || !tools.has(name))
+  if (typeof name !== "string" || !tools.has(name)) {
+    // The requested name is caller text, so it is not what gets logged.
+    await recordMcpCall(clientName, "unknown", false);
     return {
       jsonrpc: "2.0",
       id: request.id,
       error: { code: -32602, message: "Unknown MCP tool" },
     };
+  }
   try {
-    return {
-      jsonrpc: "2.0",
-      id: request.id,
-      result: textResult(
-        await callTool(
-          name,
-          (request.params?.arguments ?? {}) as Record<string, unknown>,
-          ports,
-        ),
+    const result = textResult(
+      await callTool(
+        name,
+        (request.params?.arguments ?? {}) as Record<string, unknown>,
+        ports,
       ),
-    };
+    );
+    await recordMcpCall(clientName, name, true);
+    return { jsonrpc: "2.0", id: request.id, result };
   } catch (error) {
+    await recordMcpCall(clientName, name, false);
     return {
       jsonrpc: "2.0",
       id: request.id,
