@@ -28,15 +28,22 @@ import {
   MemoryContractError,
 } from "@ocean/core/domain/mcp/memory-contract.js";
 import type { BrainIndexPort } from "@ocean/core/domain/ports/brain-index-port.js";
+import type { EmbedderPort } from "@ocean/core/domain/ports/embedder-port.js";
 import type { WrapperManagerPort } from "@ocean/core/domain/ports/platform-ports.js";
 import type { SessionStoreFactory } from "@ocean/core/domain/ports/session-store-port.js";
+import { redactSecrets } from "@ocean/core/domain/redaction/redaction.js";
 import { oceanPath, oceanRoot, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
-import { folderProject } from "@ocean/core/shared/project-resolution.js";
 import {
+  folderProject,
+  scanProjectManifests,
+} from "@ocean/core/shared/project-resolution.js";
+import {
+  createHandoff,
   getHandoff,
   getTask,
   listHandoffs,
 } from "@ocean/loop/handoff/handoff-service.js";
+import { oceanContext } from "@ocean/loop/hooks/session-start-hook.js";
 import { openSessionStoreReadOnly } from "@ocean/loop/infrastructure/persistence/session-store.js";
 import { listTasksForFolder } from "@ocean/loop/tasks/list-tasks.js";
 import { hasFailures, workspaceReport } from "../../doctor/workspace-doctor.js";
@@ -358,7 +365,49 @@ const tools = new McpToolRegistry([
       additionalProperties: false,
     },
   },
+  {
+    name: "ocean_context",
+    description:
+      "The bounded Ocean start line (256 bytes or less: the project bound to cwd and the operations available), for clients without a session-start hook. Holds no records; search for those.",
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      type: "object",
+      properties: { cwd: { type: "string" } },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "ocean_projects_list",
+    description: "List the user's Ocean projects (id and name only).",
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      type: "object",
+      properties: {},
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "ocean_handoff_create",
+    description:
+      "Create a cross-client session handoff, only when the user explicitly asks for one: a short summary and the next action (4 KB at most in total; secrets are redacted). It always creates a new handoff and never changes an existing one; another client reads it with ocean_handoffs_list and ocean_handoff_get.",
+    annotations: { readOnlyHint: false, destructiveHint: false },
+    inputSchema: {
+      type: "object",
+      properties: {
+        summary: { type: "string" },
+        nextAction: { type: "string" },
+        title: { type: "string" },
+        taskId: { type: "string" },
+        project: { type: "string" },
+      },
+      required: ["summary", "nextAction"],
+      additionalProperties: false,
+    },
+  },
 ]);
+
+// What one MCP handoff may hold, summed over its texts (T-307).
+export const HANDOFF_MAX_BYTES = 4096;
 
 const resources = [
   {
@@ -405,12 +454,20 @@ export type OceanMcpPorts = {
   brainIndex: BrainIndexPort;
   sessionStoreFactory: SessionStoreFactory;
   wrapperManager: WrapperManagerPort;
+  // The query embedder for brain_search; null (or absent) searches by full text only.
+  embedder?: () => Promise<EmbedderPort | null>;
 };
 
 function textResult(value: unknown): {
   content: [{ type: "text"; text: string }];
   structuredContent: unknown;
 } {
+  // A string result (ocean_context) is sent as is, so its byte budget holds on the wire.
+  if (typeof value === "string")
+    return {
+      content: [{ type: "text", text: value }],
+      structuredContent: { text: value },
+    };
   return {
     content: [{ type: "text", text: JSON.stringify(value) }],
     structuredContent: value,
@@ -574,6 +631,7 @@ async function callTool(
         ? args.types.filter((item): item is string => typeof item === "string")
         : undefined,
       indexPort: ports.brainIndex,
+      embedder: ports.embedder ? await ports.embedder() : null,
     });
   if (name === "brain_read") {
     const idOrPath =
@@ -614,6 +672,17 @@ async function callTool(
       tools: tools.list().map((tool) => tool.name),
       writes: (await memorySettings()).mcpWrites,
     };
+  if (name === "ocean_context")
+    return oceanContext(
+      typeof args.cwd === "string" && args.cwd ? args.cwd : process.cwd(),
+    );
+  if (name === "ocean_projects_list")
+    return {
+      projects: (await scanProjectManifests()).manifests
+        .map((project) => ({ id: project.id, name: project.name }))
+        .sort((a, b) => a.id.localeCompare(b.id)),
+    };
+  if (name === "ocean_handoff_create") return createClientHandoff(args, ports);
   if (name === "memory_read")
     return readMemoryRecord(requiredArgument(args, "path"));
   if (name === "memory_history")
@@ -659,6 +728,54 @@ async function callTool(
       source,
     });
   throw new Error(`Unknown MCP tool: ${name}`);
+}
+
+// A handoff a client writes on the user's request: bounded, redacted, always a new record.
+async function createClientHandoff(
+  args: Record<string, unknown>,
+  ports: OceanMcpPorts,
+): Promise<unknown> {
+  const text = (key: string) =>
+    typeof args[key] === "string" ? (args[key] as string).trim() : "";
+  const summary = requiredArgument(args, "summary");
+  const nextAction = requiredArgument(args, "nextAction");
+  const title = text("title");
+  const bytes = [summary, nextAction, title].reduce(
+    (sum, item) => sum + Buffer.byteLength(item, "utf8"),
+    0,
+  );
+  if (bytes > HANDOFF_MAX_BYTES)
+    throw new Error(
+      `handoff is ${bytes} bytes; the limit is ${HANDOFF_MAX_BYTES} — shorten the summary`,
+    );
+  const project = text("project");
+  if (project && !isValidProjectId(project))
+    throw new Error(`invalid project id '${project}'`);
+  const clean = (value: string) => redactSecrets(value);
+  const task = text("taskId")
+    ? await getTask(text("taskId"), {
+        projectId: project || undefined,
+        explicit: Boolean(project),
+      })
+    : null;
+  const handoff = await createHandoff(
+    {
+      task,
+      title: title ? clean(title) : undefined,
+      content: clean(summary),
+      nextAction: clean(nextAction),
+      provider: clientName,
+      projectId: project || undefined,
+    },
+    ports.sessionStoreFactory,
+  );
+  return {
+    handoffId: handoff.handoffId,
+    taskId: handoff.taskId,
+    projectId: handoff.projectId,
+    provider: handoff.provider,
+    redacted: [summary, nextAction, title].some((item) => clean(item) !== item),
+  };
 }
 
 // Memory visibility for a tool call: an explicit project, else the one bound to the cwd.

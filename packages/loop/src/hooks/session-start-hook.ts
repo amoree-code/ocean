@@ -189,6 +189,20 @@ export async function claudeSessionStartHook(
   };
 }
 
+// The same bounded bootstrap line a session-start hook gives, for clients without hooks (T-307).
+// Read-only: it never registers a project, and it carries no rules, records or warnings.
+export async function oceanContext(cwd: string): Promise<string> {
+  const project = await resolveProject(cwd).catch(
+    (): ProjectResolution => ({
+      status: "unbound",
+      cwd: path.resolve(cwd),
+      gitRoot: null,
+      confidence: "none",
+    }),
+  );
+  return buildOceanBootstrap(project).content;
+}
+
 // Clients that take the bootstrap through their own hooks instead of a same-name shim (T-266).
 // Codex and Gemini CLI (0.58: fireSessionStartEvent → getAdditionalContext, T-296) read Claude
 // Code's hookSpecificOutput shape. Hermes injects context only from a pre_llm_call shell hook,

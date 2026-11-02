@@ -29,18 +29,7 @@ export type Task = {
 };
 
 export async function createHandoff(
-  input: {
-    taskId?: string;
-    sessionId?: string;
-    profileId?: string;
-    nextAction?: string;
-    provider?: string;
-    sourceSummaryPath?: string | null;
-    changedFiles?: string[];
-    verification?: string[];
-    notProven?: string[];
-    blocked?: string[];
-  },
+  input: Parameters<typeof createHandoffWithStore>[1],
   openStore: SessionStoreFactory,
 ): Promise<Handoff> {
   const store = await openStore();
@@ -65,6 +54,10 @@ export async function createHandoffWithStore(
     notProven?: string[];
     blocked?: string[];
     task?: Task | null;
+    // A handoff written by a client (T-307): its own title and bounded summary.
+    title?: string;
+    content?: string;
+    projectId?: string;
   },
 ): Promise<Handoff> {
   const session = input.sessionId ? store.get(input.sessionId) : null;
@@ -79,11 +72,12 @@ export async function createHandoffWithStore(
       : (input.task ?? null);
   const commit = await currentCommit();
   const now = new Date().toISOString();
-  const content = (task?.body ?? "").slice(0, maxContentBytes);
+  const content = (input.content ?? task?.body ?? "").slice(0, maxContentBytes);
   const handoff = validateHandoff({
     handoffId: `handoff-${randomUUID()}`,
     taskId: task?.id ?? session?.taskId ?? null,
-    title: task?.title ?? session?.title ?? "Ocean session handoff",
+    title:
+      input.title ?? task?.title ?? session?.title ?? "Ocean session handoff",
     objective:
       task?.objective ??
       "Continue the selected Ocean session with bounded context.",
@@ -91,7 +85,7 @@ export async function createHandoffWithStore(
     profileId: input.profileId ?? session?.profile ?? "",
     profileIdentity: session?.profileIdentity ?? "",
     sourceSessionId: session?.sessionId ?? null,
-    projectId: task?.project ?? session?.projectId ?? null,
+    projectId: task?.project ?? input.projectId ?? session?.projectId ?? null,
     provider: input.provider ?? session?.provider ?? "",
     parentSessionId: session?.parentSessionId ?? null,
     decisions: [],
