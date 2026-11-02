@@ -286,7 +286,7 @@ test("a profile cannot choose the endpoint or the credential variable", () => {
         credentialEnv: "ANTHROPIC_API_KEY",
       },
     },
-    governance: { sandbox: { mode: "read-only", network: "provider-only" } },
+    governance: { writePolicy: "none" },
   });
   assert.equal("baseUrl" in profile.clients.deepseek, false);
   assert.equal("credentialEnv" in profile.clients.deepseek, false);
@@ -310,7 +310,6 @@ test("ocean run with a completion profile goes through the HTTP transport end to
         governance: {
           allowedCommands: ["pnpm"],
           allowedPaths: ["."],
-          sandbox: { mode: "read-only", network: "provider-only" },
         },
         memory: { enabled: true, scope: "profile" },
       }),
@@ -446,9 +445,7 @@ test("a completion client cannot leave its model to a provider default", () => {
         role: "r",
         defaultClient: "deepseek",
         clients: { deepseek: { enabled: true, model: "provider-managed" } },
-        governance: {
-          sandbox: { mode: "read-only", network: "provider-only" },
-        },
+        governance: {},
       }),
     /Client deepseek requires a model/,
   );

@@ -37,7 +37,6 @@ const profileJson = (overrides = {}) => ({
     allowedPaths: ["src"],
     allowedCommands: [],
     writePolicy: "none",
-    sandbox: { mode: "read-only", network: "provider-only" },
   },
   memory: { enabled: false, scope: "disabled" },
   ...overrides,
@@ -49,7 +48,6 @@ const writable = (commands = []) =>
       allowedPaths: ["src"],
       allowedCommands: commands,
       writePolicy: "workspace",
-      sandbox: { mode: "workspace-write", network: "provider-only" },
     },
   });
 
@@ -76,7 +74,6 @@ function planFor(raw, cwd, writeAllowed = false) {
     cwd,
     supportedTransports: ["cli", "openai-compatible-api"],
     writeAllowed,
-    enforceableNetwork: ["provider-only"],
   });
 }
 
@@ -214,7 +211,6 @@ unixOnly(
           allowedPaths: ["."],
           allowedCommands: [],
           writePolicy: "workspace",
-          sandbox: { mode: "workspace-write", network: "provider-only" },
         },
       });
       await symlink(path.join(cwd, "src", ".env"), path.join(cwd, "notes.txt"));
@@ -632,7 +628,7 @@ test("a writable tool loop needs an approved run contract; with one it may write
         events.find((event) => event.type === "execution_plan").data,
       ).plan;
       assert.equal(plan.toolLoop, true);
-      assert.equal(plan.sandbox.mode, "workspace-write");
+      assert.equal(plan.readOnly, false);
       const types = events
         .filter((event) => event.type === "json")
         .map((event) => JSON.parse(event.data).type);

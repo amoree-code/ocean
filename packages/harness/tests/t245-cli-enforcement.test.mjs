@@ -1,5 +1,5 @@
 // T-245 Phase 3 — the execution plan reaches the CLI: model flag, child-only environment,
-// and sandbox policy enforced before spawn.
+// and read-only enforced before spawn.
 import assert from "node:assert/strict";
 import {
   chmod,
@@ -28,7 +28,7 @@ const profile = (name, model, overrides = {}) => ({
   role: "developer",
   defaultClient: "claude",
   clients: { claude: { enabled: true, model } },
-  governance: { sandbox: { mode: "read-only", network: "provider-only" } },
+  governance: { writePolicy: "none" },
   memory: { enabled: true, scope: "profile" },
   ...overrides,
 });
@@ -146,35 +146,6 @@ unixOnly(
     );
   },
 );
-
-test("a network policy the client cannot enforce fails before any session or process", async () => {
-  for (const sandbox of [
-    { mode: "read-only", network: "deny" },
-    { mode: "read-only", network: "allowlist", allowedHosts: ["example.com"] },
-  ])
-    await withFakeClaude(
-      [profile("strict", "m", { governance: { sandbox } })],
-      async ({ root, argsDir }) => {
-        let executed = false;
-        await assert.rejects(
-          runAgent(
-            { profileName: "strict", prompt: "go", cwd: root },
-            createAgentRuntime({
-              executeProvider: async () => {
-                executed = true;
-                return { exitCode: 0, events: [], stderr: "" };
-              },
-            }),
-          ),
-          new RegExp(`cannot enforce network policy: ${sandbox.network}`),
-        );
-        assert.equal(executed, false);
-        await assert.rejects(readFile(path.join(argsDir, "strict.args")), {
-          code: "ENOENT",
-        });
-      },
-    );
-});
 
 test("a client that cannot enforce read-only fails before spawn", async () => {
   await withFakeClaude(

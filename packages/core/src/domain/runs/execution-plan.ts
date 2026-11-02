@@ -3,7 +3,6 @@ import {
   isApiClient,
   type Profile,
   profileIdentity,
-  type SandboxPolicy,
   type Transport,
 } from "../profiles/profile.js";
 
@@ -23,13 +22,8 @@ export type ExecutionPlan = Readonly<{
   memoryNamespace: string | null;
   cwd: string;
   readOnly: boolean;
-  sandbox: Readonly<{
-    mode: SandboxPolicy["mode"];
-    network: SandboxPolicy["network"];
-    allowedPaths: readonly string[];
-    allowedCommands: readonly string[];
-    allowedHosts: readonly string[];
-  }>;
+  allowedPaths: readonly string[];
+  allowedCommands: readonly string[];
   // Compatibility variables for the child process only: outputs of the plan, never inputs.
   childEnv: Readonly<Record<string, string>>;
 }>;
@@ -38,24 +32,10 @@ export type ExecutionPlanOptions = {
   cwd: string;
   // Transports this runtime can execute. A binding on any other transport fails closed.
   supportedTransports: readonly Transport[];
-  // Whether this run may write: the profile allows it, an approved run contract grants it,
-  // and the runtime can enforce it. The effective sandbox is the strictest of the three.
+  // Whether this run may write: an approved run contract grants it and the runtime executes
+  // it. The run writes only when the profile's write policy allows it too.
   writeAllowed: boolean;
-  // Network policies the selected client can enforce. A stricter policy it cannot enforce
-  // fails closed rather than running with a weaker one.
-  enforceableNetwork: readonly SandboxPolicy["network"][];
 };
-
-// A v1 profile has no sandbox block; it maps to the policy it already implied.
-function profileSandbox(profile: Profile): SandboxPolicy {
-  return (
-    profile.governance?.sandbox ?? {
-      mode: profile.writePolicy === "none" ? "read-only" : "workspace-write",
-      network: "provider-only",
-      allowedHosts: [],
-    }
-  );
-}
 
 function deepFreeze<T>(value: T): T {
   if (value && typeof value === "object") {
@@ -87,15 +67,6 @@ export function buildExecutionPlan(
     (isApiClient(client) ? "openai-compatible-api" : "cli");
   if (!options.supportedTransports.includes(transport))
     throw new Error(`Unsupported transport for client ${client}: ${transport}`);
-  const sandbox = profileSandbox(profile);
-  if (!options.enforceableNetwork.includes(sandbox.network))
-    throw new Error(
-      `Client ${client} cannot enforce network policy: ${sandbox.network}`,
-    );
-  const mode =
-    sandbox.mode === "workspace-write" && options.writeAllowed
-      ? "workspace-write"
-      : "read-only";
   const memoryNamespace =
     profile.memory.enabled && profile.memory.scope !== "disabled"
       ? profile.name
@@ -113,14 +84,9 @@ export function buildExecutionPlan(
     toolLoop: usesToolLoop(profile),
     memoryNamespace,
     cwd: options.cwd,
-    readOnly: mode === "read-only",
-    sandbox: {
-      mode,
-      network: sandbox.network,
-      allowedPaths: [...profile.allowedPaths],
-      allowedCommands: [...profile.allowedCommands],
-      allowedHosts: [...sandbox.allowedHosts],
-    },
+    readOnly: profile.writePolicy === "none" || !options.writeAllowed,
+    allowedPaths: [...profile.allowedPaths],
+    allowedCommands: [...profile.allowedCommands],
     childEnv: {
       OCEAN_CURRENT_PROFILE: profile.name,
       OCEAN_TARGET_PROVIDER: client,

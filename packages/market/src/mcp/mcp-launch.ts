@@ -2,11 +2,6 @@ import os from "node:os";
 import type { CapabilityPermissions } from "@ocean/core/domain/capabilities/capability-manifest.js";
 import type { McpServerSpec } from "../adapters/mcp-adapter.js";
 import { PermissionPolicy } from "../security/permissions.js";
-import {
-  runtimeWritablePaths,
-  type SandboxKind,
-  sandboxed,
-} from "../security/sandbox.js";
 
 // What the mcp adapter wrote for one installed server.
 export type InstalledMcpServer = {
@@ -23,7 +18,6 @@ export type McpLaunch =
       args: string[];
       env: Record<string, string>;
       cwd: string;
-      sandbox: SandboxKind;
     }
   | { transport: "remote"; type: string; url: string };
 
@@ -79,14 +73,12 @@ export function literalArguments(list: unknown, where: string): string[] {
 // Turns an installed server into the exact process (or endpoint) to connect to, checking every
 // step against what the capability declared: the runner must be a declared `exec`, every
 // environment variable a declared `env`, a remote's host a declared `network`. The process gets
-// only those variables (plus PATH so the runner resolves) and runs inside the sandbox.
+// only those variables (plus PATH so the runner resolves).
 export function planMcpLaunch(
   installed: InstalledMcpServer,
   options: {
     stateDir: string;
     env?: NodeJS.ProcessEnv;
-    platform?: NodeJS.Platform;
-    allowUnsandboxed?: boolean;
     home?: string;
   },
 ): McpLaunch {
@@ -162,14 +154,11 @@ export function planMcpLaunch(
     ...base.args,
     ...literalArguments(stdio.packageArguments, "packageArguments"),
   ];
-  const wrapped = sandboxed(
-    policy,
-    { command: base.command, args },
-    {
-      extraWritable: [options.stateDir, ...runtimeWritablePaths(home)],
-      platform: options.platform,
-      allowUnsandboxed: options.allowUnsandboxed,
-    },
-  );
-  return { transport: "stdio", ...wrapped, env, cwd: options.stateDir };
+  return {
+    transport: "stdio",
+    command: base.command,
+    args,
+    env,
+    cwd: options.stateDir,
+  };
 }

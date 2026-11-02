@@ -24,7 +24,6 @@ const cli = {
   cwd: "/work",
   supportedTransports: ["cli"],
   writeAllowed: false,
-  enforceableNetwork: ["provider-only", "deny", "allowlist"],
 };
 
 const v2 = (overrides = {}) => ({
@@ -40,7 +39,6 @@ const v2 = (overrides = {}) => ({
   governance: {
     writePolicy: "workspace",
     allowedPaths: ["."],
-    sandbox: { mode: "workspace-write", network: "provider-only" },
   },
   memory: { enabled: true, scope: "profile" },
   ...overrides,
@@ -48,15 +46,23 @@ const v2 = (overrides = {}) => ({
 
 // ---- schema v2 -----------------------------------------------------------------------------
 
-test("a complete v2 profile parses and keeps its sandbox and binding fields", () => {
+test("a complete v2 profile parses and keeps its binding fields", () => {
   const profile = validateProfile(v2());
   assert.equal(profile.schemaVersion, 2);
   assert.equal(profile.clients.claude.temperature, 0.2);
-  assert.deepEqual(profile.governance.sandbox, {
-    mode: "workspace-write",
-    network: "provider-only",
-    allowedHosts: [],
-  });
+});
+
+test("a profile written before T-306 still loads; its sandbox block is dropped", () => {
+  const profile = validateProfile(
+    v2({
+      governance: {
+        writePolicy: "workspace",
+        sandbox: { mode: "workspace-write", network: "provider-only" },
+      },
+    }),
+  );
+  assert.equal(profile.writePolicy, "workspace");
+  assert.equal(profile.governance.sandbox, undefined);
 });
 
 test("a profile without schemaVersion is v1 and needs none of the v2 fields", () => {
@@ -76,24 +82,6 @@ test("v2 rejects what v1 left implicit", () => {
     [{ defaultClient: "gemini" }, /defaultClient must be an enabled client/],
     [{ clients: { claude: { enabled: true } } }, /Schema v2 requires a model/],
     [{ memory: { enabled: true, scope: "team" } }, /memory.scope/],
-    [{ governance: { writePolicy: "none" } }, /Schema v2 requires a sandbox/],
-    [
-      {
-        governance: {
-          sandbox: { mode: "read-only", network: "allowlist" },
-        },
-      },
-      /allowlist needs hosts/,
-    ],
-    [
-      {
-        governance: {
-          writePolicy: "none",
-          sandbox: { mode: "workspace-write", network: "deny" },
-        },
-      },
-      /workspace-write conflicts/,
-    ],
     [
       { clients: { claude: { enabled: true, model: "m", temperature: 2.5 } } },
       /temperature/,
@@ -154,16 +142,10 @@ test("a v1 profile's identity is unchanged by schema v2", () => {
   );
 });
 
-test("a v2 profile's identity covers its sandbox", () => {
+test("a v2 profile's identity covers its write policy", () => {
   const a = validateProfile(v2());
   const b = validateProfile(
-    v2({
-      governance: {
-        writePolicy: "workspace",
-        allowedPaths: ["."],
-        sandbox: { mode: "read-only", network: "provider-only" },
-      },
-    }),
+    v2({ governance: { writePolicy: "none", allowedPaths: ["."] } }),
   );
   assert.notEqual(profileIdentity(a), profileIdentity(b));
 });
@@ -286,34 +268,26 @@ test("the plan is immutable", () => {
     cli,
   );
   assert.ok(Object.isFrozen(plan));
-  assert.ok(Object.isFrozen(plan.sandbox));
-  assert.ok(Object.isFrozen(plan.sandbox.allowedPaths));
+  assert.ok(Object.isFrozen(plan.allowedPaths));
   assert.ok(Object.isFrozen(plan.childEnv));
   assert.throws(() => {
     plan.model = "other";
   }, TypeError);
 });
 
-test("the sandbox is the strictest of profile policy and what the run may write", () => {
+test("a run writes only when both the profile and the run allow it", () => {
   const writable = selectProfileClient(validateProfile(v2()));
-  assert.equal(buildExecutionPlan(writable, cli).sandbox.mode, "read-only");
   assert.equal(buildExecutionPlan(writable, cli).readOnly, true);
   const granted = buildExecutionPlan(writable, { ...cli, writeAllowed: true });
-  assert.equal(granted.sandbox.mode, "workspace-write");
   assert.equal(granted.readOnly, false);
   const readOnly = selectProfileClient(
-    validateProfile(
-      v2({
-        governance: { sandbox: { mode: "read-only", network: "deny" } },
-      }),
-    ),
+    validateProfile(v2({ governance: { writePolicy: "none" } })),
   );
   const plan = buildExecutionPlan(readOnly, { ...cli, writeAllowed: true });
-  assert.equal(plan.sandbox.mode, "read-only");
-  assert.equal(plan.sandbox.network, "deny");
+  assert.equal(plan.readOnly, true);
 });
 
-test("a v1 profile maps to the sandbox its write policy implied", () => {
+test("a v1 profile writes as its write policy says", () => {
   const plan = buildExecutionPlan(
     selectProfileClient(
       validateProfile({
@@ -325,8 +299,7 @@ test("a v1 profile maps to the sandbox its write policy implied", () => {
     ),
     { ...cli, writeAllowed: true },
   );
-  assert.equal(plan.sandbox.mode, "workspace-write");
-  assert.equal(plan.sandbox.network, "provider-only");
+  assert.equal(plan.readOnly, false);
   assert.equal(plan.model, "provider-managed");
 });
 
@@ -378,7 +351,7 @@ async function withProfile(profile, fn) {
 
 const readOnlyV2 = (overrides = {}) =>
   v2({
-    governance: { sandbox: { mode: "read-only", network: "provider-only" } },
+    governance: { writePolicy: "none" },
     ...overrides,
   });
 

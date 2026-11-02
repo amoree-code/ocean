@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
-import { spawn, spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, realpath, stat, writeFile } from "node:fs/promises";
-import { createServer } from "node:net";
+import { spawnSync } from "node:child_process";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -19,7 +18,6 @@ import {
   PermissionDeniedError,
   PermissionPolicy,
 } from "@ocean/market/security/permissions.js";
-import { sandboxed } from "@ocean/market/security/sandbox.js";
 
 const none = {
   filesystem: { read: [], write: [] },
@@ -172,7 +170,6 @@ test("an MCP launch is refused for an undeclared runner or variable", () => {
   const options = {
     stateDir: "/tmp/state",
     env: { PATH: "/bin", FILES_TOKEN: "t" },
-    platform: "darwin",
   };
   assert.throws(
     () => planMcpLaunch(installed({ env: ["FILES_TOKEN"] }), options),
@@ -192,7 +189,7 @@ test("an MCP launch is refused for an undeclared runner or variable", () => {
   );
 });
 
-test("an MCP launch passes only declared variables and runs inside the sandbox", () => {
+test("an MCP launch passes only declared variables", () => {
   const launch = planMcpLaunch(
     {
       capability: "io.github.example/files",
@@ -203,41 +200,22 @@ test("an MCP launch passes only declared variables and runs inside the sandbox",
     {
       stateDir: "/tmp/state",
       env: { PATH: "/bin", FILES_TOKEN: "t", AWS_SECRET_ACCESS_KEY: "leak" },
-      platform: "darwin",
       home: "/srv/test-home",
     },
   );
   assert.equal(launch.transport, "stdio");
-  assert.equal(launch.sandbox, "sandbox-exec");
-  assert.equal(launch.command, "/usr/bin/sandbox-exec");
-  assert.deepEqual(launch.args.slice(2), [
-    "npx",
+  assert.equal(launch.command, "npx");
+  assert.deepEqual(launch.args, [
     "-y",
     "@example/files-mcp@1.2.3",
     "--root",
     "/data",
   ]);
-  assert.match(launch.args[1], /\(deny network\*\)/);
   assert.deepEqual(Object.keys(launch.env).sort(), [
     "FILES_TOKEN",
     "HOME",
     "PATH",
   ]);
-  assert.throws(
-    () =>
-      planMcpLaunch(
-        {
-          capability: "x.y",
-          version: "1.0.0",
-          permissions: permissions({ exec: ["npx"] }),
-          server: server({
-            packages: [{ registryType: "npm", identifier: "a" }],
-          }),
-        },
-        { stateDir: "/tmp/s", platform: "linux" },
-      ),
-    /No process sandbox is available on linux/,
-  );
 });
 
 test("runtime arguments go where each runner expects them", () => {
@@ -262,8 +240,8 @@ test("runtime arguments go where each runner expects them", () => {
           ],
         },
       },
-      { stateDir: "/tmp/s", platform: "darwin" },
-    ).args.slice(3);
+      { stateDir: "/tmp/s" },
+    ).args;
   assert.deepEqual(plan("oci"), [
     "run",
     "-i",
@@ -302,78 +280,6 @@ test("a remote MCP endpoint needs its host declared", () => {
     planMcpLaunch(remote(["mcp.example.com"]), { stateDir: "/tmp/s" }).url,
     "https://mcp.example.com/mcp",
   );
-});
-
-// The runtime half of the DoD: inside the real sandbox, an undeclared write or connection fails.
-test("the sandbox blocks undeclared writes, secret reads and network at runtime", {
-  skip: process.platform !== "darwin" && "sandbox-exec is macOS only",
-}, async () => {
-  const root = await realpath(
-    await mkdtemp(path.join(os.tmpdir(), "ocean-sandbox-")),
-  );
-  const allowed = path.join(root, "allowed");
-  await mkdir(allowed);
-  const listener = createServer((socket) => socket.end()).listen(
-    0,
-    "127.0.0.1",
-  );
-  await new Promise((resolve) => listener.once("listening", resolve));
-  const { port } = listener.address();
-  const home = path.join(root, "home");
-  await mkdir(path.join(home, ".ssh"), { recursive: true });
-  await writeFile(path.join(home, ".ssh", "id_ed25519"), "secret");
-  const probe = `
-      const fs = require("fs");
-      const result = {};
-      for (const [key, file] of [["allowed", ${JSON.stringify(path.join(allowed, "a"))}], ["denied", ${JSON.stringify(path.join(root, "denied"))}]])
-        try { fs.writeFileSync(file, "x"); result[key] = "ok"; } catch (e) { result[key] = e.code; }
-      try { fs.readFileSync(${JSON.stringify(path.join(home, ".ssh", "id_ed25519"))}); result.secret = "ok"; } catch (e) { result.secret = e.code; }
-      require("net").connect(${port}, "127.0.0.1")
-        .on("connect", function () { result.network = "ok"; this.destroy(); console.log(JSON.stringify(result)); })
-        .on("error", (e) => { result.network = e.code; console.log(JSON.stringify(result)); });`;
-  const run = (declared) => {
-    const policy = new PermissionPolicy(
-      "dev.ocean.probe",
-      permissions(declared),
-      home,
-    );
-    const command = sandboxed(
-      policy,
-      { command: process.execPath, args: ["-e", probe] },
-      { extraWritable: [] },
-    );
-    return new Promise((resolve) => {
-      const child = spawn(command.command, command.args);
-      let out = "";
-      child.stdout.on("data", (chunk) => {
-        out += chunk;
-      });
-      child.on("exit", () => resolve(JSON.parse(out)));
-    });
-  };
-  try {
-    assert.deepEqual(await run({ filesystem: { write: [allowed] } }), {
-      allowed: "ok",
-      denied: "EPERM",
-      secret: "EPERM",
-      network: "EPERM",
-    });
-    assert.deepEqual(
-      await run({
-        filesystem: { read: ["~/.ssh"], write: [allowed] },
-        network: ["127.0.0.1"],
-      }),
-      {
-        allowed: "ok",
-        denied: "EPERM",
-        secret: "ok",
-        network: "ok",
-      },
-    );
-    await assert.rejects(stat(path.join(root, "denied")));
-  } finally {
-    listener.close();
-  }
 });
 
 test("ocean market exec refuses a server that is not installed", () => {

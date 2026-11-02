@@ -88,8 +88,7 @@ client, one confirmation that applies all of them, then `verify` per written cli
 check to do by hand. Without a terminal (or with `--yes`) the step writes nothing and prints the
 commands instead. A completed `connect` step reopens on the next `ocean onboard` only when a new,
 not yet approved client needs a change; an approved client that drifted is repaired by `ocean
-client sync` without asking. A `release` step checks for a current release build and names
-`ocean runtime release` (owner-run, needs the network) when there is none. `apply` refuses an engine that lives in a temporary directory (a scratch
+client sync` without asking. `apply` refuses an engine that lives in a temporary directory (a scratch
 worktree): every client wired to it would stop starting Ocean once that directory is gone.
 
 Session-start hooks go through the same plan, apply and restore, for every client whose
