@@ -123,6 +123,7 @@ test("plan: a missing hook is a change, a non-canonical file a manual step with 
       codex: "change",
       "codex:end": "change",
       gemini: "change",
+      "gemini:end": "change",
     });
     const claude = plans.find((plan) => plan.client === "claude-code");
     assert.match(claude.reason, /canonical/);
@@ -175,6 +176,7 @@ test("apply appends one group after the user's own, keeps every other byte, and 
       { client: "codex", event: "SessionStart", result: "written" },
       { client: "codex", event: "SessionEnd", result: "written" },
       { client: "gemini", event: "SessionStart", result: "written" },
+      { client: "gemini", event: "SessionEnd", result: "written" },
     ]);
     const codex = JSON.parse(await read(home, ".codex/hooks.json"));
     const original = JSON.parse(CODEX_HOOKS);
@@ -219,6 +221,7 @@ test("apply appends one group after the user's own, keeps every other byte, and 
       codex: "current",
       "codex:end": "current",
       gemini: "current",
+      "gemini:end": "current",
     });
   });
 });
@@ -233,7 +236,12 @@ test("restore of the batch returns entries and hooks byte-identical", async () =
     const hooks = await restoreHooks({ batch, env });
     assert.equal(entries.batch, batch);
     assert.deepEqual(hooks, {
-      restored: ["gemini:hook", "codex:end-hook", "codex:hook"],
+      restored: [
+        "gemini:end-hook",
+        "gemini:hook",
+        "codex:end-hook",
+        "codex:hook",
+      ],
       conflicts: [],
     });
     assert.equal(await read(home, ".gemini/settings.json"), GEMINI_SETTINGS);
@@ -242,7 +250,7 @@ test("restore of the batch returns entries and hooks byte-identical", async () =
     const undone = (await readJournal()).filter(
       (entry) => entry.op === "hook-add" && entry.restoreOf === batch,
     );
-    assert.equal(undone.length, 3);
+    assert.equal(undone.length, 4);
   });
 });
 

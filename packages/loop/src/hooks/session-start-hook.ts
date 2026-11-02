@@ -207,12 +207,17 @@ export async function oceanContext(cwd: string): Promise<string> {
 // Codex and Gemini CLI (0.58: fireSessionStartEvent → getAdditionalContext, T-296) read Claude
 // Code's hookSpecificOutput shape. Hermes injects context only from a pre_llm_call shell hook,
 // as {"context": "..."} (hermes agent/shell_hooks.py _parse_response); that hook fires on every
-// turn, so only the first turn gets the bootstrap.
+// turn, so only the first turn gets the bootstrap. Qwen Code reads Claude's shape too; Cursor's
+// sessionStart reads `additional_context` and sends `workspace_roots` instead of cwd; OpenCode's
+// Ocean plugin reads Claude's shape (T-307).
 export const SESSION_START_CLIENTS = [
   "claude",
   "codex",
   "gemini",
   "hermes",
+  "qwen",
+  "cursor",
+  "opencode",
 ] as const;
 export type SessionStartClient = (typeof SESSION_START_CLIENTS)[number];
 
@@ -226,12 +231,33 @@ export function isSessionStartClient(
 // extra.is_first_turn is false on every turn after the first (agent/turn_context.py).
 export type SessionStartPayload = ClaudeSessionStartPayload & {
   extra?: { is_first_turn?: boolean };
+  workspace_roots?: unknown;
 };
+
+// Cursor names its folder in `workspace_roots`, not `cwd`. Nothing else in a payload is kept.
+export function payloadCwd(payload: SessionStartPayload): string | undefined {
+  if (payload.cwd) return payload.cwd;
+  const roots = payload.workspace_roots;
+  return Array.isArray(roots) && typeof roots[0] === "string"
+    ? roots[0]
+    : undefined;
+}
 
 export async function sessionStartHookForClient(
   client: SessionStartClient,
   payload: SessionStartPayload,
-): Promise<ClaudeSessionStartResult | { context?: string }> {
+): Promise<
+  | ClaudeSessionStartResult
+  | { context?: string }
+  | { additional_context: string }
+> {
+  if (client === "cursor") {
+    const result = await claudeSessionStartHook({
+      ...payload,
+      cwd: payloadCwd(payload),
+    });
+    return { additional_context: result.hookSpecificOutput.additionalContext };
+  }
   if (client !== "hermes") return claudeSessionStartHook(payload);
   // Later turns: no context and no git/project work on Hermes' per-turn hot path.
   if (payload.extra?.is_first_turn === false) return {};

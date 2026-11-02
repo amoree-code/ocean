@@ -54,6 +54,10 @@ type HookAdapter = {
   windowsShell: WindowsShell;
   events: HookEvent[];
   group(command: string, windows: boolean, event: HookEvent): HookGroup;
+  // The event's key in the file when it is not the event name (Cursor: `sessionStart`).
+  key?: (event: HookEvent) => string;
+  // Top-level fields a new file needs (Cursor: `version: 1`).
+  seed?: Record<string, unknown>;
 };
 
 // `platform` is for tests; the running platform otherwise.
@@ -103,12 +107,46 @@ export const HOOK_ADAPTERS: HookAdapter[] = [
     hookClient: "gemini",
     file: ".gemini/settings.json",
     windowsShell: "powershell",
-    events: ["SessionStart"],
+    // Gemini CLI 0.58 also fires SessionEnd (fireSessionEndEvent), T-307.
+    events: ["SessionStart", "SessionEnd"],
     // Gemini's hook timeout is in milliseconds.
     group: (command) => ({
       matcher: "*",
       hooks: [{ name: "ocean", type: "command", command, timeout: 10_000 }],
     }),
+  },
+  {
+    // Qwen Code 0.23: Claude's hook shape, `hookSpecificOutput.additionalContext` on
+    // SessionStart, timeouts in milliseconds (its bundled docs/features/hooks.md), T-307.
+    client: "qwen",
+    hookClient: "qwen",
+    file: ".qwen/settings.json",
+    windowsShell: "powershell",
+    events: ["SessionStart", "SessionEnd"],
+    group: (command, windows, event) => ({
+      ...(event === "SessionStart" ? { matcher: "startup|resume" } : {}),
+      hooks: [
+        {
+          type: "command",
+          name: "ocean",
+          command,
+          ...(windows ? { shell: "powershell" } : {}),
+          timeout: 10_000,
+        },
+      ],
+    }),
+  },
+  {
+    // Cursor agent (hooks.json version 1): flat `{command}` entries under `sessionStart` /
+    // `sessionEnd`; sessionStart reads `additional_context` from the hook's output, T-307.
+    client: "cursor",
+    hookClient: "cursor",
+    file: ".cursor/hooks.json",
+    windowsShell: "powershell",
+    events: ["SessionStart", "SessionEnd"],
+    key: (event) => (event === "SessionStart" ? "sessionStart" : "sessionEnd"),
+    seed: { version: 1 },
+    group: (command) => ({ command }),
   },
 ];
 
@@ -179,18 +217,22 @@ function sessionGroups(
   return Array.isArray(groups) ? groups : null;
 }
 
+const isOceanCommand = (hook: unknown, event: HookEvent) => {
+  const command = (hook as { command?: unknown } | null)?.command;
+  return typeof command === "string" && EVENTS[event].pattern.test(command);
+};
+
+// A group of hooks (`{hooks: [...]}`), or one flat entry (Cursor's `{command}`).
 const hasOceanHook = (groups: unknown[], event: HookEvent) =>
   groups.some((group) => {
     const hooks = (group as { hooks?: unknown } | null)?.hooks;
-    return (
-      Array.isArray(hooks) &&
-      hooks.some(
-        (hook: { command?: unknown } | null) =>
-          typeof hook?.command === "string" &&
-          EVENTS[event].pattern.test(hook.command),
-      )
-    );
+    return Array.isArray(hooks)
+      ? hooks.some((hook) => isOceanCommand(hook, event))
+      : isOceanCommand(group, event);
   });
+
+const eventKey = (adapter: HookAdapter, event: HookEvent) =>
+  adapter.key?.(event) ?? event;
 
 async function readText(file: string): Promise<string> {
   try {
@@ -219,12 +261,13 @@ function planOne(
   } catch {
     return { ...plan, status: "manual", reason: "the file is not valid JSON" };
   }
-  const groups = sessionGroups(root, event);
+  const key = eventKey(adapter, event);
+  const groups = sessionGroups(root, key);
   if (!groups)
     return {
       ...plan,
       status: "manual",
-      reason: `hooks.${event} is not a list`,
+      reason: `hooks.${key} is not a list`,
     };
   if (hasOceanHook(groups, event)) return { ...plan, status: "current" };
   const group = hookGroup(adapter, env, event);
@@ -236,7 +279,7 @@ function planOne(
       ...plan,
       status: "manual",
       reason: error.message,
-      snippet: `hooks.${event} += ${JSON.stringify(group)}`,
+      snippet: `hooks.${key} += ${JSON.stringify(group)}`,
     };
   }
   return plan;
@@ -292,17 +335,24 @@ export async function applyHooks(
         if (planOne(text, adapter, env, event).status !== "change") return null;
         const { parsed, render } = canonicalJson(text);
         const created: string[] = [];
+        // A seeded top-level field is journaled as `root:<name>`, removed again with `hooks`.
+        for (const [field, value] of Object.entries(adapter.seed ?? {}))
+          if (parsed[field] === undefined) {
+            parsed[field] = value;
+            created.push(`root:${field}`);
+          }
         if (parsed.hooks === undefined) {
           parsed.hooks = {};
           created.push("hooks");
         }
         const hooks = parsed.hooks as Record<string, unknown>;
-        if (hooks[event] === undefined) {
-          hooks[event] = [];
-          created.push(event);
+        const key = eventKey(adapter, event);
+        if (hooks[key] === undefined) {
+          hooks[key] = [];
+          created.push(key);
         }
         const group = hookGroup(adapter, env, event);
-        (hooks[event] as unknown[]).push(group);
+        (hooks[key] as unknown[]).push(group);
         return {
           next: render(parsed),
           entries: [
@@ -359,18 +409,25 @@ export async function restoreHooks(options: {
         }
         const { parsed, render } = document;
         // Batches journaled before SessionEnd existed carry SessionStart as their key.
-        const event = entry.key ?? "SessionStart";
-        const groups = sessionGroups(parsed, event);
+        const event = (entry.key ?? "SessionStart") as HookEvent;
+        const adapter = HOOK_ADAPTERS.find(
+          (item) => item.client === entry.client,
+        );
+        const key = adapter ? eventKey(adapter, event) : event;
+        const groups = sessionGroups(parsed, key);
         const index =
           groups?.findIndex((group) => isDeepStrictEqual(group, entry.after)) ??
           -1;
         if (!groups || index < 0) return null;
         groups.splice(index, 1);
         const hooks = parsed.hooks as Record<string, unknown>;
-        if (entry.created?.includes(event) && groups.length === 0)
-          delete hooks[event];
-        if (entry.created?.includes("hooks") && !Object.keys(hooks).length)
+        if (entry.created?.includes(key) && groups.length === 0)
+          delete hooks[key];
+        if (entry.created?.includes("hooks") && !Object.keys(hooks).length) {
           delete parsed.hooks;
+          for (const created of entry.created)
+            if (created.startsWith("root:")) delete parsed[created.slice(5)];
+        }
         outcome.restored = true;
         return {
           next: render(parsed),
