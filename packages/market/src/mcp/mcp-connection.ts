@@ -39,7 +39,7 @@ function engineMcpCapability(name: string): CapabilityManifest {
 }
 
 // A client config for one engine MCP capability, keyed the way clients already know it.
-// `ocean-engine` packages run this Ocean (first-party, trusted, unsandboxed); `npm` packages run
+// `ocean-engine` packages run this Ocean (first-party, trusted); `npm` packages run
 // through npx. Third-party servers installed from a marketplace start via `ocean market exec`.
 export function mcpClientConfig(name: string): {
   mcpServers: Record<string, StdioMcpServer | PlaywrightMcpServer>;

@@ -56,15 +56,13 @@ function namespaceFor(capability: string, taken: Set<string>): string {
 
 // The servers the gateway routes: the engine's first-party ones, then every MCP server installed
 // from the marketplace, each planned by the same launcher as `ocean market exec` — declared
-// permissions, declared environment only, inside the sandbox. A third-party server joins only by
+// permissions, declared environment only. A third-party server joins only by
 // being installed; anything that cannot be launched here is reported, not fatal.
 export async function gatewayMembers(options: {
   serversRoot: string;
   stateRoot: string;
   indexFile?: string;
   env?: NodeJS.ProcessEnv;
-  platform?: NodeJS.Platform;
-  allowUnsandboxed?: boolean;
 }): Promise<{ members: GatewayMember[]; skipped: GatewaySkip[] }> {
   const members: GatewayMember[] = [];
   const skipped: GatewaySkip[] = [];
@@ -128,8 +126,6 @@ export async function gatewayMembers(options: {
       const launch = planMcpLaunch(installed, {
         stateDir,
         env: options.env,
-        platform: options.platform,
-        allowUnsandboxed: options.allowUnsandboxed,
       });
       if (launch.transport === "remote") {
         skipped.push({

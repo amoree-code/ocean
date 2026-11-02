@@ -1,21 +1,9 @@
 import assert from "node:assert/strict";
-import {
-  mkdir,
-  mkdtemp,
-  readFile,
-  rm,
-  symlink,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import {
-  enginePath,
-  engineRoot,
-  registerEngineRoot,
-  repoRoot,
-} from "@ocean/core/shared/paths.js";
+import { enginePath, repoRoot } from "@ocean/core/shared/paths.js";
 import { repairEngineEntries } from "../dist/application/integrations/engine-entry-repair.js";
 
 const entry = enginePath("dist", "main.js");
@@ -112,69 +100,54 @@ test("another kernel package's unbuilt server and an unreadable config are not m
   });
 });
 
-test("run from a release, the checkout's existing engine entry is repointed to current", async () => {
+test("an entry into the removed release build is repointed to the checkout, even while it exists", async () => {
   const workspace = await mkdtemp(
     path.join(os.tmpdir(), "ocean-entry-release-"),
   );
-  const releases = path.join(workspace, "bridge", "runtime", "release");
-  const release = path.join(releases, "abc123", "packages", "harness");
-  const checkoutEntry = path.join(
+  // T-294's release build, which T-306 removed: clients and the service still launch it.
+  const release = path.join(
     workspace,
-    "kernel",
-    "packages",
-    "harness",
-    "dist",
-    "main.js",
-  );
-  const current = path.join(
-    releases,
+    "bridge",
+    "runtime",
+    "release",
     "current",
     "packages",
     "harness",
     "dist",
     "main.js",
   );
-  for (const file of [checkoutEntry, path.join(release, "dist", "main.js")]) {
-    await mkdir(path.dirname(file), { recursive: true });
-    await writeFile(file, "// built\n");
-  }
-  await symlink("abc123", path.join(releases, "current"));
-  const original = engineRoot();
+  await mkdir(path.dirname(release), { recursive: true });
+  await writeFile(release, "// built\n");
   const saved = process.env.OCEAN_ROOT;
-  delete process.env.OCEAN_ROOT;
-  registerEngineRoot(release);
+  process.env.OCEAN_ROOT = workspace;
   try {
     const gemini = JSON.stringify({
-      mcpServers: { ocean: { args: [checkoutEntry, "obsidian", "mcp"] } },
+      mcpServers: { ocean: { args: [release, "obsidian", "mcp"] } },
     });
     await withHome({ ".gemini/settings.json": gemini }, async (home, read) => {
       const result = byFile(await repairEngineEntries(home))[
         "~/.gemini/settings.json"
       ];
       assert.equal(result.status, "updated");
-      assert.deepEqual(result.replaced, [checkoutEntry]);
+      assert.deepEqual(result.replaced, [release]);
       assert.equal(
         await read(".gemini/settings.json"),
-        gemini.replaceAll(inJson(checkoutEntry), inJson(current)),
+        gemini.replaceAll(inJson(release), inJson(entry)),
       );
     });
-    // A service start file written by an old setup launched the checkout (T-305).
     const plistFile = "Library/LaunchAgents/com.ocean.runtime.plist";
-    const plist = `<plist><dict><key>ProgramArguments</key><array><string>/usr/bin/node</string><string>${checkoutEntry}</string><string>service</string></array></dict></plist>\n`;
+    const plist = `<plist><dict><key>ProgramArguments</key><array><string>/usr/bin/node</string><string>${release}</string><string>service</string></array></dict></plist>\n`;
     await withHome({ [plistFile]: plist }, async (home, read) => {
       const result = byFile(await repairEngineEntries(home))[`~/${plistFile}`];
       assert.equal(result.kind, "service");
       assert.equal(result.status, "updated");
-      assert.equal(
-        await read(plistFile),
-        plist.replaceAll(checkoutEntry, current),
-      );
+      assert.equal(await read(plistFile), plist.replaceAll(release, entry));
       const again = byFile(await repairEngineEntries(home))[`~/${plistFile}`];
       assert.equal(again.status, "current");
     });
   } finally {
-    registerEngineRoot(original);
-    if (saved !== undefined) process.env.OCEAN_ROOT = saved;
+    if (saved === undefined) delete process.env.OCEAN_ROOT;
+    else process.env.OCEAN_ROOT = saved;
     await rm(workspace, { recursive: true, force: true });
   }
 });

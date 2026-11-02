@@ -46,20 +46,12 @@ const clientBindingSchema = z.object({
   capabilities: z.array(z.string()).default([]),
   limitations: z.array(z.string()).default([]),
 });
-const sandboxSchema = z.object({
-  mode: z.enum(["read-only", "workspace-write"]),
-  network: z.enum(["deny", "provider-only", "allowlist"]),
-  allowedHosts: z.array(z.string().min(1)).default([]),
-});
-export type SandboxPolicy = z.infer<typeof sandboxSchema>;
-
 const governanceSchema = z.object({
   allowedPaths: z.array(z.string()).optional(),
   allowedCommands: z.array(z.string()).optional(),
   writePolicy: z.enum(["none", "workspace", "allowed-paths"]).optional(),
   approvalRequired: z.boolean().optional(),
   network: z.string().min(1).optional(),
-  sandbox: sandboxSchema.optional(),
 });
 
 // A profile name is also a filename (profiles/<name>.json) and a memory namespace
@@ -105,7 +97,7 @@ const rawProfileSchema = z.object({
 });
 
 // Schema v2 makes explicit what v1 left to defaults: a default client, a model on every
-// enabled client, a closed memory scope, and a sandbox policy.
+// enabled client, and a closed memory scope.
 function refineV2(
   input: z.infer<typeof rawProfileSchema>,
   context: z.RefinementCtx,
@@ -124,19 +116,6 @@ function refineV2(
       ["memory", "scope"],
       'Schema v2 memory.scope is "profile" or "disabled"',
     );
-  const sandbox = input.governance?.sandbox;
-  if (!sandbox)
-    issue(["governance", "sandbox"], "Schema v2 requires a sandbox");
-  else {
-    if (sandbox.network === "allowlist" && !sandbox.allowedHosts.length)
-      issue(["governance", "sandbox", "allowedHosts"], "allowlist needs hosts");
-    const writePolicy = input.governance?.writePolicy ?? input.writePolicy;
-    if (sandbox.mode === "workspace-write" && writePolicy === "none")
-      issue(
-        ["governance", "sandbox", "mode"],
-        'workspace-write conflicts with writePolicy "none"',
-      );
-  }
 }
 
 export const profileSchema = rawProfileSchema
@@ -264,10 +243,7 @@ export function profileIdentity(profile: Profile): string {
     // v2-only fields are appended only for v2, so every v1 identity stays what it was and a
     // v1 session can still be resumed after this release.
     ...(profile.schemaVersion === 2
-      ? {
-          schemaVersion: profile.schemaVersion,
-          sandbox: profile.governance?.sandbox,
-        }
+      ? { schemaVersion: profile.schemaVersion }
       : {}),
   };
   return createHash("sha256").update(JSON.stringify(canonical)).digest("hex");

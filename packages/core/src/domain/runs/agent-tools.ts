@@ -76,15 +76,14 @@ export type ToolLimits = {
   denied: readonly string[];
 };
 
-// Read tools always; write only in a workspace-write sandbox; then narrowed by the run
-// contract. There is no command tool: Ocean cannot confine what a command reads, writes or
-// reaches, and the sandbox contract fails closed on a boundary it cannot prove.
+// Read tools always; write only when the run may write; then narrowed by the run contract.
+// There is no command tool: Ocean cannot confine what a command reads, writes or reaches.
 export function offeredTools(
   plan: ExecutionPlan,
   limits?: ToolLimits,
 ): ToolName[] {
   const tools: ToolName[] = ["read_file", "list_directory"];
-  if (plan.sandbox.mode === "workspace-write") tools.push("write_file");
+  if (!plan.readOnly) tools.push("write_file");
   return tools.filter(
     (tool) =>
       !limits?.denied.includes(tool) &&

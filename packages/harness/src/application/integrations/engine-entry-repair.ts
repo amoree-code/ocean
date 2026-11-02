@@ -5,8 +5,9 @@ import path from "node:path";
 import { atomicWrite } from "@ocean/core/shared/fs-utils.js";
 import {
   liveEngineEntry,
-  releaseWorkspace,
+  oceanPath,
   repoRoot,
+  SYSTEM_DIR,
 } from "@ocean/core/shared/paths.js";
 
 // Client configs that may launch Ocean by an absolute path into the kernel (an MCP server entry).
@@ -14,9 +15,8 @@ import {
 // the old path and the client's Ocean server failed to start without a word (T-293). Only the
 // engine entry's former locations are rewritten, and only while they no longer exist — another
 // kernel package's server that is merely not built yet is never touched; the files are otherwise
-// left byte for byte. Run from a release (T-294), the checkout's own engine entry is repointed
-// to `current` too, even though it exists — otherwise every MCP session keeps running whatever
-// branch the checkout last built.
+// left byte for byte. The release build's entry (T-294, removed in T-306) is repointed to the
+// checkout even while it still exists, so no client keeps running a release.
 
 // Where the engine's `dist/main.js` lived before it moved to packages/harness.
 const FORMER_ENGINE_PACKAGES = ["core"];
@@ -33,9 +33,8 @@ const CLIENT_CONFIGS = [
   "AppData/Roaming/Claude/claude_desktop_config.json",
 ];
 
-// The always-on service's start files as `ocean setup` writes them (macOS, Linux, Windows). One
-// written before releases existed kept launching the checkout, so no release ever reached the
-// service (T-305); an updated one needs the service restarted to take effect.
+// The always-on service's start files as `ocean setup` writes them (macOS, Linux, Windows). An
+// updated one needs the service restarted to take effect (T-305).
 const SERVICE_FILES = [
   "Library/LaunchAgents/com.ocean.runtime.plist",
   ".config/systemd/user/ocean.service",
@@ -66,14 +65,21 @@ export async function repairEngineEntries(
   const results: EngineEntryRepair[] = [];
   // Without a built entry there is nothing correct to point at.
   if (!existsSync(entry)) return results;
-  const checkoutEntry = releaseWorkspace()
-    ? path.join(repoRoot(), "packages", "harness", "dist", "main.js")
-    : null;
+  const releaseEntry = oceanPath(
+    SYSTEM_DIR,
+    "runtime",
+    "release",
+    "current",
+    "packages",
+    "harness",
+    "dist",
+    "main.js",
+  );
   const targets = [
     ...FORMER_ENGINE_PACKAGES.map((name) =>
       path.join(repoRoot(), "packages", name, "dist", "main.js"),
     ),
-    ...(checkoutEntry ? [checkoutEntry] : []),
+    releaseEntry,
   ];
   const stale = new RegExp(
     [...new Set(targets.flatMap((target) => [target, asJson(target)]))]
@@ -116,7 +122,7 @@ export async function repairEngineEntries(
     ].filter((found) => {
       const target = pathOf(found);
       return (
-        target !== entry && (target === checkoutEntry || !existsSync(target))
+        target !== entry && (target === releaseEntry || !existsSync(target))
       );
     });
     const replaced = [...new Set(hits.map(pathOf))];
