@@ -75,10 +75,11 @@ function isOceanInterceptWrapper(contents: string): boolean {
   );
 }
 
-// The interpreter recorded at sync time, or `node` from PATH once that one is gone
-// (an fnm/nvm upgrade removes the old version's directory).
+// The interpreter recorded at sync time, else `node` from PATH once that one is gone (an fnm/nvm
+// upgrade removes the old version's directory), else the usual install locations — an app started
+// from the Dock has a minimal PATH (T-307).
 function posixNode(): string {
-  return `node=${shellQuote(process.execPath)}\n[ -x "$node" ] || node=node\n`;
+  return `node=${shellQuote(process.execPath)}\n[ -x "$node" ] || node=$(command -v node 2>/dev/null)\nfor candidate in /opt/homebrew/bin/node /usr/local/bin/node; do [ -x "$node" ] || node=$candidate; done\n`;
 }
 
 function windowsNode(): string {

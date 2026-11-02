@@ -80,6 +80,35 @@ export type JournalEntry = {
   restoreOf?: string;
 };
 
+// A node inside a version manager's tree disappears when that version is removed (T-307).
+const VERSIONED_NODE =
+  /[\\/](?:node-versions|\.nvm[\\/]versions[\\/]node|\.volta[\\/]tools[\\/]image[\\/]node|\.asdf[\\/]installs[\\/]nodejs|mise[\\/]installs[\\/]node|n[\\/]versions[\\/]node)[\\/]/;
+
+export function isVersionedNode(execPath: string): boolean {
+  return VERSIONED_NODE.test(execPath);
+}
+
+// The `ocean` MCP entry. With a version-managed node it launches through the `ocean` shim, which
+// falls back to another node when that version is gone; a temporary engine keeps the direct form
+// so `temporaryEntryProblem` still refuses it.
+export function oceanServerEntry(
+  execPath = process.execPath,
+  engine = liveEngineEntry(),
+  platform: NodeJS.Platform = process.platform,
+): ServerValue {
+  const direct = { command: execPath, args: [engine, "mcp", "serve"] };
+  if (
+    platform === "win32" ||
+    !isVersionedNode(execPath) ||
+    temporaryEntryProblem(direct)
+  )
+    return direct;
+  return {
+    command: oceanPath(SYSTEM_DIR, "runtime", "shims", "ocean"),
+    args: ["mcp", "serve"],
+  };
+}
+
 export function defaultClientEnv(): ClientEnv {
   const home = os.homedir();
   return {
@@ -89,10 +118,7 @@ export function defaultClientEnv(): ClientEnv {
       process.platform === "darwin"
         ? ["/Applications", path.join(home, "Applications")]
         : [],
-    entry: {
-      command: process.execPath,
-      args: [liveEngineEntry(), "mcp", "serve"],
-    },
+    entry: oceanServerEntry(),
   };
 }
 

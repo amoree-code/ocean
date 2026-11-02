@@ -369,3 +369,18 @@ test("on Windows the hook line reaches the program through cmd and PowerShell", 
     expectArgs(result, "gemini");
   }
 });
+
+test("a shim entry runs its hooks through the shim, with no engine file (T-307)", () => {
+  assert.equal(
+    hookCommand(
+      {
+        entry: {
+          command: "/o/bridge/runtime/shims/ocean",
+          args: ["mcp", "serve"],
+        },
+      },
+      "gemini",
+    ),
+    "/o/bridge/runtime/shims/ocean hook session-start --client gemini --repair",
+  );
+});

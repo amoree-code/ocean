@@ -6,6 +6,7 @@ import test from "node:test";
 import { evaluateRecall } from "@ocean/brain/brain/brain-eval.js";
 import { reindexBrain } from "@ocean/brain/brain/brain-reindex.js";
 import { brainRead, brainSearch } from "@ocean/brain/brain/brain-service.js";
+import { readAudit } from "@ocean/brain/memory/memory-audit.js";
 import { memoryDigest } from "@ocean/brain/memory/memory-digest.js";
 import {
   approveCandidate,
@@ -225,6 +226,21 @@ test("review approves into a new or existing record and rejects to trash", async
     assert.match(
       interests,
       /^# Interests\n\nAstronomy.*\n\nAlso enjoys orienteering\.\n$/s,
+    );
+    // An approved candidate's write keeps its origin and candidate id, not "explicit" (T-307).
+    const writes = (await readAudit()).filter((entry) =>
+      [created.auditId, updated.auditId].includes(entry.id),
+    );
+    assert.deepEqual(
+      writes.map(({ action, origin, candidate }) => [
+        action,
+        origin,
+        candidate,
+      ]),
+      [
+        ["create", "inferred", id(fresh.candidate)],
+        ["update", "imported", id(extra.candidate)],
+      ],
     );
     await assert.rejects(
       approveCandidate({ id: id(noise.candidate) }),

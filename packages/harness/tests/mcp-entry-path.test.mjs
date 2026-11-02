@@ -173,3 +173,36 @@ test("Antigravity's and Claude Desktop's MCP entries are repaired like the other
     },
   );
 });
+
+test("a version-managed node launches the ocean MCP entry through the shim (T-307)", async () => {
+  const { isVersionedNode, oceanServerEntry } = await import(
+    "../dist/application/clients/clients.js"
+  );
+  for (const node of [
+    "/opt/u/.local/share/fnm/node-versions/v22.1.0/installation/bin/node",
+    "/opt/u/.nvm/versions/node/v22.1.0/bin/node",
+    "/opt/u/.volta/tools/image/node/22.1.0/bin/node",
+  ])
+    assert.equal(isVersionedNode(node), true, node);
+  assert.equal(isVersionedNode("/opt/homebrew/bin/node"), false);
+  const engine = "/srv/ocean/kernel/packages/harness/dist/main.js";
+  const fnm =
+    "/opt/u/.local/share/fnm/node-versions/v22.1.0/installation/bin/node";
+  const shim = oceanServerEntry(fnm, engine, "darwin");
+  assert.deepEqual(shim.args, ["mcp", "serve"]);
+  assert.match(shim.command, /bridge[\\/]runtime[\\/]shims[\\/]ocean$/);
+  assert.deepEqual(
+    oceanServerEntry("/opt/homebrew/bin/node", engine, "darwin"),
+    {
+      command: "/opt/homebrew/bin/node",
+      args: [engine, "mcp", "serve"],
+    },
+  );
+  // Windows and a temporary engine keep the direct form.
+  assert.equal(oceanServerEntry(fnm, engine, "win32").command, fnm);
+  assert.equal(
+    oceanServerEntry(fnm, path.join(os.tmpdir(), "wt", "main.js"), "darwin")
+      .command,
+    fnm,
+  );
+});

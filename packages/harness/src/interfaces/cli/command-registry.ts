@@ -173,28 +173,18 @@ import { manageClients, runOnboardCommand } from "./onboard-command.js";
 import { runOperateCommand } from "./operate-command.js";
 import { runProfilesCommand } from "./profiles-command.js";
 import { runPullCommand } from "./pull-command.js";
-import { setup } from "./setup-command.js";
+import { parseSetupArgs, SETUP_USAGE, setup } from "./setup-command.js";
 import { runTasksCommand } from "./tasks-command.js";
 
 export type CommandHandler = () => Promise<void> | void;
 
 async function commandSetup(): Promise<void> {
-  const obsidianIndex = process.argv.indexOf("--obsidian");
-  const obsidianPath =
-    obsidianIndex >= 0 ? process.argv[obsidianIndex + 1] : undefined;
-  if (obsidianIndex >= 0 && !obsidianPath) {
-    console.error(
-      "Usage: ocean setup [--obsidian <vault-path>] [--read-write]",
-    );
+  const parsed = parseSetupArgs(process.argv.slice(3));
+  if (parsed.kind === "help") console.log(SETUP_USAGE);
+  else if (parsed.kind === "error") {
+    console.error(`${parsed.message}\n${SETUP_USAGE}`);
     process.exitCode = 1;
-  } else {
-    await setup({
-      obsidianPath,
-      obsidianMode: process.argv.includes("--read-write")
-        ? "read-write"
-        : "read-only",
-    });
-  }
+  } else await setup(parsed.options);
 }
 
 async function commandService(): Promise<void> {

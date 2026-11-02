@@ -157,3 +157,39 @@ test("setup creates the workspace project's tasks folder as ocean/ on a fresh ro
   await setupAt(root);
   await stat(path.join(root, PROJECTS_DIR, "ocean", "tasks"));
 });
+
+test("setup honors --help and refuses unknown arguments before writing anything (T-307)", async () => {
+  const { parseSetupArgs } = await import(
+    "../dist/interfaces/cli/setup-command.js"
+  );
+  assert.deepEqual(parseSetupArgs(["--help"]), { kind: "help" });
+  assert.deepEqual(parseSetupArgs(["-h"]), { kind: "help" });
+  assert.equal(parseSetupArgs(["--yes"]).kind, "error");
+  assert.equal(parseSetupArgs(["--obsidian"]).kind, "error");
+  assert.deepEqual(parseSetupArgs(["--obsidian", "/v", "--read-write"]), {
+    kind: "run",
+    options: { obsidianMode: "read-write", obsidianPath: "/v" },
+  });
+  assert.deepEqual(parseSetupArgs([]), {
+    kind: "run",
+    options: { obsidianMode: "read-only" },
+  });
+  const { spawnSync } = await import("node:child_process");
+  const { readdir } = await import("node:fs/promises");
+  const home = await mkdtemp(path.join(os.tmpdir(), "ocean-setup-help-home-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-setup-help-root-"));
+  for (const args of [["--help"], ["--bogus"]]) {
+    const run = spawnSync(
+      process.execPath,
+      [new URL("../dist/main.js", import.meta.url).pathname, "setup", ...args],
+      {
+        env: { ...process.env, HOME: home, OCEAN_ROOT: root },
+        encoding: "utf8",
+      },
+    );
+    assert.match(`${run.stdout}${run.stderr}`, /Usage: ocean setup/);
+    assert.equal(run.status, args[0] === "--help" ? 0 : 1);
+  }
+  assert.deepEqual(await readdir(home), []);
+  assert.deepEqual(await readdir(root), []);
+});

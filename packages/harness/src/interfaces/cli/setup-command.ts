@@ -119,6 +119,34 @@ async function installWindowsStartup(): Promise<void> {
   await writeFile(launcher, contents);
 }
 
+export const SETUP_USAGE =
+  "Usage: ocean setup [--obsidian <vault-path>] [--read-write]";
+
+// `setup` writes shims, the shell profile and the startup entry, so anything it does not
+// understand — `--help` included — must stop it before it writes (T-307).
+export function parseSetupArgs(
+  args: string[],
+):
+  | { kind: "run"; options: SetupOptions }
+  | { kind: "help" }
+  | { kind: "error"; message: string } {
+  const options: SetupOptions = { obsidianMode: "read-only" };
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--help" || arg === "-h" || arg === "help")
+      return { kind: "help" };
+    if (arg === "--read-write") options.obsidianMode = "read-write";
+    else if (arg === "--obsidian") {
+      const value = args[index + 1];
+      if (!value || value.startsWith("-"))
+        return { kind: "error", message: "--obsidian needs a vault path" };
+      options.obsidianPath = value;
+      index += 1;
+    } else return { kind: "error", message: `Unknown setup argument: ${arg}` };
+  }
+  return { kind: "run", options };
+}
+
 export type SetupOptions = {
   obsidianPath?: string;
   obsidianMode?: "read-only" | "read-write";

@@ -109,8 +109,14 @@ const isWindows = (env: HookEnv) =>
 
 // `--repair` also starts `client sync` in the background, which re-applies approved clients.
 export function hookCommand(env: HookEnv, hookClient: string): string {
-  const program = Array.isArray(env.entry.args) ? env.entry.args[0] : "";
-  const words = [String(env.entry.command), String(program)];
+  const program = Array.isArray(env.entry.args)
+    ? String(env.entry.args[0])
+    : "";
+  // A shim entry (`ocean mcp serve`) names no engine file; the shim is the whole program.
+  const words =
+    program === "mcp"
+      ? [String(env.entry.command)]
+      : [String(env.entry.command), program];
   const shell = isWindows(env)
     ? HOOK_ADAPTERS.find((item) => item.hookClient === hookClient)?.windowsShell
     : undefined;
