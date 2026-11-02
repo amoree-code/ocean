@@ -78,7 +78,9 @@ function parseSettings(source: string): {
 // Edit the key in place so a JSONC file keeps its comments and formatting.
 function setWrapperKey(source: string, wrapper: string): string {
   const entry = `"${WRAPPER_KEY}": ${JSON.stringify(wrapper)}`;
-  const existing = new RegExp(`"${WRAPPER_KEY.replace(".", "\\.")}"\\s*:\\s*"(?:[^"\\\\]|\\\\.)*"`);
+  const existing = new RegExp(
+    `"${WRAPPER_KEY.replace(".", "\\.")}"\\s*:\\s*"(?:[^"\\\\]|\\\\.)*"`,
+  );
   if (existing.test(source)) return source.replace(existing, () => entry);
   const open = source.indexOf("{");
   const rest = stripJsonc(source.slice(open + 1)).trim();
@@ -125,19 +127,11 @@ export async function configureClaudeCodeWrapper(
     const metadata = await stat(settingsPath);
     backup = `${settingsPath}.ocean-backup-${new Date().toISOString().replace(/[:.]/g, "-")}`;
     await copyFile(settingsPath, backup);
-    await writeFile(
-      settingsPath,
-      updated,
-      "utf8",
-    );
+    await writeFile(settingsPath, updated, "utf8");
     await chmod(settingsPath, metadata.mode & 0o777);
   } catch (error) {
     if (backup) throw error;
-    await writeFile(
-      settingsPath,
-      updated,
-      "utf8",
-    );
+    await writeFile(settingsPath, updated, "utf8");
   }
   return { settingsPath, wrapper, apply, changed, backup };
 }
