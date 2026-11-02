@@ -218,7 +218,7 @@ test("the gateway routes namespaced tools and leaves out broken servers and pois
   }
 });
 
-test("a sandboxed member gets only the environment it declared", async () => {
+test("an installed member gets only the environment it declared", async () => {
   const { member } = await fixture();
   process.env.OCEAN_GATEWAY_TEST_SECRET = "leak";
   const gateway = gatewayFor([
@@ -315,15 +315,11 @@ test("gateway members are the engine's first-party servers plus installed ones, 
     },
   );
 
-  const plan = (platform) =>
-    gatewayMembers({
-      serversRoot,
-      stateRoot: path.join(root, "state"),
-      env: { PATH: "/usr/bin:/bin", FILES_TOKEN: "t", UNRELATED: "x" },
-      platform,
-      allowUnsandboxed: platform !== "darwin",
-    });
-  const { members, skipped } = await plan("linux");
+  const { members, skipped } = await gatewayMembers({
+    serversRoot,
+    stateRoot: path.join(root, "state"),
+    env: { PATH: "/usr/bin:/bin", FILES_TOKEN: "t", UNRELATED: "x" },
+  });
 
   assert.deepEqual(
     members.map((member) => [member.capability, member.prefix]),
@@ -363,16 +359,6 @@ test("gateway members are the engine's first-party servers plus installed ones, 
     reasons["com.microsoft/playwright-mcp"],
     /install it from the marketplace/,
   );
-
-  const sandboxed = (await plan("darwin")).members.find(
-    (member) => member.capability === "com.example/files",
-  );
-  assert.equal(sandboxed.command, "/usr/bin/sandbox-exec");
-  assert.deepEqual(sandboxed.args.slice(-3), [
-    "npx",
-    "-y",
-    "@example/files-mcp@1.0.0",
-  ]);
 });
 
 // The task's definition of done: an MCP client lists and calls a registered server's tool
@@ -521,8 +507,6 @@ test("gateway prefixes stay unique when capability names collide", async () => {
     stateRoot: path.join(root, "state"),
     indexFile,
     env: { PATH: "/usr/bin:/bin" },
-    platform: "linux",
-    allowUnsandboxed: true,
   });
   assert.deepEqual(
     members.map((member) => member.prefix),

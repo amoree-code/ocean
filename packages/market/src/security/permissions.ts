@@ -43,12 +43,6 @@ export class PermissionPolicy {
     readonly home = os.homedir(),
   ) {}
 
-  writablePaths(): string[] {
-    return this.permissions.filesystem.write.map((entry) =>
-      expandHome(entry, this.home),
-    );
-  }
-
   allows({ type, target }: PermissionRequest): boolean {
     const { filesystem, network, env, exec } = this.permissions;
     if (type === "env") return env.includes(target);

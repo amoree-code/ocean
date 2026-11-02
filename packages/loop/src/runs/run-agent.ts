@@ -391,7 +391,7 @@ export async function resumeAgent(
     executionPolicy(profile, existing.workingDirectory);
     deps.assertProviderSupportsReadOnly(profile.provider as HeadlessProvider);
     if (profile.writePolicy !== "none")
-      throw new Error("Writable profile resumes require an enforcing sandbox");
+      throw new Error("Writable profile resumes are not supported");
     if (profileIdentity(profile) !== existing.profileIdentity)
       throw new Error(
         "Profile changed since the session was created; start a new reviewed run",
@@ -510,18 +510,15 @@ export async function resumeAgent(
   }
 }
 
-// What this runtime can enforce today. CLI clients and completion APIs both execute. Writes
-// stay off except in a tool loop, where Ocean executes (and bounds) every write itself. Every client reaches its own
-// provider (a completion client reaches only its fixed endpoint), so a "deny" or
-// "allowlist" network policy fails closed.
+// What this runtime executes today. CLI clients and completion APIs both execute. Writes
+// stay off except in a tool loop, where Ocean executes (and bounds) every write itself.
 const runtimeCapabilities = {
   supportedTransports: ["cli", "openai-compatible-api"],
   writeAllowed: false,
-  enforceableNetwork: ["provider-only"],
 } as const;
 
 // The plan is recorded with its identity before any context is assembled or process starts,
-// so a session always shows the exact client, model, memory namespace and sandbox it ran with.
+// so a session always shows the exact client, model, memory namespace and write mode it ran with.
 function appendExecutionPlan(
   store: SessionStorePort,
   sessionId: string,

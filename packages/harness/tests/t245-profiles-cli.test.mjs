@@ -164,14 +164,10 @@ test("the upgrade makes v1 defaults explicit without changing how a profile runs
     );
   assert.equal(v2.clients.codex.model, "provider-managed");
   assert.equal(v2.memory.scope, "profile");
-  assert.deepEqual(v2.governance.sandbox, {
-    mode: "workspace-write",
-    network: "provider-only",
-    allowedHosts: [],
-  });
+  assert.equal(v2.writePolicy, v1.writePolicy);
   assert.ok(result.changes.includes('memory.scope: "default" -> "profile"'));
   const reviewer = validateProfile(upgradeProfile(v1Reviewer).profile);
-  assert.equal(reviewer.governance.sandbox.mode, "read-only");
+  assert.equal(reviewer.writePolicy, "none");
   assert.equal(selectProfileClient(reviewer).model, "opus");
   assert.equal(upgradeProfile(result.profile).status, "current");
 });

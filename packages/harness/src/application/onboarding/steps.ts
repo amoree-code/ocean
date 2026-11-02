@@ -1,10 +1,6 @@
-import { stat, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import type { ProviderRecord } from "@ocean/core/domain/providers/provider.js";
-import {
-  oceanPath,
-  PERSONAL_DIR,
-  SYSTEM_DIR,
-} from "@ocean/core/shared/paths.js";
+import { oceanPath, PERSONAL_DIR } from "@ocean/core/shared/paths.js";
 import {
   copyClientSkills,
   populateSkillHub,
@@ -205,31 +201,6 @@ function guided(
   };
 }
 
-// §3.7 step 2: sessions should run a release build, not a development checkout. Building one
-// needs the network and is owner-run, so the step checks and names the command.
-const releaseStep: OnboardingStep = {
-  id: "release",
-  title: "Release build (what every client runs)",
-  optional: false,
-  async run(io) {
-    const current = oceanPath(SYSTEM_DIR, "runtime", "release", "current");
-    if (
-      await stat(current).then(
-        () => true,
-        () => false,
-      )
-    ) {
-      io.say("  A current release exists; clients are wired to it.");
-      return "done";
-    }
-    io.say(
-      "  No release yet. Run: ocean runtime release   (builds origin/main; needs the network)",
-    );
-    io.say("  Then: ocean onboard --reset release");
-    return "skipped";
-  },
-};
-
 export function buildSteps(deps: StepDependencies): OnboardingStep[] {
   return [
     {
@@ -241,7 +212,6 @@ export function buildSteps(deps: StepDependencies): OnboardingStep[] {
         return "done";
       },
     },
-    releaseStep,
     {
       id: "identity",
       title: "Identity (who Ocean works for)",
@@ -340,10 +310,7 @@ export function buildSteps(deps: StepDependencies): OnboardingStep[] {
     },
     guided("hooks", "SessionStart auto-sync hook", [
       "Add before the exec in your session-bootstrap hook:",
-      // T-294: the release build once one is current, never the checkout's dev build.
-      'ENTRY="$HOME/ocean/bridge/runtime/release/current/packages/harness/dist/main.js"',
-      '[ -f "$ENTRY" ] || ENTRY="$HOME/ocean/kernel/packages/harness/dist/main.js"',
-      'node "$ENTRY" client sync >/dev/null 2>&1 &',
+      'node "$HOME/ocean/kernel/packages/harness/dist/main.js" client sync >/dev/null 2>&1 &',
     ]),
     guided("service", "Background service and schedules", [
       "Run: ocean service   (and ocean schedule for recurring jobs)",

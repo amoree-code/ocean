@@ -113,12 +113,6 @@ export function upgradeProfile(raw: unknown): ProfileUpgrade {
   const scope = v1.memory.scope === "disabled" ? "disabled" : "profile";
   if (scope !== v1.memory.scope)
     changes.push(`memory.scope: "${v1.memory.scope}" -> "${scope}"`);
-  const sandbox = {
-    mode: v1.writePolicy === "none" ? "read-only" : "workspace-write",
-    network: "provider-only",
-    allowedHosts: [],
-  };
-  changes.push(`governance.sandbox: ${sandbox.mode}, ${sandbox.network}`);
   const governance = (input.governance ?? {}) as Record<string, unknown>;
   const profile: Record<string, unknown> = {
     schemaVersion: 2,
@@ -136,7 +130,6 @@ export function upgradeProfile(raw: unknown): ProfileUpgrade {
       allowedPaths: v1.allowedPaths,
       allowedCommands: v1.allowedCommands,
       writePolicy: v1.writePolicy,
-      sandbox,
     },
     memory: { enabled: v1.memory.enabled, scope },
     verification: v1.verification,

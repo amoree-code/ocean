@@ -37,12 +37,7 @@
   "governance": {
     "allowedPaths": ["."],
     "allowedCommands": [],
-    "writePolicy": "none",
-    "sandbox": {
-      "mode": "read-only",
-      "network": "provider-only",
-      "allowedHosts": []
-    }
+    "writePolicy": "none"
   },
   "memory": {
     "enabled": true,

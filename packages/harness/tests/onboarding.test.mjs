@@ -131,7 +131,7 @@ test("status lists every step without running any", async () => {
   });
 });
 
-test("the hook step prints the release entry first, the checkout only as fallback", async () => {
+test("the hook step prints the checkout's entry", async () => {
   const { buildSteps } = await import(
     "../dist/application/onboarding/steps.js"
   );
@@ -143,10 +143,9 @@ test("the hook step prints the release entry first, the checkout only as fallbac
   const text = lines.join("\n");
   assert.match(
     text,
-    /ENTRY="\$HOME\/ocean\/bridge\/runtime\/release\/current\//,
+    /node "\$HOME\/ocean\/kernel\/packages\/harness\/dist\/main\.js" client sync/,
   );
-  assert.match(text, /\[ -f "\$ENTRY" \] \|\| ENTRY="\$HOME\/ocean\/kernel\//);
-  assert.match(text, /node "\$ENTRY" client sync/);
+  assert.doesNotMatch(text, /release/);
 });
 
 // T-296 P3: the connect step over fake client operations — never a real client config.
@@ -373,27 +372,5 @@ test("a completed connect step reopens only for a new, unapproved client", async
     await onboard({ io: second.io, steps });
     assert.deepEqual(calls, ["c"]);
     assert.match(second.lines.join("\n"), /Reopening c: new client/);
-  });
-});
-
-test("the release step passes with a current release and names the command without one", async () => {
-  const { buildSteps } = await import(
-    "../dist/application/onboarding/steps.js"
-  );
-  const step = buildSteps({
-    setup: async () => {},
-    wrappers: {},
-    clients: {},
-  }).find((item) => item.id === "release");
-  await withTempRoot(async () => {
-    const { io, lines } = fakeIO(true);
-    assert.equal(await step.run(io), "skipped");
-    assert.match(lines.join("\n"), /ocean runtime release/);
-    const { mkdir } = await import("node:fs/promises");
-    await mkdir(
-      path.join(process.env.OCEAN_ROOT, "bridge/runtime/release/current"),
-      { recursive: true },
-    );
-    assert.equal(await step.run(fakeIO(true).io), "done");
   });
 });

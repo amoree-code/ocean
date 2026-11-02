@@ -37,12 +37,7 @@
   "governance": {
     "allowedPaths": ["."],
     "allowedCommands": [],
-    "writePolicy": "workspace",
-    "sandbox": {
-      "mode": "workspace-write",
-      "network": "provider-only",
-      "allowedHosts": []
-    }
+    "writePolicy": "workspace"
   },
   "memory": {
     "enabled": true,

@@ -56,7 +56,7 @@ function resolveTarget(plan: ExecutionPlan, requested: string): string {
   if (isSensitive(path.normalize(requested)))
     throw new ToolDenied("path is a credential or repository-internal file");
   const target = path.resolve(plan.cwd, requested);
-  for (const allowed of plan.sandbox.allowedPaths) {
+  for (const allowed of plan.allowedPaths) {
     let root: string;
     try {
       root = resolveWithin(plan.cwd, allowed);

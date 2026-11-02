@@ -188,7 +188,7 @@ export function temporaryEntryProblem(entry: ServerValue): string | null {
   const resolved = path.resolve(program);
   const root = TEMPORARY_ROOTS.find((dir) => isWithinDir(dir, resolved));
   return root
-    ? `the Ocean engine ${resolved} is in a temporary directory (${root}); run this from the release (\`ocean runtime release\`) or the workspace kernel checkout`
+    ? `the Ocean engine ${resolved} is in a temporary directory (${root}); run this from the workspace kernel checkout`
     : null;
 }
 
