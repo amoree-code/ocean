@@ -48,7 +48,8 @@ test("Claude Code wrapper setup edits a JSONC settings file in place", async () 
   const after = await readFile(settings, "utf8");
   assert.match(after, /\/\/ keep me/);
   assert.doesNotMatch(after, /\/old\/atlas\/shim/);
-  assert.ok(after.includes(applied.wrapper));
+  // Stored as a JSON string: on Windows every backslash in the path is escaped.
+  assert.ok(after.includes(JSON.stringify(applied.wrapper)));
   assert.ok(after.includes('"other": true,\n  },\n}'));
   const again = await configureClaudeCodeWrapper(
     defaultWrapperManager,
