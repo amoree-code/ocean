@@ -32,3 +32,29 @@ test("Claude Code wrapper setup previews and backs up a plain JSON settings file
     /claudeCode\.claudeProcessWrapper/,
   );
 });
+
+test("Claude Code wrapper setup edits a JSONC settings file in place", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-vscode-jsonc-"));
+  const settings = path.join(root, "settings.json");
+  const original =
+    '{\n  // keep me\n  "claudeCode.claudeProcessWrapper": "/old/atlas/shim",\n  "editor.quickSuggestions": {\n    "other": true,\n  },\n}\n';
+  await (await import("node:fs/promises")).writeFile(settings, original);
+  const applied = await configureClaudeCodeWrapper(
+    defaultWrapperManager,
+    settings,
+    true,
+  );
+  assert.equal(applied.changed, true);
+  const after = await readFile(settings, "utf8");
+  assert.match(after, /\/\/ keep me/);
+  assert.doesNotMatch(after, /\/old\/atlas\/shim/);
+  // Stored as a JSON string: on Windows every backslash in the path is escaped.
+  assert.ok(after.includes(JSON.stringify(applied.wrapper)));
+  assert.ok(after.includes('"other": true,\n  },\n}'));
+  const again = await configureClaudeCodeWrapper(
+    defaultWrapperManager,
+    settings,
+    true,
+  );
+  assert.equal(again.changed, false);
+});
