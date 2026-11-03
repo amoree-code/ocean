@@ -106,7 +106,8 @@ test("the call ledger records only {ts, client, tool, ok} — never questions, i
         ["ledger-test-client", "resources/read", false],
       ],
     );
-    assert.equal((await stat(callLedgerFile())).mode & 0o777, 0o600);
+    if (process.platform !== "win32")
+      assert.equal((await stat(callLedgerFile())).mode & 0o777, 0o600);
     assert.deepEqual(
       summarizeCallLedger(calls).find((row) => row.tool === "ocean_ping"),
       {

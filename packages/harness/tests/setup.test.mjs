@@ -3,6 +3,7 @@ import { mkdtemp, readFile, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import {
   enginePath,
   KNOWLEDGE_DIR,
@@ -181,7 +182,11 @@ test("setup honors --help and refuses unknown arguments before writing anything 
   for (const args of [["--help"], ["--bogus"]]) {
     const run = spawnSync(
       process.execPath,
-      [new URL("../dist/main.js", import.meta.url).pathname, "setup", ...args],
+      [
+        fileURLToPath(new URL("../dist/main.js", import.meta.url)),
+        "setup",
+        ...args,
+      ],
       {
         env: { ...process.env, HOME: home, OCEAN_ROOT: root },
         encoding: "utf8",

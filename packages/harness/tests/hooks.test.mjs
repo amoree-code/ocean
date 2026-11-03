@@ -423,6 +423,7 @@ test("a shim entry runs its hooks through the shim, with no engine file (T-307)"
   assert.equal(
     hookCommand(
       {
+        platform: "linux",
         entry: {
           command: "/o/bridge/runtime/shims/ocean",
           args: ["mcp", "serve"],
