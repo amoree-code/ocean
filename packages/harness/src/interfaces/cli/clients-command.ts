@@ -24,6 +24,11 @@ import {
   planNative,
   restoreNative,
 } from "../../application/clients/native.js";
+import {
+  applyOpencodePlugin,
+  planOpencodePlugin,
+  restoreOpencodePlugin,
+} from "../../application/clients/opencode-plugin.js";
 
 const usage =
   "Usage: ocean clients detect|plan [--json] | apply [--client <id>…] [--yes] | verify [<id>…] | confirm <id>… --label in-app|headless|connected|blocked [--via <evidence>] [--reason <why>] | ledger | repair | restore [--batch <id>]";
@@ -70,6 +75,13 @@ export async function runClientsCommand(args: string[]): Promise<void> {
               hook.reason ? ` (${hook.reason})` : ""
             }${hook.snippet ? `; add ${hook.snippet}` : ""}`,
           );
+      if (action === "plan")
+        for (const plugin of await planOpencodePlugin())
+          console.log(
+            `${"opencode hook".padEnd(15)} ${plugin.status.padEnd(14)} ${plugin.file} plugin${
+              plugin.reason ? ` (${plugin.reason})` : ""
+            }`,
+          );
       return;
     }
     result =
@@ -78,6 +90,7 @@ export async function runClientsCommand(args: string[]): Promise<void> {
         : {
             clients: plans,
             hooks: await planHooks(),
+            plugins: await planOpencodePlugin(),
             native: await planNative(),
           };
   } else if (action === "apply") {
@@ -98,8 +111,17 @@ export async function runClientsCommand(args: string[]): Promise<void> {
           plan.status === "change" &&
           (!clients.length || clients.includes(plan.client)),
       );
+      const plugins = (await planOpencodePlugin()).filter(
+        (plan) =>
+          plan.status === "change" &&
+          (!clients.length || clients.includes(plan.client)),
+      );
       console.log(
-        JSON.stringify({ dryRun: true, pending, hooks, native }, null, 2),
+        JSON.stringify(
+          { dryRun: true, pending, hooks, plugins, native },
+          null,
+          2,
+        ),
       );
       console.error("Dry run: pass --yes to write these client configs.");
       return;
@@ -110,6 +132,9 @@ export async function runClientsCommand(args: string[]): Promise<void> {
       ...applied,
       hooks: (await applyHooks({ clients: selected, batch: applied.batch }))
         .results,
+      plugins: (
+        await applyOpencodePlugin({ clients: selected, batch: applied.batch })
+      ).results,
       native: (await applyNative({ clients: selected, batch: applied.batch }))
         .results,
     };
@@ -153,6 +178,7 @@ export async function runClientsCommand(args: string[]): Promise<void> {
       ? {
           ...restored,
           hooks: await restoreHooks({ batch: restored.batch }),
+          plugins: await restoreOpencodePlugin({ batch: restored.batch }),
           native: await restoreNative({ batch: restored.batch }),
         }
       : restored;

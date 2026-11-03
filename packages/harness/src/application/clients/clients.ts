@@ -423,7 +423,7 @@ export async function confirmClient(
   });
 }
 
-async function appendJournal(entries: JournalEntry[]): Promise<void> {
+export async function appendJournal(entries: JournalEntry[]): Promise<void> {
   if (!entries.length) return;
   const file = clientJournalFile();
   await mkdir(path.dirname(file), { recursive: true, mode: 0o700 });

@@ -175,7 +175,7 @@ test("ocean hook session-start treats a non-object JSON payload as empty", () =>
 });
 
 test("ocean hook session-start rejects an unknown or missing --client value", () => {
-  for (const args of [["--client", "cursor"], ["--client"]]) {
+  for (const args of [["--client", "continue"], ["--client"]]) {
     const result = spawnSync(
       process.execPath,
       [path.resolve("dist/main.js"), "hook", "session-start", ...args],
@@ -183,7 +183,10 @@ test("ocean hook session-start rejects an unknown or missing --client value", ()
     );
     assert.equal(result.status, 1);
     assert.equal(result.stdout, "");
-    assert.match(result.stderr, /--client claude\|codex\|gemini\|hermes/);
+    assert.match(
+      result.stderr,
+      /--client claude\|codex\|gemini\|hermes\|qwen\|cursor\|opencode/,
+    );
   }
 });
 

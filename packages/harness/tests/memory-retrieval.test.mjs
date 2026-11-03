@@ -205,6 +205,58 @@ test("project memory is indexed with its project scope and cited by workspace fi
   assert.equal(after.stale, true);
 });
 
+test("brain_read resolves extensionless search paths and nothing outside the index", async () => {
+  const root = await workspace();
+  // A declared id, as real records have, so the path without `.md` is not also the id.
+  await writeFile(
+    path.join(root, "05-knowledge/decisions/memory-home.md"),
+    "---\nname: decision-memory-home\n---\n# Memory home\n\nDecision: every client keeps durable facts in one lighthouse store.\n",
+  );
+  await reindexBrain({ root, indexPort, embedder: null });
+  const { results } = await brainSearch({
+    root,
+    indexPort,
+    query: "lighthouse store",
+  });
+  const hit = results[0];
+  assert.equal(hit.id, "decision-memory-home");
+  assert.equal(hit.path, "knowledge/decisions/memory-home.md");
+  for (const idOrPath of [
+    hit.id,
+    hit.path,
+    hit.file,
+    path.join(root, hit.file),
+    "knowledge/decisions/memory-home",
+    "05-knowledge/decisions/memory-home",
+  ]) {
+    const read = await brainRead({ root, indexPort, idOrPath });
+    assert.equal(read.path, hit.path, idOrPath);
+  }
+
+  // On disk but never indexed, and outside the workspace: neither is read.
+  await writeFile(
+    path.join(root, "05-knowledge/decisions/unindexed.md"),
+    "# Unindexed\n\nWritten after the reindex.\n",
+  );
+  const outside = await mkdtemp(path.join(os.tmpdir(), "ocean-outside-"));
+  await writeFile(path.join(outside, "secret.md"), "# Secret\n\nOutside.\n");
+  const traversal = path.relative(root, path.join(outside, "secret"));
+  for (const idOrPath of [
+    "knowledge/decisions/missing",
+    "knowledge/decisions/unindexed",
+    "05-knowledge/decisions/unindexed.md",
+    traversal,
+    `05-knowledge/${traversal}`,
+    path.join(outside, "secret"),
+    path.join(outside, "secret.md"),
+  ])
+    await assert.rejects(
+      brainRead({ root, indexPort, idOrPath }),
+      /no brain record found/,
+      idOrPath,
+    );
+});
+
 test("synthetic eval: recall@5 is at least 0.9", async () => {
   const root = await workspace();
   await reindexBrain({ root, indexPort, embedder: null });

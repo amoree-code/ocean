@@ -18,7 +18,16 @@ export type ClaudeSessionEndPayload = {
   hook_event_name?: string;
 };
 
-export const SESSION_END_CLIENTS = ["claude", "codex"] as const;
+// Gemini CLI, Qwen Code and Cursor fire a session-end event too (T-307); their transcript
+// formats are not read, so their sessions are recorded from metadata alone.
+export const SESSION_END_CLIENTS = [
+  "claude",
+  "codex",
+  "gemini",
+  "qwen",
+  "cursor",
+] as const;
+const TRANSCRIPT_CLIENTS: readonly SessionEndClient[] = ["claude", "codex"];
 export type SessionEndClient = (typeof SESSION_END_CLIENTS)[number];
 
 export function isSessionEndClient(value: string): value is SessionEndClient {
@@ -162,7 +171,11 @@ export async function claudeSessionEndHook(
 ): Promise<void> {
   const sessionId = payload.session_id;
   if (!sessionId) return;
-  const cwd = payload.cwd ?? process.cwd();
+  const roots = (payload as { workspace_roots?: unknown }).workspace_roots;
+  const cwd =
+    payload.cwd ||
+    (Array.isArray(roots) && typeof roots[0] === "string" ? roots[0] : "") ||
+    process.cwd();
 
   const store = await openStore();
   try {
@@ -184,9 +197,10 @@ export async function claudeSessionEndHook(
     }
     if (!session || session.closedAt) return;
 
-    const events = payload.transcript_path
-      ? await readTranscriptEvents(payload.transcript_path, client)
-      : [];
+    const events =
+      payload.transcript_path && TRANSCRIPT_CLIENTS.includes(client)
+        ? await readTranscriptEvents(payload.transcript_path, client)
+        : [];
     for (const event of events)
       store.appendEvent(sessionId, event.type, event.data);
     store.appendEvent(

@@ -31,6 +31,23 @@ whether writes are on; `ocean_ping` is a cheap health check.
 | `memory_propose` | a server-named candidate under `00-inbox/candidates/<date>/`, for review |
 | `memory_delete` | soft delete into trash; needs `expectedHash` |
 | `memory_restore` | puts back a deleted record or an earlier version |
+| `ocean_context` | the bounded start line (256 bytes or less: project bound to `cwd`, operations) for clients without a session-start hook; read-only, no records |
+| `ocean_projects_list` | project ids and names |
+| `ocean_handoff_create` | a new cross-client handoff on the user's request: summary + next action, 4 KB at most, secrets and home paths redacted, the calling client recorded as provider; never overwrites; read back with `ocean_handoffs_list` / `ocean_handoff_get` |
+
+An approved candidate's write is audited with its original `origin` (`imported` or `inferred`) and
+its `candidate` id, not as an explicit save. `brain_search` uses the local embedder when it answers
+and full text otherwise (`vector` in the result says which).
+
+### Call ledger (T-307)
+
+Every tool, resource or prompt call appends one line to `bridge/state/mcp/calls.jsonl` (mode 0600):
+exactly `{ts, client, tool, ok}`, where `client` is the name the client sent in `initialize` and
+`tool` the called tool (`resources/read`, `prompts/get`, or `unknown` for a name the server does
+not know). The question, the arguments, the result and any record content are never written. Lines
+older than 90 days, and the oldest half past 2 MB, are pruned. `ocean clients ledger` summarizes it
+per client and tool; it is how a client's in-app use of Ocean is shown, from Ocean's side. A client's
+self-reported name is attribution, not authentication.
 
 Writable roots, fixed in `packages/brain/src/memory/memory-paths.ts`: records under
 `02-personal/**` and `04-projects/<id>/memory/**` (caller-chosen, `.md`, never an index or
@@ -60,7 +77,10 @@ The server reads the private connection at `OCEAN_ROOT/bridge/integrations/obsid
 evidence), its tier (`supported`, `context-file`, `unsupported`, `unknown`), the pending change to
 its `ocean` entry, its native-memory policy, and the reason or fallback for clients that cannot
 connect. `ocean clients apply` prints the plan; `--yes` writes it. Only Ocean-managed entries are
-touched: `ocean` (set to `node <current engine> mcp serve`), a legacy `ocean` that runs the Obsidian
+touched: `ocean` (set to `node <current engine> mcp serve`, or to the `ocean` shim with
+`mcp serve` when node lives in a version manager's tree — fnm, nvm, volta, asdf, mise, n — so
+removing that version does not break every client; each shim falls back from its recorded node to
+`node` on PATH, then `/opt/homebrew/bin/node` and `/usr/local/bin/node`), a legacy `ocean` that runs the Obsidian
 server (renamed `ocean-obsidian`), and dead entries of the retired atlas gateway. An entry with keys
 Ocean does not manage (`env`, headers, a TOML sub-table), a JSON file not in canonical form, or a
 YAML list is never rewritten: it becomes a manual step with the exact entry to add.
@@ -78,10 +98,15 @@ installed supported client that is not wired or needs a manual edit, warns for a
 capability, and reports unsupported clients with their fallback.
 
 The state file `bridge/state/clients/clients.json` records the clients approved by an apply, the
-last `ocean clients verify` result of each, and the date the owner confirmed a client inside its
-app (`ocean clients confirm <id>` after restarting it and asking it to call `ocean_ping`). Until
-that confirmation, `ocean doctor` warns `CLIENT_CHECK_PENDING` for a wired client: a config that
-launches the server is not yet proof that the app uses it.
+last `ocean clients verify` result of each, and the evidence for each client's use of Ocean:
+`ocean clients confirm <id> --label in-app|headless|connected|blocked [--via <evidence>] [--reason
+<why>]`. `in-app` means the client's model, in normal use, searched Ocean for a question that named
+no tool and cited the record path; it needs `--via` (e.g. the ledger line). `headless` is a scripted
+run, `connected` the client's own `mcp list`/`test`; `blocked` needs `--reason` (a login, a missing
+app). Only `in-app` makes `ocean doctor` say "checked in the app" (`CLIENT_WIRED`); `blocked` is
+`CLIENT_BLOCKED`, and anything else — including a confirmation recorded before labels existed — stays
+`CLIENT_CHECK_PENDING`: a config that launches the server is not proof that the app uses it. Warp
+and Xcode are `unsupported` until their MCP support is verified.
 
 `ocean onboard` runs the same plan as its `connect` step: one consolidated review of every detected
 client, one confirmation that applies all of them, then `verify` per written client and the in-app
@@ -91,10 +116,18 @@ not yet approved client needs a change; an approved client that drifted is repai
 client sync` without asking. `apply` refuses an engine that lives in a temporary directory (a scratch
 worktree): every client wired to it would stop starting Ocean once that directory is gone.
 
-Session-start hooks go through the same plan, apply and restore, for every client whose
-session-start event is verified: Claude Code (`~/.claude/settings.json`), Codex
-(`~/.codex/hooks.json`) and Gemini CLI (`~/.gemini/settings.json`; 0.58 reads the same
-`hookSpecificOutput.additionalContext`). A client that already runs an Ocean hook (the
+Session hooks go through the same plan, apply and restore, for every client whose events are
+verified: Claude Code (`~/.claude/settings.json`), Codex (`~/.codex/hooks.json`), Gemini CLI
+(`~/.gemini/settings.json`; 0.58 reads the same `hookSpecificOutput.additionalContext`), Qwen Code
+(`~/.qwen/settings.json`, same shape, timeouts in milliseconds) and the Cursor agent
+(`~/.cursor/hooks.json` version 1: flat `{command}` entries under `sessionStart`/`sessionEnd`; the
+start hook answers `additional_context` and takes the folder from `workspace_roots`). Each gets a
+session-start and a session-end hook; a session end from Gemini, Qwen or Cursor is recorded from its
+metadata only — their transcripts are not read. OpenCode has no shell hooks: `apply` writes an
+Ocean-owned plugin, `~/.config/opencode/plugins/ocean.js`, that asks once per session for the start
+line and adds it to that session's system prompt (`experimental.chat.system.transform`); OpenCode
+fires no session-end event, so none is recorded. A plugin of that name Ocean did not write is a
+manual step, never overwritten. A client that already runs an Ocean hook (the
 `ocean-session-bootstrap` script or any `hook session-start` command) is left alone; otherwise one
 group is appended after the existing ones — other tools' hooks are never edited — running
 `node <engine> hook session-start --client <id> --repair`, where `--repair` starts `client sync` in
