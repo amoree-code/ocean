@@ -44,6 +44,67 @@ test("readTranscriptEvents extracts bounded user/assistant text turns and skips 
   ]);
 });
 
+test("readTranscriptEvents reads a Codex rollout and skips injected context, developer and non-message records", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "ocean-transcript-"));
+  const file = path.join(dir, "rollout.jsonl");
+  const message = (role, type, ...texts) =>
+    JSON.stringify({
+      type: "response_item",
+      payload: {
+        type: "message",
+        role,
+        content: texts.map((text) => ({ type, text })),
+      },
+    });
+  const lines = [
+    JSON.stringify({ type: "session_meta", payload: { id: "codex-1" } }),
+    message("developer", "input_text", "<permissions instructions> sandbox"),
+    message(
+      "user",
+      "input_text",
+      "# AGENTS.md instructions <INSTRUCTIONS>",
+      "<environment_context> cwd </environment_context>",
+    ),
+    message("user", "input_text", "add the codex hook"),
+    JSON.stringify({
+      type: "response_item",
+      payload: { type: "function_call", name: "shell" },
+    }),
+    message("assistant", "output_text", "Added it."),
+  ];
+  await writeFile(file, `${lines.join("\n")}\n`, "utf8");
+
+  assert.deepEqual(await readTranscriptEvents(file, "codex"), [
+    { type: "user_input", data: "add the codex hook" },
+    { type: "provider_output", data: "Added it." },
+  ]);
+});
+
+test("claudeSessionEndHook records a Codex session under the codex provider", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-session-end-hook-"));
+  process.env.OCEAN_ROOT = root;
+
+  await claudeSessionEndHook(
+    {
+      session_id: "codex-hook-session-1",
+      cwd: root,
+      hook_event_name: "SessionEnd",
+      reason: "other",
+    },
+    defaultSessionStoreFactory,
+    "codex",
+  );
+
+  const store = await openSessionStore();
+  const saved = store.get("codex-hook-session-1");
+  assert.ok(saved);
+  assert.equal(saved.provider, "codex");
+  assert.equal(saved.profile, "desktop:codex");
+  store.close();
+
+  delete process.env.OCEAN_ROOT;
+});
+
 test("readTranscriptEvents returns no events for a missing or oversized transcript", async () => {
   assert.deepEqual(await readTranscriptEvents("/does/not/exist.jsonl"), []);
 });

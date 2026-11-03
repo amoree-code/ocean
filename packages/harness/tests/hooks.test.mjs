@@ -104,8 +104,14 @@ async function withRoot(root, run) {
 }
 
 const read = (home, relative) => readFile(path.join(home, relative), "utf8");
+// SessionStart plans keyed by client, SessionEnd plans by `<client>:end`.
 const byClient = (plans) =>
-  Object.fromEntries(plans.map((plan) => [plan.client, plan.status]));
+  Object.fromEntries(
+    plans.map((plan) => [
+      plan.event === "SessionEnd" ? `${plan.client}:end` : plan.client,
+      plan.status,
+    ]),
+  );
 
 test("plan: a missing hook is a change, a non-canonical file a manual step with the group", async () => {
   const { root, env } = await fixtureHome();
@@ -113,7 +119,9 @@ test("plan: a missing hook is a change, a non-canonical file a manual step with 
     const plans = await planHooks(env);
     assert.deepEqual(byClient(plans), {
       "claude-code": "manual",
+      "claude-code:end": "manual",
       codex: "change",
+      "codex:end": "change",
       gemini: "change",
     });
     const claude = plans.find((plan) => plan.client === "claude-code");
@@ -136,11 +144,24 @@ test("an Ocean hook that already runs (bootstrap or shim) counts as present and 
           ],
         },
       ],
+      SessionEnd: [
+        {
+          hooks: [
+            {
+              type: "command",
+              command:
+                "$HOME/ocean/bridge/integrations/claude-code/hooks/ocean-session-close",
+            },
+          ],
+        },
+      ],
     },
   });
   const { root, env, home } = await fixtureHome({ claude: bootstrap });
   await withRoot(root, async () => {
-    assert.equal(byClient(await planHooks(env))["claude-code"], "current");
+    const plans = byClient(await planHooks(env));
+    assert.equal(plans["claude-code"], "current");
+    assert.equal(plans["claude-code:end"], "current");
     await applyHooks({ env });
     assert.equal(await read(home, ".claude/settings.json"), bootstrap);
   });
@@ -151,8 +172,9 @@ test("apply appends one group after the user's own, keeps every other byte, and 
   await withRoot(root, async () => {
     const { results } = await applyHooks({ env });
     assert.deepEqual(results, [
-      { client: "codex", result: "written" },
-      { client: "gemini", result: "written" },
+      { client: "codex", event: "SessionStart", result: "written" },
+      { client: "codex", event: "SessionEnd", result: "written" },
+      { client: "gemini", event: "SessionStart", result: "written" },
     ]);
     const codex = JSON.parse(await read(home, ".codex/hooks.json"));
     const original = JSON.parse(CODEX_HOOKS);
@@ -169,6 +191,18 @@ test("apply appends one group after the user's own, keeps every other byte, and 
       codex.hooks.SessionStart[2].hooks[0].command,
       "/opt/test/node /release/current/packages/harness/dist/main.js hook session-start --client codex --repair",
     );
+    assert.deepEqual(codex.hooks.SessionEnd, [
+      {
+        hooks: [
+          {
+            type: "command",
+            command:
+              "/opt/test/node /release/current/packages/harness/dist/main.js hook session-end --client codex",
+            timeout: 10,
+          },
+        ],
+      },
+    ]);
     const gemini = JSON.parse(await read(home, ".gemini/settings.json"));
     assert.deepEqual(gemini.security, JSON.parse(GEMINI_SETTINGS).security);
     assert.deepEqual(gemini.mcpServers, { other: { command: "x" } });
@@ -181,7 +215,9 @@ test("apply appends one group after the user's own, keeps every other byte, and 
     assert.deepEqual((await applyHooks({ env })).results, []);
     assert.deepEqual(byClient(await planHooks(env)), {
       "claude-code": "manual",
+      "claude-code:end": "manual",
       codex: "current",
+      "codex:end": "current",
       gemini: "current",
     });
   });
@@ -197,7 +233,7 @@ test("restore of the batch returns entries and hooks byte-identical", async () =
     const hooks = await restoreHooks({ batch, env });
     assert.equal(entries.batch, batch);
     assert.deepEqual(hooks, {
-      restored: ["gemini:hook", "codex:hook"],
+      restored: ["gemini:hook", "codex:end-hook", "codex:hook"],
       conflicts: [],
     });
     assert.equal(await read(home, ".gemini/settings.json"), GEMINI_SETTINGS);
@@ -206,7 +242,7 @@ test("restore of the batch returns entries and hooks byte-identical", async () =
     const undone = (await readJournal()).filter(
       (entry) => entry.op === "hook-add" && entry.restoreOf === batch,
     );
-    assert.equal(undone.length, 2);
+    assert.equal(undone.length, 3);
   });
 });
 
@@ -237,8 +273,13 @@ test("a hook group the user changed after apply is a conflict on restore and lef
     edited.hooks.SessionStart[2].hooks[0].timeout = 30;
     await writeFile(file, json(edited));
     const result = await restoreHooks({ batch, env });
-    assert.deepEqual(result, { restored: [], conflicts: ["codex:hook"] });
-    assert.equal(await readFile(file, "utf8"), json(edited));
+    assert.deepEqual(result, {
+      restored: ["codex:end-hook"],
+      conflicts: ["codex:hook"],
+    });
+    const after = JSON.parse(await readFile(file, "utf8"));
+    assert.deepEqual(after.hooks.SessionStart, edited.hooks.SessionStart);
+    assert.equal(after.hooks.SessionEnd, undefined);
   });
 });
 

@@ -33,7 +33,11 @@ import {
   unbindProjectPath,
   writeProjectIndex,
 } from "@ocean/core/shared/project-resolution.js";
-import { claudeSessionEndHook } from "@ocean/loop/hooks/session-end-hook.js";
+import {
+  claudeSessionEndHook,
+  isSessionEndClient,
+  SESSION_END_CLIENTS,
+} from "@ocean/loop/hooks/session-end-hook.js";
 import {
   isSessionStartClient,
   readBoundedStdin,
@@ -768,22 +772,36 @@ async function commandHook(): Promise<void> {
       process.exitCode = 1;
     }
   } else if (action === "session-end") {
+    const flags = process.argv.slice(4);
+    const inline = flags.find((arg) => arg.startsWith("--client="));
+    const clientIndex = flags.indexOf("--client");
+    const client = inline
+      ? inline.slice("--client=".length)
+      : clientIndex >= 0
+        ? (flags[clientIndex + 1] ?? "")
+        : "claude";
+    if (!isSessionEndClient(client)) {
+      console.error(sessionEndUsage);
+      process.exitCode = 1;
+      return;
+    }
     try {
       const raw = await readBoundedStdin();
       const payload = raw.trim() ? JSON.parse(raw) : {};
-      await claudeSessionEndHook(payload, defaultSessionStoreFactory);
+      await claudeSessionEndHook(payload, defaultSessionStoreFactory, client);
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));
       process.exitCode = 1;
     }
   } else {
     console.error(
-      `${sessionStartUsage}|session-end (reads a hook payload from stdin)`,
+      `${sessionStartUsage}|${sessionEndUsage.slice("Usage: ocean hook ".length)}`,
     );
     process.exitCode = 1;
   }
 }
 
+const sessionEndUsage = `Usage: ocean hook session-end [--client ${SESSION_END_CLIENTS.join("|")}] (reads a hook payload from stdin)`;
 const sessionStartUsage = `Usage: ocean hook session-start [--client ${SESSION_START_CLIENTS.join("|")}] [--repair]`;
 
 async function commandIntent(): Promise<void> {

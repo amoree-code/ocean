@@ -179,7 +179,11 @@ function fakeClients(plans, hooks = [], native = [], approved = []) {
         calls.applyHooks.push(batch);
         return hooks
           .filter((hook) => hook.status === "change")
-          .map((hook) => ({ client: hook.client, result: "written" }));
+          .map((hook) => ({
+            client: hook.client,
+            event: hook.event,
+            result: "written",
+          }));
       },
     },
   };
@@ -262,14 +266,21 @@ test("connect with nothing pending asks nothing and is done", async () => {
 
 test("connect puts session hooks in the same review and applies them under the same batch", async () => {
   const hooks = [
-    { client: "codex", file: "~/.codex/hooks.json", status: "change" },
+    {
+      client: "codex",
+      event: "SessionEnd",
+      file: "~/.codex/hooks.json",
+      status: "change",
+    },
     {
       client: "claude-code",
+      event: "SessionStart",
       file: "~/.claude/settings.json",
       status: "current",
     },
     {
       client: "gemini",
+      event: "SessionStart",
       file: "~/.gemini/settings.json",
       status: "manual",
       reason: "not canonical",
@@ -289,13 +300,13 @@ test("connect puts session hooks in the same review and applies them under the s
   assert.deepEqual(calls.apply, [[]]);
   assert.deepEqual(calls.applyHooks, ["b1"]);
   const text = lines.join("\n");
-  assert.match(text, /codex session hook\s+will add a SessionStart hook/);
-  assert.match(text, /claude-code session hook\s+present/);
+  assert.match(text, /codex SessionEnd hook\s+will add a SessionEnd hook/);
+  assert.match(text, /claude-code SessionStart hook\s+present/);
   assert.match(
     text,
-    /gemini session hook\s+hand edit needed \(not canonical\); add hooks/,
+    /gemini SessionStart hook\s+hand edit needed \(not canonical\); add hooks/,
   );
-  assert.match(text, /codex session hook: written/);
+  assert.match(text, /codex SessionEnd hook: written/);
 });
 
 test("connect lists native-memory policies and applies the settable ones in the same batch", async () => {
