@@ -13,6 +13,11 @@ import {
   summarizeCallLedger,
 } from "@ocean/services/infrastructure/mcp/call-ledger.js";
 import { handleOceanMcpRequest } from "@ocean/services/infrastructure/mcp/ocean-server.js";
+import { attributeLedger } from "../dist/application/clients/clients.js";
+import {
+  CLIENT_ADAPTERS,
+  mcpClientOf,
+} from "../dist/application/clients/registry.js";
 import {
   defaultBrainIndexPort,
   defaultSessionStoreFactory,
@@ -151,4 +156,52 @@ test("the ledger keeps 90 days and drops torn lines", () => {
   );
   assert.deepEqual(kept.trim().split("\n"), [at(89), at(0)]);
   assert.equal(pruneLedgerText(`${at(200)}\n`, now), "");
+});
+
+test("Claude Desktop's chat and agent mode stay two identities of one client", async () => {
+  await withRoot(async () => {
+    for (const [id, name] of [
+      [1, "claude-ai"],
+      [3, "local-agent-mode-ocean"],
+      [5, "codex-mcp-client"],
+    ]) {
+      await handle({
+        jsonrpc: "2.0",
+        id,
+        method: "initialize",
+        params: { clientInfo: { name } },
+      });
+      await handle({
+        jsonrpc: "2.0",
+        id: id + 1,
+        method: "tools/call",
+        params: { name: "ocean_ping", arguments: {} },
+      });
+    }
+    const rows = attributeLedger(summarizeCallLedger(await readCallLedger()));
+    const row = (client) => rows.find((item) => item.client === client);
+    // The ledger keeps the name the client sent; attribution only adds to it.
+    assert.deepEqual(
+      rows.map(({ client, oceanClient, mode }) => [client, oceanClient, mode]),
+      [
+        ["claude-ai", "claude-desktop", "chat"],
+        // An unidentified name is not guessed at.
+        ["codex-mcp-client", undefined, undefined],
+        ["local-agent-mode-ocean", "claude-desktop", "agent"],
+      ],
+    );
+    assert.equal(row("claude-ai").calls, 1);
+    assert.equal(row("local-agent-mode-ocean").calls, 1);
+  });
+});
+
+test("every MCP client name belongs to one client, and single-name clients have no mode", () => {
+  const names = CLIENT_ADAPTERS.flatMap((adapter) =>
+    (adapter.mcpClients ?? []).map((item) => item.name),
+  );
+  assert.equal(new Set(names).size, names.length);
+  assert.deepEqual(mcpClientOf("claude-code"), { id: "claude-code" });
+  assert.deepEqual(mcpClientOf("opencode"), { id: "opencode" });
+  assert.equal(mcpClientOf("claude-desktop"), undefined);
+  assert.equal(mcpClientOf("unknown"), undefined);
 });

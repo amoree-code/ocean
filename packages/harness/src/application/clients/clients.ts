@@ -22,6 +22,7 @@ import {
   CLIENT_ADAPTERS,
   type ClientAdapter,
   type ClientTier,
+  mcpClientOf,
   type NativeMemoryPolicy,
 } from "./registry.js";
 
@@ -394,6 +395,22 @@ const EVIDENCE_TEXT_MAX = 200;
 function evidenceText(value: string | undefined): string | undefined {
   const text = value?.replace(/\s+/g, " ").trim();
   return text ? text.slice(0, EVIDENCE_TEXT_MAX) : undefined;
+}
+
+// The call ledger keeps the raw MCP client name. Each row also names the Ocean client it
+// belongs to and, where that client's modes send different names, the mode (T-307).
+export function attributeLedger<T extends { client: string }>(
+  rows: T[],
+): (T & { oceanClient?: string; mode?: string })[] {
+  return rows.map((row) => {
+    const known = mcpClientOf(row.client);
+    if (!known) return row;
+    return {
+      ...row,
+      oceanClient: known.id,
+      ...(known.mode ? { mode: known.mode } : {}),
+    };
+  });
 }
 
 // Records what was proven about a client's use of Ocean, and how.

@@ -6,6 +6,9 @@ export const MEMORY_CONTRACT_VERSION = 1;
 
 export const MEMORY_INSTRUCTIONS = [
   "Ocean is this user's single memory and environment; do not keep durable facts only in this client's own memory.",
+  // Only Ocean's server sends this text, so it is true wherever it is read. A record listing
+  // clients that cannot connect is not about this session (T-307: Desktop chat misread it).
+  "If you can call these tools, this client is connected to Ocean.",
   "Before answering about the user, their projects or past decisions, search with brain_search, read with brain_read or memory_read, and cite the record path.",
   "Use memory_write only when the user explicitly asks you to remember or change something: search first, then mode create for a new record, or mode update with the current sha256 from memory_read as expectedHash.",
   "Facts you infer yourself, and anything imported from another tool's memory, go to memory_propose for the user's review, never to memory_write.",

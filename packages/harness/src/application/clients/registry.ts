@@ -36,6 +36,10 @@ export type ClientAdapter = {
   // Home-relative config file holding the MCP server table, and its editor.
   config?: { file: string; editor: Editor };
   nativeMemory: NativeMemoryPolicy;
+  // The MCP `clientInfo.name` it sends Ocean, as the call ledger records it (T-307), with the
+  // mode when the client sends a different name per mode. Only names seen in the ledger with
+  // the client identified; no name belongs to two clients.
+  mcpClients?: { name: string; mode?: string }[];
   reason?: string;
   fallback?: string;
 };
@@ -72,6 +76,7 @@ export const CLIENT_ADAPTERS: ClientAdapter[] = [
     detect: { binaries: ["claude"], paths: [".claude.json"] },
     config: { file: ".claude.json", editor: jsonEditor(["mcpServers"]) },
     nativeMemory: "redirect-staging",
+    mcpClients: [{ name: "claude-code" }],
   },
   {
     id: "claude-desktop",
@@ -86,6 +91,12 @@ export const CLIENT_ADAPTERS: ClientAdapter[] = [
       editor: jsonEditor(["mcpServers"]),
     },
     nativeMemory: "capture",
+    // Normal chat uses the claude.ai name although it runs locally; agent mode names its own
+    // `local-agent-mode-<server>` client.
+    mcpClients: [
+      { name: "claude-ai", mode: "chat" },
+      { name: "local-agent-mode-ocean", mode: "agent" },
+    ],
   },
   {
     id: "codex",
@@ -151,6 +162,7 @@ export const CLIENT_ADAPTERS: ClientAdapter[] = [
     },
     config: { file: ".config/opencode/opencode.json", editor: opencodeEditor },
     nativeMemory: "none",
+    mcpClients: [{ name: "opencode" }],
   },
   {
     id: "qwen",
@@ -212,6 +224,20 @@ export const CLIENT_ADAPTERS: ClientAdapter[] = [
     fallback: "use Ocean from a supported client or the `ocean` CLI",
   },
 ];
+
+// Which client, and which of its modes, a call-ledger name belongs to; undefined when unknown.
+export function mcpClientOf(
+  name: string,
+): { id: string; mode?: string } | undefined {
+  for (const adapter of CLIENT_ADAPTERS) {
+    const known = adapter.mcpClients?.find((item) => item.name === name);
+    if (known)
+      return known.mode
+        ? { id: adapter.id, mode: known.mode }
+        : { id: adapter.id };
+  }
+  return undefined;
+}
 
 export function clientAdapter(id: string): ClientAdapter {
   const adapter = CLIENT_ADAPTERS.find((item) => item.id === id);
