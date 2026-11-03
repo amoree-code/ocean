@@ -262,10 +262,17 @@ export async function brainRead(
   const reader = options.indexPort.openIndexReadOnly(indexFile);
   let docRow: Record<string, unknown> | undefined;
   try {
-    docRow = reader.getDocByIdOrPath(options.idOrPath);
-    if (!docRow) {
-      const storePath = indexedStorePath(options.idOrPath, root);
-      if (storePath) docRow = reader.getDocByIdOrPath(storePath);
+    // Clients also cite a search result's path without its extension.
+    const candidates = options.idOrPath.endsWith(".md")
+      ? [options.idOrPath]
+      : [options.idOrPath, `${options.idOrPath}.md`];
+    for (const candidate of candidates) {
+      docRow = reader.getDocByIdOrPath(candidate);
+      if (!docRow) {
+        const storePath = indexedStorePath(candidate, root);
+        if (storePath) docRow = reader.getDocByIdOrPath(storePath);
+      }
+      if (docRow) break;
     }
   } finally {
     reader.close();
