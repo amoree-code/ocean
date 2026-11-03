@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readdir, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { localDate } from "@ocean/core/shared/local-date.js";
 import { DAILY_DIR, INBOX_DIR, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import { SessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
 import { finalizeSession } from "@ocean/loop/sessions/session-closeout.js";
@@ -66,7 +67,7 @@ test("finalizes a session with a bounded human summary, metadata, and handoff", 
   const summary = await readFile(path.join(root, result.summaryPath), "utf8");
   const saved = store.get(sessionId);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDate();
   const daily = await readFile(
     path.join(root, DAILY_DIR, `${today}.md`),
     "utf8",
@@ -152,7 +153,7 @@ test("skips the daily Work log line and the brain-dump for a generic, no-project
 
   await finalizeSession(store, sessionId, { exitCode: 0 });
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDate();
   const dailyPath = path.join(root, DAILY_DIR, `${today}.md`);
   let daily = "";
   try {
@@ -199,7 +200,7 @@ test("still logs a generic-title session and its brain-dump when it has a real g
 
   await finalizeSession(store, sessionId, { exitCode: 0 });
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDate();
   const daily = await readFile(
     path.join(root, DAILY_DIR, `${today}.md`),
     "utf8",
