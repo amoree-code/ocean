@@ -8,7 +8,8 @@ import { sessionProjectId } from "../sessions/session-projects.js";
 // The documented Claude Code SessionEnd hook contract (same family as the
 // SessionStart payload in session-start-hook.ts): a small JSON payload on
 // stdin naming the session and, uniquely to SessionEnd, a transcript_path to
-// that session's own JSONL conversation log.
+// that session's own JSONL conversation log. Codex's SessionEnd sends the same
+// fields; only its transcript format differs.
 export type ClaudeSessionEndPayload = {
   cwd?: string;
   session_id?: string;
@@ -16,6 +17,13 @@ export type ClaudeSessionEndPayload = {
   reason?: string;
   hook_event_name?: string;
 };
+
+export const SESSION_END_CLIENTS = ["claude", "codex"] as const;
+export type SessionEndClient = (typeof SESSION_END_CLIENTS)[number];
+
+export function isSessionEndClient(value: string): value is SessionEndClient {
+  return (SESSION_END_CLIENTS as readonly string[]).includes(value);
+}
 
 type TranscriptEvent = { type: "user_input" | "provider_output"; data: string };
 
@@ -42,10 +50,51 @@ function textFromContent(content: unknown): string {
     .join(" ");
 }
 
+// Codex prepends context blocks (AGENTS.md, environment and plugin lists) as
+// user messages; they are injected text, not something the user typed.
+function isInjectedCodexText(text: string): boolean {
+  return text.startsWith("<") || text.startsWith("# AGENTS.md");
+}
+
+// One transcript line → the turn it holds, or null. Claude Code writes
+// {type, message:{role, content}}; Codex writes {type:"response_item",
+// payload:{type:"message", role, content:[{type:"input_text"|"output_text", text}]}}.
+function transcriptTurn(
+  record: Record<string, unknown>,
+  client: SessionEndClient,
+): { role: "user" | "assistant"; text: string } | null {
+  if (client === "codex") {
+    const payload = record.payload as
+      | { type?: string; role?: string; content?: unknown }
+      | undefined;
+    if (record.type !== "response_item" || payload?.type !== "message")
+      return null;
+    if (payload.role !== "user" && payload.role !== "assistant") return null;
+    if (!Array.isArray(payload.content)) return null;
+    const text = payload.content
+      .filter(
+        (block): block is { text: string } =>
+          block &&
+          typeof block === "object" &&
+          typeof (block as { text?: unknown }).text === "string" &&
+          !(
+            payload.role === "user" &&
+            isInjectedCodexText((block as { text: string }).text)
+          ),
+      )
+      .map((block) => block.text)
+      .join(" ");
+    return { role: payload.role, text };
+  }
+  if (record.type !== "user" && record.type !== "assistant") return null;
+  const message = record.message as { content?: unknown } | undefined;
+  return { role: record.type, text: textFromContent(message?.content) };
+}
+
 /**
  * Extracts a bounded set of plain-text user/assistant turns from a Claude
  * Code transcript (JSONL: one record per line, {type, message:{role,
- * content}}). Skips tool calls, thinking blocks, and any non-text content —
+ * content}}) or a Codex rollout (see transcriptTurn). Skips tool calls, thinking blocks, and any non-text content —
  * this feeds the same human-narrative pipeline intercepted CLI sessions use
  * (see session-closeout.ts), not a full transcript mirror. Returns the most
  * recent MAX_EVENTS turns; never throws (a missing/oversized/malformed
@@ -54,6 +103,7 @@ function textFromContent(content: unknown): string {
  */
 export async function readTranscriptEvents(
   transcriptPath: string,
+  client: SessionEndClient = "claude",
 ): Promise<TranscriptEvent[]> {
   try {
     const info = await stat(transcriptPath);
@@ -69,23 +119,19 @@ export async function readTranscriptEvents(
     });
     for await (const line of rl) {
       if (!line.trim()) continue;
-      let record: {
-        type?: string;
-        message?: { role?: string; content?: unknown };
-      };
+      let record: unknown;
       try {
         record = JSON.parse(line);
       } catch {
         continue;
       }
-      if (record.type !== "user" && record.type !== "assistant") continue;
-      const text = safeSlice(
-        textFromContent(record.message?.content),
-        MAX_EVENT_CHARS,
-      );
+      if (!record || typeof record !== "object") continue;
+      const turn = transcriptTurn(record as Record<string, unknown>, client);
+      if (!turn) continue;
+      const text = safeSlice(turn.text, MAX_EVENT_CHARS);
       if (!text) continue;
       events.push({
-        type: record.type === "user" ? "user_input" : "provider_output",
+        type: turn.role === "user" ? "user_input" : "provider_output",
         data: text,
       });
     }
@@ -112,6 +158,7 @@ export async function readTranscriptEvents(
 export async function claudeSessionEndHook(
   payload: ClaudeSessionEndPayload,
   openStore: SessionStoreFactory,
+  client: SessionEndClient = "claude",
 ): Promise<void> {
   const sessionId = payload.session_id;
   if (!sessionId) return;
@@ -123,10 +170,10 @@ export async function claudeSessionEndHook(
     if (!session) {
       store.create({
         sessionId,
-        provider: "claude",
+        provider: client,
         providerSessionId: sessionId,
         parentSessionId: null,
-        profile: "desktop:claude",
+        profile: `desktop:${client}`,
         profileIdentity: "",
         workingDirectory: cwd,
         resumeData: null,
@@ -138,7 +185,7 @@ export async function claudeSessionEndHook(
     if (!session || session.closedAt) return;
 
     const events = payload.transcript_path
-      ? await readTranscriptEvents(payload.transcript_path)
+      ? await readTranscriptEvents(payload.transcript_path, client)
       : [];
     for (const event of events)
       store.appendEvent(sessionId, event.type, event.data);

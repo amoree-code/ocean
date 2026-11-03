@@ -66,7 +66,7 @@ export async function runClientsCommand(args: string[]): Promise<void> {
       if (action === "plan")
         for (const hook of await planHooks())
           console.log(
-            `${`${hook.client} hook`.padEnd(15)} ${hook.status.padEnd(14)} ${hook.file} SessionStart${
+            `${`${hook.client} hook`.padEnd(15)} ${hook.status.padEnd(14)} ${hook.file} ${hook.event}${
               hook.reason ? ` (${hook.reason})` : ""
             }${hook.snippet ? `; add ${hook.snippet}` : ""}`,
           );
