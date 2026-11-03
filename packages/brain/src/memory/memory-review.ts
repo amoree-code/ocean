@@ -128,6 +128,10 @@ export async function approveCandidate(options: {
 }): Promise<{ path: string; mode: "create" | "update"; auditId: string }> {
   const source = options.source ?? "owner-review";
   const item = await candidate(options.id);
+  const provenance = {
+    origin: item.origin === "imported" ? "imported" : "inferred",
+    candidate: options.id,
+  } as const;
   const target = options.to ?? item.target;
   if (!target)
     throw new MemoryContractError(
@@ -151,12 +155,14 @@ export async function approveCandidate(options: {
         mode: "update",
         expectedHash: existing.sha256,
         source,
+        provenance,
       })
     : await writeMemoryRecord({
         path: target,
         content: item.content,
         mode: "create",
         source,
+        provenance,
       });
   await retire(item, "approve", source);
   return {

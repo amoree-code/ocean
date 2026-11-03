@@ -12,6 +12,7 @@ import {
 } from "@ocean/brain/memory/lessons.js";
 import { promoteSessionToKnowledge } from "@ocean/brain/memory/session-promotion.js";
 import { classifyIntent } from "@ocean/context/context/intent-router.js";
+import type { EmbedderPort } from "@ocean/core/domain/ports/embedder-port.js";
 import { resolveProfileName } from "@ocean/core/domain/profiles/runtime-config.js";
 import {
   oceanEnv,
@@ -142,6 +143,7 @@ import {
   runService,
   startBackgroundPull,
 } from "../../infrastructure/process/service.js";
+import { createOllamaEmbedder } from "../../infrastructure/providers/ollama-embedder.js";
 import { loadProviderRegistry } from "../../infrastructure/providers/provider-registry.js";
 import {
   installShellPath,
@@ -177,28 +179,28 @@ import { manageClients, runOnboardCommand } from "./onboard-command.js";
 import { runOperateCommand } from "./operate-command.js";
 import { runProfilesCommand } from "./profiles-command.js";
 import { runPullCommand } from "./pull-command.js";
-import { setup } from "./setup-command.js";
+import { parseSetupArgs, SETUP_USAGE, setup } from "./setup-command.js";
 import { runTasksCommand } from "./tasks-command.js";
 
 export type CommandHandler = () => Promise<void> | void;
 
+// brain_search over MCP uses vectors when the local embedder answers (T-307), and full text when
+// it does not; a working embedder is kept, a failure is retried on the next search.
+function mcpEmbedder(): () => Promise<EmbedderPort | null> {
+  let ready: EmbedderPort | null = null;
+  return async () => {
+    if (!ready) ready = await createOllamaEmbedder().catch(() => null);
+    return ready;
+  };
+}
+
 async function commandSetup(): Promise<void> {
-  const obsidianIndex = process.argv.indexOf("--obsidian");
-  const obsidianPath =
-    obsidianIndex >= 0 ? process.argv[obsidianIndex + 1] : undefined;
-  if (obsidianIndex >= 0 && !obsidianPath) {
-    console.error(
-      "Usage: ocean setup [--obsidian <vault-path>] [--read-write]",
-    );
+  const parsed = parseSetupArgs(process.argv.slice(3));
+  if (parsed.kind === "help") console.log(SETUP_USAGE);
+  else if (parsed.kind === "error") {
+    console.error(`${parsed.message}\n${SETUP_USAGE}`);
     process.exitCode = 1;
-  } else {
-    await setup({
-      obsidianPath,
-      obsidianMode: process.argv.includes("--read-write")
-        ? "read-write"
-        : "read-only",
-    });
-  }
+  } else await setup(parsed.options);
 }
 
 async function commandService(): Promise<void> {
@@ -475,6 +477,7 @@ async function commandMcp(): Promise<void> {
       brainIndex: defaultBrainIndexPort,
       sessionStoreFactory: defaultSessionStoreFactory,
       wrapperManager: defaultWrapperManager,
+      embedder: mcpEmbedder(),
     });
   else if (action === "gateway") await runMcpGatewayCommand();
   else if (action === "browser-config")

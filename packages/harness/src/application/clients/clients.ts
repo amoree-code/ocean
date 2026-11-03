@@ -80,6 +80,35 @@ export type JournalEntry = {
   restoreOf?: string;
 };
 
+// A node inside a version manager's tree disappears when that version is removed (T-307).
+const VERSIONED_NODE =
+  /[\\/](?:node-versions|\.nvm[\\/]versions[\\/]node|\.volta[\\/]tools[\\/]image[\\/]node|\.asdf[\\/]installs[\\/]nodejs|mise[\\/]installs[\\/]node|n[\\/]versions[\\/]node)[\\/]/;
+
+export function isVersionedNode(execPath: string): boolean {
+  return VERSIONED_NODE.test(execPath);
+}
+
+// The `ocean` MCP entry. With a version-managed node it launches through the `ocean` shim, which
+// falls back to another node when that version is gone; a temporary engine keeps the direct form
+// so `temporaryEntryProblem` still refuses it.
+export function oceanServerEntry(
+  execPath = process.execPath,
+  engine = liveEngineEntry(),
+  platform: NodeJS.Platform = process.platform,
+): ServerValue {
+  const direct = { command: execPath, args: [engine, "mcp", "serve"] };
+  if (
+    platform === "win32" ||
+    !isVersionedNode(execPath) ||
+    temporaryEntryProblem(direct)
+  )
+    return direct;
+  return {
+    command: oceanPath(SYSTEM_DIR, "runtime", "shims", "ocean"),
+    args: ["mcp", "serve"],
+  };
+}
+
 export function defaultClientEnv(): ClientEnv {
   const home = os.homedir();
   return {
@@ -89,10 +118,7 @@ export function defaultClientEnv(): ClientEnv {
       process.platform === "darwin"
         ? ["/Applications", path.join(home, "Applications")]
         : [],
-    entry: {
-      command: process.execPath,
-      args: [liveEngineEntry(), "mcp", "serve"],
-    },
+    entry: oceanServerEntry(),
   };
 }
 
@@ -293,12 +319,31 @@ function stateFile(): string {
   return oceanPath(SYSTEM_DIR, "state", "clients", "clients.json");
 }
 
+// How far a client's use of Ocean is proven (T-307). Only `in-app` — the client's model searched
+// Ocean during normal use and cited the record — counts as done; `blocked` names why that check
+// cannot run yet. A confirmation recorded before labels existed has none and proves nothing.
+export const EVIDENCE_LABELS = [
+  "in-app",
+  "headless",
+  "connected",
+  "blocked",
+] as const;
+export type EvidenceLabel = (typeof EVIDENCE_LABELS)[number];
+
+export type ClientEvidence = {
+  label: EvidenceLabel;
+  // What proves it, e.g. the call-ledger timestamp of the search.
+  via?: string;
+  // Why the in-app check cannot run (`blocked`).
+  reason?: string;
+};
+
 // bridge/state/clients/clients.json: which clients the owner approved, the last scripted
-// verification of each, and the date the owner confirmed it works inside the app (§3.7 record).
+// verification of each, and the evidence recorded for its use of Ocean (§3.7 record).
 export type ClientState = {
   approved: Record<string, { approvedAt: string }>;
   verified: Record<string, { verifiedAt: string; ok: boolean }>;
-  confirmed: Record<string, { confirmedAt: string }>;
+  confirmed: Record<string, { confirmedAt: string } & Partial<ClientEvidence>>;
 };
 
 export async function readClientState(): Promise<ClientState> {
@@ -344,12 +389,37 @@ export async function recordVerification(
   });
 }
 
-// The owner checked the client inside its app (restart, ask it to call ocean_ping).
-export async function confirmClient(client: string): Promise<void> {
+const EVIDENCE_TEXT_MAX = 200;
+
+function evidenceText(value: string | undefined): string | undefined {
+  const text = value?.replace(/\s+/g, " ").trim();
+  return text ? text.slice(0, EVIDENCE_TEXT_MAX) : undefined;
+}
+
+// Records what was proven about a client's use of Ocean, and how.
+export async function confirmClient(
+  client: string,
+  evidence: ClientEvidence,
+): Promise<void> {
   if (!CLIENT_ADAPTERS.some((adapter) => adapter.id === client))
     throw new Error(`unknown client '${client}'`);
+  if (!EVIDENCE_LABELS.includes(evidence.label))
+    throw new Error(
+      `unknown evidence label '${evidence.label}' (use ${EVIDENCE_LABELS.join(", ")})`,
+    );
+  const via = evidenceText(evidence.via);
+  const reason = evidenceText(evidence.reason);
+  if (evidence.label === "in-app" && !via)
+    throw new Error("an in-app confirmation needs --via <evidence>");
+  if (evidence.label === "blocked" && !reason)
+    throw new Error("a blocked client needs --reason <why>");
   await updateClientState((state) => {
-    state.confirmed[client] = { confirmedAt: new Date().toISOString() };
+    state.confirmed[client] = {
+      confirmedAt: new Date().toISOString(),
+      label: evidence.label,
+      ...(via ? { via } : {}),
+      ...(reason ? { reason } : {}),
+    };
   });
 }
 
@@ -684,6 +754,42 @@ export type ClientFinding = {
 // are reported with their fallback; an unknown capability is a warning, never a pass. On this
 // machine's real env, an engine in a temporary directory is named first: every plan below then
 // points at a build that will disappear (T-300).
+// A wired client's status says only what its evidence proves: "checked in the app" is reserved
+// for an in-app confirmation.
+function evidenceFinding(
+  name: string,
+  client: string,
+  record: ClientState["confirmed"][string] | undefined,
+): ClientFinding {
+  const confirm = `\`ocean clients confirm ${client} --label in-app --via <evidence>\``;
+  const date = record?.confirmedAt.slice(0, 10);
+  if (record?.label === "in-app")
+    return {
+      code: "CLIENT_WIRED",
+      severity: "OK",
+      message: `${name}: \`ocean\` entry current, checked in the app ${date} (${record.via})`,
+      fixable: false,
+    };
+  if (record?.label === "blocked")
+    return {
+      code: "CLIENT_BLOCKED",
+      severity: "WARN",
+      message: `${name}: \`ocean\` entry current; in-app check blocked since ${date}: ${record.reason}`,
+      fixable: false,
+    };
+  const proven = record?.label
+    ? `${record.label} only (${date}${record.via ? `: ${record.via}` : ""})`
+    : record
+      ? `confirmed ${date} without an evidence label`
+      : "in-app check not recorded";
+  return {
+    code: "CLIENT_CHECK_PENDING",
+    severity: "WARN",
+    message: `${name}: \`ocean\` entry current; ${proven} — ask it a question that needs Ocean, then ${confirm}`,
+    fixable: false,
+  };
+}
+
 export async function clientFindings(
   env?: ClientEnv,
 ): Promise<ClientFinding[]> {
@@ -702,21 +808,7 @@ export async function clientFindings(
     if (!plan.installed) continue;
     const name = `${plan.label} (${plan.client})`;
     if (plan.status === "current")
-      findings.push(
-        confirmed[plan.client]
-          ? {
-              code: "CLIENT_WIRED",
-              severity: "OK",
-              message: `${name}: \`ocean\` entry current, checked in the app ${confirmed[plan.client].confirmedAt.slice(0, 10)}`,
-              fixable: false,
-            }
-          : {
-              code: "CLIENT_CHECK_PENDING",
-              severity: "WARN",
-              message: `${name}: \`ocean\` entry current; in-app check not recorded — restart it, ask it to call ocean_ping, then \`ocean clients confirm ${plan.client}\``,
-              fixable: false,
-            },
-      );
+      findings.push(evidenceFinding(name, plan.client, confirmed[plan.client]));
     else if (plan.status === "change")
       findings.push({
         code: "CLIENT_NOT_WIRED",

@@ -195,18 +195,21 @@ export const CLIENT_ADAPTERS: ClientAdapter[] = [
   {
     id: "warp",
     label: "Warp",
-    tier: "unknown",
+    // Unsupported until its MCP support is verified (T-307), not left as an open question.
+    tier: "unsupported",
     detect: { apps: ["Warp.app"], paths: [".warp"] },
     nativeMemory: "unknown",
-    reason: "MCP configuration location not verified",
+    reason: "MCP support not verified",
+    fallback: "use Ocean from a supported client or the `ocean` CLI",
   },
   {
     id: "xcode",
     label: "Xcode",
-    tier: "unknown",
+    tier: "unsupported",
     detect: { apps: ["Xcode.app"] },
     nativeMemory: "unknown",
     reason: "AI/MCP support not verified",
+    fallback: "use Ocean from a supported client or the `ocean` CLI",
   },
 ];
 

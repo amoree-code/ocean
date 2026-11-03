@@ -263,6 +263,10 @@ export async function brainRead(
   let docRow: Record<string, unknown> | undefined;
   try {
     docRow = reader.getDocByIdOrPath(options.idOrPath);
+    if (!docRow) {
+      const storePath = indexedStorePath(options.idOrPath, root);
+      if (storePath) docRow = reader.getDocByIdOrPath(storePath);
+    }
   } finally {
     reader.close();
   }
@@ -393,4 +397,24 @@ export function relativeStorePath(file: string, root = oceanRoot()): string {
       return `${store}/${relative.split(path.sep).join("/")}`;
   }
   return path.relative(root, file).split(path.sep).join("/");
+}
+
+function indexedStorePath(input: string, root: string): string | undefined {
+  let relative = input.replaceAll("\\", "/");
+  if (path.isAbsolute(input)) {
+    relative = path.relative(root, input).split(path.sep).join("/");
+    if (
+      relative === ".." ||
+      relative.startsWith("../") ||
+      path.isAbsolute(relative)
+    )
+      return undefined;
+  }
+  if (relative.startsWith("02-personal/"))
+    return `memory/${relative.slice("02-personal/".length)}`;
+  if (relative.startsWith("05-knowledge/"))
+    return `knowledge/${relative.slice("05-knowledge/".length)}`;
+  const projectMemory = relative.match(/^04-projects\/([^/]+)\/memory\/(.+)$/);
+  if (projectMemory) return `project/${projectMemory[1]}/${projectMemory[2]}`;
+  return undefined;
 }

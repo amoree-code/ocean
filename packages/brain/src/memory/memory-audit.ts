@@ -26,6 +26,8 @@ export type AuditEntry = {
   path: string;
   source: string;
   origin?: "explicit" | "inferred" | "imported";
+  // The review candidate an approved record came from.
+  candidate?: string;
   beforeSha: string | null;
   afterSha: string | null;
   // Workspace-relative stored copy of the content the action replaced or removed.

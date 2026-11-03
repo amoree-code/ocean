@@ -143,6 +143,8 @@ export async function writeMemoryRecord(options: {
   expectedHash?: string;
   allowSimilar?: boolean;
   source?: string;
+  // An approved candidate keeps where it came from (T-307), instead of reading as a direct save.
+  provenance?: { origin: "inferred" | "imported"; candidate: string };
 }): Promise<{
   path: string;
   mode: MemoryWriteMode;
@@ -201,7 +203,8 @@ export async function writeMemoryRecord(options: {
     action: options.mode,
     path: record.relative,
     source: options.source ?? "unknown",
-    origin: "explicit",
+    origin: options.provenance?.origin ?? "explicit",
+    ...(options.provenance ? { candidate: options.provenance.candidate } : {}),
     beforeSha: before === null ? null : sha256(before),
     afterSha: sha256(content),
     copy,
