@@ -8,6 +8,7 @@ import {
   proposeImported,
 } from "@ocean/brain/memory/memory-harvest.js";
 import { atomicWrite } from "@ocean/core/shared/fs-utils.js";
+import { claudeProjectsFile } from "@ocean/core/shared/project-resolution.js";
 import { serverHistoryDir } from "./history-index.js";
 
 // claude.ai and ChatGPT keep their conversations, projects and memory on their servers (T-305).
@@ -138,10 +139,10 @@ type Found = {
   texts: Map<string, { text: string; at: number }>;
 };
 
-function claudeAi(entries: Cached[]): Found {
+// Project uuid → name, from the claude.ai project responses Claude Desktop and the browsers
+// cached.
+function projectNames(entries: Cached[]): Map<string, string> {
   const names = new Map<string, string>();
-  const conversations: Found["conversations"] = new Map();
-  const texts: Found["texts"] = new Map();
   for (const { url, json } of entries) {
     if (/\/projects(_v2)?(\?|$)/.test(url))
       for (const project of list(json))
@@ -150,6 +151,35 @@ function claudeAi(entries: Cached[]): Found {
     const one = new RegExp(`/projects/(${UUID})(\\?|$)`).exec(url)?.[1];
     if (one && text(object(json).name)) names.set(one, text(object(json).name));
   }
+  return names;
+}
+
+// The names of the owner's Claude projects that this machine has seen (T-307): what lets Ocean
+// tell a real Claude project from a topic a client calls a project. Read-only, from the caches.
+export async function claudeProjectNames(home: string): Promise<string[]> {
+  const entries = (await readCaches(home)).filter((entry) =>
+    entry.url.includes("claude.ai/"),
+  );
+  return [...new Set(projectNames(entries).values())].filter(Boolean);
+}
+
+// Writes those names (names only, owner-only file) where a tool call can read them at once.
+export async function refreshClaudeProjects(home: string): Promise<number> {
+  const names = await claudeProjectNames(home);
+  const file = claudeProjectsFile();
+  await mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
+  await atomicWrite(
+    file,
+    `${JSON.stringify({ at: new Date().toISOString(), names }, null, 2)}\n`,
+    0o600,
+  );
+  return names.length;
+}
+
+function claudeAi(entries: Cached[]): Found {
+  const names = projectNames(entries);
+  const conversations: Found["conversations"] = new Map();
+  const texts: Found["texts"] = new Map();
   for (const { url, json, at } of entries) {
     const inProject = new RegExp(`/projects/(${UUID})/conversations_v2`).exec(
       url,

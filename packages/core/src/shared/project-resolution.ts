@@ -31,6 +31,7 @@ import {
   oceanRoot,
   PROJECTS_DIR,
   projectFolder,
+  SYSTEM_DIR,
   WORKSPACE_PROJECT_ID,
 } from "./paths.js";
 
@@ -915,6 +916,81 @@ export function codeRoots(): string[] {
     .map((entry) => entry.trim())
     .filter(Boolean)
     .map((entry) => path.resolve(expandHome(entry)));
+}
+
+// The existing project a client names (T-307): its id, or its name in any case (`LetSpeak` is
+// `letspeak`), or that name's slug. Never a guess beyond that.
+export function matchProject(
+  manifests: ProjectManifest[],
+  ref: string,
+): string | undefined {
+  const name = ref.trim().toLowerCase();
+  const slug = projectSlug(ref);
+  return manifests.find(
+    (manifest) =>
+      manifest.id === ref ||
+      manifest.name.trim().toLowerCase() === name ||
+      (slug !== "" && manifest.id === slug),
+  )?.id;
+}
+
+// The names of the owner's Claude projects this machine has seen, as the always-on service last
+// wrote them (T-307): reading Claude Desktop's caches takes too long for a tool call.
+export function claudeProjectsFile(): string {
+  return oceanPath(SYSTEM_DIR, "state", "clients", "claude-projects.json");
+}
+
+export async function readClaudeProjects(): Promise<string[]> {
+  try {
+    const parsed = JSON.parse(await readFile(claudeProjectsFile(), "utf8")) as {
+      names?: unknown;
+    };
+    return Array.isArray(parsed.names)
+      ? parsed.names.filter((name): name is string => typeof name === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function findProject(ref: string): Promise<string | undefined> {
+  return matchProject(await listProjectManifests(), ref);
+}
+
+// A Claude project (claude.ai or Claude Desktop) first seen in a conversation (T-307): it has no
+// repo or path, so it is registered by name — 04-projects/<slug>/ with project.json, marked
+// auto-registered, and the standard layout. An existing project with that id or name is
+// returned instead; a folder that exists without a manifest is never taken over.
+export async function registerNamedProject(
+  name: string,
+  tags: string[] = [],
+): Promise<{ id: string; created: boolean }> {
+  return withProjectsLock(async () => {
+    const manifests = await listProjectManifests();
+    const known = matchProject(manifests, name);
+    if (known) return { id: known, created: false };
+    const id = projectSlug(name);
+    if (!isValidProjectId(id))
+      throw new Error(`no usable project id from '${name}'`);
+    if (existsSync(path.join(projectsRoot(), projectFolder(id))))
+      throw new ProjectFolderTaken(
+        `04-projects/${id}/ exists without project.json; register it explicitly`,
+      );
+    const manifest = await newManifest(
+      id,
+      {
+        name: name.trim(),
+        paths: [],
+        created: new Date().toISOString(),
+        autoRegistered: true,
+      },
+      manifests,
+    );
+    await writeManifest(tags.length ? { ...manifest, tags } : manifest);
+    await ensureProjectLayout(id);
+    await writeProjectIndexLocked();
+    return { id, created: true };
+  });
 }
 
 export function projectSlug(name: string): string {

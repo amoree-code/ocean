@@ -139,6 +139,7 @@ import {
 } from "../../composition/runtime.js";
 import { loadRuntimeConfig } from "../../infrastructure/filesystem/runtime-config-loader.js";
 import {
+  ensureService,
   restartService,
   runService,
   startBackgroundPull,
@@ -204,6 +205,13 @@ async function commandSetup(): Promise<void> {
 }
 
 async function commandService(): Promise<void> {
+  // `ocean service restart` (T-307): a new build reaches the service without unloading it.
+  if (process.argv[3] === "restart") {
+    const restarted = await restartService({ reload: false });
+    console.log(JSON.stringify({ service: restarted }, null, 2));
+    if (typeof restarted === "object") process.exitCode = 1;
+    return;
+  }
   const shutdownAfterMs = Number(oceanEnv("SERVICE_TEST_SHUTDOWN_MS"));
   await runService(
     Number.isFinite(shutdownAfterMs) && shutdownAfterMs > 0
@@ -285,7 +293,7 @@ async function commandClient(): Promise<void> {
       (repair) => repair.kind === "service" && repair.status === "updated",
     )
       ? await restartService()
-      : undefined;
+      : await ensureService();
     // T-296: re-applies the `ocean` entry only for clients the owner approved with
     // `ocean clients apply --yes`; never a client that was not approved.
     const clients = await repairClients().catch((error: unknown) => ({

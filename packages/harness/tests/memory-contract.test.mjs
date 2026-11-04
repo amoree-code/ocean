@@ -138,7 +138,7 @@ test("initialize carries the memory contract; capabilities and ping answer", asy
       byName.brain_search.description,
       /^Call this first, before answering anything about the user/,
     );
-    assert.match(byName.brain_search.description, /cite its path/);
+    assert.match(byName.brain_search.description, /cite their paths/);
     assert.match(
       byName.memory_propose.description,
       /^Call this when the user states something worth keeping/,

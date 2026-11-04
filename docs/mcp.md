@@ -90,10 +90,21 @@ client, choose where a fact made in a project conversation belongs:
 | `doc` | `04-projects/<id>/docs/<name>.md` | written at once as a new file |
 | `todo` | none until approved | waits; approval adds one line under `## Open` in `04-projects/backlog.md` |
 
-`name` is lowercase kebab-case (60 characters at most) and required for `fact` and `doc`. A
-project without `project.json`, an existing file, a similar record, a secret or the setting off
-(the default) leaves the candidate for `ocean memory review`; the result says `filed` or
-`review` with the reason. An auto-filed write is audited with its `origin`, its `candidate` and
+`name` is lowercase kebab-case (60 characters at most) and required for `fact` and `doc`.
+`project` is an Ocean id or a project name in any case (`LetSpeak` finds `letspeak`); the same
+goes for `brain_search`'s `project`, which limits a search to that project and global records.
+
+A name Ocean does not know is registered as a project only when it is one of the owner's Claude
+projects this machine has seen — names only, read from Claude Desktop's and the browsers' caches
+by the always-on service every 15 minutes into `bridge/state/clients/claude-projects.json`
+(owner-only), because the caches take tens of seconds to read. It becomes
+`04-projects/<slug>/` with `project.json` (`autoRegistered: true`, no paths, tag `claude.ai`)
+and the standard layout, never over a folder without a manifest, and `ocean doctor` lists it as
+`PROJECT_AUTO_REGISTERED` until the owner keeps it (`autoRegistered: false`), renames or
+removes it. Any other name — a topic a client calls a project — stays a candidate. A project
+without `project.json`, an existing file, a similar record, a secret or the setting off (the
+default) leaves the candidate for `ocean memory review`; the result says `filed`,
+`registered` or `review` with the reason. An auto-filed write is audited with its `origin`, its `candidate` and
 source `propose-auto-approve`, so `memory_history` shows it. A todo never becomes a task folder:
 a task is opened at the owner's request. Project docs are indexed as `project-docs/<id>/…`, in
 that project's scope, and `brain_read` takes their workspace path.
@@ -103,6 +114,11 @@ than its files and rebuilds it when it is, so a filed or written record — or a
 searchable without `ocean memory reindex`. The new index is built in a temp file and renamed into
 place. Vectors come from the local embedder; without it, an index that has vectors waits instead
 of losing them, and one without is rebuilt as full text. `OCEAN_NO_AUTO_REINDEX=1` turns it off.
+
+The service stays running: launchd (`KeepAlive`) or systemd restarts it if it exits. After a new
+build, `ocean service restart` restarts it without unloading the job (`launchctl kickstart -k`
+on macOS). Every session start (`client sync`) checks it and starts an installed service that is
+not running; its output says `service: running`, `started`, or `failed` with the command to run.
 
 Tool annotations (`readOnlyHint`, `destructiveHint`) are hints for a client's permission UI, not
 enforcement: whether a client asks before a call is the client's behaviour and is not assumed.

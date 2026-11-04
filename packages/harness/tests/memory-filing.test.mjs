@@ -11,6 +11,7 @@ import {
   listCandidates,
 } from "@ocean/brain/memory/memory-review.js";
 import { STORE_DIR, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
+import { claudeProjectsFile } from "@ocean/core/shared/project-resolution.js";
 import { handleOceanMcpRequest } from "@ocean/services/infrastructure/mcp/ocean-server.js";
 import {
   defaultBrainIndexPort,
@@ -61,7 +62,7 @@ async function inWorkspace(name, { autoApprove = true } = {}, run) {
   await mkdir(path.join(root, "04-projects", "talk"), { recursive: true });
   await writeFile(
     path.join(root, "04-projects", "talk", "project.json"),
-    '{"id":"talk","name":"Talk"}\n',
+    `${JSON.stringify({ id: "talk", name: "Talk", paths: [], created: "2026-11-01T00:00:00.000Z", autoRegistered: false })}\n`,
   );
   await writeFile(
     path.join(root, "04-projects", "backlog.md"),
@@ -167,7 +168,10 @@ test("an existing file, an unknown project, a todo or the setting off leaves a c
       kind: "fact",
       name: "ghost-fact",
     });
-    assert.match(unknown.review, /no Ocean project 'ghost'/);
+    assert.match(
+      unknown.review,
+      /'ghost' is neither an Ocean project nor a Claude project/,
+    );
     assert.equal(await exists(path.join(root, "04-projects/ghost")), false);
 
     const todo = await call("memory_propose", {
@@ -253,7 +257,10 @@ test("filing refuses bad names, ids and mixed arguments, and memory_write cannot
       [{ kind: "doc", name: "Has Spaces" }, /kebab-case/],
       [{ kind: "fact" }, /kebab-case/],
       [{ kind: "note", name: "x" }, /kind must be fact, doc or todo/],
-      [{ kind: "fact", name: "x", project: "../talk" }, /invalid project id/],
+      [
+        { kind: "fact", name: "x", project: "../talk" },
+        /project must be a project id or name/,
+      ],
       [{ kind: "fact", name: "x", target: "02-personal/x.md" }, /not both/],
     ]) {
       const result = await call("memory_propose", {
@@ -373,5 +380,133 @@ test("the service rebuilds a stale index, so a filed record is searchable withou
       if (previous === undefined) delete process.env.OCEAN_NO_AUTO_REINDEX;
       else process.env.OCEAN_NO_AUTO_REINDEX = previous;
     }
+  });
+});
+
+test("a Claude project the machine has seen is registered by name; a topic stays a proposal", async () => {
+  await inWorkspace("claude-projects", {}, async (root) => {
+    await mkdir(path.dirname(claudeProjectsFile()), { recursive: true });
+    await writeFile(
+      claudeProjectsFile(),
+      JSON.stringify({
+        at: "2026-11-04T00:00:00.000Z",
+        names: ["Garden Notes", "Talk"],
+      }),
+    );
+    // A name in any case finds the existing project, never a second one.
+    const existing = await call("memory_propose", {
+      content: "Lessons stay short.",
+      origin: "inferred",
+      project: "TALK",
+      kind: "fact",
+      name: "short-lessons",
+    });
+    assert.equal(existing.filed, "04-projects/talk/memory/short-lessons.md");
+    assert.equal(existing.registered, undefined);
+
+    const fresh = await call("memory_propose", {
+      content: "# Beds\n\nThe tomato bed faces south.\n",
+      origin: "inferred",
+      project: "Garden Notes",
+      kind: "fact",
+      name: "tomato-bed",
+    });
+    assert.equal(fresh.registered, "garden-notes");
+    assert.equal(fresh.filed, "04-projects/garden-notes/memory/tomato-bed.md");
+    const manifest = JSON.parse(
+      await readFile(
+        path.join(root, "04-projects/garden-notes/project.json"),
+        "utf8",
+      ),
+    );
+    assert.equal(manifest.name, "Garden Notes");
+    assert.equal(manifest.autoRegistered, true);
+    assert.deepEqual(manifest.paths, []);
+    assert.deepEqual(manifest.tags, ["claude.ai"]);
+    for (const entry of ["tasks", "memory", "docs", "MEMORY.md"])
+      assert.ok(
+        await exists(path.join(root, "04-projects/garden-notes", entry)),
+        entry,
+      );
+    // The search finds it by the project's name.
+    await reindexBrain({
+      root,
+      indexPort: defaultBrainIndexPort,
+      embedder: null,
+    });
+    const response = await handle({
+      jsonrpc: "2.0",
+      id: nextId++,
+      method: "tools/call",
+      params: {
+        name: "brain_search",
+        arguments: { query: "tomato bed south", project: "Garden Notes" },
+      },
+    });
+    const found = JSON.parse(response.result.content[0].text);
+    assert.equal(
+      found.results[0].file,
+      "04-projects/garden-notes/memory/tomato-bed.md",
+    );
+
+    // A topic the client calls a project is not a Claude project: nothing is registered.
+    const topic = await call("memory_propose", {
+      content: "Buy an e-bike.",
+      origin: "inferred",
+      project: "Bike Shopping",
+      kind: "fact",
+      name: "e-bike",
+    });
+    assert.equal(topic.registered, undefined);
+    assert.match(topic.review, /neither an Ocean project nor a Claude project/);
+    assert.equal(
+      await exists(path.join(root, "04-projects/bike-shopping")),
+      false,
+    );
+  });
+});
+
+test("a Claude project is never registered over a folder without a manifest, or with the setting off", async () => {
+  await inWorkspace("claude-guard", {}, async (root) => {
+    await mkdir(path.dirname(claudeProjectsFile()), { recursive: true });
+    await writeFile(
+      claudeProjectsFile(),
+      JSON.stringify({ names: ["Loose Folder"] }),
+    );
+    await mkdir(path.join(root, "04-projects/loose-folder"), {
+      recursive: true,
+    });
+    const result = await call("memory_propose", {
+      content: "A fact.",
+      origin: "inferred",
+      project: "Loose Folder",
+      kind: "fact",
+      name: "a-fact",
+    });
+    assert.equal(result.registered, undefined);
+    assert.match(result.review, /waits for review/);
+    assert.equal(
+      await exists(path.join(root, "04-projects/loose-folder/project.json")),
+      false,
+    );
+  });
+  await inWorkspace("claude-off", { autoApprove: false }, async (root) => {
+    await mkdir(path.dirname(claudeProjectsFile()), { recursive: true });
+    await writeFile(
+      claudeProjectsFile(),
+      JSON.stringify({ names: ["Garden Notes"] }),
+    );
+    const result = await call("memory_propose", {
+      content: "A fact.",
+      origin: "inferred",
+      project: "Garden Notes",
+      kind: "fact",
+      name: "a-fact",
+    });
+    assert.equal(result.registered, undefined);
+    assert.equal(
+      await exists(path.join(root, "04-projects/garden-notes")),
+      false,
+    );
   });
 });
