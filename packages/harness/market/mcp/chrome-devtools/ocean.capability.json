@@ -1,0 +1,28 @@
+{
+  "kind": "mcp",
+  "name": "dev.ocean/chrome-devtools",
+  "description": "Control the owner's real, signed-in Chrome through Chrome DevTools MCP: tabs, navigation, clicks, forms, screenshots, console and network errors. Reads every open tab and acts inside any signed-in session of the attached profile, for every client that uses the Ocean gateway. The filesystem permission is declared for consent but not enforced at runtime, and the npm package is pinned by version, not by digest.",
+  "permissions": {
+    "filesystem": { "read": ["~/Library/Application Support/Google/Chrome"] },
+    "network": ["registry.npmjs.org", "localhost", "127.0.0.1"],
+    "exec": ["npx"]
+  },
+  "server": {
+    "name": "dev.ocean/chrome-devtools",
+    "description": "Chrome DevTools MCP attached to the owner's running Chrome. Usage statistics and CrUX lookups are off, so page URLs stay on this machine.",
+    "packages": [
+      {
+        "registryType": "npm",
+        "identifier": "chrome-devtools-mcp",
+        "version": "1.12.0",
+        "transport": { "type": "stdio" },
+        "packageArguments": [
+          { "type": "positional", "value": "--autoConnect" },
+          { "type": "positional", "value": "--no-usage-statistics" },
+          { "type": "positional", "value": "--no-performance-crux" }
+        ]
+      }
+    ],
+    "_meta": { "dev.ocean": { "clientKey": "chrome-devtools" } }
+  }
+}
