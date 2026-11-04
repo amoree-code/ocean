@@ -166,6 +166,70 @@
     },
     {
       "kind": "mcp",
+      "name": "dev.ocean/chrome-devtools",
+      "description": "Control the owner's real, signed-in Chrome through Chrome DevTools MCP: tabs, navigation, clicks, forms, screenshots, console and network errors. Reads every open tab and acts inside any signed-in session of the attached profile, for every client that uses the Ocean gateway. The filesystem permission is declared for consent but not enforced at runtime, and the npm package is pinned by version, not by digest.",
+      "permissions": {
+        "filesystem": {
+          "read": [
+            "~/Library/Application Support/Google/Chrome"
+          ]
+        },
+        "network": [
+          "registry.npmjs.org",
+          "localhost",
+          "127.0.0.1"
+        ],
+        "exec": [
+          "npx"
+        ]
+      },
+      "version": "0.3.7",
+      "engines": {
+        "ocean": ">=0.3.7"
+      },
+      "source": {
+        "type": "path",
+        "path": "market/mcp/chrome-devtools"
+      },
+      "integrity": {
+        "sha256": "1c9b4bf3711ce9908690268722ff73721a5fc7a0e42c130bd237d9d817264a3a"
+      },
+      "spec": {
+        "name": "dev.ocean/chrome-devtools",
+        "description": "Chrome DevTools MCP attached to the owner's running Chrome. Usage statistics and CrUX lookups are off, so page URLs stay on this machine.",
+        "packages": [
+          {
+            "registryType": "npm",
+            "identifier": "chrome-devtools-mcp",
+            "version": "1.12.0",
+            "transport": {
+              "type": "stdio"
+            },
+            "packageArguments": [
+              {
+                "type": "positional",
+                "value": "--autoConnect"
+              },
+              {
+                "type": "positional",
+                "value": "--no-usage-statistics"
+              },
+              {
+                "type": "positional",
+                "value": "--no-performance-crux"
+              }
+            ]
+          }
+        ],
+        "_meta": {
+          "dev.ocean": {
+            "clientKey": "chrome-devtools"
+          }
+        }
+      }
+    },
+    {
+      "kind": "mcp",
       "name": "dev.ocean/mcp-gateway",
       "description": "One MCP endpoint for every registered server: Ocean's own and those installed from the marketplace.",
       "version": "0.3.7",
