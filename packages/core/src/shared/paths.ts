@@ -171,15 +171,21 @@ export const STORE_DIR = {
 } as const;
 
 // Brain-index records are "<store>/<path inside store>" ("memory/x.md", "knowledge/decisions/y.md").
-// Project memory (T-296) is "project/<id>/<path>" for 04-projects/<id>/memory/<path>.
+// Project memory (T-296) is "project/<id>/<path>" for 04-projects/<id>/memory/<path>, and
+// project docs (T-307) "project-docs/<id>/<path>" for 04-projects/<id>/docs/<path>.
 // These map that convention back to the real PARA location.
 function storeParts(storePath: string): string[] {
   const [store, ...rest] = storePath.split("/");
-  if (store === "project") {
+  if (store === "project" || store === "project-docs") {
     const [project, ...inside] = rest;
     if (!project || project === "." || project === "..")
       throw new Error(`invalid project store path '${storePath}'`);
-    return [PROJECTS_DIR, project, "memory", ...inside];
+    return [
+      PROJECTS_DIR,
+      project,
+      store === "project" ? "memory" : "docs",
+      ...inside,
+    ];
   }
   const dir = STORE_DIR[store as keyof typeof STORE_DIR];
   if (!dir) throw new Error(`unknown brain store '${store}'`);

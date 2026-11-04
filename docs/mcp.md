@@ -34,7 +34,7 @@ prompt or project instructions.
 | `memory_read` | one record with its `sha256` |
 | `memory_history` | audit entries, newest first; ids feed `memory_restore` |
 | `memory_write` | `create` (refuses an existing or same-name/same-title record unless `allowSimilar`) or `update` (needs `expectedHash`); the replaced content is kept |
-| `memory_propose` | a server-named candidate under `00-inbox/candidates/<date>/`, for review |
+| `memory_propose` | a server-named candidate under `00-inbox/candidates/<date>/`, for review; with `project` and `kind`, filed by Ocean in that project (below) |
 | `memory_delete` | soft delete into trash; needs `expectedHash` |
 | `memory_restore` | puts back a deleted record or an earlier version |
 | `ocean_context` | the bounded start line (256 bytes or less: project bound to `cwd`, operations) for clients without a session-start hook; read-only, no records |
@@ -63,7 +63,9 @@ unknown name, such as `codex-mcp-client` until it is identified, stays unattribu
 
 Writable roots, fixed in `packages/brain/src/memory/memory-paths.ts`: records under
 `02-personal/**` and `04-projects/<id>/memory/**` (caller-chosen, `.md`, never an index or
-`CONFLICTS.md`); candidates, versions, trash, the audit log and the client journal (server-named,
+`CONFLICTS.md`); new files under `04-projects/<id>/docs/**`, only through a filed or approved
+`doc` proposal (never `memory_write`, never over an existing file); candidates, versions, trash,
+the audit log and the client journal (server-named,
 under `00-inbox/candidates/` and `bridge/state/`). A symlink or hard link on the way, a path
 outside these roots, a known secret shape or more than 32 KB is refused. Errors carry a stable
 `error.data.code` (`EXISTS`, `EXISTS_SIMILAR`, `MISSING`, `OUT_OF_ROOT`, `PROTECTED`, `SYMLINK`,
@@ -71,11 +73,30 @@ outside these roots, a known secret shape or more than 32 KB is refused. Errors 
 
 Nothing is hard-deleted over MCP. `ocean memory purge` (CLI) lists stored copies older than the
 retention period and removes them only with `--yes`. `bridge/config/memory.json` holds
-`{"mcpWrites": "on" | "off", "retentionDays": 90, "pullAutoApprove": "off" | "on"}`; `mcpWrites: off`
+`{"mcpWrites": "on" | "off", "retentionDays": 90, "pullAutoApprove": "off" | "on", "proposeAutoApprove": "off" | "project"}`; `mcpWrites: off`
 refuses every mutating tool. `pullAutoApprove: on` (default `off`, for a machine whose accounts are
 all the owner's) lets `ocean pull --yes` approve what it just proposed through the same write path,
 as new records only: a candidate with no target, one that would add to an existing record, a
 similar record or a refusal stays for `ocean memory review`; the run's record says which.
+
+### Project filing (T-307)
+
+`memory_propose` with `project` (an id from `ocean_projects_list`) and `kind` lets Ocean, not the
+client, choose where a fact made in a project conversation belongs:
+
+| `kind` | Place | With `proposeAutoApprove: project` |
+| ------ | ----- | ---------------------------------- |
+| `fact` | `04-projects/<id>/memory/<name>.md` | written at once as a new record |
+| `doc` | `04-projects/<id>/docs/<name>.md` | written at once as a new file |
+| `todo` | none until approved | waits; approval adds one line under `## Open` in `04-projects/backlog.md` |
+
+`name` is lowercase kebab-case (60 characters at most) and required for `fact` and `doc`. A
+project without `project.json`, an existing file, a similar record, a secret or the setting off
+(the default) leaves the candidate for `ocean memory review`; the result says `filed` or
+`review` with the reason. An auto-filed write is audited with its `origin`, its `candidate` and
+source `propose-auto-approve`, so `memory_history` shows it. A todo never becomes a task folder:
+a task is opened at the owner's request. Project docs are indexed as `project-docs/<id>/…`, in
+that project's scope, and `brain_read` takes their workspace path.
 
 Tool annotations (`readOnlyHint`, `destructiveHint`) are hints for a client's permission UI, not
 enforcement: whether a client asks before a call is the client's behaviour and is not assumed.

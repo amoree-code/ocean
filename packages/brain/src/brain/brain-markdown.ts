@@ -119,9 +119,9 @@ export function normalizeRecord(
   );
 
   const scopeField = declaredOrAliased("scope");
-  // A project memory record (project/<id>/…, T-296) without a declared scope belongs to its
-  // project, never to every project.
-  const owningProject = /^project\/([^/]+)\//.exec(relPath)?.[1];
+  // A project memory record (project/<id>/…, T-296) or project doc (project-docs/<id>/…, T-307)
+  // without a declared scope belongs to its project, never to every project.
+  const owningProject = /^project(?:-docs)?\/([^/]+)\//.exec(relPath)?.[1];
   const scope = normalizeScope(
     scopeField.value ??
       (owningProject ? `project:${owningProject}` : undefined),

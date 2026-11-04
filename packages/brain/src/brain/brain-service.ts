@@ -423,5 +423,7 @@ function indexedStorePath(input: string, root: string): string | undefined {
     return `knowledge/${relative.slice("05-knowledge/".length)}`;
   const projectMemory = relative.match(/^04-projects\/([^/]+)\/memory\/(.+)$/);
   if (projectMemory) return `project/${projectMemory[1]}/${projectMemory[2]}`;
+  const projectDocs = relative.match(/^04-projects\/([^/]+)\/docs\/(.+)$/);
+  if (projectDocs) return `project-docs/${projectDocs[1]}/${projectDocs[2]}`;
   return undefined;
 }

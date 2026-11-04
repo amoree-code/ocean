@@ -16,6 +16,7 @@ import {
   candidateFile,
   candidatesRoot,
   permanentRecord,
+  projectDocument,
   storedCopy,
 } from "./memory-paths.js";
 
@@ -145,6 +146,8 @@ export async function writeMemoryRecord(options: {
   source?: string;
   // An approved candidate keeps where it came from (T-307), instead of reading as a direct save.
   provenance?: { origin: "inferred" | "imported"; candidate: string };
+  // A project doc (T-307): created only, never updated.
+  document?: boolean;
 }): Promise<{
   path: string;
   mode: MemoryWriteMode;
@@ -152,11 +155,15 @@ export async function writeMemoryRecord(options: {
   auditId: string;
   indexed: boolean;
 }> {
-  const record = permanentRecord(options.path);
+  const record = options.document
+    ? projectDocument(options.path)
+    : permanentRecord(options.path);
   checkContent(options.content);
   if (options.mode !== "create" && options.mode !== "update")
     throw new MemoryContractError("INVALID", "mode must be create or update");
-  if (options.mode === "create" && !options.allowSimilar) {
+  if (options.document && options.mode !== "create")
+    throw new MemoryContractError("INVALID", "a doc is only ever created");
+  if (options.mode === "create" && !options.allowSimilar && !options.document) {
     const similar = await similarRecords(record.file, options.content);
     if (similar.length)
       throw new MemoryContractError(
@@ -273,7 +280,11 @@ export async function proposeMemory(options: {
       "INVALID",
       "origin must be inferred or imported",
     );
-  const target = options.target ? permanentRecord(options.target).relative : "";
+  const target = !options.target
+    ? ""
+    : options.meta?.kind === "doc"
+      ? projectDocument(options.target).relative
+      : permanentRecord(options.target).relative;
   const reason = singleLine(options.reason, "reason");
   const source = singleLine(options.source, "source") || "unknown";
   const id = newId();

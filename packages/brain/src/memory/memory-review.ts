@@ -1,10 +1,24 @@
-import { mkdir, readdir, readFile, rename } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, stat } from "node:fs/promises";
 import path from "node:path";
+import { isValidProjectId } from "@ocean/core/domain/context/project-id.js";
 import { MemoryContractError } from "@ocean/core/domain/mcp/memory-contract.js";
-import { oceanPath } from "@ocean/core/shared/paths.js";
-import { appendAudit, newId, sha256 } from "./memory-audit.js";
-import { candidatesRoot, storedCopy } from "./memory-paths.js";
-import { readMemoryRecord, writeMemoryRecord } from "./memory-write.js";
+import { atomicWrite, withFileLock } from "@ocean/core/shared/fs-utils.js";
+import { localDate } from "@ocean/core/shared/local-date.js";
+import { oceanPath, PROJECTS_DIR } from "@ocean/core/shared/paths.js";
+import {
+  appendAudit,
+  memorySettings,
+  newId,
+  sha256,
+  writeDurable,
+} from "./memory-audit.js";
+import { assertNoLinks, candidatesRoot, storedCopy } from "./memory-paths.js";
+import {
+  checkContent,
+  proposeMemory,
+  readMemoryRecord,
+  writeMemoryRecord,
+} from "./memory-write.js";
 
 // Owner review of proposed memory (T-296 §3.10): every approval goes through the same validated
 // write path as an explicit save (roots, secrets, similarity), and a reviewed candidate is moved
@@ -132,12 +146,27 @@ export async function approveCandidate(options: {
     origin: item.origin === "imported" ? "imported" : "inferred",
     candidate: options.id,
   } as const;
+  if (item.meta.kind === "todo" && !options.to)
+    return approveTodo(item, source);
   const target = options.to ?? item.target;
   if (!target)
     throw new MemoryContractError(
       "INVALID",
       "the candidate names no target; pass --to <record path>",
     );
+  // A project doc is only ever created: an existing one stays the owner's (T-307).
+  if (/^04-projects\/[^/]+\/docs\//.test(target)) {
+    const written = await writeMemoryRecord({
+      path: target,
+      content: item.content,
+      mode: "create",
+      source,
+      provenance,
+      document: true,
+    });
+    await retire(item, "approve", source);
+    return { path: written.path, mode: "create", auditId: written.auditId };
+  }
   const existing = await readMemoryRecord(target).catch((error: unknown) => {
     if (error instanceof MemoryContractError && error.code === "MISSING")
       return null;
@@ -170,6 +199,141 @@ export async function approveCandidate(options: {
     mode: written.mode,
     auditId: written.auditId,
   };
+}
+
+const BACKLOG = `${PROJECTS_DIR}/backlog.md`;
+
+// An approved todo is one line under the backlog's "## Open" heading, never a task folder:
+// a task is opened only at the owner's request. The backlog before the change is kept in
+// versions/ and the audit names the candidate it came from.
+async function approveTodo(
+  item: Candidate,
+  source: string,
+): Promise<{ path: string; mode: "update"; auditId: string }> {
+  checkContent(item.content);
+  const project =
+    typeof item.meta.project === "string" ? item.meta.project : "workspace";
+  const text = item.content.replace(/\s+/g, " ").trim().slice(0, 300);
+  const line = `- [TODO] (P2) ${project} — ${text} {${localDate()}}`;
+  const file = oceanPath(BACKLOG);
+  assertNoLinks(oceanPath(), file);
+  const id = newId();
+  const { before, after, copy } = await withFileLock(file, async () => {
+    const current = await readFile(file, "utf8").catch((error: unknown) => {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw error;
+    });
+    const base = current ?? "# Backlog\n\n## Open\n\n";
+    const open = "## Open\n\n";
+    const at = base.indexOf(open);
+    const next =
+      at < 0
+        ? `${base.replace(/\n*$/, "\n\n")}${line}\n`
+        : `${base.slice(0, at + open.length)}${line}\n${base.slice(at + open.length)}`;
+    let copy: string | undefined;
+    if (current !== null) {
+      const stored = storedCopy("versions", id, BACKLOG);
+      await writeDurable(stored, current);
+      copy = path.relative(oceanPath(), stored).split(path.sep).join("/");
+    }
+    await atomicWrite(file, next);
+    return { before: current, after: next, copy };
+  });
+  await appendAudit({
+    id,
+    action: before === null ? "create" : "update",
+    path: BACKLOG,
+    source,
+    origin: item.origin === "imported" ? "imported" : "inferred",
+    candidate: item.id,
+    beforeSha: before === null ? null : sha256(before),
+    afterSha: sha256(after),
+    copy,
+  });
+  await retire(item, "approve", source);
+  return { path: BACKLOG, mode: "update", auditId: id };
+}
+
+export type ProposalKind = "fact" | "doc" | "todo";
+const KINDS: ProposalKind[] = ["fact", "doc", "todo"];
+const NAME = /^[a-z0-9][a-z0-9-]{0,59}$/;
+
+const isProject = (project: string) =>
+  stat(oceanPath(PROJECTS_DIR, project, "project.json")).then(
+    (found) => found.isFile(),
+    () => false,
+  );
+
+// A client's proposal made inside a project (T-307). Ocean, not the client, picks the place from
+// the kind: a fact goes to the project's memory/ and a doc to its docs/, each as the new file
+// `<name>.md`; a todo waits for review and becomes one backlog line. With proposeAutoApprove on,
+// a fact or doc for an existing project is written at once — never over or into an existing
+// file — and keeps its origin and candidate in the audit. Everything else stays a candidate.
+export async function fileProposal(options: {
+  content: string;
+  origin: "inferred" | "imported";
+  project: string;
+  kind: ProposalKind;
+  name?: string;
+  reason?: string;
+  source?: string;
+}): Promise<{
+  candidate: string;
+  auditId: string;
+  filed?: string;
+  review?: string;
+}> {
+  if (!KINDS.includes(options.kind))
+    throw new MemoryContractError("INVALID", "kind must be fact, doc or todo");
+  if (typeof options.project !== "string" || !isValidProjectId(options.project))
+    throw new MemoryContractError(
+      "INVALID",
+      `invalid project id '${String(options.project)}'`,
+    );
+  if (
+    options.kind !== "todo" &&
+    (typeof options.name !== "string" || !NAME.test(options.name))
+  )
+    throw new MemoryContractError(
+      "INVALID",
+      "name must be lowercase kebab-case, at most 60 characters",
+    );
+  const known = await isProject(options.project);
+  const folder = options.kind === "fact" ? "memory" : "docs";
+  const target =
+    known && options.kind !== "todo"
+      ? `${PROJECTS_DIR}/${options.project}/${folder}/${options.name}.md`
+      : undefined;
+  const proposed = await proposeMemory({
+    content: options.content,
+    origin: options.origin,
+    target,
+    reason: options.reason,
+    source: options.source,
+    meta: { kind: options.kind, project: options.project },
+  });
+  if (!known)
+    return {
+      ...proposed,
+      review: `no Ocean project '${options.project}'; waits for review`,
+    };
+  if (!target) return { ...proposed, review: "a todo waits for review" };
+  if (!(await memorySettings()).proposeAutoApprove)
+    return {
+      ...proposed,
+      review: "proposeAutoApprove is off; waits for review",
+    };
+  try {
+    const written = await approveCandidate({
+      id: path.basename(proposed.candidate, ".md"),
+      createOnly: true,
+      source: "propose-auto-approve",
+    });
+    return { ...proposed, filed: written.path };
+  } catch (error) {
+    if (!(error instanceof MemoryContractError)) throw error;
+    return { ...proposed, review: `${error.message}; waits for review` };
+  }
 }
 
 export async function rejectCandidate(

@@ -55,8 +55,9 @@ async function walk(root: string, depth = 0): Promise<string[]> {
 }
 
 // Every indexed markdown file as (store prefix, store path, file): the memory and knowledge
-// stores, and each project's memory folder as `project/<id>/…` (T-296) — scoped to that
-// project unless the record declares otherwise. `_template` and dot folders are not projects.
+// stores, each project's memory folder as `project/<id>/…` (T-296) and its docs folder as
+// `project-docs/<id>/…` (T-307) — scoped to that project unless the record declares otherwise.
+// `_template` and dot folders are not projects.
 type CorpusFile = { prefix: string; storePath: string; file: string };
 
 async function corpusFiles(root: string): Promise<CorpusFile[]> {
@@ -79,11 +80,16 @@ async function corpusFiles(root: string): Promise<CorpusFile[]> {
       entry.isDirectory() &&
       !entry.name.startsWith(".") &&
       !entry.name.startsWith("_")
-    )
+    ) {
       await add(
         `project/${entry.name}`,
         resolveWithin(root, PROJECTS_DIR, entry.name, "memory"),
       );
+      await add(
+        `project-docs/${entry.name}`,
+        resolveWithin(root, PROJECTS_DIR, entry.name, "docs"),
+      );
+    }
   return found;
 }
 

@@ -7,6 +7,10 @@ import {
 } from "@ocean/brain/brain/brain-service.js";
 import { memorySettings } from "@ocean/brain/memory/memory-audit.js";
 import {
+  fileProposal,
+  type ProposalKind,
+} from "@ocean/brain/memory/memory-review.js";
+import {
   deleteMemoryRecord,
   memoryHistory,
   restoreMemory,
@@ -324,7 +328,7 @@ const tools = new McpToolRegistry([
   {
     name: "memory_propose",
     description:
-      "Call this when the user states something worth keeping across sessions (a decision, preference or project fact) without asking you to remember it, for a fact you inferred, or for one imported from another tool's memory: it queues it for the user's review. It is not memory until approved. Optionally name the record it should become (target) and why (reason).",
+      "Call this when the user states something worth keeping across sessions (a decision, preference or project fact) without asking you to remember it, for a fact you inferred, or for one imported from another tool's memory: it queues it for the user's review. It is not memory until approved. In a conversation about one Ocean project (ids from ocean_projects_list), pass project and kind instead of target: `fact` (a decision, preference or detail) or `doc` (a spec, brief or longer notes), each with a kebab-case name, is filed in that project's memory/ or docs/ — written at once when the user allows it; `todo` (work to do) waits for review as a backlog line. Optionally say why (reason).",
     annotations: { readOnlyHint: false, destructiveHint: false },
     inputSchema: {
       type: "object",
@@ -332,6 +336,9 @@ const tools = new McpToolRegistry([
         content: { type: "string" },
         origin: { type: "string", enum: ["inferred", "imported"] },
         target: { type: "string" },
+        project: { type: "string" },
+        kind: { type: "string", enum: ["fact", "doc", "todo"] },
+        name: { type: "string" },
         reason: { type: "string" },
       },
       required: ["content", "origin"],
@@ -707,6 +714,22 @@ async function callTool(
       allowSimilar: args.allowSimilar === true,
       source,
     });
+  if (name === "memory_propose" && (text("project") || text("kind"))) {
+    if (text("target"))
+      throw new MemoryContractError(
+        "INVALID",
+        "pass target, or project and kind — not both",
+      );
+    return fileProposal({
+      content: requiredArgument(args, "content"),
+      origin: args.origin as "inferred" | "imported",
+      project: requiredArgument(args, "project"),
+      kind: requiredArgument(args, "kind") as ProposalKind,
+      name: text("name"),
+      reason: text("reason"),
+      source,
+    });
+  }
   if (name === "memory_propose")
     return proposeMemory({
       content: requiredArgument(args, "content"),
