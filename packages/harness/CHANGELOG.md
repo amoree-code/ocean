@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.0.0
+
+First public npm release, as `@ameer.abdulkareem/ocean` (`npm install --global @ameer.abdulkareem/ocean`, then `ocean setup`). Requires Node.js 22.16 or newer. The tarball carries the engine and an empty workspace template only; `ocean setup` creates the private workspace outside the package. Changes since 0.3.7:
 
 - Make `package.json` the single version authority and remove the duplicate `VERSION` file.
 - Replace the stale partial CLI help text with a grouped catalog of every top-level command.

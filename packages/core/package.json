@@ -1,6 +1,6 @@
 {
   "name": "@ocean/core",
-  "version": "0.3.7",
+  "version": "1.0.0",
   "private": false,
   "type": "module",
   "files": [
