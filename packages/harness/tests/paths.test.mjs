@@ -31,21 +31,44 @@ test("engineRoot resolves to the engine package directory, one level above this 
   assert.equal(engineRoot(), path.resolve(import.meta.dirname, ".."));
 });
 
-test("registerEngineRoot moves engineRoot; oceanRoot and repoRoot derive from it", () => {
+async function withEngineAt(engine, check) {
   const previous = engineRoot();
   const previousRoot = process.env.OCEAN_ROOT;
   delete process.env.OCEAN_ROOT;
   try {
-    const elsewhere = path.join(os.tmpdir(), "a", "b", "c", "ocean");
-    registerEngineRoot(elsewhere);
-    assert.equal(engineRoot(), elsewhere);
-    assert.equal(oceanRoot(), path.join(os.tmpdir(), "a"));
-    assert.equal(repoRoot(), path.join(os.tmpdir(), "a", "b"));
+    registerEngineRoot(engine);
+    await check();
   } finally {
     registerEngineRoot(previous);
     if (previousRoot === undefined) delete process.env.OCEAN_ROOT;
     else process.env.OCEAN_ROOT = previousRoot;
   }
+}
+
+test("a dev checkout inside a workspace serves that workspace by default", async () => {
+  const workspace = await mkdtemp(path.join(os.tmpdir(), "ocean-checkout-"));
+  await mkdir(path.join(workspace, "04-projects"));
+  const engine = path.join(workspace, "kernel", "packages", "harness");
+  await withEngineAt(engine, () => {
+    assert.equal(engineRoot(), engine);
+    assert.equal(oceanRoot(), workspace);
+    assert.equal(repoRoot(), path.join(workspace, "kernel"));
+  });
+});
+
+test("an engine outside any workspace (a global npm install) defaults to ~/ocean", async () => {
+  const prefix = await mkdtemp(path.join(os.tmpdir(), "ocean-npm-prefix-"));
+  const engine = path.join(
+    prefix,
+    "lib",
+    "node_modules",
+    "@amoree-code",
+    "ocean",
+  );
+  await withEngineAt(engine, () => {
+    assert.equal(oceanRoot(), path.join(os.homedir(), "ocean"));
+    assert.notEqual(oceanRoot(), engineRoot());
+  });
 });
 
 test("the CLI's engine-root module sets core's engineRoot from wherever the ocean package is installed", async () => {
@@ -68,12 +91,6 @@ test("the CLI's engine-root module sets core's engineRoot from wherever the ocea
   );
   // Both sides through realpath: macOS /var vs /private/var, Windows 8.3 short names.
   assert.equal(await realpath(output.trim()), await realpath(installed));
-});
-
-test("default oceanRoot resolves to the private workspace sibling of engine, not inside it", () => {
-  delete process.env.OCEAN_ROOT;
-  assert.equal(oceanRoot(), path.resolve(engineRoot(), "..", "..", ".."));
-  assert.notEqual(oceanRoot(), engineRoot());
 });
 
 test("OCEAN_ROOT explicitly overrides the default private root", () => {

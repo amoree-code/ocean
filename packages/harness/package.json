@@ -1,10 +1,33 @@
 {
-  "name": "ocean",
+  "name": "@amoree-code/ocean",
+  "description": "Local-first memory, tasks and session capture shared by every AI coding client: one private workspace for Claude, Codex, Gemini and more.",
   "version": "0.3.7",
   "private": false,
+  "license": "MIT",
+  "author": "AMEER ABDULKAREEM JABBAR LAMI",
+  "homepage": "https://github.com/amoree-code/ocean#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/amoree-code/ocean.git",
+    "directory": "packages/harness"
+  },
+  "bugs": {
+    "url": "https://github.com/amoree-code/ocean/issues"
+  },
+  "keywords": [
+    "ai",
+    "agents",
+    "cli",
+    "memory",
+    "mcp",
+    "claude",
+    "codex",
+    "gemini",
+    "local-first"
+  ],
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.13.0"
   },
   "files": [
     "dist",
@@ -17,7 +40,7 @@
     "ocean": "./dist/main.js"
   },
   "scripts": {
-    "prebuild": "node scripts/prepare-node-pty.mjs && node scripts/clean-dist.mjs",
+    "prebuild": "node scripts/clean-dist.mjs",
     "build": "tsc",
     "dev": "tsx src/main.ts",
     "start": "node dist/main.js",
