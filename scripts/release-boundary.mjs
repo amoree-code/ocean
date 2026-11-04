@@ -39,8 +39,9 @@ export async function boundaryFindings(stage, files) {
     );
   } catch (error) {
     const report = JSON.parse(String(error.stderr || "{}"));
+    // The scan reports platform paths; findings use npm's `/` like the rest of this list.
     for (const { type, path: file } of report.findings ?? [])
-      findings.push(`privacy ${file}: ${type}`);
+      findings.push(`privacy ${file.split(path.sep).join("/")}: ${type}`);
     if (!report.findings) findings.push("privacy scan failed to run");
   }
   return findings;
