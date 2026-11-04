@@ -115,6 +115,11 @@ searchable without `ocean memory reindex`. The new index is built in a temp file
 place. Vectors come from the local embedder; without it, an index that has vectors waits instead
 of losing them, and one without is rebuilt as full text. `OCEAN_NO_AUTO_REINDEX=1` turns it off.
 
+The service stays running: launchd (`KeepAlive`) or systemd restarts it if it exits. After a new
+build, `ocean service restart` restarts it without unloading the job (`launchctl kickstart -k`
+on macOS). Every session start (`client sync`) checks it and starts an installed service that is
+not running; its output says `service: running`, `started`, or `failed` with the command to run.
+
 Tool annotations (`readOnlyHint`, `destructiveHint`) are hints for a client's permission UI, not
 enforcement: whether a client asks before a call is the client's behaviour and is not assumed.
 The server's own checks above are what bound a call.

@@ -21,7 +21,10 @@ import {
   saveSchedule,
 } from "../dist/application/scheduler/local-scheduler.js";
 import { createAgentRuntime } from "../dist/composition/runtime.js";
-import { restartService } from "../dist/infrastructure/process/service.js";
+import {
+  ensureService,
+  restartService,
+} from "../dist/infrastructure/process/service.js";
 
 // Test shims: scheduler/gateway now take an AgentRuntimeDeps bag; wrap a bare
 // provider executor into a runtime so the test bodies keep passing an executor.
@@ -205,6 +208,111 @@ test("restartService reloads the installed service, says when there is none, and
     "bootstrap",
     "bootstrap",
   ]);
+});
+
+test("a restart with an unchanged start file never unloads the job; a stopped service is started at session start", async () => {
+  const home = await mkdtemp(path.join(os.tmpdir(), "ocean-service-keep-"));
+  const noWait = async () => {};
+  assert.equal(
+    await ensureService({ home, platform: "darwin", run: async () => {} }),
+    "not-installed",
+  );
+  const plist = path.join(
+    home,
+    "Library",
+    "LaunchAgents",
+    "com.ocean.runtime.plist",
+  );
+  const unit = path.join(home, ".config", "systemd", "user", "ocean.service");
+  for (const file of [plist, unit]) {
+    await mkdir(path.dirname(file), { recursive: true });
+    await writeFile(file, "");
+  }
+  // T-307: kickstart -k restarts the process while launchd keeps the job (KeepAlive holds).
+  let steps = [];
+  const record =
+    (fail = []) =>
+    async (command, args) => {
+      steps.push(`${command} ${args[0]}`);
+      if (fail.includes(args[0])) throw new Error(`${args[0]} failed`);
+    };
+  assert.equal(
+    await restartService({
+      home,
+      platform: "darwin",
+      run: record(),
+      reload: false,
+      wait: noWait,
+    }),
+    "restarted",
+  );
+  assert.deepEqual(steps, ["launchctl kickstart"]);
+  // A job that is not loaded at all is bootstrapped instead.
+  steps = [];
+  assert.equal(
+    await restartService({
+      home,
+      platform: "darwin",
+      run: record(["kickstart"]),
+      reload: false,
+      wait: noWait,
+    }),
+    "restarted",
+  );
+  assert.deepEqual(steps, ["launchctl kickstart", "launchctl bootstrap"]);
+
+  // The session-start check: loaded → nothing to do; not loaded → bootstrapped.
+  steps = [];
+  assert.equal(
+    await ensureService({ home, platform: "darwin", run: record() }),
+    "running",
+  );
+  assert.deepEqual(steps, ["launchctl print"]);
+  steps = [];
+  assert.equal(
+    await ensureService({
+      home,
+      platform: "darwin",
+      run: record(["print"]),
+      wait: noWait,
+    }),
+    "started",
+  );
+  assert.deepEqual(steps, ["launchctl print", "launchctl bootstrap"]);
+  const stuck = await ensureService({
+    home,
+    platform: "darwin",
+    run: record(["print", "bootstrap"]),
+    wait: noWait,
+  });
+  assert.match(
+    stuck.failed,
+    /the service is stopped; start it with: launchctl bootstrap/,
+  );
+  steps = [];
+  assert.equal(
+    await ensureService({ home, platform: "linux", run: record() }),
+    "running",
+  );
+  assert.deepEqual(steps, ["systemctl --user"]);
+  steps = [];
+  const linuxCalls = [];
+  assert.equal(
+    await ensureService({
+      home,
+      platform: "linux",
+      run: async (command, args) => {
+        linuxCalls.push([command, ...args].join(" "));
+        if (args.includes("is-active")) throw new Error("inactive");
+      },
+    }),
+    "started",
+  );
+  assert.deepEqual(linuxCalls, [
+    "systemctl --user is-active --quiet ocean.service",
+    "systemctl --user start ocean.service",
+  ]);
+  assert.equal(await ensureService({ home, platform: "win32" }), "unchecked");
 });
 
 test("persists and runs a due local schedule once", async () => {
