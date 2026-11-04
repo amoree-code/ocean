@@ -1,4 +1,7 @@
 import { spawn } from "node:child_process";
+import { accessSync, chmodSync, constants } from "node:fs";
+import { createRequire } from "node:module";
+import path from "node:path";
 import type {
   InteractiveProcessRequest,
   InteractiveProcessResult,
@@ -10,12 +13,44 @@ export type {
   InteractiveProcessResult,
 } from "@ocean/core/domain/process/process-events.js";
 
+// node-pty's npm tarball ships its macOS spawn-helper without the executable bit, so every pty
+// spawn fails after a plain `npm install`. Restore the bit once, before the first spawn.
+let spawnHelperChecked = false;
+function ensureSpawnHelperExecutable(): void {
+  if (spawnHelperChecked || process.platform === "win32") return;
+  spawnHelperChecked = true;
+  const root = path.resolve(
+    path.dirname(createRequire(import.meta.url).resolve("node-pty")),
+    "..",
+  );
+  for (const helper of [
+    path.join(
+      root,
+      "prebuilds",
+      `${process.platform}-${process.arch}`,
+      "spawn-helper",
+    ),
+    path.join(root, "build", "Release", "spawn-helper"),
+  ]) {
+    try {
+      accessSync(helper, constants.X_OK);
+    } catch {
+      try {
+        chmodSync(helper, 0o755);
+      } catch {
+        // Missing (a native build provides its own) or not ours to change: the spawn reports it.
+      }
+    }
+  }
+}
+
 export function runInteractive(
   request: InteractiveProcessRequest,
 ): Promise<InteractiveProcessResult> {
   return new Promise((resolve, reject) => {
     let terminal: IPty;
     try {
+      ensureSpawnHelperExecutable();
       terminal = spawnPty(request.command, request.args, {
         name: process.env.TERM || "xterm-256color",
         cols: process.stdout.columns || 120,

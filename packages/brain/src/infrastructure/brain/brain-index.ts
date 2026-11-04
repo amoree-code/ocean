@@ -239,6 +239,15 @@ export async function buildIndex(
   await rename(temp, outFile);
 }
 
+function loadVectorExtension(db: DatabaseSync): boolean {
+  try {
+    sqliteVec.load(db);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export class BrainIndexReader implements BrainIndexReaderPort {
   private readonly db: DatabaseSync;
   readonly meta: IndexMeta;
@@ -259,8 +268,8 @@ export class BrainIndexReader implements BrainIndexReaderPort {
       corpusHash: map.corpus_hash ?? "",
       builtAt: map.built_at ?? "",
     };
-    this.hasVectors = this.meta.dims > 0;
-    if (this.hasVectors) sqliteVec.load(this.db);
+    // sqlite-vec ships one prebuilt per platform; where none installed, search stays full-text.
+    this.hasVectors = this.meta.dims > 0 && loadVectorExtension(this.db);
   }
 
   ftsQuery(

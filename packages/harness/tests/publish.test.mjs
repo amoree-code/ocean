@@ -116,6 +116,9 @@ test("hard deny list covers workspace dirs, secrets, keys; not engine code", () 
     "charter/core.md",
     "bridge/config/x.json",
     "04-projects/ocean/tasks/T-1/task.md",
+    "03-professional/cv.md",
+    "06-templates/task.md",
+    ".index/brain.sqlite",
     ".env",
     "packages/x/.env.local",
     "deploy/id.pem",
@@ -137,6 +140,7 @@ test("hard deny list covers workspace dirs, secrets, keys; not engine code", () 
     assert.ok(deniedReason(file), file);
   for (const file of [
     "packages/brain/src/a.ts",
+    "packages/harness/templates/workspace/06-templates/task.md",
     "docs/workspace.md",
     ".env.example",
     "scripts/publish.mjs",

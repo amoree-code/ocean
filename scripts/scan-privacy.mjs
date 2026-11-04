@@ -3,11 +3,18 @@ import { execFileSync } from "node:child_process";
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
-const root = path.resolve(process.argv[2] ?? ".");
+// --package scans an unpacked npm package (scripts/pack-release.mjs): its dist/ and bundled
+// node_modules/ are exactly what ships, so nothing is skipped.
+const args = process.argv.slice(2);
+const packageMode = args.includes("--package");
+const root = path.resolve(args.find((arg) => !arg.startsWith("--")) ?? ".");
 const findings = [];
-const ignoredDirectories = new Set([".git", "node_modules", "dist"]);
+const ignoredDirectories = new Set(
+  packageMode ? [] : [".git", "node_modules", "dist"],
+);
 const ignoredFiles = new Set(["LICENSE", "pnpm-lock.yaml"]);
 const gitRepository = (() => {
+  if (packageMode) return false;
   try {
     execFileSync("git", ["-C", root, "rev-parse", "--is-inside-work-tree"], {
       stdio: "ignore",

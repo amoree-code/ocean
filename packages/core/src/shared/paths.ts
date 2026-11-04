@@ -1,4 +1,5 @@
 import { realpathSync, statSync } from "node:fs";
+import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { isValidProjectId } from "../domain/context/project-id.js";
@@ -216,11 +217,20 @@ export function oceanEnvPair(
 
 export function oceanRoot(): string {
   const root = oceanEnv("ROOT");
-  // The default runtime data root is the private workspace root: the engine root
-  // (~/ocean/kernel/packages/harness) sits three directories below ~/ocean.
-  return root
-    ? path.resolve(root)
-    : path.resolve(engineRoot(), "..", "..", "..");
+  return root ? path.resolve(root) : defaultOceanRoot();
+}
+
+// A dev checkout (~/ocean/kernel/packages/harness) serves the workspace three directories up,
+// once that holds one; a global npm install sits under the npm prefix, so it uses ~/ocean.
+function defaultOceanRoot(): string {
+  const checkoutParent = path.resolve(engineRoot(), "..", "..", "..");
+  const isWorkspace = [
+    "04-projects",
+    "brain/04-projects",
+    "bridge/sessions",
+    "kernel/bridge/sessions",
+  ].some((sentinel) => isDirectory(path.join(checkoutParent, sentinel)));
+  return isWorkspace ? checkoutParent : path.join(homedir(), "ocean");
 }
 
 export function oceanPath(...parts: string[]): string {
