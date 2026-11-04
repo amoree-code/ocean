@@ -35,8 +35,11 @@ const DENIED_ROOT_DIRS = new Set([
   "01-daily",
   "02-personal",
   "03-areas",
+  "03-professional",
   "04-projects",
   "05-knowledge",
+  "06-templates",
+  ".index",
 ]);
 // Denied at any depth: dependency dirs, and machine-local agent and tool configuration, which
 // names this machine's paths and tools and is as likely nested inside a package as at the root.

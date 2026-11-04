@@ -19,6 +19,7 @@ import {
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { boundaryFindings } from "./release-boundary.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const outIndex = process.argv.indexOf("--out");
@@ -133,18 +134,21 @@ for (const [name, { dir, manifest }] of internal) {
   );
 }
 
-const report = JSON.parse(
-  execFileSync("npm", ["pack", "--json", "--pack-destination", out], {
-    cwd: stage,
-    encoding: "utf8",
-  }),
-);
 // npm 11 prints an array; npm 12 an object keyed by package name.
-const [packed] = Array.isArray(report) ? report : Object.values(report);
+const npmPack = (...flags) => {
+  const report = JSON.parse(
+    execFileSync("npm", ["pack", "--json", ...flags], {
+      cwd: stage,
+      encoding: "utf8",
+    }),
+  );
+  return Array.isArray(report) ? report[0] : Object.values(report)[0];
+};
 
-// What ships: the entry point, the runtime assets and every bundled package — and nothing from
-// source, tests or a workspace. The privacy scan then reads every staged file.
-const shipped = packed.files.map((file) => file.path);
+// Judged before the tarball exists, on npm's own list of what it would pack: the entry point,
+// the runtime assets and every bundled package must be there, and release-boundary.mjs must
+// find nothing that may not leave the machine.
+const shipped = npmPack("--dry-run").files.map((file) => file.path);
 const findings = [
   "dist/main.js",
   "templates/",
@@ -154,26 +158,13 @@ const findings = [
   ...[...internal.keys()].map((name) => `node_modules/${name}/dist/`),
 ]
   .filter((required) => !shipped.some((file) => file.startsWith(required)))
-  .map((required) => `missing ${required}`);
-// Source at the root of the CLI or a bundled package; workspace data at the root; tests, .env
-// files and build leftovers anywhere.
-const forbidden =
-  /^(?:node_modules\/@ocean\/[^/]+\/)?src\/|^(?:bridge|sessions|charter|0[0-6]-[a-z-]+)\/|(?:^|\/)(?:tests?\/|\.env)|\.(?:test\.js|map|tsbuildinfo)$/;
-for (const file of shipped)
-  if (forbidden.test(file)) findings.push(`must not ship ${file}`);
-try {
-  execFileSync(
-    process.execPath,
-    [path.join(root, "scripts", "scan-privacy.mjs"), "--package", stage],
-    { stdio: ["ignore", "ignore", "inherit"] },
-  );
-} catch {
-  findings.push("privacy scan failed (above)");
-}
+  .map((required) => `missing ${required}`)
+  .concat(await boundaryFindings(stage, shipped));
 if (findings.length) {
   console.error(findings.join("\n"));
   process.exit(1);
 }
+const packed = npmPack("--pack-destination", out);
 console.log(
   JSON.stringify(
     {
