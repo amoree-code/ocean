@@ -140,7 +140,7 @@
         "path": "skills/core/use-browser"
       },
       "integrity": {
-        "sha256": "e79cdc8809b95d7896e33a18af6f380076862045480ac692ea66f468cfb660fb"
+        "sha256": "1b4f2d81776efabfbebea325b0d1f85c7bc699f443e54501efe3aaf1cb0f31d4"
       },
       "spec": {
         "directory": "use-browser"
@@ -383,7 +383,7 @@
         "path": "market/mcp/playwright"
       },
       "integrity": {
-        "sha256": "8369120578278dae45a21aac483766b6cbc26be2b3b36f79b741c5199e53f9d4"
+        "sha256": "2b316d3ea88c629cd7ecea8e7671ab253232059b331e1189dfba39096219d437"
       },
       "spec": {
         "name": "com.microsoft/playwright-mcp",
@@ -392,7 +392,7 @@
           {
             "registryType": "npm",
             "identifier": "@playwright/mcp",
-            "version": "latest",
+            "version": "0.0.84",
             "transport": {
               "type": "stdio"
             },

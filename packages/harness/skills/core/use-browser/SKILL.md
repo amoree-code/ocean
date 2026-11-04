@@ -9,10 +9,11 @@ category: core
 
 Use when the user gives a URL and asks the agent to complete, fill, test, submit, or otherwise operate the page.
 
-For client-neutral browser access, prefer the shared Playwright MCP connection
-described in `docs/browser-clients.md`. The skill defines the task and verification
-contract; MCP supplies the browser tools. Ocean's `ocean browser` capability remains
-the deterministic local backend for repeatable JSON task files.
+The skill defines the task and verification contract. When the user asks for their own
+signed-in Chrome or a shared MCP connection, the routes are in `docs/browser-clients.md`:
+the marketplace `dev.ocean/chrome-devtools` entry, the browser bridge, or Playwright MCP.
+Ocean's `ocean browser` capability remains the deterministic local backend for repeatable
+JSON task files.
 
 Use Ocean's `ocean browser` capability through the terminal as the default browser backend. Do not switch to `claude-in-chrome`, an extension, or another browser connector unless the user explicitly asks for that backend. If Ocean cannot detect or open a browser, report the exact command result and stop; do not ask the user to install a different browser extension as the first workaround.
 

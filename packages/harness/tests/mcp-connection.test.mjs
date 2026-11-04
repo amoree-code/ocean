@@ -27,7 +27,7 @@ test("generates a client-neutral Playwright MCP config", () => {
   const config = playwrightMcpConfig();
   assert.equal(config.mcpServers.playwright.command, "npx");
   assert.deepEqual(config.mcpServers.playwright.args, [
-    "@playwright/mcp@latest",
+    "@playwright/mcp@0.0.84",
     "--extension",
   ]);
 });
