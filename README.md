@@ -49,6 +49,9 @@ terminal, with nothing re-explained.
   prebuild: npm compiles it when `python3`, `make` and a C++ compiler are present
   (`sudo apt install -y python3 make g++`) and skips it otherwise. Ocean installs and runs either
   way; without it, providers run attached to your terminal and their output is not recorded.
+  An npm that blocks install scripts (it prints `npm warn install-scripts`) skips that compile
+  even with a toolchain: install with `npm install --global --allow-scripts=node-pty
+  @ameer.abdulkareem/ocean`. macOS needs neither: node-pty ships a prebuild there.
 - The AI clients you want to connect, installed and signed in the usual way. Ocean does not
   install credentials and does not need an API key of its own.
 
