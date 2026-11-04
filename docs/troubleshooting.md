@@ -10,7 +10,9 @@
 - **`ocean: node-pty is not installed, so this session's terminal output is not recorded`**
   (Linux) — npm skipped the optional `node-pty`: it has no Linux prebuild and the machine had no
   compiler toolchain. Install one (`sudo apt install -y python3 make g++`, or your
-  distribution's equivalent), then run `npm install --global @ameer.abdulkareem/ocean` again.
+  distribution's equivalent), then run `npm install --global @ameer.abdulkareem/ocean` again. If
+  npm prints `npm warn install-scripts`, it blocked node-pty's build: run
+  `npm install --global --allow-scripts=node-pty @ameer.abdulkareem/ocean` instead.
 - **A provider opened through Ocean fails with `posix_spawnp failed`** (macOS) — node-pty's
   `spawn-helper` is not executable. Ocean sets the bit before the first terminal spawn; when the
   global prefix belongs to another user (an install with `sudo`), it cannot. Run
