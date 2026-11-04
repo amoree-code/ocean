@@ -387,6 +387,27 @@ export async function brainNeighbors(
   }
 }
 
+// Whether the index is missing or older than the files it was built from, and whether it holds
+// vectors — what an automatic rebuild needs to decide (T-307).
+export async function brainIndexState(options: {
+  root?: string;
+  indexPort: BrainIndexPort;
+}): Promise<{ stale: boolean; hasVectors: boolean }> {
+  const root = options.root ?? oceanRoot();
+  const indexFile = brainIndexPath(root);
+  if (!(await ensureIndexBuilt(root)))
+    return { stale: true, hasVectors: false };
+  const reader = options.indexPort.openIndexReadOnly(indexFile);
+  try {
+    return {
+      stale: reader.meta.corpusHash !== (await computeCorpusHash(root)),
+      hasVectors: reader.hasVectors,
+    };
+  } finally {
+    reader.close();
+  }
+}
+
 export async function ensureIndexBuilt(root = oceanRoot()): Promise<boolean> {
   try {
     await stat(brainIndexPath(root));

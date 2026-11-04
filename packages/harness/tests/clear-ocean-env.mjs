@@ -49,4 +49,6 @@ process.env.OCEAN_ROOT = sandbox;
 // A hook spawned by a test must not start the background `ocean pull` (T-305), which reads the
 // real home directory.
 process.env.OCEAN_NO_PULL_ON_START = "1";
+// Nor a service started by a test its brain reindex (T-307); the reindex test calls it directly.
+process.env.OCEAN_NO_AUTO_REINDEX = "1";
 process.on("exit", () => rmSync(sandbox, { recursive: true, force: true }));

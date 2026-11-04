@@ -17,6 +17,7 @@ import {
   defaultSessionStoreFactory,
   defaultWrapperManager,
 } from "../dist/composition/runtime.js";
+import { reindexWhenStale } from "../dist/infrastructure/process/service.js";
 
 // Synthetic workspaces only (T-307): a client's proposal made in a project is filed by kind —
 // fact → memory/, doc → docs/, todo → review then one backlog line — and written at once only
@@ -317,6 +318,60 @@ test("project docs are indexed in their project's scope and read by workspace pa
         idOrPath,
       });
       assert.equal(read.path, "project-docs/talk/exercise-flow.md");
+    }
+  });
+});
+
+test("the service rebuilds a stale index, so a filed record is searchable without a reindex command", async () => {
+  await inWorkspace("auto-reindex", {}, async (root) => {
+    const previous = process.env.OCEAN_NO_AUTO_REINDEX;
+    delete process.env.OCEAN_NO_AUTO_REINDEX;
+    const noEmbedder = async () => null;
+    try {
+      // No index yet: built.
+      assert.equal(
+        await reindexWhenStale({ root, embedder: noEmbedder }),
+        "rebuilt",
+      );
+      assert.equal(
+        await reindexWhenStale({ root, embedder: noEmbedder }),
+        "fresh",
+      );
+      await call("memory_propose", {
+        content: "# Warmup\n\nEvery lesson opens with a saffron warmup.\n",
+        origin: "inferred",
+        project: "talk",
+        kind: "fact",
+        name: "warmup",
+      });
+      const search = () =>
+        brainSearch({
+          root,
+          indexPort: defaultBrainIndexPort,
+          query: "saffron warmup",
+          scope: { project: "talk" },
+        });
+      assert.equal((await search()).stale, true);
+      assert.deepEqual((await search()).results, []);
+      assert.equal(
+        await reindexWhenStale({ root, embedder: noEmbedder }),
+        "rebuilt",
+      );
+      const found = await search();
+      assert.equal(found.stale, false);
+      assert.equal(found.results[0].file, "04-projects/talk/memory/warmup.md");
+      process.env.OCEAN_NO_AUTO_REINDEX = "1";
+      await writeFile(
+        path.join(root, "04-projects/talk/memory/warmup.md"),
+        "# Changed\n",
+      );
+      assert.equal(
+        await reindexWhenStale({ root, embedder: noEmbedder }),
+        "off",
+      );
+    } finally {
+      if (previous === undefined) delete process.env.OCEAN_NO_AUTO_REINDEX;
+      else process.env.OCEAN_NO_AUTO_REINDEX = previous;
     }
   });
 });

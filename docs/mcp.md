@@ -98,6 +98,12 @@ source `propose-auto-approve`, so `memory_history` shows it. A todo never become
 a task is opened at the owner's request. Project docs are indexed as `project-docs/<id>/…`, in
 that project's scope, and `brain_read` takes their workspace path.
 
+The always-on service (`ocean service`) checks every 2 minutes whether the brain index is older
+than its files and rebuilds it when it is, so a filed or written record — or a hand edit — is
+searchable without `ocean memory reindex`. The new index is built in a temp file and renamed into
+place. Vectors come from the local embedder; without it, an index that has vectors waits instead
+of losing them, and one without is rebuilt as full text. `OCEAN_NO_AUTO_REINDEX=1` turns it off.
+
 Tool annotations (`readOnlyHint`, `destructiveHint`) are hints for a client's permission UI, not
 enforcement: whether a client asks before a call is the client's behaviour and is not assumed.
 The server's own checks above are what bound a call.
