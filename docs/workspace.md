@@ -36,9 +36,10 @@ the engine still reads that layout, see below.)
   (`packages/harness/src/engine-root.ts`, under `dist/` or `tsx` from `src/`); a process
   that never loaded the CLI entry, such as a test, falls back to the workspace sibling
   `packages/harness`.
-- `oceanRoot()` — `OCEAN_ROOT` if set (resolved to an absolute path),
-  otherwise three directories above `engineRoot()` (`kernel/packages/harness` → the workspace root). This is the default private-workspace
-  location: `kernel/` is expected to sit inside the workspace root as a sibling of `bridge/`.
+- `oceanRoot()` — in order: `OCEAN_ROOT` if set (resolved to an absolute path); the directory
+  three above `engineRoot()` when it already holds a workspace (`04-projects/`,
+  `brain/04-projects/`, `bridge/sessions/` or `kernel/bridge/sessions/`), which is a dev checkout
+  at `~/ocean/kernel`; otherwise `~/ocean`, which is where a global npm install puts it.
 - `oceanPath(...)` — joins onto `<oceanRoot>/`, used for all private workspace state, via
   the `PERSONAL_DIR`/`PROJECTS_DIR`/`SYSTEM_DIR` constants (`02-personal`, `04-projects`,
   `bridge`). Each half of the layout is chosen once per process by a sentinel directory: the

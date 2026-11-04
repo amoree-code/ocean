@@ -6,12 +6,22 @@
 # `ocean doctor` check for violations.
 
 # --- private workspace, if it is ever copied or symlinked in by mistake ---
-# Generated local Ocean workspace data. Keep the directory names available in clones,
-# but never commit user-owned contents.
-personal/*
-projects/*
-!personal/.gitkeep
-!projects/.gitkeep
+# The workspace's top-level folders (the same list as scripts/publish.mjs's hard deny list).
+# Anchored to the root: packages/harness/templates/workspace/ holds their empty, public template.
+/brain/
+/charter/
+/sessions/
+/personal/
+/projects/
+/.index/
+/00-inbox/
+/01-daily/
+/02-personal/
+/03-areas/
+/03-professional/
+/04-projects/
+/05-knowledge/
+/06-templates/
 
 # The bridge (machine-local state: sessions, config, integrations) moved out of this repo to
 # ~/ocean/bridge in T-243, so nothing here should ever be named bridge/. This line stays as a guard:

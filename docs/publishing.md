@@ -1,5 +1,8 @@
 # Publishing the engine
 
+This page covers the public source export. The npm package has its own guide,
+[release.md](release.md); both use the same hard deny list.
+
 The engine is published to a public repository by `scripts/publish.mjs`. Nothing is copied by
 hand, and a private file cannot reach the public repository by accident: the export is
 deny-by-default and every export is scanned before anything is sent.
@@ -9,7 +12,8 @@ deny-by-default and every export is scanned before anything is sent.
 1. **Source.** The content committed at `HEAD` — never the working tree, so an uncommitted edit
    cannot leak and the manifest hash names a real commit.
 2. **Hard deny list**, compiled into the script, beats everything: the private workspace
-   directories (`brain/`, `charter/`, `bridge/`, `sessions/`, `00-inbox/` … `05-knowledge/`),
+   directories (`brain/`, `charter/`, `bridge/`, `sessions/`, `.index/`, `00-inbox/` …
+   `06-templates/`),
    `.git/`, `node_modules/`, `.env*` (except `.env.example`), keys and certificates,
    `credentials.json`, `secrets.json`, `.netrc`, `.npmrc`, `.mcp.json`. Matching is
    case-insensitive. The workspace directories are anchored to the repository root, so

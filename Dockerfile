@@ -16,7 +16,6 @@ COPY packages/loop/package.json ./packages/loop/package.json
 COPY packages/services/package.json ./packages/services/package.json
 RUN mkdir -p scripts packages/harness/scripts packages/core
 COPY scripts/prepare-hooks.mjs ./scripts/
-COPY packages/harness/scripts/prepare-node-pty.mjs ./packages/harness/scripts/
 RUN corepack enable && pnpm install --frozen-lockfile
 
 COPY . .
