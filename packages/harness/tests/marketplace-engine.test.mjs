@@ -18,6 +18,7 @@ import {
   mcpClientConfig,
   oceanMcpConfig,
 } from "@ocean/market/mcp/mcp-connection.js";
+import { planMcpLaunch } from "@ocean/market/mcp/mcp-launch.js";
 import { scanText } from "@ocean/market/security/description-scan.js";
 import { McpToolRegistry } from "@ocean/services/infrastructure/mcp/tool-registry.js";
 
@@ -50,7 +51,7 @@ test("the engine index is schema-valid and every digest matches contentDigest", 
   const index = marketplaceIndexSchema.parse(
     JSON.parse(await readFile(engineIndex, "utf8")),
   );
-  assert.equal(index.capabilities.length, 13);
+  assert.equal(index.capabilities.length, 14);
   for (const capability of index.capabilities)
     assert.equal(
       await contentDigest(path.resolve(capability.source.path)),
@@ -177,4 +178,33 @@ test("the MCP tool registry validates, refuses duplicates and keeps order", () =
   assert.equal(registry.has("c"), false);
   assert.throws(() => registry.register({ name: "a" }), /already registered/);
   assert.throws(() => registry.register({ name: "" }), /Invalid MCP tool/);
+});
+
+test("the browser capability launches a pinned Chrome DevTools MCP with page URLs kept local", async () => {
+  const index = marketplaceIndexSchema.parse(
+    JSON.parse(await readFile(engineIndex, "utf8")),
+  );
+  const entry = index.capabilities.find(
+    (capability) => capability.name === "dev.ocean/chrome-devtools",
+  );
+  const launch = planMcpLaunch(
+    {
+      capability: entry.name,
+      version: entry.version,
+      permissions: entry.permissions,
+      server: entry.spec,
+    },
+    { stateDir: os.tmpdir(), env: { PATH: "/usr/bin" }, home: os.homedir() },
+  );
+  assert.equal(launch.transport, "stdio");
+  assert.equal(launch.command, "npx");
+  assert.ok(
+    launch.args.some((arg) => /^chrome-devtools-mcp@\d+\.\d+\.\d+$/.test(arg)),
+  );
+  for (const flag of [
+    "--autoConnect",
+    "--no-usage-statistics",
+    "--no-performance-crux",
+  ])
+    assert.ok(launch.args.includes(flag), flag);
 });
