@@ -90,7 +90,7 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
   ],
   operate: [
     "Classify a plain-language request and run the matching Ocean operation.",
-    "ocean operate <text>",
+    "ocean operate <text> | -- <text containing -h>",
   ],
   intent: [
     "Classify a plain-language request without running anything.",
@@ -106,7 +106,7 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
   ],
   client: [
     "Inspect, open, register and sync AI clients.",
-    "ocean client list|status|test [provider] [--json]|open <provider> [provider-args]|vscode-wrapper [--settings <path>] [--apply]|sync|register <id> [command]|enable <id>|disable <id>|manage|doctor [absolute-provider-path]",
+    "ocean client list|status|test [provider] [--json]|open <provider> [provider-args] [-- provider-args]|vscode-wrapper [--settings <path>] [--apply]|sync|register <id> [command]|enable <id>|disable <id>|manage|doctor [absolute-provider-path]",
   ],
   clients: [
     "Connect installed AI clients to Ocean's MCP server and hooks; apply shows the plan until --yes.",
@@ -192,13 +192,12 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
   ],
 };
 
-// Commands whose later arguments belong to another program or are free text: only a help flag
-// straight after the command name asks for Ocean's help.
-const PASSTHROUGH = new Set(["intercept", "observe", "operate", "client"]);
 const HELP_FLAGS = new Set(["--help", "-h"]);
 
-export function wantsCommandHelp(command: string, args: string[]): boolean {
-  if (PASSTHROUGH.has(command)) return HELP_FLAGS.has(args[0] ?? "");
+// A help flag anywhere before `--` is Ocean's, for every command: `client sync --help` once ran the
+// sync. Arguments after `--` belong to the wrapped program or the free text, so
+// `ocean client open claude -- --help` reaches Claude.
+export function wantsCommandHelp(args: string[]): boolean {
   const end = args.indexOf("--");
   return (end < 0 ? args : args.slice(0, end)).some((arg) =>
     HELP_FLAGS.has(arg),

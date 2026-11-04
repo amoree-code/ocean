@@ -42,9 +42,13 @@ terminal, with nothing re-explained.
 
 ## Requirements
 
-- **Node.js 22.13 or newer** (Ocean uses the built-in `node:sqlite`).
+- **Node.js 22.16 or newer** (Ocean uses the built-in `node:sqlite`).
 - macOS or Linux. Windows runs the engine and its tests; the layout move and some
   integrations are untested there.
+- On Linux, recording a provider's terminal session needs `node-pty`, which has no Linux
+  prebuild: npm compiles it when `python3`, `make` and a C++ compiler are present
+  (`sudo apt install -y python3 make g++`) and skips it otherwise. Ocean installs and runs either
+  way; without it, providers run attached to your terminal and their output is not recorded.
 - The AI clients you want to connect, installed and signed in the usual way. Ocean does not
   install credentials and does not need an API key of its own.
 
@@ -99,8 +103,9 @@ approves or rejects them; `ocean clients restore` undoes the last `clients apply
 
 ## Commands
 
-`ocean --help` lists every command; `ocean <command> --help` prints its usage and never runs
-it. **Reads** only reads. **Writes** changes the workspace, or files outside it where noted.
+`ocean --help` lists every command; `ocean <command> --help` (or `-h`, anywhere before `--`)
+prints its usage and never runs it. To hand `--help` to a wrapped client, put it after `--`:
+`ocean client open claude -- --help`. **Reads** only reads. **Writes** changes the workspace, or files outside it where noted.
 **Runs** starts a process: an agent, a provider CLI, a browser, a server or an installer.
 **Approval** is the flag a command needs before it acts; without it, the command previews.
 
@@ -224,7 +229,8 @@ See [Security](docs/security.md) for the workspace boundary and access control.
 
 - **`ocean: command not found` after install** — npm's global `bin` is not on `PATH`:
   `npm prefix --global` shows the prefix; add its `bin` to `PATH`.
-- **`EBADENGINE` or `No such built-in module: node:sqlite`** — Node is older than 22.13;
+- **`EBADENGINE`, `No such built-in module: node:sqlite` or `does not provide an export named
+  'backup'`** — Node is older than 22.16;
   upgrade it and reinstall.
 - **The workspace is in the wrong place** — set `OCEAN_ROOT` and run `ocean setup` again.
 - **A client does not see Ocean** — run `ocean doctor`, then `ocean clients apply --yes`,

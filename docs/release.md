@@ -80,6 +80,13 @@ Expect `ocean setup` to create `$T/home/ocean` and to write nothing inside
 `$T/prefix/lib/node_modules/@amoree-code/ocean`. `doctor` may report `CLIENT_NOT_WIRED` for AI
 clients installed on the machine: that is correct for a fresh setup.
 
+Then the same tarball on a clean Linux at the minimum Node, with no compiler toolchain (Docker;
+CI's `linux-install` job runs it too):
+
+```bash
+sh scripts/linux-install-smoke.sh <tarball>   # ends with "smoke: ok"
+```
+
 Do not run `ocean client sync`, `ocean service restart` or `ocean clients apply` in this
 sandbox: the login service's label is per user, not per home directory, so they can act on
 the real service.

@@ -4,8 +4,13 @@
 
 - **`ocean: command not found`** — npm's global `bin` directory is not on `PATH`.
   `npm prefix --global` prints the prefix; add `<prefix>/bin` to `PATH`.
-- **`EBADENGINE`, or `No such built-in module: node:sqlite`** — Node is older than 22.13.
+- **`EBADENGINE`, `No such built-in module: node:sqlite`, or `does not provide an export named
+  'backup'`** — Node is older than 22.16.
   Upgrade Node, then install again.
+- **`ocean: node-pty is not installed, so this session's terminal output is not recorded`**
+  (Linux) — npm skipped the optional `node-pty`: it has no Linux prebuild and the machine had no
+  compiler toolchain. Install one (`sudo apt install -y python3 make g++`, or your
+  distribution's equivalent), then run `npm install --global @amoree-code/ocean` again.
 - **A provider opened through Ocean fails with `posix_spawnp failed`** (macOS) — node-pty's
   `spawn-helper` is not executable. Ocean sets the bit before the first terminal spawn; when the
   global prefix belongs to another user (an install with `sudo`), it cannot. Run

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile, spawnSync } from "node:child_process";
-import { mkdtemp, readdir, readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { chmod, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -102,20 +103,111 @@ test("<command> --help prints that command's usage and runs nothing", async () =
   assert.deepEqual(await readdir(root), []);
 });
 
-test("a help flag meant for a wrapped program is passed through, not taken as Ocean's", () => {
-  assert.equal(wantsCommandHelp("tasks", ["list", "--help"]), true);
-  assert.equal(wantsCommandHelp("memory", ["search", "-h"]), true);
-  assert.equal(wantsCommandHelp("tasks", ["list", "--", "--help"]), false);
-  assert.equal(wantsCommandHelp("intercept", ["--help"]), true);
-  assert.equal(
-    wantsCommandHelp("intercept", ["--client", "claude", "--", "--help"]),
-    false,
+test("a help flag before `--` is Ocean's; after `--` it belongs to the wrapped program", () => {
+  assert.equal(wantsCommandHelp(["list", "--help"]), true);
+  assert.equal(wantsCommandHelp(["search", "-h"]), true);
+  assert.equal(wantsCommandHelp(["list", "--", "--help"]), false);
+  assert.equal(wantsCommandHelp(["--help"]), true);
+  // T-308 R2: a help flag after a subcommand or its arguments used to run the command.
+  assert.equal(wantsCommandHelp(["sync", "--help"]), true);
+  assert.equal(wantsCommandHelp(["register", "x", "-h"]), true);
+  assert.equal(wantsCommandHelp(["--client", "claude", "--help"]), true);
+  assert.equal(wantsCommandHelp(["open", "claude", "--help"]), true);
+  assert.equal(wantsCommandHelp(["what", "does", "-h", "do"]), true);
+  assert.equal(wantsCommandHelp(["--client", "claude", "--", "--help"]), false);
+  assert.equal(wantsCommandHelp(["open", "claude", "--", "-h"]), false);
+  assert.equal(wantsCommandHelp(["--", "what", "does", "-h", "do"]), false);
+});
+
+// Every program a passthrough command could start, recorded instead of run: a help regression
+// then shows up as a log line, never as a real launchd/systemd change or a launched client.
+async function stubbedPath() {
+  const bin = await mkdtemp(path.join(os.tmpdir(), "ocean-help-bin-"));
+  const log = path.join(bin, "calls.log");
+  for (const name of [
+    "launchctl",
+    "systemctl",
+    "claude",
+    "codex",
+    "gemini",
+    "code",
+    "ls",
+  ]) {
+    const file = path.join(bin, name);
+    await writeFile(file, `#!/bin/sh\necho "${name} $*" >> "${log}"\n`);
+    await chmod(file, 0o755);
+  }
+  return { bin, log };
+}
+
+test("help after subcommand arguments prints usage and changes no files, clients or services", async () => {
+  const home = await mkdtemp(path.join(os.tmpdir(), "ocean-help-home-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-help-root-"));
+  const { bin, log } = await stubbedPath();
+  const env = {
+    ...process.env,
+    HOME: home,
+    USERPROFILE: home,
+    OCEAN_ROOT: root,
+    PATH: `${bin}${path.delimiter}${process.env.PATH}`,
+  };
+  const run = promisify(execFile);
+  for (const argv of [
+    ["client", "sync", "--help"],
+    ["client", "sync", "-h"],
+    ["client", "register", "foo", "--help"],
+    ["client", "enable", "claude", "-h"],
+    ["client", "disable", "claude", "--help"],
+    ["client", "vscode-wrapper", "--apply", "--help"],
+    ["client", "manage", "--help"],
+    ["client", "open", "claude", "--help"],
+    ["intercept", "--client", "claude", "--help"],
+    ["intercept", "--client", "claude", "--executable", "/bin/echo", "-h"],
+    ["observe", "ls", "-h"],
+    ["observe", "show", "abc", "--help"],
+    ["operate", "what", "does", "-h", "do"],
+  ]) {
+    const { stdout } = await run(process.execPath, [cli, ...argv], { env });
+    assert.match(
+      stdout,
+      new RegExp(`^Usage: ocean ${argv[0]}\\b`),
+      argv.join(" "),
+    );
+  }
+  assert.deepEqual(await readdir(home), []);
+  assert.deepEqual(await readdir(root), []);
+  assert.deepEqual(
+    (await readdir(bin)).filter((file) => file === "calls.log"),
+    [],
+    existsSync(log) ? await readFile(log, "utf8") : "",
   );
-  assert.equal(wantsCommandHelp("client", ["open", "claude", "--help"]), false);
-  assert.equal(
-    wantsCommandHelp("operate", ["what", "does", "-h", "do"]),
-    false,
+});
+
+test("after `--`, a help flag reaches the wrapped client", {
+  skip: process.platform === "win32" && "POSIX stub",
+}, async () => {
+  const home = await mkdtemp(path.join(os.tmpdir(), "ocean-help-home-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-help-root-"));
+  const { bin, log } = await stubbedPath();
+  // An authenticated claude, so `client open` gets past its login check.
+  await writeFile(
+    path.join(bin, "claude"),
+    `#!/bin/sh\necho "claude $*" >> "${log}"\n[ "$1" = auth ] && echo '{"loggedIn": true}'\nexit 0\n`,
   );
+  await promisify(execFile)(
+    process.execPath,
+    [cli, "client", "open", "claude", "--task", "T-1", "--", "--help", "-x"],
+    {
+      env: {
+        ...process.env,
+        HOME: home,
+        OCEAN_ROOT: root,
+        PATH: `${bin}${path.delimiter}${process.env.PATH}`,
+      },
+    },
+  );
+  const calls = (await readFile(log, "utf8")).trim().split("\n");
+  assert.equal(calls.at(-1), "claude --help -x");
 });
 
 test("an inherited object key is an unknown command, not a handler", () => {

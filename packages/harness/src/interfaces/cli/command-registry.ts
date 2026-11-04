@@ -255,7 +255,11 @@ async function commandClient(): Promise<void> {
       console.error("Usage: ocean client open <provider> [provider-args]");
       process.exitCode = 1;
     } else {
-      const providerArgs = process.argv.slice(5);
+      // After `--`, arguments go to the provider untouched (a help flag before it is Ocean's).
+      const rest = process.argv.slice(5);
+      const separator = rest.indexOf("--");
+      const providerArgs = separator >= 0 ? rest.slice(0, separator) : rest;
+      const passed = separator >= 0 ? rest.slice(separator + 1) : [];
       const taskIndex = providerArgs.indexOf("--task");
       const handoffIndex = providerArgs.indexOf("--handoff");
       const taskId = taskIndex >= 0 ? providerArgs[taskIndex + 1] : undefined;
@@ -272,7 +276,10 @@ async function commandClient(): Promise<void> {
       }
       process.exitCode = await intercept(
         provider,
-        providerArgs.filter((_, index) => !metadataFlags.has(index)),
+        [
+          ...providerArgs.filter((_, index) => !metadataFlags.has(index)),
+          ...passed,
+        ],
         {
           entryPoint: "interactive-managed",
           controlLevel: "managed-partial",
@@ -829,7 +836,8 @@ async function commandIntent(): Promise<void> {
 }
 
 async function commandOperate(): Promise<void> {
-  const text = process.argv.slice(3).join(" ");
+  const args = process.argv.slice(3);
+  const text = (args[0] === "--" ? args.slice(1) : args).join(" ");
   await runOperateCommand(text);
 }
 

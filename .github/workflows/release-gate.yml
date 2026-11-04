@@ -36,6 +36,21 @@ jobs:
       - name: Run full test suite
         run: pnpm test
 
+  linux-install:
+    # T-308: the packed tarball on a clean Linux at the minimum Node, with no compiler toolchain.
+    needs: gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: node scripts/pack-release.mjs --out release
+      - run: sh scripts/linux-install-smoke.sh release/*.tgz
+
   docker:
     needs: gate
     runs-on: ubuntu-latest
