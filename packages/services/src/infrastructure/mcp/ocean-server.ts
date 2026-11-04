@@ -38,6 +38,7 @@ import type { SessionStoreFactory } from "@ocean/core/domain/ports/session-store
 import { redactSecrets } from "@ocean/core/domain/redaction/redaction.js";
 import { oceanPath, oceanRoot, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import {
+  findProject,
   folderProject,
   scanProjectManifests,
 } from "@ocean/core/shared/project-resolution.js";
@@ -216,7 +217,7 @@ const tools = new McpToolRegistry([
   {
     name: "brain_search",
     description:
-      "Call this first, before answering anything about the user, their projects, preferences or past decisions: Ocean is their memory. Searches the markdown memory/knowledge index (hybrid FTS + vector when available); read a result with brain_read and cite its path. Shows global records plus the project (`project`, else the one bound to `cwd`); unbound sessions see global only.",
+      "Call this first, before answering anything about the user, their projects, preferences or past decisions: Ocean is their memory. Searches the markdown memory/knowledge index (hybrid FTS + vector when available); read only the results you need with brain_read and cite their paths. In a conversation about one project, pass its name or id as project: the search then covers that project and global records only. Otherwise the project bound to `cwd`; unbound sessions see global only.",
     annotations: { readOnlyHint: true },
     inputSchema: {
       type: "object",
@@ -328,7 +329,7 @@ const tools = new McpToolRegistry([
   {
     name: "memory_propose",
     description:
-      "Call this when the user states something worth keeping across sessions (a decision, preference or project fact) without asking you to remember it, for a fact you inferred, or for one imported from another tool's memory: it queues it for the user's review. It is not memory until approved. In a conversation about one Ocean project (ids from ocean_projects_list), pass project and kind instead of target: `fact` (a decision, preference or detail) or `doc` (a spec, brief or longer notes), each with a kebab-case name, is filed in that project's memory/ or docs/ — written at once when the user allows it; `todo` (work to do) waits for review as a backlog line. Optionally say why (reason).",
+      "Call this when the user states something worth keeping across sessions (a decision, preference or project fact) without asking you to remember it, for a fact you inferred, or for one imported from another tool's memory: it queues it for the user's review. It is not memory until approved. In a conversation about one project, pass its name (as the user's Claude project is called) or Ocean id as project, and kind instead of target: `fact` (a decision, preference or detail) or `doc` (a spec, brief or longer notes), each with a kebab-case name, is filed in that project's memory/ or docs/ — written at once when the user allows it; `todo` (work to do) waits for review as a backlog line. Optionally say why (reason).",
     annotations: { readOnlyHint: false, destructiveHint: false },
     inputSchema: {
       type: "object",
@@ -805,9 +806,14 @@ async function createClientHandoff(
 async function scopeFor(
   args: Record<string, unknown>,
 ): Promise<{ project: string | null }> {
+  // A project named by its id or its name (T-307: a Claude project's name finds its Ocean
+  // project); a name Ocean does not know searches global records only.
   if (typeof args.project === "string" && args.project) {
-    if (!isValidProjectId(args.project))
+    if (/[/\\]|\.\./.test(args.project))
       throw new Error(`invalid project id '${args.project}'`);
+    const known = await findProject(args.project);
+    if (known) return { project: known };
+    if (!isValidProjectId(args.project)) return { project: null };
     return { project: args.project };
   }
   const cwd =

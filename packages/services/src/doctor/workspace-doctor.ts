@@ -377,6 +377,24 @@ async function checkProjectLayout(): Promise<Finding[]> {
       ];
 }
 
+// A Claude project registered by a conversation (T-307) has no repo path: the owner should see
+// it once, then keep it (set `autoRegistered` to false in its project.json), rename or remove it.
+async function checkClaudeProjects(): Promise<Finding[]> {
+  const registered = (await listProjectManifests()).filter(
+    (manifest) => manifest.autoRegistered && manifest.paths.length === 0,
+  );
+  return registered.length
+    ? [
+        {
+          code: "PROJECT_AUTO_REGISTERED",
+          severity: "WARN",
+          message: `registered from Claude projects: ${registered.map((manifest) => manifest.id).join(", ")} — keep (set autoRegistered to false in project.json), rename or remove`,
+          fixable: false,
+        },
+      ]
+    : [];
+}
+
 async function checkDuplicates(): Promise<Finding[]> {
   const seen = new Map<string, string>();
   const duplicates: string[] = [];
@@ -530,6 +548,7 @@ async function scanWorkspace(
     ...(await checkPermissions()),
     ...(await checkDuplicates()),
     ...(await checkProjectLayout()),
+    ...(await checkClaudeProjects()),
     ...(await checkProfileAuthority()),
   ];
 }

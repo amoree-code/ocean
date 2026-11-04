@@ -1,10 +1,14 @@
-import { mkdir, readdir, readFile, rename, stat } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename } from "node:fs/promises";
 import path from "node:path";
-import { isValidProjectId } from "@ocean/core/domain/context/project-id.js";
 import { MemoryContractError } from "@ocean/core/domain/mcp/memory-contract.js";
 import { atomicWrite, withFileLock } from "@ocean/core/shared/fs-utils.js";
 import { localDate } from "@ocean/core/shared/local-date.js";
 import { oceanPath, PROJECTS_DIR } from "@ocean/core/shared/paths.js";
+import {
+  findProject,
+  readClaudeProjects,
+  registerNamedProject,
+} from "@ocean/core/shared/project-resolution.js";
 import {
   appendAudit,
   memorySettings,
@@ -258,17 +262,14 @@ export type ProposalKind = "fact" | "doc" | "todo";
 const KINDS: ProposalKind[] = ["fact", "doc", "todo"];
 const NAME = /^[a-z0-9][a-z0-9-]{0,59}$/;
 
-const isProject = (project: string) =>
-  stat(oceanPath(PROJECTS_DIR, project, "project.json")).then(
-    (found) => found.isFile(),
-    () => false,
-  );
-
-// A client's proposal made inside a project (T-307). Ocean, not the client, picks the place from
-// the kind: a fact goes to the project's memory/ and a doc to its docs/, each as the new file
-// `<name>.md`; a todo waits for review and becomes one backlog line. With proposeAutoApprove on,
-// a fact or doc for an existing project is written at once — never over or into an existing
-// file — and keeps its origin and candidate in the audit. Everything else stays a candidate.
+// A client's proposal made inside a project (T-307). The project is named by its Ocean id or its
+// name (`LetSpeak` finds `letspeak`). Ocean, not the client, picks the place from the kind: a
+// fact goes to the project's memory/ and a doc to its docs/, each as the new file `<name>.md`; a
+// todo waits for review and becomes one backlog line. With proposeAutoApprove on, a fact or doc
+// for an existing project is written at once — never over or into an existing file — and keeps
+// its origin and candidate in the audit; a name Ocean does not know is registered as a project
+// only when it is one of the owner's Claude projects this machine has seen, never for a topic a
+// client calls a project. Everything else stays a candidate.
 export async function fileProposal(options: {
   content: string;
   origin: "inferred" | "imported";
@@ -281,14 +282,16 @@ export async function fileProposal(options: {
   candidate: string;
   auditId: string;
   filed?: string;
+  registered?: string;
   review?: string;
 }> {
   if (!KINDS.includes(options.kind))
     throw new MemoryContractError("INVALID", "kind must be fact, doc or todo");
-  if (typeof options.project !== "string" || !isValidProjectId(options.project))
+  const ref = typeof options.project === "string" ? options.project.trim() : "";
+  if (!ref || ref.length > 64 || /[\r\n/\\]/.test(ref))
     throw new MemoryContractError(
       "INVALID",
-      `invalid project id '${String(options.project)}'`,
+      "project must be a project id or name of at most 64 characters",
     );
   if (
     options.kind !== "todo" &&
@@ -298,11 +301,27 @@ export async function fileProposal(options: {
       "INVALID",
       "name must be lowercase kebab-case, at most 60 characters",
     );
-  const known = await isProject(options.project);
+  const auto = (await memorySettings()).proposeAutoApprove;
+  let project = await findProject(ref);
+  let registered: string | undefined;
+  if (
+    !project &&
+    auto &&
+    (await readClaudeProjects()).some(
+      (name) => name.trim().toLowerCase() === ref.toLowerCase(),
+    )
+  ) {
+    try {
+      project = (await registerNamedProject(ref, ["claude.ai"])).id;
+      registered = project;
+    } catch {
+      // an id that cannot be made, or a folder without a manifest: the owner decides
+    }
+  }
   const folder = options.kind === "fact" ? "memory" : "docs";
   const target =
-    known && options.kind !== "todo"
-      ? `${PROJECTS_DIR}/${options.project}/${folder}/${options.name}.md`
+    project && options.kind !== "todo"
+      ? `${PROJECTS_DIR}/${project}/${folder}/${options.name}.md`
       : undefined;
   const proposed = await proposeMemory({
     content: options.content,
@@ -310,17 +329,18 @@ export async function fileProposal(options: {
     target,
     reason: options.reason,
     source: options.source,
-    meta: { kind: options.kind, project: options.project },
+    meta: { kind: options.kind, project: project ?? ref },
   });
-  if (!known)
+  const result = { ...proposed, ...(registered ? { registered } : {}) };
+  if (!project)
     return {
-      ...proposed,
-      review: `no Ocean project '${options.project}'; waits for review`,
+      ...result,
+      review: `'${ref}' is neither an Ocean project nor a Claude project this machine has seen; waits for review`,
     };
-  if (!target) return { ...proposed, review: "a todo waits for review" };
-  if (!(await memorySettings()).proposeAutoApprove)
+  if (!target) return { ...result, review: "a todo waits for review" };
+  if (!auto)
     return {
-      ...proposed,
+      ...result,
       review: "proposeAutoApprove is off; waits for review",
     };
   try {
@@ -329,10 +349,10 @@ export async function fileProposal(options: {
       createOnly: true,
       source: "propose-auto-approve",
     });
-    return { ...proposed, filed: written.path };
+    return { ...result, filed: written.path };
   } catch (error) {
     if (!(error instanceof MemoryContractError)) throw error;
-    return { ...proposed, review: `${error.message}; waits for review` };
+    return { ...result, review: `${error.message}; waits for review` };
   }
 }
 

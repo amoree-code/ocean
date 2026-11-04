@@ -119,8 +119,11 @@ test("service starts the daily pull; OCEAN_NO_PULL_ON_START=1 turns it off", asy
 test("restartService reloads the installed service, says when there is none, and never throws", async () => {
   const home = await mkdtemp(path.join(os.tmpdir(), "ocean-service-restart-"));
   const calls = [];
+  const noWait = async () => {};
+  // `launchctl print` failing means the job is gone.
   const run = async (command, args) => {
     calls.push([command, ...args].join(" "));
+    if (args[0] === "print") throw new Error("Could not find service");
   };
   assert.equal(
     await restartService({ home, platform: "darwin", run }),
@@ -143,13 +146,14 @@ test("restartService reloads the installed service, says when there is none, and
     await writeFile(file, "");
   }
   assert.equal(
-    await restartService({ home, platform: "darwin", run }),
+    await restartService({ home, platform: "darwin", run, wait: noWait }),
     "restarted",
   );
   assert.match(calls[0], /^launchctl bootout gui\/\S*\/com\.ocean\.runtime$/);
+  assert.match(calls[1], /^launchctl print gui\/\S*\/com\.ocean\.runtime$/);
   assert.equal(
-    calls[1],
-    `launchctl bootstrap ${calls[1].split(" ")[2]} ${plist}`,
+    calls[2],
+    `launchctl bootstrap ${calls[2].split(" ")[2]} ${plist}`,
   );
   calls.length = 0;
   assert.equal(
@@ -167,12 +171,40 @@ test("restartService reloads the installed service, says when there is none, and
     home,
     platform: "darwin",
     run: failing,
+    wait: noWait,
   });
   assert.match(
     failed.failed,
     /^Operation not permitted — the service is stopped; start it with: launchctl bootstrap gui\/\S* /,
   );
   assert.ok(failed.failed.endsWith(plist));
+
+  // T-307: the old job still listed for a moment and the first bootstrap failing with launchd's
+  // I/O error 5 must still end restarted, never stopped.
+  const steps = [];
+  let listed = 2;
+  let refusals = 1;
+  const slow = async (_command, args) => {
+    steps.push(args[0]);
+    if (args[0] === "print") {
+      if (listed-- > 0) return;
+      throw new Error("Could not find service");
+    }
+    if (args[0] === "bootstrap" && refusals-- > 0)
+      throw new Error("Bootstrap failed: 5: Input/output error");
+  };
+  assert.equal(
+    await restartService({ home, platform: "darwin", run: slow, wait: noWait }),
+    "restarted",
+  );
+  assert.deepEqual(steps, [
+    "bootout",
+    "print",
+    "print",
+    "print",
+    "bootstrap",
+    "bootstrap",
+  ]);
 });
 
 test("persists and runs a due local schedule once", async () => {
