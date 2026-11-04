@@ -6,12 +6,18 @@ import type {
   InteractiveProcessRequest,
   InteractiveProcessResult,
 } from "@ocean/core/domain/process/process-events.js";
-import { type IPty, spawn as spawnPty } from "node-pty";
+import type { IPty } from "node-pty";
 
 export type {
   InteractiveProcessRequest,
   InteractiveProcessResult,
 } from "@ocean/core/domain/process/process-events.js";
+
+// node-pty is optional: it has no Linux prebuild, so npm compiles it there and skips it when no
+// compiler toolchain is present. Without it, a provider still runs, attached to this terminal
+// directly, but its terminal output is not recorded.
+let ptyModule: Promise<typeof import("node-pty") | undefined> | undefined;
+const loadPty = () => (ptyModule ??= import("node-pty").catch(() => undefined));
 
 // node-pty's npm tarball ships its macOS spawn-helper without the executable bit, so every pty
 // spawn fails after a plain `npm install`. Restore the bit once, before the first spawn.
@@ -44,14 +50,21 @@ function ensureSpawnHelperExecutable(): void {
   }
 }
 
-export function runInteractive(
+export async function runInteractive(
   request: InteractiveProcessRequest,
 ): Promise<InteractiveProcessResult> {
-  return new Promise((resolve, reject) => {
+  const pty = await loadPty();
+  if (!pty) {
+    process.stderr.write(
+      "ocean: node-pty is not installed, so this session's terminal output is not recorded (see docs/troubleshooting.md)\n",
+    );
+    return await runPassthrough(request);
+  }
+  return await new Promise((resolve, reject) => {
     let terminal: IPty;
     try {
       ensureSpawnHelperExecutable();
-      terminal = spawnPty(request.command, request.args, {
+      terminal = pty.spawn(request.command, request.args, {
         name: process.env.TERM || "xterm-256color",
         cols: process.stdout.columns || 120,
         rows: process.stdout.rows || 40,

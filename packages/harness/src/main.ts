@@ -31,7 +31,7 @@ if (command === "--version" || command === "-v") {
   if (
     handler &&
     command !== "setup" &&
-    wantsCommandHelp(command, process.argv.slice(3))
+    wantsCommandHelp(process.argv.slice(3))
   ) {
     console.log(renderCommandHelp(command));
   } else if (handler) {
