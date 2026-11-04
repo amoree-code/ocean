@@ -1,6 +1,6 @@
 # Releasing the npm package
 
-Ocean ships to npm as **`@amoree-code/ocean`** (the name `ocean` belongs to another project);
+Ocean ships to npm as **`@ameer.abdulkareem/ocean`** (the name `ocean` belongs to another project);
 the installed command is `ocean`. This guide builds and checks a release. Publishing is the
 last step and is done by hand, by the maintainer, with npm's own credentials — never from a
 script, CI secret file or any file in this repository.
@@ -77,7 +77,7 @@ run ocean doctor
 ```
 
 Expect `ocean setup` to create `$T/home/ocean` and to write nothing inside
-`$T/prefix/lib/node_modules/@amoree-code/ocean`. `doctor` may report `CLIENT_NOT_WIRED` for AI
+`$T/prefix/lib/node_modules/@ameer.abdulkareem/ocean`. `doctor` may report `CLIENT_NOT_WIRED` for AI
 clients installed on the machine: that is correct for a fresh setup.
 
 Then the same tarball on a clean Linux at the minimum Node, with no compiler toolchain (Docker;
@@ -98,7 +98,7 @@ Only with an explicit decision to release this version:
 ```bash
 npm login                                  # npm keeps the token in its own config
 npm publish <tarball> --access public      # a scoped package is private unless --access public
-npm view @amoree-code/ocean version
+npm view @ameer.abdulkareem/ocean version
 ```
 
 Publishing needs an npm user or organisation `amoree-code`. Never put an npm token in this

@@ -55,11 +55,11 @@ terminal, with nothing re-explained.
 ## Install
 
 ```bash
-npm install --global @amoree-code/ocean
+npm install --global @ameer.abdulkareem/ocean
 ocean setup
 ```
 
-The npm package is `@amoree-code/ocean` (the name `ocean` belongs to another project); the
+The npm package is `@ameer.abdulkareem/ocean` (the name `ocean` belongs to another project); the
 command is `ocean`.
 
 **Release status:** the npm package is prepared but not yet published. Until it is, install
@@ -197,7 +197,7 @@ session, and `ocean skill review <candidate-id> promoted` activates it.
 ├── charter/                    your rules and the policies they route to
 └── bridge/                     machine state: sessions, config, client integrations, shims
 
-<npm prefix>/lib/node_modules/@amoree-code/ocean/
+<npm prefix>/lib/node_modules/@ameer.abdulkareem/ocean/
                                 the engine: code, the empty workspace template, skills
 ```
 
