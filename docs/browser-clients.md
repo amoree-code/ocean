@@ -4,7 +4,22 @@ Ocean owns the browser workflow and task format. AI clients connect to the same
 browser through a standard MCP server; client-specific setup only changes where
 the MCP entry is stored.
 
-## The owner's current Chrome: the browser bridge
+## Three ways to reach the owner's current Chrome
+
+| Route | Use it when | Entry |
+|---|---|---|
+| Marketplace `dev.ocean/chrome-devtools` | One client starts its own server per session; no background service | `<node> <kernel>/packages/harness/dist/main.js market exec dev.ocean/chrome-devtools --yes` as a stdio server |
+| Browser bridge (below) | Several clients must share one long-lived HTTP endpoint | `ocean mcp browser-config` |
+| Isolated Playwright stack (further down) | A separate profile, not your signed-in Chrome | `ocean mcp playwright-config` |
+
+The marketplace route installs with `ocean market install dev.ocean/chrome-devtools --yes`. It runs the
+pinned Chrome DevTools MCP with usage statistics and CrUX off, and attaches to the running Chrome
+(`chrome://inspect/#remote-debugging` enabled). It is full access too, and the gateway adds every
+installed MCP server, so installing it also puts the browser behind `ocean mcp gateway`. Its
+declared `filesystem.read` is not enforced (the sandbox was removed in T-306), and the npm package is
+pinned by version, not digest. Only add the entry to a client you have tested end to end.
+
+## The browser bridge
 
 ```text
 AI client -> http://127.0.0.1:18931/mcp -> ocean mcp browser-bridge -> chrome-devtools-mcp -> running Chrome
@@ -70,7 +85,7 @@ ocean mcp playwright-config
   "mcpServers": {
     "playwright": {
       "command": "npx",
-      "args": ["@playwright/mcp@latest", "--extension"]
+      "args": ["@playwright/mcp@0.0.84", "--extension"]
     }
   }
 }
