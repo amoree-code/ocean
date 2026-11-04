@@ -40,6 +40,9 @@ export type MemorySettings = {
   retentionDays: number;
   // `ocean pull` approves what it proposes as new records (T-305); off by default, for review.
   pullAutoApprove: boolean;
+  // A client's proposal filed to an existing project's memory or docs is written at once as a
+  // new file (T-307); off by default, for review.
+  proposeAutoApprove: boolean;
 };
 
 export const DEFAULT_RETENTION_DAYS = 90;
@@ -122,15 +125,18 @@ export async function memorySettings(): Promise<MemorySettings> {
         mcpWrites: true,
         retentionDays: DEFAULT_RETENTION_DAYS,
         pullAutoApprove: false,
+        proposeAutoApprove: false,
       };
     throw new Error(`Invalid memory settings in ${file}`);
   }
   const writes = input.mcpWrites ?? "on";
   const days = input.retentionDays ?? DEFAULT_RETENTION_DAYS;
   const pullApprove = input.pullAutoApprove ?? "off";
+  const proposeApprove = input.proposeAutoApprove ?? "off";
   if (
     (writes !== "on" && writes !== "off") ||
     (pullApprove !== "on" && pullApprove !== "off") ||
+    (proposeApprove !== "project" && proposeApprove !== "off") ||
     typeof days !== "number" ||
     !Number.isInteger(days) ||
     days < 1
@@ -140,5 +146,6 @@ export async function memorySettings(): Promise<MemorySettings> {
     mcpWrites: writes === "on",
     retentionDays: days,
     pullAutoApprove: pullApprove === "on",
+    proposeAutoApprove: proposeApprove === "project",
   };
 }

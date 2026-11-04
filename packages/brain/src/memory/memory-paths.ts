@@ -143,6 +143,37 @@ export function permanentRecord(relative: string): PermanentRecord {
   };
 }
 
+// A project doc, `04-projects/<id>/docs/**/*.md` (T-307): written only as a new file, by an
+// approved or auto-filed candidate — never through memory_write, so a doc the owner wrote is
+// never changed or removed by a client.
+export function projectDocument(relative: string): PermanentRecord {
+  const parts = segments(relative);
+  const name = parts.at(-1) ?? "";
+  if (!name.toLowerCase().endsWith(".md"))
+    throw new MemoryContractError("INVALID", "a doc must be a .md file");
+  const [projects, project, folder, ...inside] = parts;
+  if (
+    projects !== PROJECTS_DIR ||
+    folder !== "docs" ||
+    !inside.length ||
+    !project ||
+    !isValidProjectId(project)
+  )
+    throw new MemoryContractError(
+      "OUT_OF_ROOT",
+      `docs live under ${PROJECTS_DIR}/<project>/docs/`,
+    );
+  const root = oceanPath(PROJECTS_DIR, project, "docs");
+  let file: string;
+  try {
+    file = resolveWithin(root, ...inside);
+  } catch {
+    throw new MemoryContractError("OUT_OF_ROOT", "path escapes its root");
+  }
+  assertNoLinks(root, file);
+  return { file, relative: workspaceRelative(file), root, personal: false };
+}
+
 function stateDir(...parts: string[]): string {
   return oceanPath(SYSTEM_DIR, "state", ...parts);
 }
