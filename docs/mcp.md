@@ -49,6 +49,12 @@ older than 90 days, and the oldest half past 2 MB, are pruned. `ocean clients le
 per client and tool; it is how a client's in-app use of Ocean is shown, from Ocean's side. A client's
 self-reported name is attribution, not authentication.
 
+Each summary row keeps that raw name and adds `oceanClient` when the name is known (`mcpClients` in
+`packages/harness/src/application/clients/registry.ts`), plus `mode` when the client sends one name
+per mode. Claude Desktop sends two: its normal chat is `claude-ai` (`mode: chat`) and agent mode is
+`local-agent-mode-ocean` (`mode: agent`). Evidence for one mode is not evidence for the other. An
+unknown name, such as `codex-mcp-client` until it is identified, stays unattributed.
+
 Writable roots, fixed in `packages/brain/src/memory/memory-paths.ts`: records under
 `02-personal/**` and `04-projects/<id>/memory/**` (caller-chosen, `.md`, never an index or
 `CONFLICTS.md`); candidates, versions, trash, the audit log and the client journal (server-named,

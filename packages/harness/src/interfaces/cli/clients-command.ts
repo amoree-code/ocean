@@ -4,6 +4,7 @@ import {
 } from "@ocean/services/infrastructure/mcp/call-ledger.js";
 import {
   applyClients,
+  attributeLedger,
   confirmClient,
   defaultClientEnv,
   type EvidenceLabel,
@@ -170,7 +171,7 @@ export async function runClientsCommand(args: string[]): Promise<void> {
     result = { confirmed: ids, label };
   } else if (action === "ledger")
     // Which client called which Ocean tool, and when last — the in-app evidence (T-307).
-    result = summarizeCallLedger(await readCallLedger());
+    result = attributeLedger(summarizeCallLedger(await readCallLedger()));
   else if (action === "repair") result = await repairClients();
   else if (action === "restore") {
     const restored = await restoreClients({ batch: values("--batch")[0] });

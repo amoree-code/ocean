@@ -107,6 +107,11 @@ test("initialize carries the memory contract; capabilities and ping answer", asy
     });
     assert.equal(init.result.instructions, MEMORY_INSTRUCTIONS);
     assert.ok(Buffer.byteLength(MEMORY_INSTRUCTIONS) <= 1024);
+    // A client reading this is connected; it must not take itself for one that cannot (T-307).
+    assert.match(
+      init.result.instructions,
+      /If you can call these tools, this client is connected to Ocean\./,
+    );
     assert.deepEqual(await call("ocean_ping"), { ok: true });
     const capabilities = await call("ocean_capabilities");
     assert.equal(capabilities.contract, 1);
