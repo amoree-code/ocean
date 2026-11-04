@@ -23,6 +23,12 @@ memory; search before answering; explicit saves with `memory_write`; inferred or
 with `memory_propose`; never secrets). `ocean_capabilities` reports the contract version and
 whether writes are on; `ocean_ping` is a cheap health check.
 
+Not every client shows `instructions` to its model, but every client shows tool descriptions. So
+`brain_search`, `memory_propose` and `ocean_context` each open with when to call them (before
+answering about the user; when the user states something worth keeping; once at the start of a
+conversation without a start line). A fresh install then uses Ocean without the user writing any
+prompt or project instructions.
+
 | Tool | Effect |
 | ---- | ------ |
 | `memory_read` | one record with its `sha256` |
