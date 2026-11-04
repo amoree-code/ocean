@@ -212,7 +212,7 @@ const tools = new McpToolRegistry([
   {
     name: "brain_search",
     description:
-      "Search the markdown memory/knowledge index (hybrid FTS + vector when available). Shows global records plus the project (`project`, else the one bound to `cwd`); unbound sessions see global only.",
+      "Call this first, before answering anything about the user, their projects, preferences or past decisions: Ocean is their memory. Searches the markdown memory/knowledge index (hybrid FTS + vector when available); read a result with brain_read and cite its path. Shows global records plus the project (`project`, else the one bound to `cwd`); unbound sessions see global only.",
     annotations: { readOnlyHint: true },
     inputSchema: {
       type: "object",
@@ -324,7 +324,7 @@ const tools = new McpToolRegistry([
   {
     name: "memory_propose",
     description:
-      "Queue a fact you inferred, or one imported from another tool's memory, for the user's review. It is not memory until approved. Optionally name the record it should become (target) and why (reason).",
+      "Call this when the user states something worth keeping across sessions (a decision, preference or project fact) without asking you to remember it, for a fact you inferred, or for one imported from another tool's memory: it queues it for the user's review. It is not memory until approved. Optionally name the record it should become (target) and why (reason).",
     annotations: { readOnlyHint: false, destructiveHint: false },
     inputSchema: {
       type: "object",
@@ -368,7 +368,7 @@ const tools = new McpToolRegistry([
   {
     name: "ocean_context",
     description:
-      "The bounded Ocean start line (256 bytes or less: the project bound to cwd and the operations available), for clients without a session-start hook. Holds no records; search for those.",
+      "Call this once at the start of a conversation when no Ocean start line is already in your context (clients without a session-start hook). Returns the bounded Ocean start line (256 bytes or less: the project bound to cwd and the operations available). Holds no records; search for those.",
     annotations: { readOnlyHint: true },
     inputSchema: {
       type: "object",

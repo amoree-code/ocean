@@ -132,6 +132,25 @@ test("initialize carries the memory contract; capabilities and ping answer", asy
         destructiveHint: true,
       });
     assert.equal(byName.memory_propose.annotations.destructiveHint, false);
+    // Every client shows tool descriptions to its model, not every one shows the instructions:
+    // each of these says when to call it, so a fresh install uses Ocean unprompted (T-307).
+    assert.match(
+      byName.brain_search.description,
+      /^Call this first, before answering anything about the user/,
+    );
+    assert.match(byName.brain_search.description, /cite its path/);
+    assert.match(
+      byName.memory_propose.description,
+      /^Call this when the user states something worth keeping/,
+    );
+    assert.match(
+      byName.memory_propose.description,
+      /not memory until approved/,
+    );
+    assert.match(
+      byName.ocean_context.description,
+      /^Call this once at the start of a conversation/,
+    );
   });
 });
 
