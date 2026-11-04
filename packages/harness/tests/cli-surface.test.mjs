@@ -125,3 +125,19 @@ test("an inherited object key is an unknown command, not a handler", () => {
   assert.equal(result.status, 1);
   assert.match(result.stderr, /Unknown command: toString/);
 });
+
+test("the README command map has a row for every registered command", async () => {
+  const readme = await readFile("../../README.md", "utf8");
+  const map = readme.slice(
+    readme.indexOf("## Commands"),
+    readme.indexOf("\n## ", readme.indexOf("## Commands") + 1),
+  );
+  const rows = map.split("\n").filter((line) => line.startsWith("| `ocean "));
+  for (const command of Object.keys(commandRegistry))
+    assert.ok(
+      rows.some((row) =>
+        new RegExp(`^\\| \`ocean ${command}\`|/ \`${command}\``).test(row),
+      ),
+      `README command map is missing ${command}`,
+    );
+});

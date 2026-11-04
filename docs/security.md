@@ -18,9 +18,14 @@ This repository contains no user data. All user and technical state lives in a p
 workspace outside of `engine/` (see [workspace.md](workspace.md)), which:
 
 - Is not part of this repository's git history.
-- Is git-ignored by this repository's `.gitignore` as a safety net (`personal/*`,
-  `projects/*`, and `system/*`) even if a workspace is ever accidentally nested inside a clone.
+- Is git-ignored by this repository's `.gitignore` as a safety net (its top-level folders,
+  `00-inbox/` … `06-templates/`, `charter/`, `bridge/`, `sessions/`, anchored to the repo root)
+  even if a workspace is ever accidentally nested inside a clone.
 - Is created by `ocean setup` with `config` restricted to `0700` permissions.
+- Cannot enter a release: the npm tarball (`pnpm release:pack`) and the source export
+  (`scripts/publish.mjs`) share one hard deny list for those folders, machine-local tool
+  config and credential files; the tarball also passes the template purity check and the
+  privacy scan before it is written ([release.md](release.md), [publishing.md](publishing.md)).
 
 ## Owner-only files on Windows
 

@@ -1,5 +1,17 @@
 # Troubleshooting
 
+## Installing with npm
+
+- **`ocean: command not found`** — npm's global `bin` directory is not on `PATH`.
+  `npm prefix --global` prints the prefix; add `<prefix>/bin` to `PATH`.
+- **`EBADENGINE`, or `No such built-in module: node:sqlite`** — Node is older than 22.13.
+  Upgrade Node, then install again.
+- **A provider opened through Ocean fails with `posix_spawnp failed`** (macOS) — node-pty's
+  `spawn-helper` is not executable. Ocean sets the bit before the first terminal spawn; when the
+  global prefix belongs to another user (an install with `sudo`), it cannot. Run
+  `chmod +x "$(npm root --global)/@amoree-code/ocean/node_modules/node-pty/prebuilds/"*/spawn-helper`,
+  or install into a prefix you own.
+
 ## `ocean run` prints `Usage: ocean run --profile <name> [--client <client>] [--task <id>] [--handoff <id>] --prompt <text>`
 
 Both `--profile` and `--prompt` are required. `--prompt` consumes every argument after it
@@ -34,13 +46,14 @@ cannot be resumed.
 
 ## Workspace ends up in the wrong place
 
-`oceanRoot()` defaults to the workspace root three directories above `kernel/packages/harness`; set
-`OCEAN_ROOT` to point at a different workspace root (see [workspace.md](workspace.md)).
-Re-run `ocean setup` after changing `OCEAN_ROOT` to bootstrap the new location.
+Without `OCEAN_ROOT`, an installed `ocean` uses `~/ocean`, and a checkout at
+`~/ocean/kernel` uses the workspace around it (see [workspace.md](workspace.md)). Set
+`OCEAN_ROOT` to use another location, then re-run `ocean setup` to bootstrap it.
 
 ## Private workspace directories show up in `git status`
 
-They should not — this repository's `.gitignore` excludes `personal/*`, `projects/*`, and
-private workspace directories (see [security.md](security.md)). If they appear, the workspace root may have
+They should not — this repository's `.gitignore` excludes the workspace's top-level folders
+(`00-inbox/` … `06-templates/`, `charter/`, `bridge/`, `sessions/`) at its root (see
+[security.md](security.md)). If they appear, the workspace root may have
 been accidentally created inside `engine/`; check `OCEAN_ROOT` and the location `ocean
 setup` reported.
