@@ -62,7 +62,7 @@ test("an engine outside any workspace (a global npm install) defaults to ~/ocean
     prefix,
     "lib",
     "node_modules",
-    "@amoree-code",
+    "@ameer.abdulkareem",
     "ocean",
   );
   await withEngineAt(engine, () => {
