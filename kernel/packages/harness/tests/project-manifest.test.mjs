@@ -21,10 +21,12 @@ import {
   listProjectManifests,
   migrateProjectBindings,
   portablePath,
+  projectCategory,
   projectRules,
   projectVerify,
   readProjectManifest,
   renameProject,
+  renderProjectIndex,
   resolveProject,
   scanProjectManifests,
   unbindProjectPath,
@@ -479,7 +481,7 @@ test("an invalid rules/verify shape never unbinds the project; the accessor name
   });
 });
 
-test("rules and verify survive bind --add, unbind, rename, withNextTaskId and renumber", async () => {
+test("rules, verify and category survive bind --add, unbind, rename, withNextTaskId and renumber", async () => {
   await withRoot(async (root) => {
     const repos = await mkdtemp(path.join(os.tmpdir(), "ocean-repos-"));
     const a = path.join(repos, "a");
@@ -495,12 +497,14 @@ test("rules and verify survive bind --add, unbind, rename, withNextTaskId and re
         ...manifest,
         rules: ["keep me"],
         verify: ["pnpm test"],
+        category: "company",
       }),
     );
     const keeps = async (label) => {
       const now = await manifestOf(root, label);
       assert.deepEqual(now.rules, ["keep me"], label);
       assert.deepEqual(now.verify, ["pnpm test"], label);
+      assert.equal(now.category, "company", label);
     };
     await bindProject("lab", b, { addPath: true });
     await keeps("lab");
@@ -510,6 +514,31 @@ test("rules and verify survive bind --add, unbind, rename, withNextTaskId and re
     await keeps("lab");
     await renameProject("lab", "lab2");
     await keeps("lab2");
+  });
+});
+
+test("category is optional, one of a fixed set, and a bad one never unbinds the project", async () => {
+  await withRoot(async (root) => {
+    await writeRaw(root, "work", { category: "company" });
+    await writeRaw(root, "mine", {});
+    await writeRaw(root, "typo", { category: "compnay" });
+    await writeRaw(root, "shape", { category: ["personal"] });
+    const scan = await scanProjectManifests();
+    assert.deepEqual(scan.errors, []);
+    const byId = Object.fromEntries(scan.manifests.map((m) => [m.id, m]));
+    assert.equal(projectCategory(byId.work), "company");
+    assert.equal(projectCategory(byId.mine), undefined);
+    assert.throws(() => projectCategory(byId.typo), /category must be one of/);
+    assert.throws(() => projectCategory(byId.shape), /category must be one of/);
+
+    const index = await renderProjectIndex();
+    assert.match(
+      index,
+      /\| Project \| Name \| Category \| Paths \| Registered \|/,
+    );
+    assert.match(index, /\| `work` \| work \| company \| — \|/);
+    assert.match(index, /\| `mine` \| mine \| — \| — \|/);
+    assert.match(index, /\| `typo` \| typo \| invalid \| — \|/);
   });
 });
 
@@ -550,5 +579,46 @@ test("tasks renumber --write keeps rules and verify", async () => {
     assert.equal(now.prefix, "LB");
     assert.deepEqual(now.rules, ["keep me"]);
     assert.deepEqual(now.verify, ["pnpm test"]);
+  });
+});
+
+test("project list --category keeps only that category and rejects an unknown one", async () => {
+  await withRoot(async (root) => {
+    const repos = await mkdtemp(path.join(os.tmpdir(), "ocean-cat-"));
+    await mkdir(path.join(repos, "a"));
+    await mkdir(path.join(repos, "b"));
+    await bindProject("work", path.join(repos, "a"));
+    await bindProject("mine", path.join(repos, "b"));
+    const file = path.join(projects(root), "work", "project.json");
+    const manifest = JSON.parse(await readFile(file, "utf8"));
+    await writeFile(file, JSON.stringify({ ...manifest, category: "company" }));
+    const list = (...args) =>
+      spawnSync(
+        process.execPath,
+        [path.resolve("dist/main.js"), "project", "list", ...args],
+        {
+          cwd: root,
+          env: { ...process.env, OCEAN_ROOT: root },
+          encoding: "utf8",
+        },
+      );
+
+    const all = list();
+    assert.equal(all.status, 0, all.stderr);
+    const rows = JSON.parse(all.stdout);
+    assert.deepEqual(rows.map((row) => row.id).sort(), ["mine", "work"]);
+    assert.equal(rows.find((row) => row.id === "work").category, "company");
+    assert.equal(rows.find((row) => row.id === "mine").category, undefined);
+
+    const company = list("--category", "company");
+    assert.equal(company.status, 0, company.stderr);
+    assert.deepEqual(
+      JSON.parse(company.stdout).map((row) => row.id),
+      ["work"],
+    );
+
+    const bad = list("--category", "nope");
+    assert.equal(bad.status, 1);
+    assert.match(bad.stderr, /--category company\|personal/);
   });
 });

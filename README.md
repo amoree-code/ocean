@@ -32,7 +32,7 @@ cannot be committed by accident.
 │   ├── registry.md
 │   ├── backlog.md
 │   └── <project>/             # shown here as _project/
-│       ├── project.json       # id, paths, tags: company | personal | freelance first
+│       ├── project.json       # id, paths, category, tags
 │       ├── README.md
 │       ├── memory/
 │       ├── docs/

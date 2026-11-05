@@ -27,6 +27,8 @@ import {
   knownTaskPrefixes,
   listProjectBindings,
   migrateProjectBindings,
+  PROJECT_CATEGORIES,
+  projectCategory,
   renameProject,
   renderProjectIndex,
   resolveProject,
@@ -687,13 +689,41 @@ async function commandProject(): Promise<void> {
       if (result.conflict) process.exitCode = 2;
     }
   } else if (action === "list") {
-    const { errors } = await scanProjectManifests();
+    const flag = process.argv.indexOf("--category");
+    const wanted = flag >= 0 ? process.argv[flag + 1] : undefined;
+    if (
+      flag >= 0 &&
+      !(PROJECT_CATEGORIES as readonly string[]).includes(wanted ?? "")
+    ) {
+      console.error(
+        `Usage: ocean project list [--category ${PROJECT_CATEGORIES.join("|")}]`,
+      );
+      process.exitCode = 1;
+      return;
+    }
+    const { manifests, errors } = await scanProjectManifests();
     for (const { file, error } of errors)
       console.error(`skipped invalid ${file}: ${error}`);
-    const bindings = (await listProjectBindings()).map((binding) => ({
-      ...binding,
-      gitRoot: binding.gitRoot ?? findGitRoot(binding.path),
-    }));
+    const categories = new Map<string, string>();
+    for (const manifest of manifests) {
+      try {
+        const category = projectCategory(manifest);
+        if (category) categories.set(manifest.id, category);
+      } catch (error) {
+        console.error(
+          `${manifest.id}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+    const bindings = (await listProjectBindings())
+      .map((binding) => ({
+        ...binding,
+        gitRoot: binding.gitRoot ?? findGitRoot(binding.path),
+        ...(categories.has(binding.id)
+          ? { category: categories.get(binding.id) }
+          : {}),
+      }))
+      .filter((binding) => !wanted || binding.category === wanted);
     console.log(JSON.stringify(bindings, null, 2));
     if (errors.length) process.exitCode = 2;
   } else if (action === "register") {
@@ -736,7 +766,7 @@ async function commandProject(): Promise<void> {
     else console.log(await renderProjectIndex());
   } else {
     console.error(
-      "Usage: ocean project resolve [path]|bind <name> <path> [--add]|register [path]|unbind <path>|rename <id> <new-id>|list|migrate [--write]|index [--write]",
+      "Usage: ocean project resolve [path]|bind <name> <path> [--add]|register [path]|unbind <path>|rename <id> <new-id>|list [--category <name>]|migrate [--write]|index [--write]",
     );
     process.exitCode = 1;
   }

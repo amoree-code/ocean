@@ -159,7 +159,19 @@ export type ProjectManifest = {
   // (T-305). Kept as written like rules; read through projectTags/projectFormerPaths.
   tags?: unknown;
   formerPaths?: unknown;
+  // Who the project belongs to, one of PROJECT_CATEGORIES. Kept as written like rules; read
+  // through projectCategory.
+  category?: unknown;
 };
+
+export const PROJECT_CATEGORIES = [
+  "company",
+  "personal",
+  "freelance",
+  "former-company",
+  "vendor",
+] as const;
+export type ProjectCategory = (typeof PROJECT_CATEGORIES)[number];
 
 export const MAX_PROJECT_RULES = 10;
 export const MAX_PROJECT_RULE_BYTES = 200;
@@ -271,6 +283,19 @@ export function projectTags(manifest: Pick<ProjectManifest, "tags">): string[] {
   );
 }
 
+// The category, undefined when none is set, or an Error naming the allowed values.
+export function projectCategory(
+  manifest: Pick<ProjectManifest, "category">,
+): ProjectCategory | undefined {
+  if (manifest.category === undefined) return undefined;
+  if (
+    typeof manifest.category !== "string" ||
+    !(PROJECT_CATEGORIES as readonly string[]).includes(manifest.category)
+  )
+    throw new Error(`category must be one of ${PROJECT_CATEGORIES.join(", ")}`);
+  return manifest.category as ProjectCategory;
+}
+
 export function projectFormerPaths(
   manifest: Pick<ProjectManifest, "formerPaths">,
 ): string[] {
@@ -320,6 +345,7 @@ function parseManifest(folder: string, raw: string) {
     ...(parsed.formerPaths !== undefined
       ? { formerPaths: parsed.formerPaths }
       : {}),
+    ...(parsed.category !== undefined ? { category: parsed.category } : {}),
   } satisfies ProjectManifest;
 }
 
@@ -851,9 +877,17 @@ export async function renderProjectIndex(): Promise<string> {
   // Table cells: a `|` or a line break in a name or path would split the row.
   const cell = (value: string) =>
     value.replace(/[\r\n]+/g, " ").replaceAll("|", "\\|");
+  // A bad category shows as invalid instead of failing the whole index.
+  const category = (manifest: ProjectManifest) => {
+    try {
+      return projectCategory(manifest) ?? "—";
+    } catch {
+      return "invalid";
+    }
+  };
   const rows = (await listProjectManifests()).map(
     (manifest) =>
-      `| \`${manifest.id}\` | ${cell(manifest.name)} | ${
+      `| \`${manifest.id}\` | ${cell(manifest.name)} | ${category(manifest)} | ${
         manifest.paths.length
           ? manifest.paths.map((entry) => `\`${cell(entry)}\``).join("<br>")
           : "—"
@@ -863,8 +897,8 @@ export async function renderProjectIndex(): Promise<string> {
     INDEX_BEGIN,
     "## Projects (from project.json)",
     "",
-    "| Project | Name | Paths | Registered |",
-    "|---|---|---|---|",
+    "| Project | Name | Category | Paths | Registered |",
+    "|---|---|---|---|---|",
     ...rows,
     INDEX_END,
   ].join("\n");
