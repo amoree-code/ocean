@@ -407,7 +407,7 @@ async function checkProjectCategories(): Promise<Finding[]> {
     .map(({ file, error }) => ({
       code: "PROJECT_DUPLICATE_ID",
       severity: "FAIL",
-      path: path.relative(oceanPath(), file),
+      path: path.relative(oceanPath(), file).split(path.sep).join("/"),
       message: `${error}; merge or rename one of them`,
       fixable: false,
     }));
