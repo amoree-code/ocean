@@ -7,7 +7,7 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
-- feat(T-312): releases are automatic. Every push to `main` with something pending bumps the version (major on a `type!:` line, minor on `feat`, else patch), moves the Unreleased lines under the version in both changelogs, consumes the changesets, tags `v<version>`, writes the GitHub release, and publishes to npm through trusted publishing (no stored token) and to GitHub Packages. The 45 changesets that shipped in 1.0.0 are removed (PR pending)
+- feat(T-312): releases are automatic. Every push to `main` with something pending bumps the version (major on a `type!:` line, minor on `feat`, else patch), moves the Unreleased lines under the version in both changelogs, consumes the changesets, tags `v<version>`, writes the GitHub release, and publishes to npm through trusted publishing (no stored token) and to GitHub Packages. The 45 changesets that shipped in 1.0.0 are removed (#262)
 - ci: each published release also goes to GitHub Packages as `@amoree-code/ocean` (the npm tarball, renamed to the scope GitHub Packages requires), from a `production` environment; `workflow_dispatch` with a tag publishes an existing release (#261)
 - feat(T-310): one repository rooted at `~/ocean`: the engine moves to `kernel/` (history kept), every workspace folder ships as an empty `.gitkeep`, and the root `.gitignore` is a whitelist so no private file can be committed; `lefthook.yml` moves to the git root and CI runs inside `kernel/` (#260)
 
