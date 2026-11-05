@@ -65,9 +65,7 @@ ocean setup
 The npm package is `@ameer.abdulkareem/ocean` (the name `ocean` belongs to another project); the
 command is `ocean`.
 
-**Release status:** the npm package is prepared but not yet published. Until it is, install
-from a checkout (see [Development](#development)) or from a tarball built with
-`pnpm release:pack` ([release guide](docs/release.md)).
+The same release is on GitHub Packages as `@amoree-code/ocean`.
 
 `ocean setup` creates the private workspace and connects your shell:
 
