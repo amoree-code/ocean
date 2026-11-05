@@ -10,7 +10,7 @@ import {
   oceanRoot,
   PERSONAL_DIR,
   PROJECTS_DIR,
-  projectFolder,
+  projectDir,
   SYSTEM_DIR,
 } from "@ocean/core/shared/paths.js";
 import {
@@ -27,9 +27,7 @@ import { listTasks } from "./tasks-command.js";
 async function existingMemoryFiles(project: string | null): Promise<string[]> {
   const candidates = [path.posix.join(PERSONAL_DIR, "MEMORY.md")];
   if (project)
-    candidates.push(
-      path.posix.join(PROJECTS_DIR, projectFolder(project), "MEMORY.md"),
-    );
+    candidates.push(path.posix.join(projectDir(project), "MEMORY.md"));
   const found: string[] = [];
   for (const relative of candidates) {
     try {

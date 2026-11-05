@@ -1,12 +1,13 @@
 import { lstatSync } from "node:fs";
 import path from "node:path";
-import { isValidProjectId } from "@ocean/core/domain/context/project-id.js";
 import { MemoryContractError } from "@ocean/core/domain/mcp/memory-contract.js";
 import {
   INBOX_DIR,
   oceanPath,
   PERSONAL_DIR,
   PROJECTS_DIR,
+  projectDir,
+  projectPathParts,
   resolveWithin,
   SYSTEM_DIR,
 } from "@ocean/core/shared/paths.js";
@@ -111,22 +112,19 @@ export function permanentRecord(relative: string): PermanentRecord {
   let root: string;
   let rest: string[];
   const personal = under(PERSONAL_DIR);
-  const [project, folder, ...inProject] = under(PROJECTS_DIR) ?? [];
+  const inProjects = under(PROJECTS_DIR);
+  const project = inProjects ? projectPathParts(inProjects) : null;
+  const [folder, ...inProject] = project?.rest ?? [];
   if (personal) {
     root = oceanPath(PERSONAL_DIR);
     rest = personal;
-  } else if (
-    project &&
-    folder === "memory" &&
-    inProject.length &&
-    isValidProjectId(project)
-  ) {
-    root = oceanPath(PROJECTS_DIR, project, "memory");
+  } else if (project && folder === "memory" && inProject.length) {
+    root = oceanPath(projectDir(project.id), "memory");
     rest = inProject;
   } else
     throw new MemoryContractError(
       "OUT_OF_ROOT",
-      `records live under ${PERSONAL_DIR}/ or ${PROJECTS_DIR}/<project>/memory/`,
+      `records live under ${PERSONAL_DIR}/ or ${PROJECTS_DIR}/[<category>/]<project>/memory/`,
     );
   let file: string;
   try {
@@ -151,19 +149,17 @@ export function projectDocument(relative: string): PermanentRecord {
   const name = parts.at(-1) ?? "";
   if (!name.toLowerCase().endsWith(".md"))
     throw new MemoryContractError("INVALID", "a doc must be a .md file");
-  const [projects, project, folder, ...inside] = parts;
-  if (
-    projects !== PROJECTS_DIR ||
-    folder !== "docs" ||
-    !inside.length ||
-    !project ||
-    !isValidProjectId(project)
-  )
+  const joined = parts.join("/");
+  const project = joined.startsWith(`${PROJECTS_DIR}/`)
+    ? projectPathParts(joined.slice(PROJECTS_DIR.length + 1).split("/"))
+    : null;
+  const [folder, ...inside] = project?.rest ?? [];
+  if (!project || folder !== "docs" || !inside.length)
     throw new MemoryContractError(
       "OUT_OF_ROOT",
-      `docs live under ${PROJECTS_DIR}/<project>/docs/`,
+      `docs live under ${PROJECTS_DIR}/[<category>/]<project>/docs/`,
     );
-  const root = oceanPath(PROJECTS_DIR, project, "docs");
+  const root = oceanPath(projectDir(project.id), "docs");
   let file: string;
   try {
     file = resolveWithin(root, ...inside);

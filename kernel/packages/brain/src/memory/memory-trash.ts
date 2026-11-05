@@ -2,7 +2,11 @@ import { readdir, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { MemoryContractError } from "@ocean/core/domain/mcp/memory-contract.js";
 import { atomicWrite, withFileLock } from "@ocean/core/shared/fs-utils.js";
-import { oceanPath, resolveWithin } from "@ocean/core/shared/paths.js";
+import {
+  oceanPath,
+  resolveWithin,
+  withoutProjectCategory,
+} from "@ocean/core/shared/paths.js";
 import { syncMemoryIndexes } from "./index-sync.js";
 import {
   type AuditEntry,
@@ -75,9 +79,13 @@ export async function deleteMemoryRecord(options: {
 export async function memoryHistory(
   options: { path?: string; limit?: number } = {},
 ): Promise<{ entries: AuditEntry[] }> {
-  const wanted = options.path?.split("\\").join("/");
+  // Either layout names the same record: an entry written before its project moved into a
+  // category folder still answers to the new path, and the reverse (T-311).
+  const wanted = options.path
+    ? withoutProjectCategory(options.path.split("\\").join("/"))
+    : undefined;
   const entries = (await readAudit()).filter(
-    (entry) => !wanted || entry.path === wanted,
+    (entry) => !wanted || withoutProjectCategory(entry.path) === wanted,
   );
   const limit = Math.min(100, Math.max(1, options.limit ?? 20));
   return { entries: entries.slice(-limit).reverse() };

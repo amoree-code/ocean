@@ -20,6 +20,7 @@ import {
   oceanRoot,
   PERSONAL_DIR,
   PROJECTS_DIR,
+  projectDir,
   REGISTRY_DIR,
 } from "@ocean/core/shared/paths.js";
 import {
@@ -874,7 +875,7 @@ test("project.detect reports unbound for a directory outside any binding", () =>
 test("project.create requires an explicit absolute path and an approval", () =>
   withFixture(async (root) => {
     const classification = classifyIntent("start a new project called demo");
-    const target = path.join(root, PROJECTS_DIR, "demo");
+    const target = path.join(root, projectDir("demo", root));
     const noPath = await runOperation(
       "project.create",
       classification,
@@ -1264,8 +1265,7 @@ test("task.create in a project with a prefix issues PREFIX-nnn and advances its 
     const classification = classifyIntent("create a new task called First");
     const target = path.join(
       root,
-      PROJECTS_DIR,
-      "lab",
+      projectDir("lab", root),
       "tasks",
       first,
       "task.md",
@@ -1279,7 +1279,7 @@ test("task.create in a project with a prefix issues PREFIX-nnn and advances its 
     assert.equal(await peekNextTaskId("lab"), "LAB-002");
     const manifest = JSON.parse(
       await readFile(
-        path.join(root, PROJECTS_DIR, "lab", "project.json"),
+        path.join(root, projectDir("lab", root), "project.json"),
         "utf8",
       ),
     );

@@ -412,10 +412,13 @@ test("a Claude project the machine has seen is registered by name; a topic stays
       name: "tomato-bed",
     });
     assert.equal(fresh.registered, "garden-notes");
-    assert.equal(fresh.filed, "04-projects/garden-notes/memory/tomato-bed.md");
+    assert.equal(
+      fresh.filed,
+      "04-projects/uncategorized/garden-notes/memory/tomato-bed.md",
+    );
     const manifest = JSON.parse(
       await readFile(
-        path.join(root, "04-projects/garden-notes/project.json"),
+        path.join(root, "04-projects/uncategorized/garden-notes/project.json"),
         "utf8",
       ),
     );
@@ -425,7 +428,9 @@ test("a Claude project the machine has seen is registered by name; a topic stays
     assert.deepEqual(manifest.tags, ["claude.ai"]);
     for (const entry of ["tasks", "memory", "docs", "MEMORY.md"])
       assert.ok(
-        await exists(path.join(root, "04-projects/garden-notes", entry)),
+        await exists(
+          path.join(root, "04-projects/uncategorized/garden-notes", entry),
+        ),
         entry,
       );
     // The search finds it by the project's name.
@@ -446,7 +451,7 @@ test("a Claude project the machine has seen is registered by name; a topic stays
     const found = JSON.parse(response.result.content[0].text);
     assert.equal(
       found.results[0].file,
-      "04-projects/garden-notes/memory/tomato-bed.md",
+      "04-projects/uncategorized/garden-notes/memory/tomato-bed.md",
     );
 
     // A topic the client calls a project is not a Claude project: nothing is registered.
@@ -505,7 +510,7 @@ test("a Claude project is never registered over a folder without a manifest, or 
     });
     assert.equal(result.registered, undefined);
     assert.equal(
-      await exists(path.join(root, "04-projects/garden-notes")),
+      await exists(path.join(root, "04-projects/uncategorized/garden-notes")),
       false,
     );
   });

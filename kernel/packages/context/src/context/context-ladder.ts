@@ -15,8 +15,7 @@ import {
   KNOWLEDGE_DIR,
   oceanRoot,
   PERSONAL_DIR,
-  PROJECTS_DIR,
-  projectFolder,
+  projectDir,
   resolveStorePath,
   resolveWithin,
   storeRelativeToRoot,
@@ -367,7 +366,7 @@ async function planRankedReferencesViaIndex(
       absolute: resolveWithin(root, relative),
     })),
     ...result.results.map((hit) => ({
-      relative: storeRelativeToRoot(hit.path),
+      relative: storeRelativeToRoot(hit.path, root),
       absolute: resolveStorePath(root, hit.path),
     })),
   ];
@@ -406,11 +405,7 @@ async function memoryFiles(
 ): Promise<string[]> {
   const files = [path.posix.join(PERSONAL_DIR, "MEMORY.md")];
   if (projectId) {
-    const relative = path.posix.join(
-      PROJECTS_DIR,
-      projectFolder(projectId),
-      "MEMORY.md",
-    );
+    const relative = path.posix.join(projectDir(projectId, root), "MEMORY.md");
     try {
       if ((await stat(resolveWithin(root, relative))).isFile())
         files.push(relative);

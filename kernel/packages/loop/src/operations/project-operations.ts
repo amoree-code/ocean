@@ -4,7 +4,8 @@ import type { IntentClassification } from "@ocean/context/context/intent-router.
 import {
   oceanPath,
   PROJECTS_DIR,
-  projectFolder,
+  projectDir,
+  projectSubdir,
 } from "@ocean/core/shared/paths.js";
 import {
   bindProject,
@@ -35,9 +36,7 @@ export async function projectDetect(
     provenance: "project",
     sourcePath:
       resolution.status === "bound"
-        ? relativeToOcean(
-            oceanPath(PROJECTS_DIR, projectFolder(resolution.projectId)),
-          )
+        ? relativeToOcean(oceanPath(projectDir(resolution.projectId)))
         : "",
     freshness: "unknown",
     confidence: classification.confidence,
@@ -76,7 +75,10 @@ export async function projectCreate(
       "write refused: project path contains a null byte",
     );
 
-  const target = validateWriteTarget(PROJECTS_DIR, name.value);
+  const target = validateWriteTarget(
+    PROJECTS_DIR,
+    projectSubdir(oceanPath(PROJECTS_DIR), name.value),
+  );
   if (!target.valid)
     return operationResult("project.create", `write refused: ${target.reason}`);
   const approvalCheck = approvalMatchesTarget(
@@ -123,7 +125,7 @@ export async function projectUpdate(
   }
   const target = validateWriteTarget(
     PROJECTS_DIR,
-    projectFolder(project.projectId),
+    projectSubdir(oceanPath(PROJECTS_DIR), project.projectId),
   );
   if (!target.valid)
     return operationResult("project.update", `write refused: ${target.reason}`);

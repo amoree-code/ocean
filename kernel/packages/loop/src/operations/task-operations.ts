@@ -9,7 +9,11 @@ import {
   FRONTMATTER_READ_BYTES,
 } from "@ocean/core/shared/fs-utils.js";
 import { localDate } from "@ocean/core/shared/local-date.js";
-import { PROJECTS_DIR, projectFolder } from "@ocean/core/shared/paths.js";
+import {
+  oceanPath,
+  PROJECTS_DIR,
+  projectSubdir,
+} from "@ocean/core/shared/paths.js";
 import { withNextTaskId } from "@ocean/core/shared/project-resolution.js";
 import {
   resolveTaskReference,
@@ -204,7 +208,7 @@ export async function taskCreate(
       "write refused: an explicit single-line task title is required",
     );
   // Resolve the folder once so the id and the write target can never disagree.
-  const folder = projectFolder(project.projectId);
+  const folder = projectSubdir(oceanPath(PROJECTS_DIR), project.projectId);
   const today = localDate();
   const objective = (options.content ?? title).trim().replace(/[\r\n]+/g, " ");
   // The approval is bound to the path of the id that was predicted when it was granted. The id
@@ -295,7 +299,7 @@ export async function taskUpdate(
     );
   const target = validateWriteTarget(
     PROJECTS_DIR,
-    projectFolder(project.projectId),
+    projectSubdir(oceanPath(PROJECTS_DIR), project.projectId),
     "tasks",
     resolved.location.id,
     "task.md",
@@ -377,7 +381,7 @@ export async function taskCompleteOperation(
     );
   const target = validateWriteTarget(
     PROJECTS_DIR,
-    projectFolder(project.projectId),
+    projectSubdir(oceanPath(PROJECTS_DIR), project.projectId),
     "tasks",
     resolved.location.id,
     "task.md",

@@ -1,5 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
+import { PROJECT_CATEGORY_FOLDERS } from "@ocean/core/domain/context/project-id.js";
 import {
   type Skill,
   type SkillIndexEntry,
@@ -97,13 +98,7 @@ function projectSkillRoot(cwd: string): string | null {
   if (!relative || relative.startsWith("..") || path.isAbsolute(relative))
     return null;
   const parts = relative.split(path.sep);
-  const grouped = [
-    "work",
-    "freelance",
-    "personal",
-    "vendor",
-    "archive",
-  ].includes(parts[0] ?? "");
+  const grouped = PROJECT_CATEGORY_FOLDERS.includes(parts[0] ?? "");
   const projectParts = grouped ? parts.slice(0, 2) : parts.slice(0, 1);
   return path.join(projectsRoot, ...projectParts, "skills");
 }

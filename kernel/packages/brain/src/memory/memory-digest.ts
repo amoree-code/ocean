@@ -1,10 +1,9 @@
 import { readdir, readFile, stat } from "node:fs/promises";
-import path from "node:path";
 import { localDate } from "@ocean/core/shared/local-date.js";
 import {
+  listProjectDirs,
   oceanPath,
   PERSONAL_DIR,
-  PROJECTS_DIR,
 } from "@ocean/core/shared/paths.js";
 import { readAudit } from "./memory-audit.js";
 import { listCandidates } from "./memory-review.js";
@@ -24,21 +23,15 @@ async function openConflicts(): Promise<number> {
 }
 
 async function projectsWithoutMemory(): Promise<string[]> {
-  const root = oceanPath(PROJECTS_DIR);
   const missing: string[] = [];
-  for (const entry of await readdir(root, { withFileTypes: true }).catch(
-    () => [],
-  )) {
-    if (!entry.isDirectory() || /^[._]/.test(entry.name)) continue;
-    const isProject = await stat(path.join(root, entry.name, "project.json"))
+  for (const { id, dir } of listProjectDirs()) {
+    const isProject = await stat(oceanPath(dir, "project.json"))
       .then(() => true)
       .catch(() => false);
     if (!isProject) continue;
-    const records = await readdir(path.join(root, entry.name, "memory")).catch(
-      () => [],
-    );
+    const records = await readdir(oceanPath(dir, "memory")).catch(() => []);
     if (!records.some((name) => name.endsWith(".md") && name !== "MEMORY.md"))
-      missing.push(entry.name);
+      missing.push(id);
   }
   return missing.sort();
 }

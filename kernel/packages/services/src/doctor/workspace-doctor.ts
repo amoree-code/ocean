@@ -24,7 +24,7 @@ import {
   oceanPath,
   POLICIES_DIR,
   PROJECTS_DIR,
-  projectFolder,
+  projectDir,
   repoPath,
   SYSTEM_DIR,
   workspaceTasksRoot,
@@ -337,7 +337,7 @@ async function checkPermissions(): Promise<Finding[]> {
 async function checkProjectLayout(): Promise<Finding[]> {
   const findings: Finding[] = [];
   for (const manifest of await listProjectManifests()) {
-    const relative = path.join(PROJECTS_DIR, projectFolder(manifest.id));
+    const relative = projectDir(manifest.id);
     const entries = await readdir(oceanPath(relative)).catch(
       (): string[] => [],
     );

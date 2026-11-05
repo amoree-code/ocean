@@ -1,8 +1,7 @@
 import type { BrainIndexPort } from "@ocean/core/domain/ports/brain-index-port.js";
 import {
   oceanPath,
-  PROJECTS_DIR,
-  projectFolder,
+  projectDir,
   sameProject,
 } from "@ocean/core/shared/paths.js";
 import { resolveProject } from "@ocean/core/shared/project-resolution.js";
@@ -41,7 +40,7 @@ async function activeProjectId(cwd: string): Promise<ProjectScope> {
 }
 
 export function taskRoot(projectId: string): string {
-  return oceanPath(PROJECTS_DIR, projectFolder(projectId), "tasks");
+  return oceanPath(projectDir(projectId), "tasks");
 }
 
 export async function crossProjectGuard(

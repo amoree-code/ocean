@@ -8,7 +8,7 @@ import {
 import {
   oceanPath,
   PROJECTS_DIR,
-  projectFolder,
+  projectSubdir,
   resolveWithin,
   WORKSPACE_PROJECT_ID,
 } from "@ocean/core/shared/paths.js";
@@ -36,7 +36,7 @@ export async function listTasks(
 ): Promise<TaskSummary[]> {
   const root = resolveWithin(
     oceanPath(PROJECTS_DIR),
-    projectFolder(projectId),
+    projectSubdir(oceanPath(PROJECTS_DIR), projectId),
     "tasks",
   );
   const records: TaskSummary[] = [];
@@ -93,7 +93,7 @@ export async function projectsHoldingTask(id: string): Promise<string[]> {
         await readFile(
           path.join(
             oceanPath(PROJECTS_DIR),
-            project,
+            projectSubdir(oceanPath(PROJECTS_DIR), project),
             "tasks",
             spelling,
             "task.md",
@@ -135,7 +135,7 @@ export async function listTasksForFolder(options: {
     // resolveWithin throws on its own for an id that escapes the projects root.
     const folder = resolveWithin(
       oceanPath(PROJECTS_DIR),
-      projectFolder(options.project),
+      projectSubdir(oceanPath(PROJECTS_DIR), options.project),
     );
     const isProject = await stat(folder).then(
       (entry) => entry.isDirectory(),

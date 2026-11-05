@@ -1,8 +1,13 @@
-import { realpathSync, statSync } from "node:fs";
+import { readdirSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { isValidProjectId } from "../domain/context/project-id.js";
+import {
+  isValidProjectId,
+  PROJECT_CATEGORY_FOLDERS,
+  type ProjectCategory,
+  UNCATEGORIZED,
+} from "../domain/context/project-id.js";
 
 // The engine root is the `ocean` package root — skills/, templates/, dist/main.js. Core
 // cannot find it from its own location (in an installed tree the two packages can sit
@@ -115,6 +120,7 @@ export const BRAIN_RECORD_DIRS = [
 ] as const;
 // The workspace's own project. Callers use these helpers instead of a literal.
 export const WORKSPACE_PROJECT_ID = "ocean";
+export const WORKSPACE_PROJECT_CATEGORY: ProjectCategory = "personal";
 
 export function sameProject(a: string, b: string): boolean {
   return a === b || (isWorkspaceProject(a) && isWorkspaceProject(b));
@@ -132,25 +138,126 @@ function isDirectory(target: string): boolean {
   }
 }
 
-// The folder name to use under PROJECTS_DIR for a project id.
+// The folder name to use for a project id.
 export function projectFolder(projectId: string): string {
   return isWorkspaceProject(projectId) ? WORKSPACE_PROJECT_ID : projectId;
 }
 
-// Inverse of a project's tasks root (`<ocean>/04-projects/<id>/tasks`): the project id, or
-// null for any other directory.
+// A project folder: its id, its category folder (absent while it still sits flat at
+// 04-projects/<id>/) and its path relative to the Ocean root, `/`-separated.
+export type ProjectDir = { id: string; category?: string; dir: string };
+
+// Every project folder, in a category folder or flat, sorted by id. `_template`-style and dot
+// folders are not projects. Both layouts are read until every project is moved (T-311).
+export function listProjectDirs(root: string = oceanRoot()): ProjectDir[] {
+  const children = (dir: string) => {
+    try {
+      return readdirSync(path.join(root, dir), { withFileTypes: true })
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => entry.name);
+    } catch {
+      return [];
+    }
+  };
+  const found: ProjectDir[] = [];
+  for (const name of children(PROJECTS_DIR)) {
+    if (PROJECT_CATEGORY_FOLDERS.includes(name)) {
+      const parent = path.posix.join(PROJECTS_DIR, name);
+      for (const id of children(parent))
+        if (isValidProjectId(id))
+          found.push({
+            id,
+            category: name,
+            dir: path.posix.join(parent, id),
+          });
+    } else if (isValidProjectId(name))
+      found.push({ id: name, dir: path.posix.join(PROJECTS_DIR, name) });
+  }
+  // One id in two folders sorts in the order projectDir searches, so both pick the same one.
+  const rank = (entry: ProjectDir) =>
+    entry.category === undefined
+      ? PROJECT_CATEGORY_FOLDERS.length
+      : PROJECT_CATEGORY_FOLDERS.indexOf(entry.category);
+  return found.sort((a, b) =>
+    a.id === b.id ? rank(a) - rank(b) : a.id < b.id ? -1 : 1,
+  );
+}
+
+// One project's folder relative to a 04-projects directory, `<category>/<id>` or a flat
+// `<id>`: where it is now, or, for a project that does not exist yet, where a new one goes —
+// UNCATEGORIZED, except the workspace's own project, which is the owner's: personal.
+export function projectSubdir(projectsDir: string, projectId: string): string {
+  const id = projectFolder(projectId);
+  // Not an id (a category name, `..`): left as written for the caller's own checks to refuse.
+  if (!isValidProjectId(id)) return id;
+  for (const category of PROJECT_CATEGORY_FOLDERS)
+    if (isDirectory(path.join(projectsDir, category, id)))
+      return path.posix.join(category, id);
+  if (isDirectory(path.join(projectsDir, id))) return id;
+  return path.posix.join(
+    id === WORKSPACE_PROJECT_ID ? WORKSPACE_PROJECT_CATEGORY : UNCATEGORIZED,
+    id,
+  );
+}
+
+// The same folder relative to the Ocean root.
+export function projectDir(
+  projectId: string,
+  root: string = oceanRoot(),
+): string {
+  return path.posix.join(
+    PROJECTS_DIR,
+    projectSubdir(path.join(root, PROJECTS_DIR), projectId),
+  );
+}
+
+// A path under PROJECTS_DIR, split into the project it names and what follows: either layout,
+// `<id>/…` or `<category>/<id>/…`, so a path written before a project moved still finds it.
+// Resolve the project's folder with projectDir, never from the category written here.
+export function projectPathParts(
+  parts: string[],
+): { id: string; rest: string[] } | null {
+  const [first, second, ...more] = parts;
+  if (first && PROJECT_CATEGORY_FOLDERS.includes(first))
+    return second && isValidProjectId(second)
+      ? { id: second, rest: more }
+      : null;
+  return first && isValidProjectId(first)
+    ? { id: first, rest: second === undefined ? [] : [second, ...more] }
+    : null;
+}
+
+// A workspace-relative path with any category folder dropped (`04-projects/<id>/…`), so one
+// record compares equal before and after its project moves between category folders.
+export function withoutProjectCategory(relative: string): string {
+  if (!relative.startsWith(`${PROJECTS_DIR}/`)) return relative;
+  const project = projectPathParts(
+    relative.slice(PROJECTS_DIR.length + 1).split("/"),
+  );
+  return project
+    ? [PROJECTS_DIR, project.id, ...project.rest].join("/")
+    : relative;
+}
+
+// Inverse of a project's tasks root (`<ocean>/04-projects/[<category>/]<id>/tasks`): the
+// project id, or null for any other directory.
 export function projectOfTasksRoot(root: string): string | null {
   const resolved = path.resolve(root);
   if (path.basename(resolved) !== "tasks") return null;
   const folder = path.dirname(resolved);
-  if (path.dirname(folder) !== path.resolve(oceanPath(PROJECTS_DIR)))
-    return null;
   const id = path.basename(folder);
-  return isValidProjectId(id) ? id : null;
+  if (!isValidProjectId(id)) return null;
+  const projects = path.resolve(oceanPath(PROJECTS_DIR));
+  const parent = path.dirname(folder);
+  if (parent === projects) return id;
+  return path.dirname(parent) === projects &&
+    PROJECT_CATEGORY_FOLDERS.includes(path.basename(parent))
+    ? id
+    : null;
 }
 
 export function workspaceTasksRoot(root: string = oceanRoot()): string {
-  return path.join(root, PROJECTS_DIR, WORKSPACE_PROJECT_ID, "tasks");
+  return path.join(root, projectDir(WORKSPACE_PROJECT_ID, root), "tasks");
 }
 
 export const SYSTEM_DIR = bridgePrefix(oceanRoot());
@@ -175,15 +282,14 @@ export const STORE_DIR = {
 // Project memory (T-296) is "project/<id>/<path>" for 04-projects/<id>/memory/<path>, and
 // project docs (T-307) "project-docs/<id>/<path>" for 04-projects/<id>/docs/<path>.
 // These map that convention back to the real PARA location.
-function storeParts(storePath: string): string[] {
+function storeParts(storePath: string, root: string): string[] {
   const [store, ...rest] = storePath.split("/");
   if (store === "project" || store === "project-docs") {
     const [project, ...inside] = rest;
     if (!project || project === "." || project === "..")
       throw new Error(`invalid project store path '${storePath}'`);
     return [
-      PROJECTS_DIR,
-      project,
+      ...projectDir(project, root).split("/"),
       store === "project" ? "memory" : "docs",
       ...inside,
     ];
@@ -194,11 +300,14 @@ function storeParts(storePath: string): string[] {
 }
 
 export function resolveStorePath(root: string, storePath: string): string {
-  return resolveWithin(root, ...storeParts(storePath));
+  return resolveWithin(root, ...storeParts(storePath, root));
 }
 
-export function storeRelativeToRoot(storePath: string): string {
-  return storeParts(storePath).join("/");
+export function storeRelativeToRoot(
+  storePath: string,
+  root: string = oceanRoot(),
+): string {
+  return storeParts(storePath, root).join("/");
 }
 
 export function oceanEnv(
