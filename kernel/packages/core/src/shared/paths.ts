@@ -1,4 +1,4 @@
-import { readdirSync, realpathSync, statSync } from "node:fs";
+import { existsSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -173,7 +173,7 @@ export function listProjectDirs(root: string = oceanRoot()): ProjectDir[] {
     } else if (isValidProjectId(name))
       found.push({ id: name, dir: path.posix.join(PROJECTS_DIR, name) });
   }
-  // One id in two folders sorts in the order projectDir searches, so both pick the same one.
+  // One id in two folders sorts in the order projectDir searches.
   const rank = (entry: ProjectDir) =>
     entry.category === undefined
       ? PROJECT_CATEGORY_FOLDERS.length
@@ -190,10 +190,18 @@ export function projectSubdir(projectsDir: string, projectId: string): string {
   const id = projectFolder(projectId);
   // Not an id (a category name, `..`): left as written for the caller's own checks to refuse.
   if (!isValidProjectId(id)) return id;
-  for (const category of PROJECT_CATEGORY_FOLDERS)
-    if (isDirectory(path.join(projectsDir, category, id)))
-      return path.posix.join(category, id);
-  if (isDirectory(path.join(projectsDir, id))) return id;
+  // A folder holding project.json wins over a bare one of the same name, so a stray empty
+  // folder never hides the project.
+  const found = [
+    ...PROJECT_CATEGORY_FOLDERS.map((category) =>
+      path.posix.join(category, id),
+    ),
+    id,
+  ].filter((candidate) => isDirectory(path.join(projectsDir, candidate)));
+  const withManifest = found.find((candidate) =>
+    existsSync(path.join(projectsDir, candidate, "project.json")),
+  );
+  if (withManifest ?? found[0]) return (withManifest ?? found[0]) as string;
   return path.posix.join(
     id === WORKSPACE_PROJECT_ID ? WORKSPACE_PROJECT_CATEGORY : UNCATEGORIZED,
     id,

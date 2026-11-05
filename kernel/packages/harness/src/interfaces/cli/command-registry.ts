@@ -27,6 +27,7 @@ import {
   knownTaskPrefixes,
   listProjectBindings,
   migrateProjectBindings,
+  moveProject,
   PROJECT_CATEGORIES,
   projectCategory,
   renameProject,
@@ -755,6 +756,28 @@ async function commandProject(): Promise<void> {
         process.exitCode = 2;
       }
     }
+  } else if (action === "move") {
+    const args = process.argv.slice(4);
+    const [id, category] = args.filter((arg) => arg !== "--write");
+    if (!id || !category) {
+      console.error(
+        `Usage: ocean project move <id> <${PROJECT_CATEGORIES.join("|")}> [--write]`,
+      );
+      process.exitCode = 1;
+    } else {
+      try {
+        console.log(
+          JSON.stringify(
+            await moveProject(id, category, args.includes("--write")),
+            null,
+            2,
+          ),
+        );
+      } catch (error) {
+        console.error(error instanceof Error ? error.message : String(error));
+        process.exitCode = 2;
+      }
+    }
   } else if (action === "migrate") {
     const result = await migrateProjectBindings(
       process.argv.includes("--write"),
@@ -766,7 +789,7 @@ async function commandProject(): Promise<void> {
     else console.log(await renderProjectIndex());
   } else {
     console.error(
-      "Usage: ocean project resolve [path]|bind <name> <path> [--add]|register [path]|unbind <path>|rename <id> <new-id>|list [--category <name>]|migrate [--write]|index [--write]",
+      "Usage: ocean project resolve [path]|bind <name> <path> [--add]|register [path]|unbind <path>|rename <id> <new-id>|move <id> <category> [--write]|list [--category <name>]|migrate [--write]|index [--write]",
     );
     process.exitCode = 1;
   }

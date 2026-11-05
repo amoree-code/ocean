@@ -12,6 +12,7 @@ import {
   readFile,
   realpath,
   rename,
+  rmdir,
   writeFile,
 } from "node:fs/promises";
 import os from "node:os";
@@ -25,6 +26,8 @@ import {
 } from "../domain/tasks/task-id.js";
 import { atomicWrite, registryFile, withFileLock } from "./fs-utils.js";
 import {
+  BRAIN_RECORD_DIRS,
+  CHARTER_DIR,
   isWorkspaceProject,
   listProjectDirs,
   oceanEnv,
@@ -374,7 +377,8 @@ export async function scanProjectManifests(): Promise<ProjectManifestScan> {
   const seen = new Set<string>();
   for (const { id, category, dir } of listProjectDirs()) {
     const file = oceanPath(dir, MANIFEST_FILE);
-    // One id in two category folders: the first (sorted) one is the project.
+    // One id with project.json in two folders: the first, where projectDir looks first, is the
+    // project. A folder without project.json claims nothing.
     if (seen.has(id)) {
       if (existsSync(file))
         scan.errors.push({
@@ -383,13 +387,14 @@ export async function scanProjectManifests(): Promise<ProjectManifestScan> {
         });
       continue;
     }
-    seen.add(id);
     try {
       scan.manifests.push(
         parseManifest(id, await readFile(file, "utf8"), category),
       );
+      seen.add(id);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+      seen.add(id);
       scan.errors.push({
         file,
         error: error instanceof Error ? error.message : String(error),
@@ -1259,6 +1264,110 @@ export async function unbindProjectPath(
       cacheBindings(await listProjectManifests(), keptLegacy),
     );
     return { removed };
+  });
+}
+
+// Workspace text that may name a project folder by path: the records, the projects, the charter.
+const REFERENCE_FILE = /\.(md|json|ya?ml|toml)$/i;
+const REFERENCE_MAX_BYTES = 2_000_000;
+
+// Rewrites `from` (a project folder relative to the Ocean root) to `to` in workspace text, as a
+// whole path: `04-projects/ocean` never touches `04-projects/ocean-ielts` or `ocean.md`, but
+// does match inside an absolute path and before a full stop. Dot folders are skipped. Returns
+// the files that change, relative to the Ocean root; writes them only when `write`.
+export async function rewriteProjectReferences(
+  from: string,
+  to: string,
+  write: boolean,
+): Promise<string[]> {
+  const escaped = from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(
+    `(?<![A-Za-z0-9_.-])${escaped}(?![A-Za-z0-9_-]|\\.[A-Za-z0-9])`,
+    "g",
+  );
+  const changed: string[] = [];
+  const visit = async (dir: string): Promise<void> => {
+    let entries: Dirent[];
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
+      const file = path.join(dir, entry.name);
+      if (entry.isDirectory()) await visit(file);
+      else if (
+        entry.isFile() &&
+        REFERENCE_FILE.test(entry.name) &&
+        statSync(file).size <= REFERENCE_MAX_BYTES
+      ) {
+        const text = await readFile(file, "utf8");
+        const next = text.replace(pattern, to);
+        if (next === text) continue;
+        changed.push(
+          path.relative(oceanRoot(), file).split(path.sep).join("/"),
+        );
+        if (write) await atomicWrite(file, next);
+      }
+    }
+  };
+  for (const root of new Set([...BRAIN_RECORD_DIRS, PROJECTS_DIR, CHARTER_DIR]))
+    await visit(oceanPath(root));
+  return changed.sort();
+}
+
+// Files a project under a category folder (T-311) and rewrites the workspace paths that name
+// its old folder. A dry run unless `write`: it reports the move and the files that would change.
+export async function moveProject(
+  id: string,
+  category: string,
+  write = false,
+): Promise<{
+  id: string;
+  from: string;
+  to: string;
+  moved: boolean;
+  references: string[];
+}> {
+  if (!isValidProjectId(id))
+    throw new Error("Project ids must be lowercase letters, digits, . _ or -");
+  if (!isProjectCategory(category))
+    throw new Error(`category must be one of ${PROJECT_CATEGORIES.join(", ")}`);
+  return withProjectsLock(async () => {
+    const manifest = (await listProjectManifests()).find(
+      (candidate) => candidate.id === projectFolder(id),
+    );
+    if (!manifest) throw new Error(`No project.json for '${id}'`);
+    const from = projectDir(manifest.id);
+    const to = path.posix.join(PROJECTS_DIR, category, manifest.id);
+    if (from === to)
+      return { id: manifest.id, from, to, moved: false, references: [] };
+    if (existsSync(oceanPath(to))) throw new Error(`${to} already exists`);
+    if (!write)
+      return {
+        id: manifest.id,
+        from,
+        to,
+        moved: false,
+        references: await rewriteProjectReferences(from, to, false),
+      };
+    await mkdir(path.dirname(oceanPath(to)), { recursive: true });
+    await rename(oceanPath(from), oceanPath(to));
+    // A category folder left empty goes; a flat project's written category is dropped.
+    if (folderCategory(from))
+      await rmdir(path.dirname(oceanPath(from))).catch(() => {});
+    await writeManifest(manifest);
+    const references = await rewriteProjectReferences(from, to, true);
+    if (
+      (
+        await readFile(path.join(projectsRoot(), "registry.md"), "utf8").catch(
+          () => "",
+        )
+      ).includes(INDEX_BEGIN)
+    )
+      await writeProjectIndexLocked();
+    return { id: manifest.id, from, to, moved: true, references };
   });
 }
 

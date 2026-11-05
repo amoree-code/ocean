@@ -11,10 +11,17 @@ the engine still reads that layout, see below.)
 
 ## Layout
 
+Every path to a project goes through `projectDir` / `listProjectDirs` in
+`packages/core/src/shared/paths.ts`, which also read a project still flat at `04-projects/<id>/`;
+`ocean project move <id> <category> --write` files one and rewrites the workspace paths that
+named its old folder (T-311).
+
 ```text
 <workspace root>/           default: the parent directory of kernel/ (e.g. ~/ocean)
 ├── 00-inbox/ … 06-templates/   user-owned private data (PARA)
-│   └── 04-projects/         project data (registry, backlog, per-project tasks)
+│   └── 04-projects/         project data: registry, backlog, and each project in its
+│                            category folder, <category>/<id>/ (company, personal,
+│                            freelance, former-company, vendor; new ones in uncategorized/)
 ├── charter/                 private governance: core.md, policies/
 ├── kernel/                  this repository
 └── bridge/                  machine-local state, no git
@@ -57,7 +64,7 @@ isolated workspaces from one engine checkout.
 the same three constants, so they track any future layout change):
 
 - Creates `02-personal`, `05-knowledge`, `01-daily`, `00-inbox`,
-  `06-templates`, and the workspace project's `04-projects/ocean/tasks`
+  `06-templates`, and the workspace project's `04-projects/personal/ocean/tasks`
   under the workspace root.
 - Creates `bridge/config/startup`, `bridge/profiles`, `bridge/sessions`, `bridge/registry`,
   `bridge/integrations`, `bridge/archive` and `bridge/runtime/{shims,temporary}` under the
@@ -107,7 +114,7 @@ ocean tasks complete T-123
 It requires every `Definition of done` criterion to be an explicitly checked box, an empty
 `Blockers` section (or `None.`), and passing commands from `Verification`. Only then does it
 write `state: done` and move the whole task directory (including sibling artifacts) into
-`04-projects/ocean/tasks/archive/Ocean/`. `--no-verify` is rejected. Read-only commands such as
+`04-projects/personal/ocean/tasks/archive/Ocean/`. `--no-verify` is rejected. Read-only commands such as
 `ocean tasks list` do not mutate files.
 
 Tasks marked `done` by an external editor are checked for blockers, acceptance criteria, and
