@@ -40,7 +40,7 @@ test("an existing test file is ready; a missing one is named", async () => {
 
 test("pnpm --filter resolves test files inside that package", async () => {
   await withTask(
-    "```bash\npnpm --filter @ameer.abdulkareem/ocean exec node --test tests/task-verify.test.mjs\n```",
+    "```bash\npnpm --filter @amoree-code/ocean exec node --test tests/task-verify.test.mjs\n```",
     async ({ tasks }) => {
       assert.deepEqual(await verificationReadiness("T-1", tasks), {
         ready: true,
@@ -49,7 +49,7 @@ test("pnpm --filter resolves test files inside that package", async () => {
     },
   );
   await withTask(
-    "```bash\npnpm --filter @ameer.abdulkareem/ocean exec node --test tests/context-cost.test.mjs\n```",
+    "```bash\npnpm --filter @amoree-code/ocean exec node --test tests/context-cost.test.mjs\n```",
     async ({ tasks }) => {
       const { warnings } = await verificationReadiness("T-1", tasks);
       assert.match(
@@ -62,7 +62,7 @@ test("pnpm --filter resolves test files inside that package", async () => {
 
 test("the --filter=<name> form resolves the same package", async () => {
   await withTask(
-    "```bash\npnpm --filter=@ameer.abdulkareem/ocean exec node --test tests/task-verify.test.mjs\n```",
+    "```bash\npnpm --filter=@amoree-code/ocean exec node --test tests/task-verify.test.mjs\n```",
     async ({ tasks }) => {
       assert.deepEqual(await verificationReadiness("T-1", tasks), {
         ready: true,

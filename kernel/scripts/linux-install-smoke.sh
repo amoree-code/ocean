@@ -13,7 +13,7 @@ docker run --rm -i "$image" sh -eu -c '
     echo "smoke: image has a compiler toolchain; it must not" >&2; exit 1
   fi
   npm install --global /tmp/ocean.tgz --no-audit --no-fund --loglevel=error
-  if [ -e "$(npm root --global)/@ameer.abdulkareem/ocean/node_modules/node-pty" ]; then
+  if [ -e "$(npm root --global)/@amoree-code/ocean/node_modules/node-pty" ]; then
     echo "smoke: node-pty installed without a toolchain?" >&2; exit 1
   fi
   ocean --version
