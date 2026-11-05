@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+## 1.1.0 (2026-11-05)
+
 - fix(T-312): the release commit is made with git hooks off (`LEFTHOOK=0`): CI's `pnpm install` installs the repo's hooks, and the no-commit-on-main guard refused the release commit, so the first automatic release stopped before tagging (#263)
 - feat(T-311): `ocean project move <id> <category> [--write]` files a project under its category folder and rewrites the workspace paths (records, projects, charter) that named its old folder, as whole paths only; without `--write` it reports what would change. `ocean doctor` warns on a project left flat (`PROJECT_FLAT`) or in `uncategorized/` (`PROJECT_UNCATEGORIZED`) and fails on one id with project.json in two category folders (`PROJECT_DUPLICATE_ID`); a folder holding project.json wins over a bare one of the same name (#263)
 - feat(T-311): projects can live in category folders, `04-projects/<category>/<id>/` (`company`, `personal`, `freelance`, `former-company`, `vendor`); the generated project index groups them under one heading per category and `ocean project list --category <name>` lists one; every path to a project goes through one resolver (`projectDir`, `listProjectDirs`), which reads both that and the flat layout. A new project lands in `uncategorized/` (the workspace's own project in `personal/`), a category folder name is never a project id, and a record path or memory history written in either layout reaches the same record. `storeRelativeToRoot` now takes the root, so a search against another root cites its files (#263)

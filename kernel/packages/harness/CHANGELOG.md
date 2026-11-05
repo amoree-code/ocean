@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.0
+
+- fix(T-312): the release commit is made with git hooks off (`LEFTHOOK=0`): CI's `pnpm install` installs the repo's hooks, and the no-commit-on-main guard refused the release commit, so the first automatic release stopped before tagging (#263)
+- feat(T-311): `ocean project move <id> <category> [--write]` files a project under its category folder and rewrites the workspace paths (records, projects, charter) that named its old folder, as whole paths only; without `--write` it reports what would change. `ocean doctor` warns on a project left flat (`PROJECT_FLAT`) or in `uncategorized/` (`PROJECT_UNCATEGORIZED`) and fails on one id with project.json in two category folders (`PROJECT_DUPLICATE_ID`); a folder holding project.json wins over a bare one of the same name (#263)
+- feat(T-311): projects can live in category folders, `04-projects/<category>/<id>/` (`company`, `personal`, `freelance`, `former-company`, `vendor`); the generated project index groups them under one heading per category and `ocean project list --category <name>` lists one; every path to a project goes through one resolver (`projectDir`, `listProjectDirs`), which reads both that and the flat layout. A new project lands in `uncategorized/` (the workspace's own project in `personal/`), a category folder name is never a project id, and a record path or memory history written in either layout reaches the same record. `storeRelativeToRoot` now takes the root, so a search against another root cites its files (#263)
+- feat(T-312): releases are automatic. Every push to `main` with something pending bumps the version (major on a `type!:` line, minor on `feat`, else patch), moves the Unreleased lines under the version in both changelogs, consumes the changesets, tags `v<version>`, writes the GitHub release, and publishes to npm through trusted publishing (no stored token) and to GitHub Packages. The 45 changesets that shipped in 1.0.0 are removed (#262)
+- ci: each published release also goes to GitHub Packages as `@amoree-code/ocean` (the npm tarball, renamed to the scope GitHub Packages requires), from a `production` environment; `workflow_dispatch` with a tag publishes an existing release (#261)
+- feat(T-310): one repository rooted at `~/ocean`: the engine moves to `kernel/` (history kept), every workspace folder ships as an empty `.gitkeep`, and the root `.gitignore` is a whitelist so no private file can be committed; `lefthook.yml` moves to the git root and CI runs inside `kernel/` (#260)
+
 ## 1.0.0
 
 First public npm release, as `@ameer.abdulkareem/ocean` (`npm install --global @ameer.abdulkareem/ocean`, then `ocean setup`). Requires Node.js 22.16 or newer. The tarball carries the engine and an empty workspace template only; `ocean setup` creates the private workspace outside the package. Changes since 0.3.7:
