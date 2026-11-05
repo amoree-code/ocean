@@ -1,7 +1,8 @@
 # Releasing the npm package
 
-Ocean ships to npm as **`@ameer.abdulkareem/ocean`** (the name `ocean` belongs to another project)
-and to GitHub Packages as **`@amoree-code/ocean`**; the installed command is `ocean`.
+Ocean ships as **`@amoree-code/ocean`** to both npm and GitHub Packages (the name `ocean` belongs
+to another project); the installed command is `ocean`. Up to 1.1.0 the npm name was
+`@ameer.abdulkareem/ocean`, now deprecated in favour of this one.
 
 **Releases are automatic (T-312).** Every push to `main` runs `.github/workflows/release.yml`:
 
@@ -20,7 +21,7 @@ and to GitHub Packages as **`@amoree-code/ocean`**; the installed command is `oc
    step skips what already exists, so a failed publish is fixed by re-running that job.
 
 Nobody publishes by hand. npm trusts only `release.yml` in environment `production` of
-`amoree-code/ocean` (`npm trust list @ameer.abdulkareem/ocean`).
+`amoree-code/ocean` (`npm trust list @amoree-code/ocean`).
 
 The sections below are what the workflow does, for reading or for checking a tarball locally.
 
@@ -90,7 +91,7 @@ run ocean doctor
 ```
 
 Expect `ocean setup` to create `$T/home/ocean` and to write nothing inside
-`$T/prefix/lib/node_modules/@ameer.abdulkareem/ocean`. `doctor` may report `CLIENT_NOT_WIRED` for AI
+`$T/prefix/lib/node_modules/@amoree-code/ocean`. `doctor` may report `CLIENT_NOT_WIRED` for AI
 clients installed on the machine: that is correct for a fresh setup.
 
 Then the same tarball on a clean Linux at the minimum Node, with no compiler toolchain (Docker;
@@ -111,6 +112,6 @@ workflow file or an Ocean record: npm accepts this package only from the trusted
 Should the trust ever need setting again, from an npm login that owns the package:
 
 ```bash
-npm trust github @ameer.abdulkareem/ocean --file release.yml \
+npm trust github @amoree-code/ocean --file release.yml \
   --repository amoree-code/ocean --environment production --allow-publish --yes
 ```

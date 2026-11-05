@@ -1,7 +1,6 @@
 name: Release
 # Every push to main that leaves something pending releases itself (T-312): the version, both
-# changelogs, the tag, the GitHub release, npm (@ameer.abdulkareem/ocean) and GitHub Packages
-# (@amoree-code/ocean). Nobody runs a step by hand. The release commit is pushed with
+# changelogs, the tag, the GitHub release, and @amoree-code/ocean on npm and GitHub Packages. Nobody runs a step by hand. The release commit is pushed with
 # GITHUB_TOKEN, which does not trigger workflows, so it never releases itself again.
 on:
   push:
@@ -94,20 +93,13 @@ jobs:
       - name: npm
         working-directory: kernel/release/package
         run: |
-          npm view "@ameer.abdulkareem/ocean@$VERSION" version >/dev/null 2>&1 && exit 0
+          npm view "@amoree-code/ocean@$VERSION" version >/dev/null 2>&1 && exit 0
           npm publish --provenance --access public --ignore-scripts
       - name: GitHub Packages
         working-directory: kernel/release/package
         env:
           NODE_AUTH_TOKEN: ${{ github.token }}
         run: |
-          node -e '
-            const fs = require("node:fs");
-            const manifest = JSON.parse(fs.readFileSync("package.json", "utf8"));
-            manifest.name = "@amoree-code/ocean";
-            manifest.publishConfig = { registry: "https://npm.pkg.github.com" };
-            fs.writeFileSync("package.json", `${JSON.stringify(manifest, null, 2)}\n`);
-          '
           printf '//npm.pkg.github.com/:_authToken=%s\n' "$NODE_AUTH_TOKEN" > "$RUNNER_TEMP/gpr.npmrc"
           npm view "@amoree-code/ocean@$VERSION" version \
             --registry https://npm.pkg.github.com --userconfig "$RUNNER_TEMP/gpr.npmrc" \

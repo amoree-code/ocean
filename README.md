@@ -46,11 +46,11 @@ twice.
 Requires Node.js 22.16 or newer, on macOS or Linux.
 
 ```bash
-npm install --global @ameer.abdulkareem/ocean
+npm install --global @amoree-code/ocean
 ocean setup
 ```
 
-The same release is also on GitHub Packages as `@amoree-code/ocean`. `ocean setup` creates the
+The same name is on npm and GitHub Packages. `ocean setup` creates the
 private workspace at `~/ocean` (or `OCEAN_ROOT`), adds shims for the AI CLIs and starts a small
 background service.
 

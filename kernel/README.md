@@ -51,21 +51,22 @@ terminal, with nothing re-explained.
   way; without it, providers run attached to your terminal and their output is not recorded.
   An npm that blocks install scripts (it prints `npm warn install-scripts`) skips that compile
   even with a toolchain: install with `npm install --global --allow-scripts=node-pty
-  @ameer.abdulkareem/ocean`. macOS needs neither: node-pty ships a prebuild there.
+  @amoree-code/ocean`. macOS needs neither: node-pty ships a prebuild there.
 - The AI clients you want to connect, installed and signed in the usual way. Ocean does not
   install credentials and does not need an API key of its own.
 
 ## Install
 
 ```bash
-npm install --global @ameer.abdulkareem/ocean
+npm install --global @amoree-code/ocean
 ocean setup
 ```
 
-The npm package is `@ameer.abdulkareem/ocean` (the name `ocean` belongs to another project); the
+The npm package is `@amoree-code/ocean` (the name `ocean` belongs to another project); the
 command is `ocean`.
 
-The same release is on GitHub Packages as `@amoree-code/ocean`.
+The same package and name are on GitHub Packages. The earlier name `@ameer.abdulkareem/ocean`
+stops at 1.1.0 and points here.
 
 `ocean setup` creates the private workspace and connects your shell:
 
@@ -199,7 +200,7 @@ session, and `ocean skill review <candidate-id> promoted` activates it.
 ├── charter/                    your rules and the policies they route to
 └── bridge/                     machine state: sessions, config, client integrations, shims
 
-<npm prefix>/lib/node_modules/@ameer.abdulkareem/ocean/
+<npm prefix>/lib/node_modules/@amoree-code/ocean/
                                 the engine: code, the empty workspace template, skills
 ```
 

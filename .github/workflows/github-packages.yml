@@ -1,6 +1,7 @@
 name: GitHub Packages
-# Publishes each release to GitHub Packages as @amoree-code/ocean: the same tarball npm gets
-# as @ameer.abdulkareem/ocean, renamed to the scope GitHub Packages requires (the repo owner).
+# Publishes an existing release to GitHub Packages as @amoree-code/ocean, by hand. Releases
+# publish themselves through release.yml; tags before the npm rename carried another name, so
+# the package is renamed to the scope GitHub Packages requires (the repo owner).
 on:
   release:
     types: [published]

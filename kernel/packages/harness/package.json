@@ -1,5 +1,5 @@
 {
-  "name": "@ameer.abdulkareem/ocean",
+  "name": "@amoree-code/ocean",
   "description": "Local-first memory, tasks and session capture shared by every AI coding client: one private workspace for Claude, Codex, Gemini and more.",
   "version": "1.1.0",
   "private": false,
