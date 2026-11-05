@@ -5,8 +5,7 @@ import { promisify } from "node:util";
 import {
   enginePath,
   oceanPath,
-  PROJECTS_DIR,
-  projectFolder,
+  projectDir,
   resolveWithin,
   WORKSPACE_PROJECT_ID,
 } from "@ocean/core/shared/paths.js";
@@ -52,11 +51,7 @@ async function liveTask(
   return {
     owner: location.projectId,
     id: location.id,
-    root: resolveWithin(
-      oceanPath(PROJECTS_DIR),
-      projectFolder(location.projectId),
-      "tasks",
-    ),
+    root: resolveWithin(oceanPath(projectDir(location.projectId)), "tasks"),
   };
 }
 
@@ -140,11 +135,7 @@ export async function runTasksCommand(
       try {
         const result = await execFile(process.execPath, [
           enginePath("scripts", "validate-tasks.mjs"),
-          resolveWithin(
-            oceanPath(PROJECTS_DIR),
-            projectFolder(project),
-            "tasks",
-          ),
+          resolveWithin(oceanPath(projectDir(project)), "tasks"),
         ]);
         process.stdout.write(`${label}${result.stdout}`);
       } catch (error) {
@@ -171,11 +162,7 @@ export async function runTasksCommand(
       ),
       "",
     ].join("\n");
-    const target = resolveWithin(
-      oceanPath(PROJECTS_DIR),
-      projectFolder(projectId),
-      "index.md",
-    );
+    const target = resolveWithin(oceanPath(projectDir(projectId)), "index.md");
     if (args.includes("--write")) {
       await writeFile(target, body, "utf8");
       console.log(`wrote ${path.relative(oceanPath(), target)}`);
@@ -311,7 +298,7 @@ export async function runTasksCommand(
   }
   const apply = args.includes("--apply") || args.includes("--auto");
   const result = await archiveDoneTasks(
-    resolveWithin(oceanPath(PROJECTS_DIR), projectFolder(projectId), "tasks"),
+    resolveWithin(oceanPath(projectDir(projectId)), "tasks"),
     apply,
   );
   console.log(JSON.stringify({ dryRun: !apply, ...result }, null, 2));

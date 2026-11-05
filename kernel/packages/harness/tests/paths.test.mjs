@@ -12,19 +12,24 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
+import { isValidProjectId } from "@ocean/core/domain/context/project-id.js";
 import {
   enginePath,
   engineRoot,
+  listProjectDirs,
   oceanPath,
   oceanRoot,
   PERSONAL_DIR,
   PROJECTS_DIR,
+  projectDir,
   projectFolder,
   projectOfTasksRoot,
+  projectPathParts,
   registerEngineRoot,
   repoRoot,
   resolveWithin,
   sameProject,
+  withoutProjectCategory,
 } from "@ocean/core/shared/paths.js";
 
 test("engineRoot resolves to the engine package directory, one level above this module", () => {
@@ -199,5 +204,113 @@ test("projectOfTasksRoot inverts a project's tasks root and nothing else", async
   assert.equal(
     projectOfTasksRoot(oceanPath(PROJECTS_DIR, "Bad Id", "tasks")),
     null,
+  );
+});
+
+test("projectOfTasksRoot accepts a project inside a category folder, and no other nesting", () => {
+  assert.equal(
+    projectOfTasksRoot(oceanPath(PROJECTS_DIR, "company", "lab", "tasks")),
+    "lab",
+  );
+  assert.equal(
+    projectOfTasksRoot(
+      oceanPath(PROJECTS_DIR, "uncategorized", "lab", "tasks"),
+    ),
+    "lab",
+  );
+  assert.equal(
+    projectOfTasksRoot(oceanPath(PROJECTS_DIR, "elsewhere", "lab", "tasks")),
+    null,
+  );
+});
+
+test("a category folder name is never a project id (T-311)", () => {
+  for (const name of [
+    "company",
+    "personal",
+    "freelance",
+    "former-company",
+    "vendor",
+    "uncategorized",
+  ])
+    assert.equal(isValidProjectId(name), false, name);
+  assert.equal(isValidProjectId("company-site"), true);
+});
+
+test("listProjectDirs reads category folders and flat folders, and skips the rest (T-311)", async () => {
+  const root = await projectsRoot(
+    "company/crm",
+    "personal/ocean",
+    "uncategorized/new-one",
+    "legacy",
+    "_project",
+    ".hidden",
+    "elsewhere/nested",
+  );
+  await writeFile(path.join(root, PROJECTS_DIR, "registry.md"), "");
+  assert.deepEqual(listProjectDirs(root), [
+    { id: "crm", category: "company", dir: `${PROJECTS_DIR}/company/crm` },
+    { id: "elsewhere", dir: `${PROJECTS_DIR}/elsewhere` },
+    { id: "legacy", dir: `${PROJECTS_DIR}/legacy` },
+    {
+      id: "new-one",
+      category: "uncategorized",
+      dir: `${PROJECTS_DIR}/uncategorized/new-one`,
+    },
+    {
+      id: "ocean",
+      category: "personal",
+      dir: `${PROJECTS_DIR}/personal/ocean`,
+    },
+  ]);
+  assert.deepEqual(listProjectDirs(path.join(root, "missing")), []);
+});
+
+test("projectDir finds a project in either layout, and places a new one (T-311)", async () => {
+  const root = await projectsRoot("company/crm", "legacy");
+  assert.equal(projectDir("crm", root), `${PROJECTS_DIR}/company/crm`);
+  assert.equal(projectDir("legacy", root), `${PROJECTS_DIR}/legacy`);
+  assert.equal(
+    projectDir("brand-new", root),
+    `${PROJECTS_DIR}/uncategorized/brand-new`,
+  );
+  // The workspace's own project is the owner's: personal, under any of its aliases.
+  assert.equal(projectDir("Ocean", root), `${PROJECTS_DIR}/personal/ocean`);
+  // Not an id: left as written, for the caller's own checks to refuse.
+  assert.equal(projectDir("..", root), path.posix.join(PROJECTS_DIR, ".."));
+});
+
+test("a path written in either layout names the same project", () => {
+  assert.deepEqual(projectPathParts(["crm", "memory", "a.md"]), {
+    id: "crm",
+    rest: ["memory", "a.md"],
+  });
+  assert.deepEqual(projectPathParts(["company", "crm", "memory", "a.md"]), {
+    id: "crm",
+    rest: ["memory", "a.md"],
+  });
+  assert.deepEqual(projectPathParts(["company"]), null);
+  assert.deepEqual(projectPathParts(["Bad Id", "memory"]), null);
+  assert.equal(
+    withoutProjectCategory(`${PROJECTS_DIR}/company/crm/memory/a.md`),
+    `${PROJECTS_DIR}/crm/memory/a.md`,
+  );
+  assert.equal(
+    withoutProjectCategory(`${PROJECTS_DIR}/crm/memory/a.md`),
+    `${PROJECTS_DIR}/crm/memory/a.md`,
+  );
+  assert.equal(withoutProjectCategory("02-personal/x.md"), "02-personal/x.md");
+});
+
+test("one id in two folders: listProjectDirs puts first the folder projectDir picks", async () => {
+  const root = await projectsRoot("uncategorized/twin", "vendor/twin", "twin");
+  assert.equal(projectDir("twin", root), `${PROJECTS_DIR}/vendor/twin`);
+  assert.deepEqual(
+    listProjectDirs(root).map((entry) => entry.dir),
+    [
+      `${PROJECTS_DIR}/vendor/twin`,
+      `${PROJECTS_DIR}/uncategorized/twin`,
+      `${PROJECTS_DIR}/twin`,
+    ],
   );
 });

@@ -3,7 +3,11 @@ import path from "node:path";
 import { MemoryContractError } from "@ocean/core/domain/mcp/memory-contract.js";
 import { atomicWrite, withFileLock } from "@ocean/core/shared/fs-utils.js";
 import { localDate } from "@ocean/core/shared/local-date.js";
-import { oceanPath, PROJECTS_DIR } from "@ocean/core/shared/paths.js";
+import {
+  oceanPath,
+  PROJECTS_DIR,
+  projectDir,
+} from "@ocean/core/shared/paths.js";
 import {
   findProject,
   readClaudeProjects,
@@ -321,7 +325,7 @@ export async function fileProposal(options: {
   const folder = options.kind === "fact" ? "memory" : "docs";
   const target =
     project && options.kind !== "todo"
-      ? `${PROJECTS_DIR}/${project}/${folder}/${options.name}.md`
+      ? `${projectDir(project)}/${folder}/${options.name}.md`
       : undefined;
   const proposed = await proposeMemory({
     content: options.content,

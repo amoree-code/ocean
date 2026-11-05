@@ -7,7 +7,7 @@ import {
   isWorkspaceProject,
   oceanRoot,
   PROJECTS_DIR,
-  projectFolder,
+  projectSubdir,
   resolveWithin,
 } from "./paths.js";
 import {
@@ -52,7 +52,11 @@ async function findInProject(
   project: string,
   id: string,
 ): Promise<TaskLocation | null> {
-  const tasks = resolveWithin(projectsDir, projectFolder(project), "tasks");
+  const tasks = resolveWithin(
+    projectsDir,
+    projectSubdir(projectsDir, project),
+    "tasks",
+  );
   for (const spelling of taskIdSpellings(id)) {
     const live = resolveWithin(tasks, spelling, "task.md");
     if (await exists(live))
@@ -87,7 +91,11 @@ export async function taskFolders(
   projectsDir: string,
   project: string,
 ): Promise<Array<[string, string, boolean]>> {
-  const tasks = resolveWithin(projectsDir, projectFolder(project), "tasks");
+  const tasks = resolveWithin(
+    projectsDir,
+    projectSubdir(projectsDir, project),
+    "tasks",
+  );
   const found: Array<[string, string, boolean]> = [];
   for (const entry of await directories(tasks)) {
     if (entry.name !== "archive")

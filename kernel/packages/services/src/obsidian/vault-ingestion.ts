@@ -2,8 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import {
   oceanPath,
-  PROJECTS_DIR,
-  projectFolder,
+  projectDir,
   WORKSPACE_PROJECT_ID,
 } from "@ocean/core/shared/paths.js";
 import { appendConflict, contentHash } from "./conflict-log.js";
@@ -89,8 +88,7 @@ export async function ingestVaultChanges(
       path.join(connection.vaultPath, relative),
     );
     const oceanFile = oceanPath(
-      PROJECTS_DIR,
-      projectFolder(WORKSPACE_PROJECT_ID),
+      projectDir(WORKSPACE_PROJECT_ID),
       mirror.relative,
     );
     const oceanContent = await readOptional(oceanFile);

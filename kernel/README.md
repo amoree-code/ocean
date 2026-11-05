@@ -65,9 +65,7 @@ ocean setup
 The npm package is `@ameer.abdulkareem/ocean` (the name `ocean` belongs to another project); the
 command is `ocean`.
 
-**Release status:** the npm package is prepared but not yet published. Until it is, install
-from a checkout (see [Development](#development)) or from a tarball built with
-`pnpm release:pack` ([release guide](docs/release.md)).
+The same release is on GitHub Packages as `@amoree-code/ocean`.
 
 `ocean setup` creates the private workspace and connects your shell:
 
@@ -93,7 +91,8 @@ Make a folder an Ocean project, then work in it from any connected client or the
 
 ```bash
 cd ~/code/acme
-ocean project bind acme "$PWD"  # this folder is the project "acme" (records in ~/ocean/04-projects/acme)
+ocean project bind acme "$PWD"  # this folder is the project "acme" (records in ~/ocean/04-projects/uncategorized/acme)
+ocean project move acme company --write  # file it under ~/ocean/04-projects/company/acme
 ocean context                   # what Ocean knows here: project, memory, active tasks
 ocean tasks new "Ship the login page"
 ocean memory reindex            # build the search index (the background service keeps it current)
@@ -117,7 +116,7 @@ prints its usage and never runs it. To hand `--help` to a wrapped client, put it
 | `ocean setup` | create the workspace, shims, shell line and login service | Writes (also outside: shell profile, login service) |
 | `ocean onboard` | run the pending first-run steps | Writes; `--status` reads |
 | `ocean context` | the workspace context for this folder; `cost` measures each client's always-on context | Reads |
-| `ocean project` | resolve, bind, register, rename and index projects | Reads; `bind`, `register`, `rename`, `unbind`, `--write` write |
+| `ocean project` | resolve, bind, register, rename, move and index projects | Reads; `bind`, `register`, `rename`, `unbind`, `--write` write |
 | `ocean tasks` | list, create, claim, checkpoint, verify and complete tasks | Reads; `new`, `claim`, `checkpoint`, `complete`, `archive --apply` write |
 | `ocean loop` | repeated agent runs on one task | Runs; `start` needs `--approve` |
 | `ocean policy` | list the charter's policies or print one | Reads |

@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { PROJECTS_DIR, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
+import { projectDir, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import {
   autoRegisterProject,
   bindProject,
@@ -48,7 +48,8 @@ async function repo(parent, ...segments) {
   return dir;
 }
 
-const folder = (root, id) => path.join(root, PROJECTS_DIR, id);
+// Where the project is, or where a new one lands (uncategorized/, T-311).
+const folder = (root, id) => path.join(root, projectDir(id, root));
 
 test("slugs are lowercase project ids", () => {
   assert.equal(projectSlug("Ocean-UIUX-MCP"), "ocean-uiux-mcp");
@@ -152,7 +153,7 @@ test("auto-register skips everything it must not guess at", async () => {
     await mkdir(folder(root, "taken"), { recursive: true });
     assert.match(
       (await autoRegisterProject(await repo(code, "Taken"))).reason,
-      /04-projects\/taken already exists/,
+      /04-projects\/uncategorized\/taken already exists/,
     );
 
     process.env.OCEAN_AUTO_REGISTER = "0";

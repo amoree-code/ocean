@@ -5,14 +5,20 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  rename,
   rm,
+  stat,
   symlink,
   writeFile,
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { PROJECTS_DIR, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
+import {
+  PROJECTS_DIR,
+  projectDir,
+  SYSTEM_DIR,
+} from "@ocean/core/shared/paths.js";
 import {
   bindProject,
   canonicalPath,
@@ -20,11 +26,14 @@ import {
   listProjectBindings,
   listProjectManifests,
   migrateProjectBindings,
+  moveProject,
   portablePath,
+  projectCategory,
   projectRules,
   projectVerify,
   readProjectManifest,
   renameProject,
+  renderProjectIndex,
   resolveProject,
   scanProjectManifests,
   unbindProjectPath,
@@ -45,9 +54,16 @@ async function withRoot(run) {
 }
 
 const projects = (root) => path.join(root, PROJECTS_DIR);
+// Where a project's folder is now: a new one lands in uncategorized/ (T-311).
+const folderOf = (root, id) => path.join(root, projectDir(id, root));
+// Files an existing project under a category folder, as `ocean project move` will.
+async function moveTo(root, id, category) {
+  await mkdir(path.join(projects(root), category), { recursive: true });
+  await rename(folderOf(root, id), path.join(projects(root), category, id));
+}
 const manifestOf = async (root, id) =>
   JSON.parse(
-    await readFile(path.join(projects(root), id, "project.json"), "utf8"),
+    await readFile(path.join(folderOf(root, id), "project.json"), "utf8"),
   );
 
 async function writeLegacy(root, bindings) {
@@ -333,7 +349,7 @@ test("index writes a managed block and keeps the hand-kept registry text", async
     assert.match(once, /<!-- ocean:projects:begin/);
     assert.match(once, /\| `alpha` \| alpha \|/);
     await writeFile(
-      path.join(projects(root), "alpha", "project.json"),
+      path.join(folderOf(root, "alpha"), "project.json"),
       JSON.stringify({ name: "Dash | API\nv2", paths: [] }),
     );
     await writeProjectIndex();
@@ -479,7 +495,7 @@ test("an invalid rules/verify shape never unbinds the project; the accessor name
   });
 });
 
-test("rules and verify survive bind --add, unbind, rename, withNextTaskId and renumber", async () => {
+test("rules, verify and the category folder survive bind --add, unbind, rename, withNextTaskId and renumber", async () => {
   await withRoot(async (root) => {
     const repos = await mkdtemp(path.join(os.tmpdir(), "ocean-repos-"));
     const a = path.join(repos, "a");
@@ -487,7 +503,8 @@ test("rules and verify survive bind --add, unbind, rename, withNextTaskId and re
     await mkdir(a);
     await mkdir(b);
     await bindProject("lab", a);
-    const file = path.join(projects(root), "lab", "project.json");
+    await moveTo(root, "lab", "company");
+    const file = path.join(folderOf(root, "lab"), "project.json");
     const manifest = JSON.parse(await readFile(file, "utf8"));
     await writeFile(
       file,
@@ -501,6 +518,14 @@ test("rules and verify survive bind --add, unbind, rename, withNextTaskId and re
       const now = await manifestOf(root, label);
       assert.deepEqual(now.rules, ["keep me"], label);
       assert.deepEqual(now.verify, ["pnpm test"], label);
+      // The folder is the category; it is never written back into project.json.
+      assert.equal(now.category, undefined, label);
+      assert.equal(
+        projectCategory(await readProjectManifest(label)),
+        "company",
+        label,
+      );
+      assert.equal(projectDir(label, root), `${PROJECTS_DIR}/company/${label}`);
     };
     await bindProject("lab", b, { addPath: true });
     await keeps("lab");
@@ -510,6 +535,41 @@ test("rules and verify survive bind --add, unbind, rename, withNextTaskId and re
     await keeps("lab");
     await renameProject("lab", "lab2");
     await keeps("lab2");
+  });
+});
+
+test("category is optional, one of a fixed set, and a bad one never unbinds the project", async () => {
+  await withRoot(async (root) => {
+    await writeRaw(root, "work", { category: "company" });
+    await writeRaw(root, "mine", {});
+    await writeRaw(root, "typo", { category: "compnay" });
+    await writeRaw(root, "shape", { category: ["personal"] });
+    const scan = await scanProjectManifests();
+    assert.deepEqual(scan.errors, []);
+    const byId = Object.fromEntries(scan.manifests.map((m) => [m.id, m]));
+    assert.equal(projectCategory(byId.work), "company");
+    assert.equal(projectCategory(byId.mine), undefined);
+    assert.throws(() => projectCategory(byId.typo), /category must be one of/);
+    assert.throws(() => projectCategory(byId.shape), /category must be one of/);
+
+    await writeRaw(root, "home", { category: "personal" });
+    const index = await renderProjectIndex();
+    // One section per category, in the fixed order; empty categories are left out.
+    const headings = index.match(/^### .+$/gm);
+    assert.deepEqual(headings, [
+      "### company",
+      "### personal",
+      "### uncategorized",
+      "### invalid",
+    ]);
+    const section = (name) =>
+      index.split(`### ${name}\n`)[1].split("\n### ")[0];
+    assert.match(section("company"), /\| `work` \| work \| — \| manual \|/);
+    assert.match(section("personal"), /\| `home` \|/);
+    assert.doesNotMatch(section("personal"), /`work`/);
+    assert.match(section("uncategorized"), /\| `mine` \|/);
+    assert.match(section("invalid"), /\| `typo` \|/);
+    assert.match(section("invalid"), /\| `shape` \|/);
   });
 });
 
@@ -550,5 +610,182 @@ test("tasks renumber --write keeps rules and verify", async () => {
     assert.equal(now.prefix, "LB");
     assert.deepEqual(now.rules, ["keep me"]);
     assert.deepEqual(now.verify, ["pnpm test"]);
+  });
+});
+
+test("project list --category keeps only that category and rejects an unknown one", async () => {
+  await withRoot(async (root) => {
+    const repos = await mkdtemp(path.join(os.tmpdir(), "ocean-cat-"));
+    await mkdir(path.join(repos, "a"));
+    await mkdir(path.join(repos, "b"));
+    await bindProject("work", path.join(repos, "a"));
+    await bindProject("mine", path.join(repos, "b"));
+    await moveTo(root, "work", "company");
+    const list = (...args) =>
+      spawnSync(
+        process.execPath,
+        [path.resolve("dist/main.js"), "project", "list", ...args],
+        {
+          cwd: root,
+          env: { ...process.env, OCEAN_ROOT: root },
+          encoding: "utf8",
+        },
+      );
+
+    const all = list();
+    assert.equal(all.status, 0, all.stderr);
+    const rows = JSON.parse(all.stdout);
+    assert.deepEqual(rows.map((row) => row.id).sort(), ["mine", "work"]);
+    assert.equal(rows.find((row) => row.id === "work").category, "company");
+    assert.equal(rows.find((row) => row.id === "mine").category, undefined);
+
+    const company = list("--category", "company");
+    assert.equal(company.status, 0, company.stderr);
+    assert.deepEqual(
+      JSON.parse(company.stdout).map((row) => row.id),
+      ["work"],
+    );
+
+    const bad = list("--category", "nope");
+    assert.equal(bad.status, 1);
+    assert.match(bad.stderr, /--category company\|personal/);
+  });
+});
+
+test("a project in a category folder takes its category from the folder; one id in two folders is reported (T-311)", async () => {
+  await withRoot(async (root) => {
+    const place = async (category, id, body) => {
+      const dir = path.join(projects(root), category, id);
+      await mkdir(dir, { recursive: true });
+      await writeFile(
+        path.join(dir, "project.json"),
+        JSON.stringify({ name: id, paths: [], ...body }),
+      );
+    };
+    await place("company", "crm", { category: "personal" });
+    await place("company", "dup", {});
+    await place("personal", "dup", {});
+    await place("uncategorized", "fresh", {});
+    const scan = await scanProjectManifests();
+    const byId = Object.fromEntries(scan.manifests.map((m) => [m.id, m]));
+    assert.deepEqual(Object.keys(byId).sort(), ["crm", "dup", "fresh"]);
+    // The folder wins over a value written in project.json.
+    assert.equal(projectCategory(byId.crm), "company");
+    assert.equal(projectCategory(byId.dup), "company");
+    // uncategorized is a folder, not a category.
+    assert.equal(projectCategory(byId.fresh), undefined);
+    assert.deepEqual(scan.errors, [
+      {
+        file: path.join(projects(root), "personal", "dup", "project.json"),
+        error: "project id 'dup' is already used by another category folder",
+      },
+    ]);
+    const index = await renderProjectIndex();
+    assert.match(index, /### uncategorized\n\n[^#]*`fresh`/);
+  });
+});
+
+test("project move files a project under a category and rewrites the paths that named it (T-311)", async () => {
+  await withRoot(async (root) => {
+    const repo = await mkdtemp(path.join(os.tmpdir(), "ocean-move-"));
+    await bindProject("ocean-lab", repo);
+    await bindProject(
+      "ocean-lab-two",
+      await mkdtemp(path.join(os.tmpdir(), "ocean-move2-")),
+    );
+    const from = `${PROJECTS_DIR}/uncategorized/ocean-lab`;
+    await mkdir(path.join(root, from, "tasks", "T-1"), { recursive: true });
+    await writeFile(
+      path.join(root, from, "tasks", "T-1", "task.md"),
+      `see ${from}/docs.\n`,
+    );
+    const note = path.join(root, "05-knowledge", "note.md");
+    await mkdir(path.dirname(note), { recursive: true });
+    const text = [
+      `- ${from}/tasks/T-1/task.md`,
+      `- ${root}/${from}/memory`,
+      `- it lives in ${from}.`,
+      `- not ${PROJECTS_DIR}/uncategorized/ocean-lab-two/docs`,
+      `- not ${from}.md`,
+      "",
+    ].join("\n");
+    await writeFile(note, text);
+    const registry = path.join(projects(root), "registry.md");
+    await writeFile(registry, "# Registry\n");
+    await writeProjectIndex();
+
+    const dry = await moveProject("ocean-lab", "company");
+    assert.equal(dry.moved, false);
+    assert.equal(dry.to, `${PROJECTS_DIR}/company/ocean-lab`);
+    assert.deepEqual(dry.references, [
+      `${from}/tasks/T-1/task.md`,
+      "05-knowledge/note.md",
+    ]);
+    assert.equal(
+      await readFile(note, "utf8"),
+      text,
+      "a dry run writes nothing",
+    );
+
+    const done = await moveProject("ocean-lab", "company", true);
+    assert.equal(done.moved, true);
+    const to = `${PROJECTS_DIR}/company/ocean-lab`;
+    assert.equal(projectDir("ocean-lab", root), to);
+    assert.equal(
+      await readFile(note, "utf8"),
+      [
+        `- ${to}/tasks/T-1/task.md`,
+        `- ${root}/${to}/memory`,
+        `- it lives in ${to}.`,
+        `- not ${PROJECTS_DIR}/uncategorized/ocean-lab-two/docs`,
+        `- not ${from}.md`,
+        "",
+      ].join("\n"),
+    );
+    assert.equal(
+      await readFile(path.join(root, to, "tasks", "T-1", "task.md"), "utf8"),
+      `see ${to}/docs.\n`,
+    );
+    assert.equal((await resolveProject(repo)).projectId, "ocean-lab");
+    assert.equal(
+      projectCategory(await readProjectManifest("ocean-lab")),
+      "company",
+    );
+    assert.match(
+      await readFile(registry, "utf8"),
+      /### company\n\n[^#]*`ocean-lab`/,
+    );
+
+    // Another move goes from category to category; the source folder stays while not empty.
+    await moveProject("ocean-lab", "personal", true);
+    assert.equal(
+      projectDir("ocean-lab", root),
+      `${PROJECTS_DIR}/personal/ocean-lab`,
+    );
+    await assert.rejects(stat(path.join(projects(root), "company")), /ENOENT/);
+    await stat(path.join(projects(root), "uncategorized", "ocean-lab-two"));
+
+    await assert.rejects(
+      moveProject("ocean-lab", "work"),
+      /category must be one of/,
+    );
+    await assert.rejects(moveProject("missing", "company"), /No project.json/);
+    await mkdir(path.join(projects(root), "vendor", "ocean-lab-two"), {
+      recursive: true,
+    });
+    await assert.rejects(
+      moveProject("ocean-lab-two", "vendor", true),
+      /already exists/,
+    );
+  });
+});
+
+test("project move drops the category written for the flat layout", async () => {
+  await withRoot(async (root) => {
+    await writeRaw(root, "old", { category: "company" });
+    await moveProject("old", "company", true);
+    const file = path.join(projects(root), "company", "old", "project.json");
+    assert.equal(JSON.parse(await readFile(file, "utf8")).category, undefined);
+    assert.equal(projectCategory(await readProjectManifest("old")), "company");
   });
 });

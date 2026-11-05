@@ -153,10 +153,10 @@ async function setupAt(root, prepare) {
   }
 }
 
-test("setup creates the workspace project's tasks folder as ocean/ on a fresh root", async () => {
+test("setup creates the workspace project's tasks folder as personal/ocean/ on a fresh root", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ocean-setup-fresh-"));
   await setupAt(root);
-  await stat(path.join(root, PROJECTS_DIR, "ocean", "tasks"));
+  await stat(path.join(root, PROJECTS_DIR, "personal", "ocean", "tasks"));
 });
 
 test("setup honors --help and refuses unknown arguments before writing anything (T-307)", async () => {

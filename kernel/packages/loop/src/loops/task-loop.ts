@@ -5,8 +5,7 @@ import type { AgentRuntimeDeps } from "@ocean/core/domain/ports/runtime-ports.js
 import { TASK_ID } from "@ocean/core/domain/tasks/task-id.js";
 import {
   oceanPath,
-  PROJECTS_DIR,
-  projectFolder,
+  projectDir,
   resolveWithin,
   SYSTEM_DIR,
 } from "@ocean/core/shared/paths.js";
@@ -257,7 +256,7 @@ function loopTask(loop: TaskLoop, cwd: string): Promise<TaskLocation> {
 }
 
 const tasksRootOf = (task: TaskLocation): string =>
-  oceanPath(PROJECTS_DIR, projectFolder(task.projectId), "tasks");
+  oceanPath(projectDir(task.projectId), "tasks");
 
 async function recordStepCheckpoint(
   loop: TaskLoop,

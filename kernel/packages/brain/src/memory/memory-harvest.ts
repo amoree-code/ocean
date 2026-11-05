@@ -2,7 +2,7 @@ import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { MemoryContractError } from "@ocean/core/domain/mcp/memory-contract.js";
-import { PROJECTS_DIR } from "@ocean/core/shared/paths.js";
+import { projectDir } from "@ocean/core/shared/paths.js";
 import { sha256 } from "./memory-audit.js";
 import { harvestLedgerFile, stagingDir } from "./memory-paths.js";
 import { type CandidateMeta, proposeMemory } from "./memory-write.js";
@@ -98,7 +98,7 @@ function placementMeta(
     file: origin.file,
   };
   const target = placement.target
-    ? `${PROJECTS_DIR}/${project}/memory/${slug(title)}-${sha256(origin.text).slice(0, 6)}.md`
+    ? `${projectDir(project)}/memory/${slug(title)}-${sha256(origin.text).slice(0, 6)}.md`
     : undefined;
   return { meta, target, project, title };
 }

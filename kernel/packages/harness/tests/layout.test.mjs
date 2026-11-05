@@ -49,10 +49,10 @@ const FLAT = {
   registry: "bridge/registry",
 };
 
-test("a fresh root gets the flat layout", () => {
+test("a fresh root gets the flat layout, the workspace project under personal/", () => {
   assert.deepEqual(layoutOf([]), {
     ...FLAT,
-    tasks: "04-projects/ocean/tasks",
+    tasks: "04-projects/personal/ocean/tasks",
   });
 });
 

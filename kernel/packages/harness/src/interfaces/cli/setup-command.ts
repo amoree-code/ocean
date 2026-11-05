@@ -10,8 +10,7 @@ import {
   oceanPath,
   oceanRoot,
   PERSONAL_DIR,
-  PROJECTS_DIR,
-  projectFolder,
+  projectDir,
   REGISTRY_DIR,
   SYSTEM_DIR,
   TEMPLATES_DIR,
@@ -154,10 +153,9 @@ export type SetupOptions = {
 
 export async function setup(options: SetupOptions = {}): Promise<void> {
   await Promise.all(
-    [
-      ...personalDirectories,
-      `${PROJECTS_DIR}/${projectFolder(WORKSPACE_PROJECT_ID)}/tasks`,
-    ].map((directory) => mkdir(oceanPath(directory), { recursive: true })),
+    [...personalDirectories, `${projectDir(WORKSPACE_PROJECT_ID)}/tasks`].map(
+      (directory) => mkdir(oceanPath(directory), { recursive: true }),
+    ),
   );
   // T-296: charter, policies, templates and indexes for a new workspace; existing files are kept.
   await seedWorkspaceTemplate();

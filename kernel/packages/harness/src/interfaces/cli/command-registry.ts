@@ -27,6 +27,9 @@ import {
   knownTaskPrefixes,
   listProjectBindings,
   migrateProjectBindings,
+  moveProject,
+  PROJECT_CATEGORIES,
+  projectCategory,
   renameProject,
   renderProjectIndex,
   resolveProject,
@@ -687,13 +690,41 @@ async function commandProject(): Promise<void> {
       if (result.conflict) process.exitCode = 2;
     }
   } else if (action === "list") {
-    const { errors } = await scanProjectManifests();
+    const flag = process.argv.indexOf("--category");
+    const wanted = flag >= 0 ? process.argv[flag + 1] : undefined;
+    if (
+      flag >= 0 &&
+      !(PROJECT_CATEGORIES as readonly string[]).includes(wanted ?? "")
+    ) {
+      console.error(
+        `Usage: ocean project list [--category ${PROJECT_CATEGORIES.join("|")}]`,
+      );
+      process.exitCode = 1;
+      return;
+    }
+    const { manifests, errors } = await scanProjectManifests();
     for (const { file, error } of errors)
       console.error(`skipped invalid ${file}: ${error}`);
-    const bindings = (await listProjectBindings()).map((binding) => ({
-      ...binding,
-      gitRoot: binding.gitRoot ?? findGitRoot(binding.path),
-    }));
+    const categories = new Map<string, string>();
+    for (const manifest of manifests) {
+      try {
+        const category = projectCategory(manifest);
+        if (category) categories.set(manifest.id, category);
+      } catch (error) {
+        console.error(
+          `${manifest.id}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+    const bindings = (await listProjectBindings())
+      .map((binding) => ({
+        ...binding,
+        gitRoot: binding.gitRoot ?? findGitRoot(binding.path),
+        ...(categories.has(binding.id)
+          ? { category: categories.get(binding.id) }
+          : {}),
+      }))
+      .filter((binding) => !wanted || binding.category === wanted);
     console.log(JSON.stringify(bindings, null, 2));
     if (errors.length) process.exitCode = 2;
   } else if (action === "register") {
@@ -725,6 +756,28 @@ async function commandProject(): Promise<void> {
         process.exitCode = 2;
       }
     }
+  } else if (action === "move") {
+    const args = process.argv.slice(4);
+    const [id, category] = args.filter((arg) => arg !== "--write");
+    if (!id || !category) {
+      console.error(
+        `Usage: ocean project move <id> <${PROJECT_CATEGORIES.join("|")}> [--write]`,
+      );
+      process.exitCode = 1;
+    } else {
+      try {
+        console.log(
+          JSON.stringify(
+            await moveProject(id, category, args.includes("--write")),
+            null,
+            2,
+          ),
+        );
+      } catch (error) {
+        console.error(error instanceof Error ? error.message : String(error));
+        process.exitCode = 2;
+      }
+    }
   } else if (action === "migrate") {
     const result = await migrateProjectBindings(
       process.argv.includes("--write"),
@@ -736,7 +789,7 @@ async function commandProject(): Promise<void> {
     else console.log(await renderProjectIndex());
   } else {
     console.error(
-      "Usage: ocean project resolve [path]|bind <name> <path> [--add]|register [path]|unbind <path>|rename <id> <new-id>|list|migrate [--write]|index [--write]",
+      "Usage: ocean project resolve [path]|bind <name> <path> [--add]|register [path]|unbind <path>|rename <id> <new-id>|move <id> <category> [--write]|list [--category <name>]|migrate [--write]|index [--write]",
     );
     process.exitCode = 1;
   }

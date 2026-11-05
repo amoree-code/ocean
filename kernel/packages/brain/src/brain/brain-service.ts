@@ -196,7 +196,7 @@ export async function brainSearch(
       results.push({
         id: String(doc.id),
         path: String(doc.path),
-        file: storeRelativeToRoot(String(doc.path)),
+        file: storeRelativeToRoot(String(doc.path), root),
         updated: (doc.updated as string | null) ?? null,
         title: String(doc.title),
         summary: String(doc.summary),

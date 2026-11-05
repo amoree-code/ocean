@@ -1,6 +1,6 @@
 ## Summary
 
-<!-- What changed and why. Link the task under brain/04-projects/<project>/tasks/<ID> if one exists. -->
+<!-- What changed and why. Link the task under 04-projects/<category>/<project>/tasks/<ID> if one exists. -->
 
 ## Changelog
 

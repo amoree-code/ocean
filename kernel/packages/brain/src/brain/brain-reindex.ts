@@ -11,8 +11,8 @@ import type { EmbedderPort } from "@ocean/core/domain/ports/embedder-port.js";
 import {
   INDEX_DIR,
   KNOWLEDGE_DIR,
+  listProjectDirs,
   oceanRoot,
-  PROJECTS_DIR,
   resolveWithin,
   STORE_DIR,
 } from "@ocean/core/shared/paths.js";
@@ -72,24 +72,14 @@ async function corpusFiles(root: string): Promise<CorpusFile[]> {
   };
   for (const store of STORES)
     await add(store, resolveWithin(root, STORE_DIR[store]));
-  const projects = await readdir(resolveWithin(root, PROJECTS_DIR), {
-    withFileTypes: true,
-  }).catch(() => []);
-  for (const entry of projects.sort((a, b) => a.name.localeCompare(b.name)))
-    if (
-      entry.isDirectory() &&
-      !entry.name.startsWith(".") &&
-      !entry.name.startsWith("_")
-    ) {
-      await add(
-        `project/${entry.name}`,
-        resolveWithin(root, PROJECTS_DIR, entry.name, "memory"),
-      );
-      await add(
-        `project-docs/${entry.name}`,
-        resolveWithin(root, PROJECTS_DIR, entry.name, "docs"),
-      );
-    }
+  // listProjectDirs sorts by id; an id seen twice (two category folders) is indexed once.
+  const seen = new Set<string>();
+  for (const { id, dir } of listProjectDirs(root)) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    await add(`project/${id}`, resolveWithin(root, dir, "memory"));
+    await add(`project-docs/${id}`, resolveWithin(root, dir, "docs"));
+  }
   return found;
 }
 

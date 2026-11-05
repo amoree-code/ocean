@@ -24,7 +24,7 @@ import {
   oceanPath,
   POLICIES_DIR,
   PROJECTS_DIR,
-  projectFolder,
+  projectDir,
   repoPath,
   SYSTEM_DIR,
   workspaceTasksRoot,
@@ -33,6 +33,8 @@ import {
   ensureProjectLayout,
   listProjectManifests,
   PROJECT_ROOT_ENTRIES,
+  scanProjectManifests,
+  UNCATEGORIZED,
 } from "@ocean/core/shared/project-resolution.js";
 
 const execFile = promisify(execFileCallback);
@@ -337,7 +339,7 @@ async function checkPermissions(): Promise<Finding[]> {
 async function checkProjectLayout(): Promise<Finding[]> {
   const findings: Finding[] = [];
   for (const manifest of await listProjectManifests()) {
-    const relative = path.join(PROJECTS_DIR, projectFolder(manifest.id));
+    const relative = projectDir(manifest.id);
     const entries = await readdir(oceanPath(relative)).catch(
       (): string[] => [],
     );
@@ -393,6 +395,37 @@ async function checkClaudeProjects(): Promise<Finding[]> {
         },
       ]
     : [];
+}
+
+// A project lives in its category folder (T-311): one still flat under 04-projects or waiting
+// in uncategorized/ is reported until `ocean project move` files it, and one id in two category
+// folders is an error, since only the first is read.
+async function checkProjectCategories(): Promise<Finding[]> {
+  const { manifests, errors } = await scanProjectManifests();
+  const findings: Finding[] = errors
+    .filter(({ error }) => error.includes("already used by another"))
+    .map(({ file, error }) => ({
+      code: "PROJECT_DUPLICATE_ID",
+      severity: "FAIL",
+      path: path.relative(oceanPath(), file).split(path.sep).join("/"),
+      message: `${error}; merge or rename one of them`,
+      fixable: false,
+    }));
+  for (const { id } of manifests) {
+    const dir = projectDir(id);
+    const [first, second] = path.posix.relative(PROJECTS_DIR, dir).split("/");
+    const where =
+      second === undefined ? "flat" : first === UNCATEGORIZED ? "new" : null;
+    if (where)
+      findings.push({
+        code: where === "flat" ? "PROJECT_FLAT" : "PROJECT_UNCATEGORIZED",
+        severity: "WARN",
+        path: dir,
+        message: `project '${id}' ${where === "flat" ? "sits flat in" : "has no category yet in"} ${dir}; file it with \`ocean project move ${id} <category>\``,
+        fixable: false,
+      });
+  }
+  return findings;
 }
 
 async function checkDuplicates(): Promise<Finding[]> {
@@ -549,6 +582,7 @@ async function scanWorkspace(
     ...(await checkDuplicates()),
     ...(await checkProjectLayout()),
     ...(await checkClaudeProjects()),
+    ...(await checkProjectCategories()),
     ...(await checkProfileAuthority()),
   ];
 }

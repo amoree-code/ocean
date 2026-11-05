@@ -4,7 +4,7 @@ import { localDate } from "@ocean/core/shared/local-date.js";
 import {
   oceanPath,
   PROJECTS_DIR,
-  projectFolder,
+  projectSubdir,
   resolveWithin,
 } from "@ocean/core/shared/paths.js";
 import { withNextTaskId } from "@ocean/core/shared/project-resolution.js";
@@ -40,7 +40,7 @@ export async function newTask(
   // A mistyped project would otherwise get a fresh folder and an id from the shared namespace.
   const folder = resolveWithin(
     oceanPath(PROJECTS_DIR),
-    projectFolder(projectId),
+    projectSubdir(oceanPath(PROJECTS_DIR), projectId),
   );
   const isProject = await stat(folder).then(
     (entry) => entry.isDirectory(),
@@ -51,7 +51,7 @@ export async function newTask(
   const result = await withNextTaskId(projectId, async (id) => {
     const file = resolveWithin(
       oceanPath(PROJECTS_DIR),
-      projectFolder(projectId),
+      projectSubdir(oceanPath(PROJECTS_DIR), projectId),
       "tasks",
       id,
       "task.md",

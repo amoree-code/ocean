@@ -5,9 +5,9 @@ import { containsKnownSecret } from "@ocean/core/domain/redaction/redaction.js";
 import { atomicWrite, withFileLock } from "@ocean/core/shared/fs-utils.js";
 import { localDate } from "@ocean/core/shared/local-date.js";
 import {
+  listProjectDirs,
   oceanPath,
   PERSONAL_DIR,
-  PROJECTS_DIR,
 } from "@ocean/core/shared/paths.js";
 import { syncMemoryIndexes } from "./index-sync.js";
 import { appendAudit, newId, sha256, writeDurable } from "./memory-audit.js";
@@ -102,14 +102,9 @@ async function similarRecords(
   file: string,
   content: string,
 ): Promise<string[]> {
-  const projects = await readdir(oceanPath(PROJECTS_DIR), {
-    withFileTypes: true,
-  }).catch(() => []);
   const roots = [
     oceanPath(PERSONAL_DIR),
-    ...projects
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => oceanPath(PROJECTS_DIR, entry.name, "memory")),
+    ...listProjectDirs().map(({ dir }) => oceanPath(dir, "memory")),
   ];
   const name = normalize(path.basename(file));
   const heading = normalize(title(content));

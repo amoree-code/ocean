@@ -143,3 +143,63 @@ test("policy doctor reads policy references written as `ocean policy` only", asy
   assert.deepEqual(report.missing.sort(), ["missing-one"]);
   assert.equal(report.ok, false);
 });
+
+test("doctor reports a project left flat or uncategorized, and one id in two category folders (T-311)", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-doctor-category-"));
+  for (const dir of [PERSONAL_DIR, KNOWLEDGE_DIR, SYSTEM_DIR])
+    await mkdir(path.join(root, dir), { recursive: true });
+  const place = async (relative, id) => {
+    const dir = path.join(root, PROJECTS_DIR, relative);
+    await mkdir(dir, { recursive: true });
+    await writeFile(
+      path.join(dir, "project.json"),
+      `${JSON.stringify({ id, name: id, paths: [] })}\n`,
+    );
+  };
+  await place("flat-one", "flat-one");
+  await place("uncategorized/fresh", "fresh");
+  await place("company/filed", "filed");
+  await place("company/twin", "twin");
+  await place("personal/twin", "twin");
+  const result = spawnSync(
+    process.execPath,
+    [path.resolve("dist/main.js"), "doctor", "--json"],
+    {
+      env: {
+        ...process.env,
+        OCEAN_ROOT: root,
+        OCEAN_SKIP_DEPENDENCY_AUDIT: "1",
+      },
+      encoding: "utf8",
+    },
+  );
+  const findings = JSON.parse(result.stdout).findings;
+  const of = (code) => findings.filter((f) => f.code === code);
+  assert.deepEqual(
+    of("PROJECT_FLAT").map((f) => f.path),
+    [`${PROJECTS_DIR}/flat-one`],
+  );
+  assert.match(
+    of("PROJECT_FLAT")[0].message,
+    /ocean project move flat-one <category>/,
+  );
+  assert.deepEqual(
+    of("PROJECT_UNCATEGORIZED").map((f) => f.path),
+    [`${PROJECTS_DIR}/uncategorized/fresh`],
+  );
+  assert.deepEqual(
+    of("PROJECT_DUPLICATE_ID").map((f) => [f.severity, f.path]),
+    [["FAIL", `${PROJECTS_DIR}/personal/twin/project.json`]],
+  );
+  // A filed project is not reported by the category checks.
+  for (const code of [
+    "PROJECT_FLAT",
+    "PROJECT_UNCATEGORIZED",
+    "PROJECT_DUPLICATE_ID",
+  ])
+    assert.equal(
+      of(code).some((f) => f.path.includes("filed")),
+      false,
+      code,
+    );
+});

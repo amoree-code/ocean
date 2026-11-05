@@ -23,6 +23,7 @@ import { MEMORY_INSTRUCTIONS } from "@ocean/core/domain/mcp/memory-contract.js";
 import { atomicWrite } from "@ocean/core/shared/fs-utils.js";
 import {
   PROJECTS_DIR,
+  projectDir,
   STORE_DIR,
   SYSTEM_DIR,
 } from "@ocean/core/shared/paths.js";
@@ -393,6 +394,9 @@ test("memory_propose writes only a server-named candidate", async () => {
 test("soft delete and restore round-trip byte for byte", async () => {
   await inWorkspace("trash", async (root) => {
     const target = `${PROJECTS_DIR}/demo/memory/deploy.md`;
+    // A project that does not exist yet is created in uncategorized/ (T-311).
+    const onDisk = () =>
+      path.join(root, projectDir("demo", root), "memory", "deploy.md");
     const original = "Deploy the API before the dashboard.\n";
     await call("memory_write", {
       path: target,
@@ -413,14 +417,14 @@ test("soft delete and restore round-trip byte for byte", async () => {
       path: target,
       expectedHash: sha256,
     });
-    assert.equal(await exists(path.join(root, target)), false);
+    assert.equal(await exists(onDisk()), false);
     assert.equal(
       await readFile(path.join(root, deleted.trash), "utf8"),
       original,
     );
     assert.equal((await call("memory_read", { path: target })).code, "MISSING");
     const restored = await call("memory_restore", { id: deleted.auditId });
-    assert.equal(await readFile(path.join(root, target), "utf8"), original);
+    assert.equal(await readFile(onDisk(), "utf8"), original);
     assert.equal(restored.sha256, sha256);
     assert.equal(
       (await call("memory_restore", { id: deleted.auditId })).code,
@@ -441,7 +445,7 @@ test("soft delete and restore round-trip byte for byte", async () => {
       id: changed.auditId,
       expectedHash: changed.sha256,
     });
-    assert.equal(await readFile(path.join(root, target), "utf8"), original);
+    assert.equal(await readFile(onDisk(), "utf8"), original);
     assert.equal(
       (await call("memory_restore", { id: "20261030000000-00000000" })).code,
       "MISSING",
@@ -571,4 +575,33 @@ test("atomicWrite keeps an existing file's mode and writes through a symlink", a
   assert.equal((await lstat(linkPath)).isSymbolicLink(), true);
   assert.equal(await readFile(file, "utf8"), '{"a":3}\n');
   await assertMode(file, 0o640);
+});
+
+test("a record path written before its project moved still reaches it, and its history answers to both paths (T-311)", async () => {
+  await inWorkspace("moved", async (root) => {
+    await mkdir(path.join(root, PROJECTS_DIR, "company", "demo"), {
+      recursive: true,
+    });
+    const flat = `${PROJECTS_DIR}/demo/memory/deploy.md`;
+    const nested = `${PROJECTS_DIR}/company/demo/memory/deploy.md`;
+    const created = await call("memory_write", {
+      path: flat,
+      content: "Deploy the API first.\n",
+      mode: "create",
+    });
+    assert.equal(created.path, nested);
+    assert.equal(
+      await readFile(path.join(root, nested), "utf8"),
+      "Deploy the API first.\n",
+    );
+    assert.equal(await exists(path.join(root, flat)), false);
+    for (const asked of [flat, nested])
+      assert.deepEqual(
+        (await call("memory_history", { path: asked })).entries.map(
+          (entry) => entry.action,
+        ),
+        ["create"],
+        asked,
+      );
+  });
 });
