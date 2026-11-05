@@ -54,9 +54,13 @@ test("a feature branch and a detached HEAD may commit", {
 
 test("lefthook runs the guard before every commit", async () => {
   const { readFile } = await import("node:fs/promises");
-  const config = await readFile(path.join(repoRoot(), "lefthook.yml"), "utf8");
+  // lefthook reads its config from the git root, the parent of kernel/ (T-310).
+  const config = await readFile(
+    path.join(repoRoot(), "..", "lefthook.yml"),
+    "utf8",
+  );
   assert.match(
     config,
-    /no-main:\s*\n\s*run: node scripts\/no-commit-on-main\.mjs/,
+    /no-main:\s*\n\s*root: kernel\/\s*\n\s*run: node scripts\/no-commit-on-main\.mjs/,
   );
 });
