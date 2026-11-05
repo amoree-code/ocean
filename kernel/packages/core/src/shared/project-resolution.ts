@@ -877,29 +877,45 @@ export async function renderProjectIndex(): Promise<string> {
   // Table cells: a `|` or a line break in a name or path would split the row.
   const cell = (value: string) =>
     value.replace(/[\r\n]+/g, " ").replaceAll("|", "\\|");
-  // A bad category shows as invalid instead of failing the whole index.
+  // One table per category, in PROJECT_CATEGORIES order; a project without one comes after,
+  // and a bad one shows as invalid instead of failing the whole index.
   const category = (manifest: ProjectManifest) => {
     try {
-      return projectCategory(manifest) ?? "—";
+      return projectCategory(manifest) ?? "uncategorized";
     } catch {
       return "invalid";
     }
   };
-  const rows = (await listProjectManifests()).map(
-    (manifest) =>
-      `| \`${manifest.id}\` | ${cell(manifest.name)} | ${category(manifest)} | ${
-        manifest.paths.length
-          ? manifest.paths.map((entry) => `\`${cell(entry)}\``).join("<br>")
-          : "—"
-      } | ${manifest.autoRegistered ? "auto" : "manual"} |`,
+  const groups = new Map<string, string[]>(
+    [...PROJECT_CATEGORIES, "uncategorized", "invalid"].map((name) => [
+      name,
+      [],
+    ]),
   );
+  for (const manifest of await listProjectManifests())
+    groups
+      .get(category(manifest))
+      ?.push(
+        `| \`${manifest.id}\` | ${cell(manifest.name)} | ${
+          manifest.paths.length
+            ? manifest.paths.map((entry) => `\`${cell(entry)}\``).join("<br>")
+            : "—"
+        } | ${manifest.autoRegistered ? "auto" : "manual"} |`,
+      );
+  const sections = [...groups]
+    .filter(([, rows]) => rows.length)
+    .flatMap(([name, rows]) => [
+      "",
+      `### ${name}`,
+      "",
+      "| Project | Name | Paths | Registered |",
+      "|---|---|---|---|",
+      ...rows,
+    ]);
   return [
     INDEX_BEGIN,
     "## Projects (from project.json)",
-    "",
-    "| Project | Name | Category | Paths | Registered |",
-    "|---|---|---|---|---|",
-    ...rows,
+    ...sections,
     INDEX_END,
   ].join("\n");
 }

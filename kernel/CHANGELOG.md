@@ -6,6 +6,7 @@ Docs-only or CI-only PRs may add the `skip-changelog` label instead.
 
 ## Unreleased
 
+- feat(projects): `project.json` takes a `category` — one of `company`, `personal`, `freelance`, `former-company`, `vendor` — that every manifest writer keeps; the generated project index groups projects under one heading per category and `ocean project list --category <name>` lists one category. A bad value shows as `invalid` and never unbinds the project (PR pending)
 - feat(projects): `project.json` takes a `category` — one of `company`, `personal`, `freelance`, `former-company`, `vendor` — that every manifest writer keeps; the generated project index gains a Category column and `ocean project list --category <name>` lists one category. A bad value shows as `invalid` and never unbinds the project (PR pending)
 - ci: each published release also goes to GitHub Packages as `@amoree-code/ocean` (the npm tarball, renamed to the scope GitHub Packages requires), from a `production` environment; `workflow_dispatch` with a tag publishes an existing release (#261)
 - feat(T-310): one repository rooted at `~/ocean`: the engine moves to `kernel/` (history kept), every workspace folder ships as an empty `.gitkeep`, and the root `.gitignore` is a whitelist so no private file can be committed; `lefthook.yml` moves to the git root and CI runs inside `kernel/` (#260)

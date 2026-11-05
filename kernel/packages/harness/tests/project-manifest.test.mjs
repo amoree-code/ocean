@@ -531,14 +531,24 @@ test("category is optional, one of a fixed set, and a bad one never unbinds the 
     assert.throws(() => projectCategory(byId.typo), /category must be one of/);
     assert.throws(() => projectCategory(byId.shape), /category must be one of/);
 
+    await writeRaw(root, "home", { category: "personal" });
     const index = await renderProjectIndex();
-    assert.match(
-      index,
-      /\| Project \| Name \| Category \| Paths \| Registered \|/,
-    );
-    assert.match(index, /\| `work` \| work \| company \| — \|/);
-    assert.match(index, /\| `mine` \| mine \| — \| — \|/);
-    assert.match(index, /\| `typo` \| typo \| invalid \| — \|/);
+    // One section per category, in the fixed order; empty categories are left out.
+    const headings = index.match(/^### .+$/gm);
+    assert.deepEqual(headings, [
+      "### company",
+      "### personal",
+      "### uncategorized",
+      "### invalid",
+    ]);
+    const section = (name) =>
+      index.split(`### ${name}\n`)[1].split("\n### ")[0];
+    assert.match(section("company"), /\| `work` \| work \| — \| manual \|/);
+    assert.match(section("personal"), /\| `home` \|/);
+    assert.doesNotMatch(section("personal"), /`work`/);
+    assert.match(section("uncategorized"), /\| `mine` \|/);
+    assert.match(section("invalid"), /\| `typo` \|/);
+    assert.match(section("invalid"), /\| `shape` \|/);
   });
 });
 
