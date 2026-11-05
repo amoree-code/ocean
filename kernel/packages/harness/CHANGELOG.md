@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.0
+
+- feat: the package is `@amoree-code/ocean` on npm too, the same name as on GitHub Packages and the repository; `@ameer.abdulkareem/ocean` stops at 1.1.0 and is deprecated in favour of it. Install with `npm install --global @amoree-code/ocean` (#264)
+
 ## 1.1.0
 
 - fix(T-312): the release commit is made with git hooks off (`LEFTHOOK=0`): CI's `pnpm install` installs the repo's hooks, and the no-commit-on-main guard refused the release commit, so the first automatic release stopped before tagging (#263)
