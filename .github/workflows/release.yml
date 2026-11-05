@@ -40,9 +40,12 @@ jobs:
       # A version is tagged only after the gates pass on exactly what ships.
       - if: steps.plan.outputs.version != ''
         run: pnpm check:skills && pnpm build && pnpm check:package && pnpm test
+      # Hooks off: `pnpm install` installed the repo's git hooks, whose no-commit-on-main guard
+      # would refuse this commit; the gates above already ran on this tree.
       - if: steps.plan.outputs.version != ''
         env:
           VERSION: ${{ steps.plan.outputs.version }}
+          LEFTHOOK: "0"
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
