@@ -6,6 +6,7 @@ Docs-only or CI-only PRs may add the `skip-changelog` label instead.
 
 ## Unreleased
 
+- feat(T-310): one repository rooted at `~/ocean`: the engine moves to `kernel/` (history kept), every workspace folder ships as an empty `.gitkeep`, and the root `.gitignore` is a whitelist so no private file can be committed; `lefthook.yml` moves to the git root and CI runs inside `kernel/` (#260)
 - chore(T-308): version 1.0.0, the first public npm release: every `packages/*/package.json`, the marketplace index (regenerated) and a `## 1.0.0` section in the package changelog (#259)
 - docs(T-308): an npm that blocks install scripts by default (npm 12 prints `npm warn install-scripts`) skips node-pty's Linux compile even with a toolchain; README and troubleshooting give `--allow-scripts=node-pty`. On macOS nothing changes: node-pty's prebuild needs no script and Ocean restores `spawn-helper`'s executable bit before the first spawn (checked with npm 12.1.0) (#258)
 - fix(T-308): the npm package is `@ameer.abdulkareem/ocean`, the maintainer's own npm user scope: the `@amoree-code` scope does not exist on npm. The command stays `ocean` and the GitHub repository stays `amoree-code/ocean` (#257)

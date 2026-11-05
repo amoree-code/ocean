@@ -1,86 +1,57 @@
-# ocean — PUBLIC repository. No private user data, ever.
-#
-# The private user workspace lives at ~/ocean and is a separate, local-only git
-# repository. It must never appear here. These entries are a safety net, not the
-# mechanism — the real separation is that the two live in different trees, and
-# `ocean doctor` check for violations.
+# ~/ocean — one public repo (T-310). The root is the owner's workspace, which holds private
+# data, so this file is a WHITELIST: everything is ignored unless listed below. Only the engine
+# (kernel/) ships with content; every workspace directory ships as an empty .gitkeep so the
+# structure is visible while its files never are.
 
-# --- private workspace, if it is ever copied or symlinked in by mistake ---
-# The workspace's top-level folders (the same list as scripts/publish.mjs's hard deny list).
-# Anchored to the root: packages/harness/templates/workspace/ holds their empty, public template.
-/brain/
-/charter/
-/sessions/
-/personal/
-/projects/
-/.index/
-/00-inbox/
-/01-daily/
-/02-personal/
-/03-areas/
-/03-professional/
-/04-projects/
-/05-knowledge/
-/06-templates/
+/*
 
-# The bridge (machine-local state: sessions, config, integrations) moved out of this repo to
-# ~/ocean/bridge in T-243, so nothing here should ever be named bridge/. This line stays as a guard:
-# a process started before the move still resolves the old layout and could recreate it.
-/bridge/
+!/.gitignore
+!/README.md
+!/lefthook.yml
+!/.github/
+!/kernel/
 
-# --- credentials ---
-.env
-.env.*
-# Anchored (T-243): unanchored, this negation once re-included bridge/.env.example.
-!/.env.example
-*.pem
-*.key
-*.p12
-*.pfx
-credentials.json
-secrets.json
-.netrc
-.npmrc
+# --- workspace structure: directories and .gitkeep only, never their files ---
+!/00-inbox/
+!/01-daily/
+!/02-personal/
+!/03-professional/
+!/04-projects/
+!/05-knowledge/
+!/06-templates/
+!/charter/
+!/bridge/
+!/.index/
 
-# --- OS / editor ---
-.DS_Store
-._*
-*.swp
-*.swo
-*~
-.idea/
-.vscode/*
-!.vscode/settings.json
-# --- test scratch ---
-# tests/_tmp/ is working material the suites write and rewrite. Nothing under it is
-# source, reproducible or reviewable, so none of it is committed. (A negation for its
-# README would not work anyway: git cannot re-include a file inside an excluded
-# directory.)
-tests/_tmp/
+/00-inbox/**
+/01-daily/**
+/02-personal/**
+/03-professional/**
+/04-projects/**
+/05-knowledge/**
+/06-templates/**
+/charter/**
+/bridge/**
+/.index/**
 
-# --- build / deps ---
-node_modules/
-dist/
-build/
-coverage/
-*.log
-__pycache__/
-*.py[cod]
+!/00-inbox/**/
+!/01-daily/**/
+!/02-personal/**/
+!/03-professional/**/
+!/04-projects/**/
+!/05-knowledge/**/
+!/06-templates/**/
+!/charter/**/
+!/bridge/**/
+!/.index/**/
 
-# --- NOT ignored, deliberately ---
-# Nested .git directories are NOT ignored. Ignoring one would hide it; we want a nested
-# repository to be found and reported, not silently excluded. `ocean doctor` fails loudly
-# on any unexpected nested repository.
-
-# graft's local graph cache — regenerable, not committed (run `graft build`).
-/graft/
-/graphify-out/
-
-# graft shims bake an absolute npx cache path (leaks local username) — regenerate per machine
-/.claude/helpers/graft-hooks.cjs
-/.claude/helpers/graft-statusline.cjs
-/.cursor/hooks/graft-hooks.cjs
-
-# graft's Cursor hook config bakes this machine's absolute repo path (leaks local
-# username, won't resolve on another machine) — regenerate per machine with `graft init`
-/.cursor/hooks.json
+!/00-inbox/**/.gitkeep
+!/01-daily/**/.gitkeep
+!/02-personal/**/.gitkeep
+!/03-professional/**/.gitkeep
+!/04-projects/**/.gitkeep
+!/05-knowledge/**/.gitkeep
+!/06-templates/**/.gitkeep
+!/charter/**/.gitkeep
+!/bridge/**/.gitkeep
+!/.index/**/.gitkeep

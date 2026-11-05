@@ -1,20 +1,28 @@
+# Hooks for the whole repo (T-310). lefthook reads its config from the git root, so it lives
+# here; every command runs inside kernel/, where the engine and its scripts are.
 pre-commit:
   parallel: true
   commands:
     no-main:
+      root: kernel/
       run: node scripts/no-commit-on-main.mjs
     typecheck:
-      glob: "packages/**/*.ts"
+      root: kernel/
+      glob: "kernel/packages/**/*.ts"
       run: pnpm typecheck
     privacy:
+      root: kernel/
       run: pnpm check:privacy
     gitleaks:
+      root: kernel/
       run: node scripts/gitleaks-staged.mjs
     skills:
-      glob: "packages/harness/skills/**"
+      root: kernel/
+      glob: "kernel/packages/harness/skills/**"
       run: pnpm check:skills
 
 pre-push:
   commands:
     test:
+      root: kernel/
       run: pnpm test
