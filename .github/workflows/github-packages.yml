@@ -1,0 +1,54 @@
+name: GitHub Packages
+# Publishes each release to GitHub Packages as @amoree-code/ocean: the same tarball npm gets
+# as @ameer.abdulkareem/ocean, renamed to the scope GitHub Packages requires (the repo owner).
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to publish, e.g. v1.0.0
+        required: true
+permissions:
+  contents: read
+  packages: write
+concurrency:
+  group: github-packages-${{ github.event.release.tag_name || inputs.tag }}
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+      # Tags before T-310 hold the engine at the repo root; later ones under kernel/.
+      - id: layout
+        run: |
+          if [ -d kernel ]; then echo "dir=kernel" >> "$GITHUB_OUTPUT"; else echo "dir=." >> "$GITHUB_OUTPUT"; fi
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://npm.pkg.github.com
+          scope: "@amoree-code"
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+        working-directory: ${{ steps.layout.outputs.dir }}
+      - run: pnpm build
+        working-directory: ${{ steps.layout.outputs.dir }}
+      - run: node scripts/pack-release.mjs --out release
+        working-directory: ${{ steps.layout.outputs.dir }}
+      - name: Rename for GitHub Packages
+        working-directory: ${{ steps.layout.outputs.dir }}/release/package
+        run: |
+          node -e '
+            const fs = require("node:fs");
+            const manifest = JSON.parse(fs.readFileSync("package.json", "utf8"));
+            manifest.name = "@amoree-code/ocean";
+            manifest.publishConfig = { registry: "https://npm.pkg.github.com" };
+            fs.writeFileSync("package.json", `${JSON.stringify(manifest, null, 2)}\n`);
+          '
+      - run: npm publish --ignore-scripts
+        working-directory: ${{ steps.layout.outputs.dir }}/release/package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
