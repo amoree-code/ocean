@@ -32,6 +32,7 @@ cannot be committed by accident.
 │   ├── registry.md
 │   ├── backlog.md
 │   └── <project>/             # shown here as _project/
+│       ├── project.json       # id, paths, tags: company | personal | freelance first
 │       ├── README.md
 │       ├── memory/
 │       ├── docs/
@@ -42,6 +43,8 @@ cannot be committed by accident.
 │   ├── decisions/
 │   ├── discoveries/
 │   ├── failures/
+│   ├── lessons/
+│   ├── references/
 │   ├── research/
 │   ├── results/
 │   └── solutions/
@@ -50,10 +53,16 @@ cannot be committed by accident.
 ├── bridge/                    # local runtime data
 │   ├── config/
 │   ├── profiles/
+│   ├── registry/
 │   ├── integrations/
 │   ├── browser/
 │   ├── runtime/
+│   ├── state/
 │   ├── sessions/
+│   ├── observations/
+│   ├── installed/
+│   ├── market/
+│   ├── archive/
 │   └── skills/                # installed or local copies
 ├── .index/                    # generated index, rebuildable
 └── kernel/                    # the public engine
