@@ -1,9 +1,28 @@
 # Releasing the npm package
 
-Ocean ships to npm as **`@ameer.abdulkareem/ocean`** (the name `ocean` belongs to another project);
-the installed command is `ocean`. This guide builds and checks a release. Publishing is the
-last step and is done by hand, by the maintainer, with npm's own credentials — never from a
-script, CI secret file or any file in this repository.
+Ocean ships to npm as **`@ameer.abdulkareem/ocean`** (the name `ocean` belongs to another project)
+and to GitHub Packages as **`@amoree-code/ocean`**; the installed command is `ocean`.
+
+**Releases are automatic (T-312).** Every push to `main` runs `.github/workflows/release.yml`:
+
+1. `scripts/auto-release.mjs` reads what is pending: the root `CHANGELOG.md`'s Unreleased lines
+   and any changesets in `.changeset/`. Major on a `major` changeset or a `type!:` line
+   (`feat!: …`), minor on a `minor` changeset or a `feat` line, otherwise patch. Nothing
+   pending, no release. A version already set by hand and not yet tagged ships as it is.
+2. It sets the version in every `packages/*/package.json`, regenerates the marketplace index,
+   moves the Unreleased lines under `## <version> (<date>)` in `CHANGELOG.md`, adds
+   `## <version>` to `packages/harness/CHANGELOG.md`, and deletes the consumed changesets.
+3. The gates run on exactly that tree (`check:skills`, `build`, `check:package`, `test`); only
+   then does github-actions commit `chore(release): v<version>`, tag it and push to `main`.
+4. The publish job (environment `production`) packs the tag, writes the GitHub release from the
+   package changelog section, publishes to npm through **trusted publishing** (OIDC: no token
+   is stored anywhere) with provenance, and to GitHub Packages with the job's own token. Each
+   step skips what already exists, so a failed publish is fixed by re-running that job.
+
+Nobody publishes by hand. npm trusts only `release.yml` in environment `production` of
+`amoree-code/ocean` (`npm trust list @ameer.abdulkareem/ocean`).
+
+The sections below are what the workflow does, for reading or for checking a tarball locally.
 
 ## What the package is
 
@@ -14,19 +33,13 @@ tarball's `node_modules/@ocean/`, and their third-party dependencies are lifted 
 CLI's own `dependencies`, where npm installs them. Only JavaScript ships — no `src/`, tests,
 `.d.ts` or source maps.
 
-## 1. Prepare
+## 1. Gates
 
-1. Work on a branch that has landed on `main` through a pull request.
-2. Set the version: every `packages/*/package.json` shares it. Add a `## <version>` section to
-   `packages/harness/CHANGELOG.md` summarising what ships (`pnpm check:package` requires the
-   heading); the root `CHANGELOG.md` stays the per-pull-request log it is.
-3. Run the gates once:
-
-   ```bash
-   pnpm install --frozen-lockfile
-   pnpm test
-   pnpm check
-   ```
+```bash
+pnpm install --frozen-lockfile
+pnpm test
+pnpm check
+```
 
 ## 2. Pack
 
@@ -91,17 +104,13 @@ Do not run `ocean client sync`, `ocean service restart` or `ocean clients apply`
 sandbox: the login service's label is per user, not per home directory, so they can act on
 the real service.
 
-## 5. Publish (maintainer, by hand)
+## 5. Publish
 
-Only with an explicit decision to release this version:
+`release.yml` publishes; there is no manual step. Never put an npm token in this repository, a
+workflow file or an Ocean record: npm accepts this package only from the trusted workflow.
+Should the trust ever need setting again, from an npm login that owns the package:
 
 ```bash
-npm login                                  # npm keeps the token in its own config
-npm publish <tarball> --access public      # a scoped package is private unless --access public
-npm view @ameer.abdulkareem/ocean version
+npm trust github @ameer.abdulkareem/ocean --file release.yml \
+  --repository amoree-code/ocean --environment production --allow-publish --yes
 ```
-
-Publishing needs an npm user or organisation `amoree-code`. Never put an npm token in this
-repository, a workflow file or an Ocean record. Then tag the release commit, publish
-**Ocean v<version>** on the GitHub releases page, and add `--tag next` to `npm publish` for a
-pre-release instead.
