@@ -31,8 +31,9 @@ cannot be committed by accident.
 │   ├── PROJECTS.md
 │   ├── registry.md
 │   ├── backlog.md
-│   └── <project>/             # shown here as _project/
-│       ├── project.json       # id, paths, category, tags
+│   └── <category>/<project>/  # company, personal, freelance, former-company, vendor,
+│       │                      # uncategorized; shown here as _project/
+│       ├── project.json       # id, paths, tags (the folder is the category)
 │       ├── README.md
 │       ├── memory/
 │       ├── docs/
