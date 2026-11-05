@@ -2,14 +2,19 @@
 
 Every pull request adds a line under **Unreleased** (the `changelog` CI check fails
 otherwise). Format: `- <type>(<scope>): <what changed and why it matters> (#<PR>)`.
-Docs-only or CI-only PRs may add the `skip-changelog` label instead.
+Docs-only or CI-only PRs may add the `skip-changelog` label instead. Mark a breaking change
+with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (`docs/release.md`).
 
 ## Unreleased
 
 - feat(T-311): `ocean project move <id> <category> [--write]` files a project under its category folder and rewrites the workspace paths (records, projects, charter) that named its old folder, as whole paths only; without `--write` it reports what would change. `ocean doctor` warns on a project left flat (`PROJECT_FLAT`) or in `uncategorized/` (`PROJECT_UNCATEGORIZED`) and fails on one id with project.json in two category folders (`PROJECT_DUPLICATE_ID`); a folder holding project.json wins over a bare one of the same name (#263)
 - feat(T-311): projects can live in category folders, `04-projects/<category>/<id>/` (`company`, `personal`, `freelance`, `former-company`, `vendor`); the generated project index groups them under one heading per category and `ocean project list --category <name>` lists one; every path to a project goes through one resolver (`projectDir`, `listProjectDirs`), which reads both that and the flat layout. A new project lands in `uncategorized/` (the workspace's own project in `personal/`), a category folder name is never a project id, and a record path or memory history written in either layout reaches the same record. `storeRelativeToRoot` now takes the root, so a search against another root cites its files (#263)
+- feat(T-312): releases are automatic. Every push to `main` with something pending bumps the version (major on a `type!:` line, minor on `feat`, else patch), moves the Unreleased lines under the version in both changelogs, consumes the changesets, tags `v<version>`, writes the GitHub release, and publishes to npm through trusted publishing (no stored token) and to GitHub Packages. The 45 changesets that shipped in 1.0.0 are removed (#262)
 - ci: each published release also goes to GitHub Packages as `@amoree-code/ocean` (the npm tarball, renamed to the scope GitHub Packages requires), from a `production` environment; `workflow_dispatch` with a tag publishes an existing release (#261)
 - feat(T-310): one repository rooted at `~/ocean`: the engine moves to `kernel/` (history kept), every workspace folder ships as an empty `.gitkeep`, and the root `.gitignore` is a whitelist so no private file can be committed; `lefthook.yml` moves to the git root and CI runs inside `kernel/` (#260)
+
+## 1.0.0 (2026-11-05)
+
 - chore(T-308): version 1.0.0, the first public npm release: every `packages/*/package.json`, the marketplace index (regenerated) and a `## 1.0.0` section in the package changelog (#259)
 - docs(T-308): an npm that blocks install scripts by default (npm 12 prints `npm warn install-scripts`) skips node-pty's Linux compile even with a toolchain; README and troubleshooting give `--allow-scripts=node-pty`. On macOS nothing changes: node-pty's prebuild needs no script and Ocean restores `spawn-helper`'s executable bit before the first spawn (checked with npm 12.1.0) (#258)
 - fix(T-308): the npm package is `@ameer.abdulkareem/ocean`, the maintainer's own npm user scope: the `@amoree-code` scope does not exist on npm. The command stays `ocean` and the GitHub repository stays `amoree-code/ocean` (#257)

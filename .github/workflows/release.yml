@@ -1,0 +1,113 @@
+name: Release
+# Every push to main that leaves something pending releases itself (T-312): the version, both
+# changelogs, the tag, the GitHub release, npm (@ameer.abdulkareem/ocean) and GitHub Packages
+# (@amoree-code/ocean). Nobody runs a step by hand. The release commit is pushed with
+# GITHUB_TOKEN, which does not trigger workflows, so it never releases itself again.
+on:
+  push:
+    branches: [main]
+    paths: ["kernel/**"]
+  workflow_dispatch:
+concurrency:
+  group: release
+  cancel-in-progress: false
+jobs:
+  version:
+    if: ${{ !startsWith(github.event.head_commit.message, 'chore(release):') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+    defaults:
+      run:
+        working-directory: kernel
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - id: plan
+        run: |
+          tagged=$(git tag -l 'v*' | sed 's/^/--tagged /' | tr '\n' ' ')
+          plan=$(node scripts/auto-release.mjs --write $tagged)
+          echo "$plan"
+          echo "version=$(echo "$plan" | jq -r '.version // empty')" >> "$GITHUB_OUTPUT"
+      # A version is tagged only after the gates pass on exactly what ships.
+      - if: steps.plan.outputs.version != ''
+        run: pnpm check:skills && pnpm build && pnpm check:package && pnpm test
+      - if: steps.plan.outputs.version != ''
+        env:
+          VERSION: ${{ steps.plan.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A .
+          git commit -m "chore(release): v$VERSION"
+          git tag "v$VERSION"
+          git push origin HEAD:main "v$VERSION"
+
+  # Re-runnable on its own: every step skips what already exists.
+  publish:
+    needs: version
+    if: needs.version.outputs.version != ''
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    defaults:
+      run:
+        working-directory: kernel
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v${{ needs.version.outputs.version }}
+      # No registry-url: an .npmrc token line would stand in for trusted publishing.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # npm's trusted publishing (OIDC, no stored token) needs npm 11.5.1 or newer.
+      - run: npm install --global npm@11.6.2
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: node scripts/pack-release.mjs --out release
+      - name: GitHub release
+        run: |
+          gh release view "v$VERSION" >/dev/null 2>&1 && exit 0
+          awk -v v="## $VERSION" '$0==v{f=1;next} /^## /{if(f)exit} f' \
+            packages/harness/CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          gh release create "v$VERSION" --title "Ocean v$VERSION" \
+            --notes-file "$RUNNER_TEMP/notes.md" --verify-tag --latest
+      - name: npm
+        working-directory: kernel/release/package
+        run: |
+          npm view "@ameer.abdulkareem/ocean@$VERSION" version >/dev/null 2>&1 && exit 0
+          npm publish --provenance --access public --ignore-scripts
+      - name: GitHub Packages
+        working-directory: kernel/release/package
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
+        run: |
+          node -e '
+            const fs = require("node:fs");
+            const manifest = JSON.parse(fs.readFileSync("package.json", "utf8"));
+            manifest.name = "@amoree-code/ocean";
+            manifest.publishConfig = { registry: "https://npm.pkg.github.com" };
+            fs.writeFileSync("package.json", `${JSON.stringify(manifest, null, 2)}\n`);
+          '
+          printf '//npm.pkg.github.com/:_authToken=%s\n' "$NODE_AUTH_TOKEN" > "$RUNNER_TEMP/gpr.npmrc"
+          npm view "@amoree-code/ocean@$VERSION" version \
+            --registry https://npm.pkg.github.com --userconfig "$RUNNER_TEMP/gpr.npmrc" \
+            >/dev/null 2>&1 && exit 0
+          npm publish --registry https://npm.pkg.github.com \
+            --userconfig "$RUNNER_TEMP/gpr.npmrc" --ignore-scripts
