@@ -44,7 +44,8 @@ can start the same server.
 
 **What it covers.** Tabs, navigation, accessibility snapshots, click, fill and forms, file
 upload, screenshots, script evaluation, console messages and network requests (32 tools).
-**Downloads:** there is no download tool; a click on a download link downloads to Chrome's own
+`list_pages` lists web pages only: `chrome://` and extension pages are left out, so its count can
+be lower than Chrome's tab count. **Downloads:** there is no download tool; a click on a download link downloads to Chrome's own
 folder, and `chrome://` pages (the downloads list included) cannot be opened, so confirming a
 download needs a client that can read that folder.
 
