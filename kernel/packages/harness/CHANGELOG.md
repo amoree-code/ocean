@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.0
+
+- feat(T-298): the marketplace browser capability `dev.ocean/chrome-devtools` now runs the published npm package `ocean-browser-mcp@0.1.0` (source amoree-code/Ocean-BROWSER-MCP), which pins Chrome DevTools MCP 1.12.0 exactly and carries the attach and privacy flags itself; the name and the `chrome-devtools` client key are unchanged, so `ocean market update dev.ocean/chrome-devtools --yes` is the whole migration (#266)
+
 ## 1.3.0
 
 - feat(T-298): `ocean clients apply` wires every MCP server installed from the marketplace into every supported client, as an `ocean market exec <name>` entry under its `clientKey`; it keeps them current, removes them once uninstalled, and never rewrites the owner's own server under the same key. New clients: VS Code (`servers` in its user `mcp.json`) and the Antigravity CLI (`~/.gemini/config/mcp_config.json`, which `agy` reads instead of the app's file). A marketplace server now finds `npx`/`uvx` next to the node running Ocean, so GUI clients that start it with the login PATH (Claude Desktop, VS Code) no longer fail with `spawn npx ENOENT`. The loopback browser bridge is retired (`ocean mcp browser-config`, `browser-bridge`, `browser-service install` removed; `browser-service uninstall` stays to clean up), and `ocean doctor` reports `BROWSER` for an installed browser capability instead of `BROWSER_BRIDGE` (#265)
