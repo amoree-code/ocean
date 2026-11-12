@@ -14,11 +14,12 @@ the MCP entry is stored.
 ## Your signed-in Chrome, in every client
 
 ```text
-AI client -> ocean market exec dev.ocean/chrome-devtools -> chrome-devtools-mcp --autoConnect -> running Chrome
+AI client -> ocean market exec dev.ocean/chrome-devtools -> ocean-browser-mcp (chrome-devtools-mcp --autoConnect) -> running Chrome
 ```
 
 Each client starts its own stdio server per session; there is no background service and no
-extension. The server is the pinned Chrome DevTools MCP with usage statistics and CrUX off, and
+extension. The server is the npm package `ocean-browser-mcp` (source: amoree-code/Ocean-BROWSER-MCP),
+which runs Chrome DevTools MCP 1.12.0 pinned exactly, with usage statistics and CrUX off, and
 it attaches to the Chrome you already use, with its open tabs and signed-in sessions.
 
 Setup, once:
@@ -43,7 +44,8 @@ can start the same server.
 
 **What it covers.** Tabs, navigation, accessibility snapshots, click, fill and forms, file
 upload, screenshots, script evaluation, console messages and network requests (32 tools).
-**Downloads:** there is no download tool; a click on a download link downloads to Chrome's own
+`list_pages` lists web pages only: `chrome://` and extension pages are left out, so its count can
+be lower than Chrome's tab count. **Downloads:** there is no download tool; a click on a download link downloads to Chrome's own
 folder, and `chrome://` pages (the downloads list included) cannot be opened, so confirming a
 download needs a client that can read that folder.
 
