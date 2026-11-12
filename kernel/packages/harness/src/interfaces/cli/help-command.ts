@@ -124,7 +124,7 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
   ],
   mcp: [
     "Print MCP client configs, or serve Ocean's MCP server and gateway.",
-    "ocean mcp config|playwright-config|gateway-config|browser-config|browser-bridge|browser-service install|uninstall|serve|gateway",
+    "ocean mcp config|playwright-config|gateway-config|serve|gateway|browser-service uninstall",
   ],
   market: [
     "List, install, update and run marketplace packages; permissions need --yes.",

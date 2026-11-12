@@ -4,60 +4,63 @@ Ocean owns the browser workflow and task format. AI clients connect to the same
 browser through a standard MCP server; client-specific setup only changes where
 the MCP entry is stored.
 
-## Three ways to reach the owner's current Chrome
+## Two ways to reach a browser
 
 | Route | Use it when | Entry |
 |---|---|---|
-| Marketplace `dev.ocean/chrome-devtools` | One client starts its own server per session; no background service | `<node> <kernel>/packages/harness/dist/main.js market exec dev.ocean/chrome-devtools --yes` as a stdio server |
-| Browser bridge (below) | Several clients must share one long-lived HTTP endpoint | `ocean mcp browser-config` |
+| Marketplace `dev.ocean/chrome-devtools` | The owner's own signed-in Chrome, from every client | `ocean clients apply` writes it |
 | Isolated Playwright stack (further down) | A separate profile, not your signed-in Chrome | `ocean mcp playwright-config` |
 
-The marketplace route installs with `ocean market install dev.ocean/chrome-devtools --yes`. It runs the
-pinned Chrome DevTools MCP with usage statistics and CrUX off, and attaches to the running Chrome
-(`chrome://inspect/#remote-debugging` enabled). It is full access too, and the gateway adds every
-installed MCP server, so installing it also puts the browser behind `ocean mcp gateway`. Its
-declared `filesystem.read` is not enforced (the sandbox was removed in T-306), and the npm package is
-pinned by version, not digest. Only add the entry to a client you have tested end to end.
-
-## The browser bridge
+## Your signed-in Chrome, in every client
 
 ```text
-AI client -> http://127.0.0.1:18931/mcp -> ocean mcp browser-bridge -> chrome-devtools-mcp -> running Chrome
+AI client -> ocean market exec dev.ocean/chrome-devtools -> chrome-devtools-mcp --autoConnect -> running Chrome
 ```
 
-One long-lived local service gives every MCP client the Chrome you already use, with its open
-tabs and signed-in sessions. There is no extension and no separate profile.
+Each client starts its own stdio server per session; there is no background service and no
+extension. The server is the pinned Chrome DevTools MCP with usage statistics and CrUX off, and
+it attaches to the Chrome you already use, with its open tabs and signed-in sessions.
+
+Setup, once:
+
+1. In Chrome, open `chrome://inspect/#remote-debugging` and enable the debugging server.
+2. `ocean market install dev.ocean/chrome-devtools --yes` (shows the permissions it asks for).
+3. `ocean clients apply --yes` adds a `chrome-devtools` entry to every supported client
+   (`ocean clients plan` shows what would change first). Restart a client that is open.
+4. **Chrome asks to allow each new connection.** Every client session that first uses a browser
+   tool raises Chrome's prompt; accept it within 60 seconds or the call times out. A tool that
+   times out waiting for the browser is retried by the next call.
+
+`ocean doctor` reports `BROWSER` once the capability is installed: OK when Chrome's debugging
+server is listening, WARN when Chrome is closed or the switch is off. A sandboxed shell that
+blocks loopback also sees WARN.
 
 **This is full access.** A connected client can read and operate every page Chrome exposes,
 including signed-in sites. Page content is untrusted data, and the access does not authorize a
 specific action: sending, purchasing, deleting and account or security changes still need your
-explicit approval.
+explicit approval. Any client with the entry has this access; any local process running as you
+can start the same server.
 
-Setup, once, outside any client sandbox:
+**What it covers.** Tabs, navigation, accessibility snapshots, click, fill and forms, file
+upload, screenshots, script evaluation, console messages and network requests (32 tools).
+**Downloads:** there is no download tool; a click on a download link downloads to Chrome's own
+folder, and `chrome://` pages (the downloads list included) cannot be opened, so confirming a
+download needs a client that can read that folder.
 
-1. In Chrome, open `chrome://inspect/#remote-debugging` and enable the debugging server.
-2. Run `ocean mcp browser-service install`, which starts the bridge at login (macOS). Elsewhere,
-   run `ocean mcp browser-bridge` under your own service manager.
-3. Add the entry from `ocean mcp browser-config` to each client.
-4. Accept Chrome's prompt when a client first connects.
+**Client limits seen.** Claude Desktop does not negotiate MCP roots, so tools that read or
+write files (upload, a screenshot saved to a path) are limited to the OS temp directory there.
+Codex, asked a plain question, uses its own computer-use tool instead of the browser tools;
+name the tool or ask for "the chrome-devtools tools".
 
-`ocean doctor` reports `BROWSER_BRIDGE`. A sandboxed shell that blocks loopback sees it as
-unreachable even when it is running.
+**Recovery.** A client restart starts a new server. Page ids do not survive a reconnect, so
+call `list_pages` again before acting on a page.
 
-**Access boundary.** The service binds to loopback only. It refuses non-loopback `Host` values,
-any request with an `Origin` header, and non-JSON bodies, so a web page cannot reach it. It has no
-token: **any local process running as you can control the browser.** To cut access immediately,
-run `ocean mcp browser-service uninstall`, or turn the debugging server off in Chrome.
+**Turning it off.** `ocean market uninstall dev.ocean/chrome-devtools`, then `ocean clients
+apply --yes` removes the entries; or turn the debugging server off in Chrome to cut access at
+once. `ocean clients restore` undoes an apply batch.
 
-**Recovery.** launchd restarts the bridge. If the upstream process dies, the call in flight fails
-and is not retried, because it may already have acted on a page; the next call starts a new one.
-A refused connection to Chrome is retried a few times, because no page was touched. **Page ids do
-not survive a reconnect and can then name a different tab**, so call `list_pages` again first.
-
-**Privacy.** Upstream CrUX lookups and usage statistics are off. Logs carry no page content.
-
-**Downloads.** There is no download tool. A click on a download link downloads as usual, to
-Chrome's own download folder.
+The browser bridge (a loopback HTTP endpoint in front of the same server) is retired. On a
+machine that installed its service, `ocean mcp browser-service uninstall` removes it.
 
 ## Isolated browser stack
 

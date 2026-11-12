@@ -1,6 +1,13 @@
 import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { accessSync, constants, existsSync, realpathSync } from "node:fs";
+import {
+  accessSync,
+  constants,
+  existsSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+} from "node:fs";
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -12,6 +19,7 @@ import {
   oceanPath,
   SYSTEM_DIR,
 } from "@ocean/core/shared/paths.js";
+import { marketplacePaths } from "@ocean/market/install/default-marketplace.js";
 import {
   ENTRY_KEYS,
   ManualEdit,
@@ -28,8 +36,9 @@ import {
 
 // Detect, plan, apply, restore and verify the `ocean` MCP entry in every installed client
 // (T-296 P2). Only Ocean-managed entries are touched: `ocean` (the brain server), a legacy
-// `ocean` that runs the Obsidian server (moved to `ocean-obsidian`) and dead entries of the
-// retired atlas gateway. Rollback uses a journal of those entries' values — never a copy of a
+// `ocean` that runs the Obsidian server (moved to `ocean-obsidian`), dead entries of the
+// retired atlas gateway, and one `ocean market exec` entry per installed marketplace MCP server
+// (T-298). Rollback uses a journal of those entries' values — never a copy of a
 // client's file, which can hold credentials next to its servers.
 
 export type ClientEnv = {
@@ -37,7 +46,12 @@ export type ClientEnv = {
   pathDirs: string[];
   appDirs: string[];
   entry: ServerValue;
+  // Entries for installed marketplace MCP servers, by client key.
+  market?: Map<string, ServerValue>;
 };
+
+// Keys Ocean already manages for its own servers; a marketplace server never takes one.
+const RESERVED_KEYS = new Set(["ocean", "ocean-obsidian"]);
 
 export type ClientStatus =
   | "current"
@@ -96,8 +110,9 @@ export function oceanServerEntry(
   execPath = process.execPath,
   engine = liveEngineEntry(),
   platform: NodeJS.Platform = process.platform,
+  command: string[] = ["mcp", "serve"],
 ): ServerValue {
-  const direct = { command: execPath, args: [engine, "mcp", "serve"] };
+  const direct = { command: execPath, args: [engine, ...command] };
   if (
     platform === "win32" ||
     !isVersionedNode(execPath) ||
@@ -106,8 +121,53 @@ export function oceanServerEntry(
     return direct;
   return {
     command: oceanPath(SYSTEM_DIR, "runtime", "shims", "ocean"),
-    args: ["mcp", "serve"],
+    args: command,
   };
+}
+
+// One client entry per MCP server installed from the marketplace, keyed by its declared
+// `clientKey` and started through `ocean market exec`, so every client launches it the same
+// checked way. Remote-only servers are left out: a client connects to those by url.
+export function marketServerEntries(
+  serversRoot: string,
+  entryFor: (command: string[]) => ServerValue = (command) =>
+    oceanServerEntry(undefined, undefined, undefined, command),
+): Map<string, ServerValue> {
+  const entries = new Map<string, ServerValue>();
+  let files: string[] = [];
+  try {
+    files = readdirSync(serversRoot)
+      .filter((file) => file.endsWith(".json"))
+      .sort();
+  } catch {
+    return entries;
+  }
+  for (const file of files) {
+    let installed: {
+      capability?: unknown;
+      server?: { packages?: unknown[]; _meta?: Record<string, unknown> };
+    };
+    try {
+      installed = JSON.parse(
+        readFileSync(path.join(serversRoot, file), "utf8"),
+      );
+    } catch {
+      continue;
+    }
+    const name = installed.capability;
+    if (typeof name !== "string" || !installed.server?.packages?.length)
+      continue;
+    const meta = installed.server._meta?.["dev.ocean"] as
+      | { clientKey?: unknown }
+      | undefined;
+    const key =
+      typeof meta?.clientKey === "string"
+        ? meta.clientKey
+        : (name.split("/").at(-1) ?? name);
+    if (RESERVED_KEYS.has(key) || entries.has(key)) continue;
+    entries.set(key, entryFor(["market", "exec", name]));
+  }
+  return entries;
 }
 
 export function defaultClientEnv(): ClientEnv {
@@ -120,6 +180,7 @@ export function defaultClientEnv(): ClientEnv {
         ? ["/Applications", path.join(home, "Applications")]
         : [],
     entry: oceanServerEntry(),
+    market: marketServerEntries(marketplacePaths().mcpServers),
   };
 }
 
@@ -233,6 +294,7 @@ function opsFor(
   adapter: ClientAdapter,
   text: string,
   entry: ServerValue,
+  market?: Map<string, ServerValue>,
 ): { ops: Op[]; manual?: string } {
   const editor = adapter.config?.editor;
   const servers = editor?.servers(text);
@@ -265,7 +327,26 @@ function opsFor(
     };
   else if (!sameEntry(ocean, entry))
     ops.push({ kind: "set", key: "ocean", value: entry });
+  // Marketplace servers: added, kept current, and removed once uninstalled. A key holding the
+  // owner's own server (not an `ocean market exec` entry) is left alone. Without a market list
+  // (a caller's own env) they are not managed at all, never all removed.
+  if (!market) return { ops };
+  for (const [key, value] of servers)
+    if (isMarketExec(value) && !market.has(key))
+      ops.push({ kind: "remove", key });
+  for (const [key, want] of market) {
+    const have = servers.get(key);
+    if (!have || (isMarketExec(have) && !sameEntry(have, want)))
+      ops.push({ kind: "set", key, value: want });
+  }
   return { ops };
+}
+
+// An Ocean-managed entry that starts an installed marketplace server.
+function isMarketExec(value: ServerValue): boolean {
+  if (!isOceanShaped(value) || !Array.isArray(value.args)) return false;
+  const at = value.args.indexOf("market");
+  return at >= 0 && value.args[at + 1] === "exec";
 }
 
 export async function planClients(
@@ -293,7 +374,7 @@ export async function planClients(
     else {
       const text =
         (await readText(path.join(env.home, adapter.config.file))) ?? "";
-      const { ops, manual } = opsFor(adapter, text, env.entry);
+      const { ops, manual } = opsFor(adapter, text, env.entry, env.market);
       plan.ops = ops;
       plan.status = ops.length ? "change" : "current";
       if (!manual && ops.length)
@@ -309,7 +390,10 @@ export async function planClients(
         plan.status = "manual";
       }
       if (plan.status === "manual")
-        plan.snippet = JSON.stringify({ ocean: env.entry });
+        plan.snippet = JSON.stringify({
+          ocean: env.entry,
+          ...Object.fromEntries(env.market ?? []),
+        });
     }
     plans.push(plan);
   }
@@ -552,7 +636,7 @@ export async function applyClients(
     const result = await edit(
       file,
       (text) => {
-        const { ops, manual } = opsFor(adapter, text, env.entry);
+        const { ops, manual } = opsFor(adapter, text, env.entry, env.market);
         if (manual || !ops.length) return null;
         // Each op's "before" is the table as the earlier ops of this batch left it.
         const state = new Map(config.editor.servers(text) ?? []);

@@ -28,6 +28,8 @@ const CLIENT_CONFIGS = [
   ".claude.json",
   ".cursor/mcp.json",
   ".gemini/antigravity/mcp_config.json",
+  ".gemini/config/mcp_config.json",
+  "Library/Application Support/Code/User/mcp.json",
   // Claude Desktop: macOS, then Windows.
   "Library/Application Support/Claude/claude_desktop_config.json",
   "AppData/Roaming/Claude/claude_desktop_config.json",

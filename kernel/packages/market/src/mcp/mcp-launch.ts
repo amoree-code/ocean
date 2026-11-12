@@ -1,4 +1,5 @@
 import os from "node:os";
+import path from "node:path";
 import type { CapabilityPermissions } from "@ocean/core/domain/capabilities/capability-manifest.js";
 import type { McpServerSpec } from "../adapters/mcp-adapter.js";
 import { PermissionPolicy } from "../security/permissions.js";
@@ -80,6 +81,7 @@ export function planMcpLaunch(
     stateDir: string;
     env?: NodeJS.ProcessEnv;
     home?: string;
+    execPath?: string;
   },
 ): McpLaunch {
   const home = options.home ?? os.homedir();
@@ -123,8 +125,13 @@ export function planMcpLaunch(
   );
   policy.require({ type: "exec", target: base.command });
 
+  // The node running Ocean comes first, so its npx resolves even when a GUI client (Claude
+  // Desktop, VS Code) starts this with the login PATH, which lacks a version-managed node.
   const env: Record<string, string> = {
-    PATH: hostEnv.PATH ?? "/usr/bin:/bin",
+    PATH: [
+      path.dirname(options.execPath ?? process.execPath),
+      hostEnv.PATH ?? "/usr/bin:/bin",
+    ].join(path.delimiter),
     HOME: home,
   };
   const declaredVariables = Array.isArray(stdio.environmentVariables)

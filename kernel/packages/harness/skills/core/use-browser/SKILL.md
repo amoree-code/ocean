@@ -10,8 +10,8 @@ category: core
 Use when the user gives a URL and asks the agent to complete, fill, test, submit, or otherwise operate the page.
 
 The skill defines the task and verification contract. When the user asks for their own
-signed-in Chrome or a shared MCP connection, the routes are in `docs/browser-clients.md`:
-the marketplace `dev.ocean/chrome-devtools` entry, the browser bridge, or Playwright MCP.
+signed-in Chrome, the routes are in `docs/browser-clients.md`: the marketplace
+`dev.ocean/chrome-devtools` entry (wired into every client by `ocean clients apply`), or Playwright MCP.
 Ocean's `ocean browser` capability remains the deterministic local backend for repeatable
 JSON task files.
 

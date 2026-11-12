@@ -19,6 +19,7 @@ import {
   confirmClient,
   edit,
   isWithinDir,
+  marketServerEntries,
   planClients,
   readClientState,
   recordVerification,
@@ -218,6 +219,7 @@ test("plan classifies every installed client and names each change", async () =>
       codex: "change",
       gemini: "change",
       antigravity: "change",
+      "antigravity-cli": "change",
       cursor: "change",
       hermes: "change",
       opencode: "manual",
@@ -245,6 +247,7 @@ test("apply writes only Ocean's entries, keeps modes and links, and is idempoten
     const { results } = await applyClients({ env });
     assert.deepEqual(results.map((item) => item.client).sort(), [
       "antigravity",
+      "antigravity-cli",
       "claude-code",
       "claude-desktop",
       "codex",
@@ -521,7 +524,7 @@ test("doctor findings fail unwired supported clients, warn unknown, report unsup
     const before = await clientFindings(env);
     const by = (code) =>
       before.filter((finding) => finding.code === code).length;
-    assert.equal(by("CLIENT_NOT_WIRED"), 8);
+    assert.equal(by("CLIENT_NOT_WIRED"), 9);
     assert.equal(by("CLIENT_MANUAL"), 2);
     // Warp and Xcode stay unsupported until their MCP support is verified (T-307).
     assert.equal(by("CLIENT_UNKNOWN"), 0);
@@ -545,7 +548,7 @@ test("doctor findings fail unwired supported clients, warn unknown, report unsup
     // Wired but not yet checked in the app: a warning until the owner confirms it.
     assert.equal(
       after.filter((finding) => finding.code === "CLIENT_CHECK_PENDING").length,
-      8,
+      9,
     );
     // Only an in-app confirmation reads as "checked in the app" (T-307).
     await confirmClient("cursor", {
@@ -684,4 +687,127 @@ test("the temporary-directory check follows each platform's path rules", () => {
   assert.equal(isWithinDir("/tmp", "/tmp/wt/main.js", path.posix), true);
   assert.equal(isWithinDir("/tmp", "/tmpfoo/main.js", path.posix), false);
   assert.equal(isWithinDir("/tmp", "/TMP/main.js", path.posix), false);
+});
+
+const MARKET = (name) => ({
+  command: "/usr/local/bin/node",
+  args: ["/srv/ocean/main.js", "market", "exec", name],
+});
+
+test("installed marketplace servers are wired, kept current and removed once uninstalled", async () => {
+  const { home, root, env } = await fixtureHome();
+  // The owner's own server under the same key in Gemini is not Ocean's to rewrite.
+  const gemini = path.join(home, ".gemini/settings.json");
+  const own = { command: "npx", args: ["chrome-devtools-mcp@latest"] };
+  const geminiConfig = JSON.parse(await readFile(gemini, "utf8"));
+  geminiConfig.mcpServers["chrome-devtools"] = own;
+  await writeFile(gemini, json(geminiConfig));
+  const market = new Map([
+    ["chrome-devtools", MARKET("dev.ocean/chrome-devtools")],
+  ]);
+  await withRoot(root, async () => {
+    await applyClients({ env: { ...env, market } });
+    const claude = JSON.parse(
+      await readFile(path.join(home, ".claude.json"), "utf8"),
+    );
+    assert.deepEqual(
+      claude.mcpServers["chrome-devtools"],
+      MARKET("dev.ocean/chrome-devtools"),
+    );
+    assert.deepEqual(
+      JSON.parse(await readFile(gemini, "utf8")).mcpServers["chrome-devtools"],
+      own,
+    );
+    const again = await planClients({ ...env, market });
+    assert.equal(
+      again.find((plan) => plan.client === "claude-code").status,
+      "current",
+    );
+    const gone = await planClients({ ...env, market: new Map() });
+    assert.deepEqual(gone.find((plan) => plan.client === "claude-code").ops, [
+      { kind: "remove", key: "chrome-devtools" },
+    ]);
+    assert.deepEqual(gone.find((plan) => plan.client === "gemini").ops, []);
+    // An env without a market list leaves market entries alone.
+    const unmanaged = await planClients(env);
+    assert.equal(
+      unmanaged.find((plan) => plan.client === "claude-code").status,
+      "current",
+    );
+  });
+});
+
+test("VS Code gets typed stdio entries under `servers`, its own servers untouched", async () => {
+  const { home, root, env } = await fixtureHome();
+  const file = path.join(
+    home,
+    "Library/Application Support/Code/User/mcp.json",
+  );
+  await mkdir(path.dirname(file), { recursive: true });
+  const theirs = {
+    type: "stdio",
+    command: "node",
+    args: ["/x/server.js"],
+    env: { MODE: "a" },
+  };
+  await writeFile(file, json({ servers: { theirs } }));
+  const market = new Map([
+    ["chrome-devtools", MARKET("dev.ocean/chrome-devtools")],
+  ]);
+  await withRoot(root, async () => {
+    await applyClients({ env: { ...env, market }, clients: ["vscode"] });
+    const { servers } = JSON.parse(await readFile(file, "utf8"));
+    assert.deepEqual(servers.theirs, theirs);
+    assert.deepEqual(servers.ocean, { type: "stdio", ...ENTRY });
+    assert.deepEqual(servers["chrome-devtools"], {
+      type: "stdio",
+      ...MARKET("dev.ocean/chrome-devtools"),
+    });
+    const plans = await planClients({ ...env, market });
+    assert.equal(
+      plans.find((plan) => plan.client === "vscode").status,
+      "current",
+    );
+  });
+});
+
+test("market entries come from installed servers, keyed by clientKey", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "ocean-market-mcp-"));
+  const installed = (capability, server) =>
+    writeFile(
+      path.join(dir, `${capability.replace(/\//g, "__")}.json`),
+      json({ capability, version: "1.0.0", permissions: {}, server }),
+    );
+  const pkg = [{ registryType: "npm", identifier: "x" }];
+  await installed("dev.ocean/chrome-devtools", {
+    name: "dev.ocean/chrome-devtools",
+    packages: pkg,
+    _meta: { "dev.ocean": { clientKey: "chrome-devtools" } },
+  });
+  await installed("io.example/notes", {
+    name: "io.example/notes",
+    packages: pkg,
+  });
+  await installed("io.example/remote", {
+    name: "io.example/remote",
+    remotes: [{ type: "streamable-http", url: "https://mcp.example.com" }],
+  });
+  await installed("io.example/brain", {
+    name: "io.example/brain",
+    packages: pkg,
+    _meta: { "dev.ocean": { clientKey: "ocean" } },
+  });
+  await writeFile(path.join(dir, "broken.json"), "{");
+  const entries = marketServerEntries(dir, (command) => ({
+    command: "ocean",
+    args: command,
+  }));
+  assert.deepEqual(Object.fromEntries(entries), {
+    "chrome-devtools": {
+      command: "ocean",
+      args: ["market", "exec", "dev.ocean/chrome-devtools"],
+    },
+    notes: { command: "ocean", args: ["market", "exec", "io.example/notes"] },
+  });
+  assert.equal(marketServerEntries(path.join(dir, "absent")).size, 0);
 });

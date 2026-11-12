@@ -218,6 +218,26 @@ test("an MCP launch passes only declared variables", () => {
   ]);
 });
 
+test("an MCP launch finds the runner next to Ocean's node under a bare login PATH", () => {
+  const launch = planMcpLaunch(
+    {
+      capability: "io.github.example/files",
+      version: "1.2.3",
+      permissions: permissions({ exec: ["npx"], env: ["FILES_TOKEN"] }),
+      server: server(),
+    },
+    {
+      stateDir: "/tmp/state",
+      env: { PATH: "/usr/bin:/bin", FILES_TOKEN: "t" },
+      execPath: "/opt/node-versions/v22/bin/node",
+    },
+  );
+  assert.equal(
+    launch.env.PATH,
+    ["/opt/node-versions/v22/bin", "/usr/bin:/bin"].join(path.delimiter),
+  );
+});
+
 test("runtime arguments go where each runner expects them", () => {
   const plan = (registryType) =>
     planMcpLaunch(

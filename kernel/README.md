@@ -137,7 +137,7 @@ prints its usage and never runs it. To hand `--help` to a wrapped client, put it
 | `ocean clients` | connect installed AI clients to Ocean | Reads; `apply` needs `--yes` and writes client config outside the workspace |
 | `ocean install` / `update` / `remove` | install, update or remove an AI client CLI | Runs an installer; needs `--yes` |
 | `ocean auth` | show or start an AI client's login | Reads; `login` runs |
-| `ocean mcp` | print MCP client configs, or serve Ocean's MCP server and gateway | Reads; `serve`, `gateway` run; `browser-service install` writes outside |
+| `ocean mcp` | print MCP client configs, or serve Ocean's MCP server and gateway | Reads; `serve`, `gateway` run; `browser-service uninstall` removes the retired browser bridge's service |
 | `ocean market` | marketplace skills and MCP servers | Reads; `install`, `update`, `uninstall` write; `exec` runs; permissions need `--yes` |
 | `ocean browser` | drive a browser session | Runs; `upload`, `submit` need `--approve` |
 | `ocean memory` | search, read, review and maintain memory | Reads; `approve`, `delete`, `restore`, `reindex`, `sync --apply`, `purge --yes` write |
