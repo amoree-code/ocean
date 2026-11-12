@@ -133,6 +133,18 @@ export const CLIENT_ADAPTERS: ClientAdapter[] = [
     nativeMemory: "harvest",
   },
   {
+    // The current `agy` CLI reads its own table (`agy mcp list`), not the app's file above (T-298).
+    id: "antigravity-cli",
+    label: "Antigravity CLI (agy)",
+    tier: "supported",
+    detect: { binaries: ["agy"], paths: [".gemini/config/mcp_config.json"] },
+    config: {
+      file: ".gemini/config/mcp_config.json",
+      editor: jsonEditor(["mcpServers"]),
+    },
+    nativeMemory: "harvest",
+  },
+  {
     id: "cursor",
     label: "Cursor",
     tier: "supported",
@@ -143,6 +155,22 @@ export const CLIENT_ADAPTERS: ClientAdapter[] = [
     },
     config: { file: ".cursor/mcp.json", editor: jsonEditor(["mcpServers"]) },
     nativeMemory: "uncaptured",
+  },
+  {
+    // VS Code's own MCP support (Copilot agent mode): `servers`, each with a `type`.
+    id: "vscode",
+    label: "VS Code",
+    tier: "supported",
+    detect: {
+      binaries: ["code"],
+      apps: ["Visual Studio Code.app"],
+      paths: ["Library/Application Support/Code/User"],
+    },
+    config: {
+      file: "Library/Application Support/Code/User/mcp.json",
+      editor: jsonEditor(["servers"], (value) => ({ type: "stdio", ...value })),
+    },
+    nativeMemory: "unknown",
   },
   {
     id: "hermes",

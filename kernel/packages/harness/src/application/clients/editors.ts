@@ -6,7 +6,14 @@
 
 // The keys an Ocean-managed entry may carry. An entry with any other key (env, headers…) is the
 // user's and is never rewritten.
-export const ENTRY_KEYS = ["command", "args", "cwd", "type", "enabled"];
+export const ENTRY_KEYS = [
+  "command",
+  "args",
+  "cwd",
+  "type",
+  "enabled",
+  "disabled",
+];
 
 export type ServerValue = Record<string, unknown>;
 

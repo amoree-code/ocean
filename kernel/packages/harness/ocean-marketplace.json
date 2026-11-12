@@ -140,7 +140,7 @@
         "path": "skills/core/use-browser"
       },
       "integrity": {
-        "sha256": "1b4f2d81776efabfbebea325b0d1f85c7bc699f443e54501efe3aaf1cb0f31d4"
+        "sha256": "460fdc789084cbb07d320e12a9e96e803f02ee101f533c913530b71538d05b5b"
       },
       "spec": {
         "directory": "use-browser"
