@@ -180,7 +180,7 @@ test("the MCP tool registry validates, refuses duplicates and keeps order", () =
   assert.throws(() => registry.register({ name: "" }), /Invalid MCP tool/);
 });
 
-test("the browser capability launches a pinned Chrome DevTools MCP with page URLs kept local", async () => {
+test("the browser capability launches the pinned ocean-browser-mcp package", async () => {
   const index = marketplaceIndexSchema.parse(
     JSON.parse(await readFile(engineIndex, "utf8")),
   );
@@ -198,13 +198,7 @@ test("the browser capability launches a pinned Chrome DevTools MCP with page URL
   );
   assert.equal(launch.transport, "stdio");
   assert.equal(launch.command, "npx");
-  assert.ok(
-    launch.args.some((arg) => /^chrome-devtools-mcp@\d+\.\d+\.\d+$/.test(arg)),
-  );
-  for (const flag of [
-    "--autoConnect",
-    "--no-usage-statistics",
-    "--no-performance-crux",
-  ])
-    assert.ok(launch.args.includes(flag), flag);
+  // The package carries the attach and privacy flags (--autoConnect, no usage statistics, no CrUX)
+  // and pins Chrome DevTools MCP exactly; the entry pins the package.
+  assert.deepEqual(launch.args, ["-y", "ocean-browser-mcp@0.1.0"]);
 });
