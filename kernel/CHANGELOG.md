@@ -7,7 +7,7 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
-- feat(T-298): the marketplace browser capability `dev.ocean/chrome-devtools` now runs the published npm package `ocean-browser-mcp@0.1.0` (source amoree-code/Ocean-BROWSER-MCP), which pins Chrome DevTools MCP 1.12.0 exactly and carries the attach and privacy flags itself; the name and the `chrome-devtools` client key are unchanged, so `ocean market update dev.ocean/chrome-devtools --yes` is the whole migration (#PR)
+- feat(T-298): the marketplace browser capability `dev.ocean/chrome-devtools` now runs the published npm package `ocean-browser-mcp@0.1.0` (source amoree-code/Ocean-BROWSER-MCP), which pins Chrome DevTools MCP 1.12.0 exactly and carries the attach and privacy flags itself; the name and the `chrome-devtools` client key are unchanged, so `ocean market update dev.ocean/chrome-devtools --yes` is the whole migration (#266)
 
 ## 1.3.0 (2026-11-12)
 
