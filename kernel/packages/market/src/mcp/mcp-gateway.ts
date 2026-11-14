@@ -5,6 +5,7 @@ import type { McpTool } from "@ocean/core/domain/mcp/mcp-contract.js";
 import { engineRoot } from "@ocean/core/shared/paths.js";
 import type { McpServerSpec } from "../adapters/mcp-adapter.js";
 import { scanText } from "../security/description-scan.js";
+import type { SecretStore } from "../security/secrets.js";
 import { engineIndexFile } from "./mcp-connection.js";
 import {
   type InstalledMcpServer,
@@ -31,6 +32,8 @@ export type RemoteGatewayMember = MemberBase & {
   transport: "remote";
   type: RemoteTransport;
   url: string;
+  // Resolved header values: in memory only, never logged.
+  headers?: Record<string, string>;
 };
 
 export type StdioGatewayMember = MemberBase & {
@@ -145,6 +148,8 @@ export async function gatewayMembers(options: {
   env?: NodeJS.ProcessEnv;
   // false: installed servers only, for a client that already has Ocean's own servers directly.
   firstParty?: boolean;
+  // Where secret values come from after the environment (default: none).
+  secrets?: SecretStore;
 }): Promise<{ members: GatewayMember[]; skipped: GatewaySkip[] }> {
   const members: GatewayMember[] = [];
   const skipped: GatewaySkip[] = [];
@@ -212,6 +217,7 @@ export async function gatewayMembers(options: {
       const launch = planMcpLaunch(installed, {
         stateDir,
         env: options.env,
+        secret: (secret) => options.secrets?.get(name, secret),
       });
       const sensitive = sensitivityOf(installed);
       const base = {
@@ -225,6 +231,9 @@ export async function gatewayMembers(options: {
           transport: "remote",
           type: launch.type,
           url: launch.url,
+          ...(Object.keys(launch.headers).length
+            ? { headers: launch.headers }
+            : {}),
         });
         continue;
       }

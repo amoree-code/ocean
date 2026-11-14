@@ -5,6 +5,7 @@ import {
   readGatewayAccess,
   serveMcpGateway,
 } from "@ocean/market/mcp/mcp-gateway.js";
+import { keychainStore } from "@ocean/market/security/secrets.js";
 import { McpClient } from "@ocean/services/infrastructure/mcp/mcp-client.js";
 import { RemoteMcpClient } from "../../infrastructure/mcp/remote-mcp-client.js";
 import { oceanVersion } from "../../version.js";
@@ -19,6 +20,7 @@ export async function runMcpGatewayCommand(args: string[] = []): Promise<void> {
     serversRoot: paths.mcpServers,
     stateRoot: paths.mcpState,
     firstParty: !args.includes("--installed-only"),
+    secrets: keychainStore(),
   });
   for (const skip of skipped)
     log(`${skip.capability} not routed: ${skip.reason}`);

@@ -39,7 +39,17 @@ async function remoteServers() {
   const sse = new Map();
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, "http://127.0.0.1");
-    if (url.pathname === "/mcp") {
+    // Like a hosted server: no token, no service.
+    if (url.pathname === "/secure/mcp") {
+      if (req.headers.authorization !== "Bearer k")
+        return res.writeHead(401).end();
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: undefined,
+      });
+      res.on("close", () => void transport.close());
+      await echoServer("secure").connect(transport);
+      await transport.handleRequest(req, res);
+    } else if (url.pathname === "/mcp") {
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
       });
@@ -319,6 +329,50 @@ test("the client gateway entry serves installed servers only, per the access fil
       /com\.example\/remote hidden from claude-code \(denied in gateway-access\.json\)/,
     );
   } finally {
+    await remotes.close();
+  }
+});
+
+test("a remote member's headers reach its server, and only its server", async () => {
+  const remotes = await remoteServers();
+  const log = [];
+  const member = (prefix, headers) => ({
+    transport: "remote",
+    capability: `test/${prefix}`,
+    prefix,
+    type: "streamable-http",
+    url: `${remotes.base}/secure/mcp`,
+    ...(headers ? { headers } : {}),
+  });
+  const gateway = new McpGateway(
+    [member("keyed", { Authorization: "Bearer k" }), member("bare")],
+    {
+      client: (each) => new RemoteMcpClient(each, "test"),
+      timeoutMs: 5000,
+      log: (line) => log.push(line),
+    },
+  );
+  try {
+    const list = await gateway.handle({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/list",
+    });
+    assert.deepEqual(
+      list.result.tools.map((tool) => tool.name),
+      ["keyed__echo"],
+    );
+    const call = await gateway.handle({
+      jsonrpc: "2.0",
+      id: 2,
+      method: "tools/call",
+      params: { name: "keyed__echo", arguments: { text: "ok" } },
+    });
+    assert.equal(text(call), "secure:ok");
+    assert.ok(log.some((line) => /^test\/bare left out/.test(line)));
+    assert.ok(!log.join("\n").includes("Bearer k"), log.join("\n"));
+  } finally {
+    gateway.close();
     await remotes.close();
   }
 });

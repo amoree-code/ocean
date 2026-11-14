@@ -262,8 +262,10 @@ ocean mcp gateway-config
   `remotes` entry, over streamable HTTP or the older SSE transport, next to the stdio members in
   the same gateway process. The URL must be `https`, or `http` on loopback (`localhost`,
   `127.0.0.1`, `[::1]`), and its host a declared `network` permission. Redirects are followed
-  only within the same origin. No credentials are sent: a remote that requires a header (an
-  API token, say) is not routed and the gateway logs why; OAuth is not supported yet.
+  only within the same origin, so a header never reaches another host. A header's value (an API
+  token, say) comes from the environment or the secret store (see below); a remote whose
+  required header has no value is not routed and the gateway logs which value is missing.
+  OAuth is not supported yet.
 - **Names:** tools are exposed as `<server>__<tool>`, for example `ocean__ocean_status` or
   `obsidian__obsidian_read`.
 - **Runtime scan:** each tool's name, its description, and every key and string inside its input
@@ -325,21 +327,51 @@ server is logged with the reason. The client name is what the client says it is:
 limits what reaches each client's context, it is not a boundary against a process that lies
 about its name. The file is read when the gateway starts; restart the client after editing it.
 
-### Adding your own server
+### Adding a server: from the registry or your own file
 
 ```sh
-ocean market add ./server.json          # shows the permissions it needs, installs nothing
-ocean market add ./server.json --yes    # grants them and installs
+ocean market search github                        # the official MCP registry
+ocean market add io.github.github/github-mcp-server        # shows the permissions, installs nothing
+ocean market add io.github.github/github-mcp-server --yes  # grants them and installs
+ocean market add ./server.json --yes                       # your own server.json
 ```
 
-`server.json` is the official MCP registry format (a `packages` entry for npm, pypi or oci, or
-a `remotes` entry). Ocean writes it into the owner's index (`bridge/market/ocean-marketplace.json`,
-payload under `bridge/market/own/`) with the permissions its launch needs and nothing more: the
-runner (`npx`, `uvx`, `docker`) and the declared environment variables, or the remote's host.
-It then goes through the same install as any server: the description scan, consent, the lock.
-A refused server (scan finding, no `--yes`, a `dev.ocean` name) is removed from the index
-again, so it is never installed and never started. Adding the same file again is a no-op; an
-edited file is an update. `ocean market uninstall <name>` removes it.
+`ocean market search` lists matching servers from the official MCP registry
+(`registry.modelcontextprotocol.io`; `OCEAN_MCP_REGISTRY` points at a mirror with the same API,
+https or loopback), each with how it runs here (npm, pypi, oci or remote) and the values it
+needs. Only the search term is sent. `ocean market add` takes a registry name (latest version,
+or `--version <v>`) or a path to a `server.json` in the same format. A deleted registry entry is
+refused; a deprecated one is installed with a warning. Registry names may carry capitals; the
+capability name is the lowercase form.
+
+Ocean writes the server into the owner's index (`bridge/market/ocean-marketplace.json`, payload
+under `bridge/market/own/`) with the permissions its launch needs and nothing more: the runner
+(`npx`, `uvx`, `docker`) or the remote's host, and every value it is given. It then goes through
+the same install as any server: the description scan, consent, the lock. A refused server (scan
+finding, no `--yes`, a `dev.ocean` name) is removed from the index again, so it is never
+installed and never started. Adding the same server again is a no-op; a changed one is an
+update. `ocean market uninstall <name>` removes it.
+
+### Keys and tokens
+
+A server's values are its declared environment variables, every `{placeholder}` in its
+arguments or headers (`GITHUB_PERSONAL_ACCESS_TOKEN={token}`, `Bearer {api_key}`), and any
+header that is a secret by itself (`Authorization`). Each is a declared `env` permission, shown
+at consent. At launch, through the gateway or `ocean market exec`, each is taken from the
+environment, then from the secret store. A required value that is missing stops that server
+with the command that sets it; an optional one is left out, together with the argument or
+header that carries it, so a literal `{token}` is never passed.
+
+```sh
+ocean market secret list io.github.github/github-mcp-server    # each value: environment, keychain or missing
+ocean market secret set io.github.github/github-mcp-server token   # reads the value from stdin
+ocean market secret remove io.github.github/github-mcp-server token
+```
+
+The store is the macOS login keychain (service `ocean-mcp`, account `<capability>:<name>`).
+`set` reads the value from stdin and passes it to the keychain through stdin too, so it never
+appears in shell history, a process list, a file Ocean writes, or a log. On other platforms
+there is no store yet; set the variable in the client's environment.
 
 ## Obsidian sync flow
 

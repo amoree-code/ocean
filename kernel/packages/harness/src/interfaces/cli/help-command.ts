@@ -128,7 +128,7 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
   ],
   market: [
     "List, install, update and run marketplace packages; permissions need --yes.",
-    "ocean market list|install <name> [--version <v>]|update <name>|uninstall <name>|exec <name>|add <server.json> [--index <file>]... [--yes] [--accept-flagged]",
+    "ocean market list|install <name> [--version <v>]|update <name>|uninstall <name>|search <term>|add <server.json|registry name>|secret list|set|remove <name> [<value name>] [--index <file>]... [--yes] [--accept-flagged]",
   ],
   browser: [
     "Drive a browser session; uploads and submits need --approve.",
