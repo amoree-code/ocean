@@ -110,7 +110,7 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
   ],
   clients: [
     "Connect installed AI clients to Ocean's MCP server and hooks; apply shows the plan until --yes.",
-    "ocean clients detect|plan [--json] | apply [--client <id>…] [--yes] | verify [<id>…] | confirm <id>… --label in-app|headless|connected|blocked [--via <evidence>] [--reason <why>] | gateway [<id> on|off] | ledger | repair | restore [--batch <id>]",
+    "ocean clients detect|plan [--json] | apply [--client <id>…] [--yes] | verify [<id>…] | confirm <id>… --label in-app|headless|connected|blocked [--via <evidence>] [--reason <why>] | gateway [<id> on|off] [--default gateway|per-server] | allow|deny|unset <id> <server> | ledger | repair | restore [--batch <id>]",
   ],
   install: [
     "Install a supported AI client CLI.",

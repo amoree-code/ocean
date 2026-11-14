@@ -143,3 +143,34 @@ async function findFile(dir, name) {
   }
   return found;
 }
+
+test("ocean clients allow and gateway --default manage the gateway from the command line", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-clients-rules-"));
+  const workspace = path.join(root, "workspace");
+  const run = (...args) =>
+    spawnSync(process.execPath, [cli, "clients", ...args], {
+      encoding: "utf8",
+      env: { ...process.env, OCEAN_ROOT: workspace },
+    });
+  const allowed = run("allow", "claude-code", "dev.ocean/chrome-devtools");
+  assert.equal(allowed.status, 0, allowed.stderr);
+  assert.deepEqual(JSON.parse(allowed.stdout).rule, {
+    allow: ["dev.ocean/chrome-devtools"],
+  });
+  const [file] = await findFile(workspace, "gateway-access.json");
+  assert.deepEqual(JSON.parse(await readFile(file, "utf8")), {
+    clients: { "claude-code": { allow: ["dev.ocean/chrome-devtools"] } },
+  });
+  const unset = run("unset", "claude-code", "dev.ocean/chrome-devtools");
+  assert.equal(JSON.parse(unset.stdout).rule, "default");
+
+  const before = JSON.parse(run("gateway").stdout);
+  assert.deepEqual(before, { default: "per-server", clients: [] });
+  const flipped = JSON.parse(run("gateway", "--default", "gateway").stdout);
+  assert.equal(flipped.default, "gateway");
+  assert.ok(flipped.clients.includes("claude-code"));
+  const off = JSON.parse(run("gateway", "codex", "off").stdout);
+  assert.ok(!off.clients.includes("codex"));
+  assert.equal(off.next, "ocean clients apply --client codex --yes");
+  assert.equal(run("gateway", "codex", "maybe").status, 1);
+});

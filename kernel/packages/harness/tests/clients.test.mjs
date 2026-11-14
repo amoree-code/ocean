@@ -17,7 +17,9 @@ import {
   applyClients,
   clientFindings,
   confirmClient,
+  defaultToGatewayOnFreshSetup,
   edit,
+  gatewayDefault,
   isWithinDir,
   marketServerEntries,
   planClients,
@@ -27,6 +29,7 @@ import {
   repairClients,
   restoreClients,
   setGatewayClient,
+  setGatewayDefault,
   temporaryEntryProblem,
   verifyClient,
 } from "../dist/application/clients/clients.js";
@@ -818,6 +821,11 @@ const GATEWAY = {
   command: "/usr/local/bin/node",
   args: ["/srv/ocean/main.js", "mcp", "gateway", "--installed-only"],
 };
+// What each client's entry carries: its own id, for the access rules.
+const GATEWAY_FOR = (client) => ({
+  ...GATEWAY,
+  args: [...GATEWAY.args, "--client", client],
+});
 
 // T-309 phase 4: a client wired to the gateway gets one `ocean-gateway` entry in place of one
 // entry per installed server, and switching back puts those entries back.
@@ -855,7 +863,7 @@ test("a gateway-wired client gets one ocean-gateway entry instead of one per ser
     assert.deepEqual(plans.find((plan) => plan.client === "claude-code").ops, [
       { kind: "remove", key: "chrome-devtools" },
       { kind: "remove", key: "notes" },
-      { kind: "set", key: "ocean-gateway", value: GATEWAY },
+      { kind: "set", key: "ocean-gateway", value: GATEWAY_FOR("claude-code") },
     ]);
     await applyClients({ env: { ...env, market, gateway } });
     const wired = await claudeServers();
@@ -864,7 +872,7 @@ test("a gateway-wired client gets one ocean-gateway entry instead of one per ser
       "ocean-gateway",
       "other",
     ]);
-    assert.deepEqual(wired["ocean-gateway"], GATEWAY);
+    assert.deepEqual(wired["ocean-gateway"], GATEWAY_FOR("claude-code"));
     assert.deepEqual(wired.ocean, ENTRY);
     // Other clients keep their per-server entries; Cursor's own gateway entry stays.
     const cursor = JSON.parse(await readFile(cursorFile, "utf8")).mcpServers;
@@ -913,4 +921,45 @@ test("the gateway client list is recorded per client and refuses unknown ids", a
     setGatewayClient("nope", true, file),
     /Unknown client nope/,
   );
+});
+
+test("the gateway can be the default, with per-client exceptions, and starts so on a fresh machine", async () => {
+  const { root } = await fixtureHome();
+  const dir = await mkdtemp(path.join(os.tmpdir(), "ocean-gateway-default-"));
+  const file = path.join(dir, "gateway.json");
+  const ids = ["claude-code", "codex", "cursor"];
+  // A file from phase 4 (`clients`) still reads.
+  await writeFile(file, json({ clients: ["codex"] }));
+  assert.deepEqual([...readGatewayClients(file, ids)], ["codex"]);
+  assert.equal(gatewayDefault(file), "per-server");
+  await setGatewayDefault("gateway", file);
+  assert.deepEqual([...readGatewayClients(file, ids)], ids);
+  await setGatewayClient("cursor", false, file);
+  assert.deepEqual(
+    [...readGatewayClients(file, ids)],
+    ["claude-code", "codex"],
+  );
+  // A choice made per client survives a change of the default.
+  assert.deepEqual(JSON.parse(await readFile(file, "utf8")), {
+    default: "gateway",
+    gateway: ["codex"],
+    perServer: ["cursor"],
+  });
+  await setGatewayDefault("per-server", file);
+  assert.deepEqual([...readGatewayClients(file, ids)], ["codex"]);
+
+  await withRoot(root, async () => {
+    const fresh = path.join(dir, "fresh.json");
+    assert.equal(await defaultToGatewayOnFreshSetup(fresh), true);
+    assert.equal(gatewayDefault(fresh), "gateway");
+    // Already chosen: left alone.
+    await setGatewayDefault("per-server", fresh);
+    assert.equal(await defaultToGatewayOnFreshSetup(fresh), false);
+    assert.equal(gatewayDefault(fresh), "per-server");
+    // A machine with approved clients keeps its per-server wiring.
+    await applyClients({ clients: ["cursor"], env: (await fixtureHome()).env });
+    const wired = path.join(dir, "wired.json");
+    assert.equal(await defaultToGatewayOnFreshSetup(wired), false);
+    assert.equal(gatewayDefault(wired), "per-server");
+  });
 });

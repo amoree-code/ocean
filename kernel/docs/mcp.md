@@ -284,16 +284,22 @@ are labelled `ocean mcp gateway [<capability>]`.
 
 ### Wiring a client through the gateway
 
-By default `ocean clients apply` gives every client one `ocean market exec` entry per installed
-server. A client can instead get a single `ocean-gateway` entry for all of them:
+A client reaches installed servers either through one `ocean-gateway` entry or through one
+`ocean market exec` entry per server. A machine onboarded fresh (`ocean onboard`, no client
+approved yet) starts with the gateway as the default for every client; a machine wired before
+keeps per-server entries until its owner switches. The choice lives in
+`bridge/state/clients/gateway.json`:
 
 ```sh
-ocean clients gateway claude-code on     # recorded in bridge/state/clients/gateway.json
-ocean clients plan                       # claude-code: remove <each server>, set ocean-gateway
+ocean clients gateway                          # the default and the gateway-wired clients
+ocean clients gateway --default gateway        # every client, except those switched off
+ocean clients gateway codex off                # one exception, kept across default changes
+ocean clients gateway claude-code on
+ocean clients plan                             # claude-code: remove <each server>, set ocean-gateway
 ocean clients apply --client claude-code --yes
 ```
 
-That entry runs `ocean mcp gateway --installed-only`: every installed server (remote ones
+That entry runs `ocean mcp gateway --installed-only --client <id>`: every installed server (remote ones
 included, which per-server wiring leaves out) through one process, with the runtime scan and the
 access rules below. Ocean's own servers stay direct entries (`ocean`, `ocean-obsidian`), so
 their tool names, which skills and hooks call, do not change. A gateway entry you added by hand
@@ -305,8 +311,10 @@ per-server entries back; or `ocean clients restore --batch <id>` to undo one app
 
 ### Which client sees which server
 
-The gateway takes the client's name from `initialize` (`clientInfo.name`, logged as
-`client: <name>`) and starts only the servers that client may see; a hidden server never runs
+The gateway knows which client it serves from `--client <id>` in the entry Ocean wrote (an
+Ocean client id such as `claude-code`); for a gateway entry added by hand, from the name the
+client gives in `initialize` (`clientInfo.name`). Either is logged as `client: <name>`. It
+starts only the servers that client may see; a hidden server never runs
 and its tools never reach that client. By default a client sees every server except the
 sensitive ones: a server that declares a `filesystem.write` permission, or one that drives a
 browser (recognised by its name or package: chrome, devtools, playwright, puppeteer, selenium,
@@ -321,11 +329,19 @@ webdriver). Allow or deny per client in `bridge/market/gateway-access.json`:
 }
 ```
 
+Or change one rule from the command line:
+
+```sh
+ocean clients allow claude-code dev.ocean/chrome-devtools
+ocean clients deny codex io.github.me/files
+ocean clients unset codex io.github.me/files
+```
+
 `allow` adds sensitive servers (`"*"` for all of them), `deny` removes any server and wins over
-`allow`. A client with no entry, or one that sends no name, gets the default. Each hidden
-server is logged with the reason. The client name is what the client says it is: the allow list
-limits what reaches each client's context, it is not a boundary against a process that lies
-about its name. The file is read when the gateway starts; restart the client after editing it.
+`allow`. Installing a sensitive server prints the `allow` command for it. A client with no entry, or one that sends no name, gets the default. Each hidden
+server is logged with the reason. The allow list limits what reaches each client's context; it
+is not a boundary against another local process, which can start the gateway with any
+`--client` it likes. The file is read when the gateway starts; restart the client after editing it.
 
 ### Adding a server: from the registry or your own file
 

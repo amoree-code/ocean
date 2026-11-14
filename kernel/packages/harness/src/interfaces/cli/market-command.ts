@@ -7,6 +7,7 @@ import {
   marketplacePaths,
 } from "@ocean/market/install/default-marketplace.js";
 import { addOwnMcpServer } from "@ocean/market/install/own-server.js";
+import { sensitivityOf } from "@ocean/market/mcp/mcp-gateway.js";
 import {
   type InstalledMcpServer,
   launchInputs,
@@ -45,6 +46,21 @@ function inputStates(name: string) {
           ? store.name
           : "missing",
   }));
+}
+
+// A server the gateway hides by default says so at install, with the command that shows it.
+function printVisibility(name: string): void {
+  let installed: InstalledMcpServer;
+  try {
+    installed = installedServer(name);
+  } catch {
+    return;
+  }
+  const reason = sensitivityOf(installed);
+  if (reason)
+    console.error(
+      `${name} ${reason}, so gateway-wired clients do not see it until allowed: ocean clients allow <client> ${name}`,
+    );
 }
 
 // After an add: which values still have to be set before the server starts, and how.
@@ -186,6 +202,7 @@ export async function runMarketCommand(
     });
     console.log(JSON.stringify(result, null, 2));
     printInputs(result.name);
+    printVisibility(result.name);
     return;
   }
   if (action === "secret") {
@@ -202,15 +219,14 @@ export async function runMarketCommand(
   }
   if (!name || !["install", "update", "uninstall"].includes(action))
     throw new Error(usage);
-  if (action === "install")
-    console.log(
-      JSON.stringify(
-        await marketplace.install(name, flagValues(args, "--version")[0]),
-        null,
-        2,
-      ),
+  if (action === "install") {
+    const result = await marketplace.install(
+      name,
+      flagValues(args, "--version")[0],
     );
-  else if (action === "update")
+    console.log(JSON.stringify(result, null, 2));
+    printVisibility(result.name);
+  } else if (action === "update")
     console.log(JSON.stringify(await marketplace.update(name), null, 2));
   else {
     await marketplace.uninstall(name);
