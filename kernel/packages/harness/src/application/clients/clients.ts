@@ -64,17 +64,75 @@ function gatewayClientsFile(): string {
   return oceanPath(SYSTEM_DIR, "state", "clients", "gateway.json");
 }
 
-export function readGatewayClients(file = gatewayClientsFile()): Set<string> {
+// `bridge/state/clients/gateway.json`: whether clients reach installed servers through the
+// gateway by default, and the clients that differ from that default. Missing means per-server
+// (a machine set up before T-309); a fresh onboarding writes `default: gateway`.
+type GatewayChoice = {
+  default: "gateway" | "per-server";
+  gateway: string[];
+  perServer: string[];
+};
+
+function readGatewayChoice(file: string): GatewayChoice {
+  const choice: GatewayChoice = {
+    default: "per-server",
+    gateway: [],
+    perServer: [],
+  };
+  let raw: Record<string, unknown>;
   try {
-    const raw = JSON.parse(readFileSync(file, "utf8")) as { clients?: unknown };
-    return new Set(
-      Array.isArray(raw.clients)
-        ? raw.clients.filter((id): id is string => typeof id === "string")
-        : [],
-    );
+    raw = JSON.parse(readFileSync(file, "utf8"));
   } catch {
-    return new Set();
+    return choice;
   }
+  const ids = (value: unknown) =>
+    Array.isArray(value)
+      ? value.filter((id): id is string => typeof id === "string")
+      : [];
+  if (raw.default === "gateway") choice.default = "gateway";
+  // `clients` is the T-309 phase-4 name of `gateway`.
+  choice.gateway = [...new Set([...ids(raw.gateway), ...ids(raw.clients)])];
+  choice.perServer = ids(raw.perServer);
+  return choice;
+}
+
+async function writeGatewayChoice(
+  file: string,
+  choice: GatewayChoice,
+): Promise<void> {
+  await mkdir(path.dirname(file), { recursive: true });
+  await atomicWrite(
+    file,
+    `${JSON.stringify(
+      {
+        default: choice.default,
+        gateway: [...new Set(choice.gateway)].sort(),
+        perServer: [...new Set(choice.perServer)].sort(),
+      },
+      null,
+      2,
+    )}\n`,
+  );
+}
+
+const clientIds = () => CLIENT_ADAPTERS.map((adapter) => adapter.id);
+
+export function readGatewayClients(
+  file = gatewayClientsFile(),
+  ids: string[] = clientIds(),
+): Set<string> {
+  const choice = readGatewayChoice(file);
+  return new Set(
+    choice.default === "gateway"
+      ? ids.filter((id) => !choice.perServer.includes(id))
+      : choice.gateway.filter((id) => ids.includes(id)),
+  );
+}
+
+export function gatewayDefault(
+  file = gatewayClientsFile(),
+): GatewayChoice["default"] {
+  return readGatewayChoice(file).default;
 }
 
 // `ocean clients gateway <client> on|off`: recorded here, applied by `ocean clients apply`.
@@ -83,17 +141,43 @@ export async function setGatewayClient(
   on: boolean,
   file = gatewayClientsFile(),
 ): Promise<string[]> {
-  if (!CLIENT_ADAPTERS.some((adapter) => adapter.id === client))
+  if (!clientIds().includes(client))
     throw new Error(
-      `Unknown client ${client}; one of: ${CLIENT_ADAPTERS.map((adapter) => adapter.id).join(", ")}`,
+      `Unknown client ${client}; one of: ${clientIds().join(", ")}`,
     );
-  const clients = readGatewayClients(file);
-  if (on) clients.add(client);
-  else clients.delete(client);
-  const list = [...clients].sort();
-  await mkdir(path.dirname(file), { recursive: true });
-  await atomicWrite(file, `${JSON.stringify({ clients: list }, null, 2)}\n`);
-  return list;
+  const choice = readGatewayChoice(file);
+  choice.gateway = choice.gateway.filter((id) => id !== client);
+  choice.perServer = choice.perServer.filter((id) => id !== client);
+  if (on && choice.default !== "gateway") choice.gateway.push(client);
+  if (!on && choice.default === "gateway") choice.perServer.push(client);
+  await writeGatewayChoice(file, choice);
+  return [...readGatewayClients(file)].sort();
+}
+
+// `ocean clients gateway --default gateway|per-server`; the per-client choices are kept.
+export async function setGatewayDefault(
+  mode: GatewayChoice["default"],
+  file = gatewayClientsFile(),
+): Promise<string[]> {
+  const choice = readGatewayChoice(file);
+  choice.default = mode;
+  await writeGatewayChoice(file, choice);
+  return [...readGatewayClients(file)].sort();
+}
+
+// A fresh machine (no choice recorded, no client approved yet) starts with the gateway as the
+// default. A machine already wired per server keeps that until its owner switches.
+export async function defaultToGatewayOnFreshSetup(
+  file = gatewayClientsFile(),
+): Promise<boolean> {
+  if (existsSync(file)) return false;
+  if (Object.keys(await approvedClients()).length) return false;
+  await writeGatewayChoice(file, {
+    default: "gateway",
+    gateway: [],
+    perServer: [],
+  });
+  return true;
 }
 
 // The marketplace entries one client should have: the single gateway entry when it is wired to
@@ -102,8 +186,24 @@ function marketFor(
   client: string,
   env: ClientEnv,
 ): Map<string, ServerValue> | undefined {
-  if (env.gateway?.clients.has(client))
-    return new Map([["ocean-gateway", env.gateway.entry]]);
+  if (env.gateway?.clients.has(client)) {
+    const entry = env.gateway.entry;
+    // The client's id travels in its own entry, so the gateway's access rules match the name
+    // Ocean wrote rather than the name the client gives itself.
+    return new Map([
+      [
+        "ocean-gateway",
+        {
+          ...entry,
+          args: [
+            ...(Array.isArray(entry.args) ? entry.args : []),
+            "--client",
+            client,
+          ],
+        },
+      ],
+    ]);
+  }
   return env.market;
 }
 

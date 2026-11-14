@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { marketplaceIndexSchema } from "@ocean/core/domain/capabilities/capability-manifest.js";
 import type { McpTool } from "@ocean/core/domain/mcp/mcp-contract.js";
@@ -110,6 +110,33 @@ export function canSee(
   return Boolean(
     rule?.allow?.includes(member.capability) || rule?.allow?.includes("*"),
   );
+}
+
+// `ocean clients allow|deny|unset <client> <capability>`: one rule changed, the rest kept.
+export async function updateGatewayAccess(
+  file: string,
+  client: string,
+  capability: string,
+  change: "allow" | "deny" | "unset",
+): Promise<GatewayAccess> {
+  const access = await readGatewayAccess(file);
+  const rule = access.clients[client] ?? {};
+  const without = (list?: string[]) =>
+    (list ?? []).filter((item) => item !== capability);
+  const next = { allow: without(rule.allow), deny: without(rule.deny) };
+  if (change === "allow") next.allow.push(capability);
+  if (change === "deny") next.deny.push(capability);
+  if (next.allow.length || next.deny.length)
+    access.clients[client] = {
+      ...(next.allow.length ? { allow: next.allow.sort() } : {}),
+      ...(next.deny.length ? { deny: next.deny.sort() } : {}),
+    };
+  else delete access.clients[client];
+  await mkdir(path.dirname(file), { recursive: true });
+  const temp = `${file}.${process.pid}.tmp`;
+  await writeFile(temp, `${JSON.stringify(access, null, 2)}\n`);
+  await rename(temp, file);
+  return access;
 }
 
 export async function readGatewayAccess(file: string): Promise<GatewayAccess> {
@@ -348,8 +375,13 @@ export class McpGateway {
       serverName?: string;
       instructions?: string;
       access?: GatewayAccess;
+      // The client this gateway serves, as Ocean wrote it into the client's entry
+      // (`--client <id>`); then `clientInfo.name` from `initialize` is only logged.
+      clientId?: string;
     },
-  ) {}
+  ) {
+    this.#client = options.clientId;
+  }
 
   // Starts every member at once; one that fails or hangs is left out, never the whole gateway.
   start(): Promise<void> {
@@ -470,9 +502,14 @@ export class McpGateway {
         const info = isRecord(request.params)
           ? request.params.clientInfo
           : undefined;
-        if (!this.#started && isRecord(info) && typeof info.name === "string") {
-          this.#client = info.name;
-          this.#log(`client: ${info.name}`);
+        const named = isRecord(info) && typeof info.name === "string";
+        if (this.options.clientId)
+          this.#log(
+            `client: ${this.options.clientId}${named ? ` (says ${String(info.name)})` : ""}`,
+          );
+        else if (!this.#started && named) {
+          this.#client = String(info.name);
+          this.#log(`client: ${this.#client}`);
         }
         // Members start while the client finishes its handshake.
         void this.start();
