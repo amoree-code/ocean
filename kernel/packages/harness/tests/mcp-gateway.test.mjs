@@ -12,6 +12,7 @@ import {
   McpGateway,
   readGatewayAccess,
   sensitivityOf,
+  updateGatewayAccess,
 } from "@ocean/market/mcp/mcp-gateway.js";
 import { McpClient } from "@ocean/services/infrastructure/mcp/mcp-client.js";
 
@@ -363,6 +364,24 @@ test("gateway members are the engine's first-party servers plus installed ones, 
   );
   assert.equal(reasons["com.example/remote"], undefined);
   assert.match(reasons["com.example/undeclared"], /npx/);
+
+  // `--installed-only` (a client that has Ocean's own servers directly): no first-party member,
+  // and the installed copy of one is not reported as a launch failure.
+  const installedOnly = await gatewayMembers({
+    serversRoot,
+    stateRoot: path.join(root, "state"),
+    env: { PATH: "/usr/bin:/bin", FILES_TOKEN: "t" },
+    firstParty: false,
+  });
+  assert.deepEqual(
+    installedOnly.members.map((member) => member.capability),
+    ["com.example/files", "com.example/remote"],
+  );
+  assert.ok(
+    !installedOnly.skipped.some(
+      (skip) => skip.capability === "dev.ocean/ocean",
+    ),
+  );
   assert.match(
     reasons["com.microsoft/playwright-mcp"],
     /install it from the marketplace/,
@@ -659,4 +678,63 @@ test("the gateway access file is optional and checked when present", async () =>
     canSee(valid, "codex", { capability: "a.b/c", prefix: "c" }),
     false,
   );
+});
+
+test("the client id in Ocean's entry decides access, not the name the client gives", async () => {
+  const { member } = await fixture();
+  const log = [];
+  const gateway = new McpGateway(
+    [
+      member("browser", [{ name: "click" }], {
+        sensitive: "controls a browser",
+      }),
+    ],
+    {
+      client: (each) => new McpClient(each),
+      timeoutMs: 3000,
+      log: (line) => log.push(line),
+      access: { clients: { "claude-code": { allow: ["test/browser"] } } },
+      clientId: "codex",
+    },
+  );
+  try {
+    await gateway.handle({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: { clientInfo: { name: "claude-code", version: "1" } },
+    });
+    const list = await gateway.handle({
+      jsonrpc: "2.0",
+      id: 2,
+      method: "tools/list",
+    });
+    assert.deepEqual(list.result.tools, []);
+    assert.ok(log.includes("client: codex (says claude-code)"), log.join("\n"));
+  } finally {
+    gateway.close();
+  }
+});
+
+test("allow, deny and unset change one rule and keep the rest", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-gateway-rules-"));
+  const file = path.join(root, "market", "gateway-access.json");
+  await updateGatewayAccess(
+    file,
+    "claude-code",
+    "dev.ocean/chrome-devtools",
+    "allow",
+  );
+  await updateGatewayAccess(file, "codex", "io.github.me/notes", "deny");
+  await updateGatewayAccess(file, "codex", "io.github.me/notes", "allow");
+  assert.deepEqual(await readGatewayAccess(file), {
+    clients: {
+      "claude-code": { allow: ["dev.ocean/chrome-devtools"] },
+      codex: { allow: ["io.github.me/notes"] },
+    },
+  });
+  await updateGatewayAccess(file, "codex", "io.github.me/notes", "unset");
+  assert.deepEqual(await readGatewayAccess(file), {
+    clients: { "claude-code": { allow: ["dev.ocean/chrome-devtools"] } },
+  });
 });

@@ -10,6 +10,7 @@ import {
   devToolsPortFile,
 } from "@ocean/market/mcp/chrome-debugging.js";
 import { browserFindings } from "../dist/interfaces/cli/browser-findings.js";
+import { gatewayFindings } from "../dist/interfaces/cli/gateway-findings.js";
 
 test("doctor says nothing about the browser until a browser capability is installed", async () => {
   const serversRoot = await mkdtemp(path.join(os.tmpdir(), "ocean-browser-"));
@@ -80,4 +81,27 @@ test("DevToolsActivePort is read from each platform's Chrome profile root", () =
     devToolsPortFile("/h", "win32", { LOCALAPPDATA: "/la" }),
     path.join("/la", "Google", "Chrome", "User Data", "DevToolsActivePort"),
   );
+});
+
+test("doctor reports the gateway wiring and fails an access file the gateway cannot read", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "ocean-gateway-doctor-"));
+  const accessFile = path.join(dir, "gateway-access.json");
+  assert.deepEqual(
+    await gatewayFindings({ accessFile, clients: new Set() }),
+    [],
+  );
+  const [wired] = await gatewayFindings({
+    accessFile,
+    clients: new Set(["claude-code"]),
+  });
+  assert.equal(wired.severity, "OK");
+  assert.match(wired.message, /wired through ocean-gateway: claude-code/);
+  assert.match(wired.message, /ocean clients gateway <id> off/);
+  await writeFile(accessFile, JSON.stringify({ clients: { codex: [] } }));
+  const [broken] = await gatewayFindings({
+    accessFile,
+    clients: new Set(["claude-code"]),
+  });
+  assert.equal(broken.severity, "FAIL");
+  assert.match(broken.message, /will not start/);
 });

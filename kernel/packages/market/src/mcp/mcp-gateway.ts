@@ -1,10 +1,11 @@
-import { mkdir, readdir, readFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { marketplaceIndexSchema } from "@ocean/core/domain/capabilities/capability-manifest.js";
 import type { McpTool } from "@ocean/core/domain/mcp/mcp-contract.js";
 import { engineRoot } from "@ocean/core/shared/paths.js";
 import type { McpServerSpec } from "../adapters/mcp-adapter.js";
 import { scanText } from "../security/description-scan.js";
+import type { SecretStore } from "../security/secrets.js";
 import { engineIndexFile } from "./mcp-connection.js";
 import {
   type InstalledMcpServer,
@@ -31,6 +32,8 @@ export type RemoteGatewayMember = MemberBase & {
   transport: "remote";
   type: RemoteTransport;
   url: string;
+  // Resolved header values: in memory only, never logged.
+  headers?: Record<string, string>;
 };
 
 export type StdioGatewayMember = MemberBase & {
@@ -109,6 +112,33 @@ export function canSee(
   );
 }
 
+// `ocean clients allow|deny|unset <client> <capability>`: one rule changed, the rest kept.
+export async function updateGatewayAccess(
+  file: string,
+  client: string,
+  capability: string,
+  change: "allow" | "deny" | "unset",
+): Promise<GatewayAccess> {
+  const access = await readGatewayAccess(file);
+  const rule = access.clients[client] ?? {};
+  const without = (list?: string[]) =>
+    (list ?? []).filter((item) => item !== capability);
+  const next = { allow: without(rule.allow), deny: without(rule.deny) };
+  if (change === "allow") next.allow.push(capability);
+  if (change === "deny") next.deny.push(capability);
+  if (next.allow.length || next.deny.length)
+    access.clients[client] = {
+      ...(next.allow.length ? { allow: next.allow.sort() } : {}),
+      ...(next.deny.length ? { deny: next.deny.sort() } : {}),
+    };
+  else delete access.clients[client];
+  await mkdir(path.dirname(file), { recursive: true });
+  const temp = `${file}.${process.pid}.tmp`;
+  await writeFile(temp, `${JSON.stringify(access, null, 2)}\n`);
+  await rename(temp, file);
+  return access;
+}
+
 export async function readGatewayAccess(file: string): Promise<GatewayAccess> {
   let raw: unknown;
   try {
@@ -143,11 +173,16 @@ export async function gatewayMembers(options: {
   stateRoot: string;
   indexFile?: string;
   env?: NodeJS.ProcessEnv;
+  // false: installed servers only, for a client that already has Ocean's own servers directly.
+  firstParty?: boolean;
+  // Where secret values come from after the environment (default: none).
+  secrets?: SecretStore;
 }): Promise<{ members: GatewayMember[]; skipped: GatewaySkip[] }> {
   const members: GatewayMember[] = [];
   const skipped: GatewaySkip[] = [];
   const taken = new Set<string>();
   const notFirstParty: string[] = [];
+  const firstParty = new Set<string>();
   const index = marketplaceIndexSchema.parse(
     JSON.parse(await readFile(options.indexFile ?? engineIndexFile(), "utf8")),
   );
@@ -159,6 +194,8 @@ export async function gatewayMembers(options: {
       notFirstParty.push(manifest.name);
       continue;
     }
+    firstParty.add(manifest.name);
+    if (options.firstParty === false) continue;
     members.push({
       capability: manifest.name,
       prefix: namespaceFor(manifest.name, taken),
@@ -198,6 +235,7 @@ export async function gatewayMembers(options: {
     // An installed copy of an engine server runs the same code as the member already routed.
     if (
       name === GATEWAY_CAPABILITY ||
+      firstParty.has(name) ||
       members.some((member) => member.capability === name)
     )
       continue;
@@ -206,6 +244,7 @@ export async function gatewayMembers(options: {
       const launch = planMcpLaunch(installed, {
         stateDir,
         env: options.env,
+        secret: (secret) => options.secrets?.get(name, secret),
       });
       const sensitive = sensitivityOf(installed);
       const base = {
@@ -219,6 +258,9 @@ export async function gatewayMembers(options: {
           transport: "remote",
           type: launch.type,
           url: launch.url,
+          ...(Object.keys(launch.headers).length
+            ? { headers: launch.headers }
+            : {}),
         });
         continue;
       }
@@ -333,8 +375,13 @@ export class McpGateway {
       serverName?: string;
       instructions?: string;
       access?: GatewayAccess;
+      // The client this gateway serves, as Ocean wrote it into the client's entry
+      // (`--client <id>`); then `clientInfo.name` from `initialize` is only logged.
+      clientId?: string;
     },
-  ) {}
+  ) {
+    this.#client = options.clientId;
+  }
 
   // Starts every member at once; one that fails or hangs is left out, never the whole gateway.
   start(): Promise<void> {
@@ -455,9 +502,14 @@ export class McpGateway {
         const info = isRecord(request.params)
           ? request.params.clientInfo
           : undefined;
-        if (!this.#started && isRecord(info) && typeof info.name === "string") {
-          this.#client = info.name;
-          this.#log(`client: ${info.name}`);
+        const named = isRecord(info) && typeof info.name === "string";
+        if (this.options.clientId)
+          this.#log(
+            `client: ${this.options.clientId}${named ? ` (says ${String(info.name)})` : ""}`,
+          );
+        else if (!this.#started && named) {
+          this.#client = String(info.name);
+          this.#log(`client: ${this.#client}`);
         }
         // Members start while the client finishes its handshake.
         void this.start();
