@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+- docs(T-313): `docs/mcp.md` explains how the memory loop runs in code (read at session start, facts captured at session end and before a compaction) and what each client gets, from full integration to MCP-only best effort; the privacy scan now also runs before every push, not only before a commit and in CI (#277)
+
 ## 1.5.0 (2026-11-14)
 
 - feat(T-309): `ocean mcp gateway` now routes remote MCP servers installed from the marketplace (streamable HTTP and SSE, through the official SDK client) alongside the stdio ones, instead of skipping them. A remote must be `https`, or `http` on loopback, with its host declared as a `network` permission; redirects stay on the same origin, and a remote that requires a header is refused rather than sent a credential. The marketplace now also accepts loopback `http` remotes at install (#267)

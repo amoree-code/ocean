@@ -244,6 +244,68 @@ finds its record.
 - `ocean memory digest` — at most five lines for `/day-start`: open conflicts, candidates older
   than three days, a stale index, projects without memory records, yesterday's direct writes.
 
+## The memory loop runs in code, not in the model (T-313)
+
+MCP is pull-only: a server offers tools, and the model decides whether to call them. A memory that
+depends on the model remembering to read at the start and to save at the end will sometimes do
+neither. So Ocean runs both ends of the loop from the client's own hooks, and the tools stay for
+what the user asks for explicitly ("remember this", "forget that").
+
+- **Read.** The session-start hook puts the Ocean start line into the session before the first
+  message (above). Without a hook, `instructions` and the tool descriptions ask the model to call
+  `ocean_context` once.
+- **Write.** After a session ends, and before Claude Code compacts one, Ocean reads the client's
+  own transcript and captures the durable facts the user stated:
+  - Secrets and private paths are replaced (`redactSecrets`) before any text reaches a model. The
+    user's newest turns get most of a fixed budget.
+  - The model is the session's own client, run read-only through the provider layer: Claude
+    (`haiku`) or Codex (its default model). `OCEAN_SESSION_FACTS_MODEL` names another model. The
+    call carries `OCEAN_FACTS_CALL=1`, so its own hooks do nothing.
+  - Every fact must quote the user's own words. A fact whose quote is not in a user turn is
+    dropped: an invented fact, or one taken from the assistant's guess.
+  - Each fact becomes a candidate with `origin: inferred` and `source: session:<id>`.
+    `approveCandidate` refuses to file such a candidate automatically, whatever
+    `proposeAutoApprove` or `pullAutoApprove` say: the owner reviews every one
+    (`ocean memory review`). A content-hash ledger keeps one fact from being proposed twice.
+  - A per-session cursor (the transcript offset already read, kept as `memory_extract_claim`
+    session events) makes a compaction followed by a session end read each turn once. A failed
+    model call hands its turns back to the next run.
+  - A hook has seconds (Claude Code allows 10, Codex clamps a session-end hook to 3), so the hook
+    only starts `ocean hook session-facts` as a detached process. Run it by hand to see what one
+    transcript yields:
+    `ocean hook session-facts --client claude --session <id> --transcript <path>`.
+- **The owner's choice.** `ocean client apply` asks once whether to capture, because it costs one
+  small model call per session. `--session-facts on|off` answers without a terminal. Until there is
+  an answer, capture is off and `ocean doctor` reports `SESSION_FACTS_UNSET`.
+  `ocean memory session-facts [on|off]` shows or changes the answer, and `OCEAN_SESSION_FACTS=on|off`
+  overrides it for one process.
+- **Quality.** `harness/tests/fixtures/session-facts/` holds conversations with the facts they
+  should and should not yield: durable facts, none, an invented quote, a corrected assistant guess,
+  a pasted key, and an answer in prose. The tests run them against recorded answers.
+  `OCEAN_FACTS_EVAL=claude|codex` runs the same fixtures against the live model and prints the
+  false-positive count.
+
+### What each client gets
+
+| Tier | Clients | Read at start | Facts captured | Guarantee |
+| ---- | ------- | ------------- | -------------- | --------- |
+| Full | Claude Code, Codex | session-start hook | after the session ends, and before a compaction (Claude Code) | runs in code; every fact reviewed |
+| Hooks, no transcript | Gemini CLI, Qwen Code, Cursor agent | session-start hook | no; the session is recorded from metadata | start is in code; saving depends on the model calling `memory_propose` |
+| Plugin | OpenCode | plugin adds the start line | no session-end event | start is in code; saving depends on the model |
+| MCP only | any other MCP client, Claude Desktop, claude.ai | `instructions` and tool descriptions | no | best effort: the model decides; some hosts drop `instructions`, so the tool descriptions carry the same rule |
+
+Claude Desktop and claude.ai conversations are also picked up by `ocean pull` from the app's local
+cache when it holds them. That cache is not a documented interface: it keeps only what the app
+happened to store, and it can be cleared at any time.
+
+### A server that kept running through an upgrade
+
+A client keeps its Ocean server process until the client restarts, so after an upgrade it still
+answers with the old release. Each call-ledger row records the release that answered it.
+`ocean doctor` reports `RUNNING_STALE` for a client whose newest call in the last 7 days came from
+an older release ("restart <client>"). `ocean_status` reports `version` (what this process runs),
+`installed` and `restartNeeded`.
+
 ## One endpoint for every server: the MCP gateway
 
 `ocean mcp gateway` is a single stdio MCP server that routes the tools of every registered
@@ -268,6 +330,14 @@ ocean mcp gateway-config
   OAuth is not supported yet.
 - **Names:** tools are exposed as `<server>__<tool>`, for example `ocean__ocean_status` or
   `obsidian__obsidian_read`.
+- **Resources and prompts (T-313):** each member's resources and prompts are forwarded as well,
+  with the same access rules and runtime scan as its tools. Prompts are named like tools
+  (`ocean__ocean_review_workspace`). Resource URIs stay as the server wrote them, and the first
+  member to list a URI keeps it.
+- **Ocean's contract (T-313):** when Ocean's own server is a member (the full gateway entry from
+  `ocean mcp gateway-config`) and the client may see it, `initialize` carries Ocean's memory
+  contract as `instructions`, as on a direct connection. The `--installed-only` entry carries none:
+  Ocean's own server keeps its direct `ocean` entry, which sends the contract itself.
 - **Runtime scan:** each tool's name, its description, and every key and string inside its input
   schema (property names, titles, enum values, defaults) are scanned with the same rules as an
   install. A flagged tool is hidden and the finding is logged.
