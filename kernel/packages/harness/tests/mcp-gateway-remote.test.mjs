@@ -39,7 +39,17 @@ async function remoteServers() {
   const sse = new Map();
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, "http://127.0.0.1");
-    if (url.pathname === "/mcp") {
+    // Like a hosted server: no token, no service.
+    if (url.pathname === "/secure/mcp") {
+      if (req.headers.authorization !== "Bearer k")
+        return res.writeHead(401).end();
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: undefined,
+      });
+      res.on("close", () => void transport.close());
+      await echoServer("secure").connect(transport);
+      await transport.handleRequest(req, res);
+    } else if (url.pathname === "/mcp") {
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
       });
@@ -183,15 +193,14 @@ test("one gateway serves a stdio server, a streamable HTTP server and an SSE ser
   }
 });
 
-// The phase's definition of done: a remote server installed in the marketplace is reachable
-// through the one `ocean mcp gateway` process, next to Ocean's own stdio server.
-test("ocean mcp gateway routes a client call to an installed remote server", async () => {
-  const remotes = await remoteServers();
+// A workspace with one installed remote server (and, optionally, a gateway access file), and a
+// real `ocean mcp gateway` process over it that answers JSON-RPC requests.
+async function gatewayProcess(remotes, args = [], access) {
   const root = await mkdtemp(path.join(os.tmpdir(), "ocean-gateway-cli-"));
-  const serversRoot = path.join(root, SYSTEM_DIR, "market", "mcp");
-  await mkdir(serversRoot, { recursive: true });
+  const market = path.join(root, SYSTEM_DIR, "market");
+  await mkdir(path.join(market, "mcp"), { recursive: true });
   await writeFile(
-    path.join(serversRoot, "com.example__remote.json"),
+    path.join(market, "mcp", "com.example__remote.json"),
     JSON.stringify({
       capability: "com.example/remote",
       version: "1.0.0",
@@ -207,19 +216,24 @@ test("ocean mcp gateway routes a client call to an installed remote server", asy
       },
     }),
   );
+  if (access)
+    await writeFile(
+      path.join(market, "gateway-access.json"),
+      JSON.stringify(access),
+    );
   const child = spawn(
     process.execPath,
-    [path.resolve("dist/main.js"), "mcp", "gateway"],
+    [path.resolve("dist/main.js"), "mcp", "gateway", ...args],
     {
       cwd: path.resolve("."),
       env: { ...process.env, OCEAN_ROOT: root },
       stdio: ["pipe", "pipe", "pipe"],
     },
   );
-  let stderr = "";
+  const io = { stderr: "" };
   child.stderr.setEncoding("utf8");
   child.stderr.on("data", (chunk) => {
-    stderr += chunk;
+    io.stderr += chunk;
   });
   const waiting = new Map();
   let buffer = "";
@@ -232,20 +246,37 @@ test("ocean mcp gateway routes a client call to an installed remote server", asy
       waiting.get(message.id)?.(message);
     }
   });
-  const request = (id, method, params) =>
-    new Promise((resolve) => {
-      waiting.set(id, resolve);
-      child.stdin.write(
-        `${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`,
-      );
-    });
+  return {
+    io,
+    request: (id, method, params) =>
+      new Promise((resolve) => {
+        waiting.set(id, resolve);
+        child.stdin.write(
+          `${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`,
+        );
+      }),
+    stop: async () => {
+      child.stdin.end();
+      await new Promise((resolve) => child.once("exit", resolve));
+    },
+  };
+}
+
+// The phase's definition of done: a remote server installed in the marketplace is reachable
+// through the one `ocean mcp gateway` process, next to Ocean's own stdio server.
+test("ocean mcp gateway routes a client call to an installed remote server", async () => {
+  const remotes = await remoteServers();
+  const { request, stop, io } = await gatewayProcess(remotes);
   try {
     const init = await request(1, "initialize", {});
     assert.equal(init.result.serverInfo.name, "ocean-gateway");
     const names = (await request(2, "tools/list", {})).result.tools.map(
       (tool) => tool.name,
     );
-    assert.ok(names.includes("remote__echo"), `${names.join(", ")}\n${stderr}`);
+    assert.ok(
+      names.includes("remote__echo"),
+      `${names.join(", ")}\n${io.stderr}`,
+    );
     assert.ok(!names.includes("remote__poisoned"), names.join(", "));
     assert.ok(names.includes("ocean__ocean_status"), names.join(", "));
     const echo = await request(3, "tools/call", {
@@ -259,8 +290,164 @@ test("ocean mcp gateway routes a client call to an installed remote server", asy
     });
     assert.match(text(status), /"name":"Ocean"/);
   } finally {
-    child.stdin.end();
-    await new Promise((resolve) => child.once("exit", resolve));
+    await stop();
+    await remotes.close();
+  }
+});
+
+// What a gateway-wired client runs (`ocean clients gateway <id> on`): installed servers only,
+// filtered by the access file for the name the client gives.
+test("the client gateway entry serves installed servers only, per the access file", async () => {
+  const remotes = await remoteServers();
+  const run = async (client, access) => {
+    const gateway = await gatewayProcess(remotes, ["--installed-only"], access);
+    try {
+      await gateway.request(1, "initialize", {
+        protocolVersion: "2025-06-18",
+        capabilities: {},
+        clientInfo: { name: client, version: "1" },
+      });
+      const list = await gateway.request(2, "tools/list", {});
+      return {
+        names: list.result.tools.map((tool) => tool.name),
+        stderr: gateway.io.stderr,
+      };
+    } finally {
+      await gateway.stop();
+    }
+  };
+  try {
+    const claude = await run("claude-code");
+    assert.deepEqual(claude.names, ["remote__echo"], claude.stderr);
+    assert.match(claude.stderr, /client: claude-code/);
+    const denied = await run("claude-code", {
+      clients: { "claude-code": { deny: ["com.example/remote"] } },
+    });
+    assert.deepEqual(denied.names, []);
+    assert.match(
+      denied.stderr,
+      /com\.example\/remote hidden from claude-code \(denied in gateway-access\.json\)/,
+    );
+  } finally {
+    await remotes.close();
+  }
+});
+
+test("a remote member's headers reach its server, and only its server", async () => {
+  const remotes = await remoteServers();
+  const log = [];
+  const member = (prefix, headers) => ({
+    transport: "remote",
+    capability: `test/${prefix}`,
+    prefix,
+    type: "streamable-http",
+    url: `${remotes.base}/secure/mcp`,
+    ...(headers ? { headers } : {}),
+  });
+  const gateway = new McpGateway(
+    [member("keyed", { Authorization: "Bearer k" }), member("bare")],
+    {
+      client: (each) => new RemoteMcpClient(each, "test"),
+      timeoutMs: 5000,
+      log: (line) => log.push(line),
+    },
+  );
+  try {
+    const list = await gateway.handle({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/list",
+    });
+    assert.deepEqual(
+      list.result.tools.map((tool) => tool.name),
+      ["keyed__echo"],
+    );
+    const call = await gateway.handle({
+      jsonrpc: "2.0",
+      id: 2,
+      method: "tools/call",
+      params: { name: "keyed__echo", arguments: { text: "ok" } },
+    });
+    assert.equal(text(call), "secure:ok");
+    assert.ok(log.some((line) => /^test\/bare left out/.test(line)));
+    assert.ok(!log.join("\n").includes("Bearer k"), log.join("\n"));
+  } finally {
+    gateway.close();
+    await remotes.close();
+  }
+});
+
+// One view of every installed server: what runs, what is missing and how to set it, who sees it.
+test("ocean mcp status shows each installed server, its missing values and a real check", async () => {
+  const remotes = await remoteServers();
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-mcp-status-"));
+  const servers = path.join(root, SYSTEM_DIR, "market", "mcp");
+  await mkdir(servers, { recursive: true });
+  const install = (file, capability, network, server) =>
+    writeFile(
+      path.join(servers, file),
+      JSON.stringify({
+        capability,
+        version: "1.0.0",
+        permissions: {
+          filesystem: { read: [], write: [] },
+          network,
+          env: ["Authorization"],
+          exec: [],
+        },
+        server: { name: capability, ...server },
+      }),
+    );
+  await install("com.example__open.json", "com.example/open", ["127.0.0.1"], {
+    remotes: [{ type: "streamable-http", url: `${remotes.base}/mcp` }],
+  });
+  await install("com.example__keyed.json", "com.example/keyed", ["127.0.0.1"], {
+    remotes: [
+      {
+        type: "streamable-http",
+        url: `${remotes.base}/secure/mcp`,
+        headers: [{ name: "Authorization", isRequired: true, isSecret: true }],
+      },
+    ],
+  });
+  const status = (env = {}) =>
+    new Promise((resolve) => {
+      const child = spawn(
+        process.execPath,
+        [path.resolve("dist/main.js"), "mcp", "status", "--check", "--json"],
+        { env: { ...process.env, OCEAN_ROOT: root, ...env } },
+      );
+      let stdout = "";
+      child.stdout.on("data", (chunk) => {
+        stdout += chunk;
+      });
+      child.on("close", () => resolve(JSON.parse(stdout)));
+    });
+  try {
+    const report = await status();
+    assert.equal(report.gatewayDefault, "per-server");
+    const byName = Object.fromEntries(
+      report.servers.map((server) => [server.name, server]),
+    );
+    assert.deepEqual(byName["com.example/open"].check, { tools: 2 });
+    assert.equal(byName["com.example/open"].ready, true);
+    assert.deepEqual(byName["com.example/open"].perServerClients, []);
+    const keyed = byName["com.example/keyed"];
+    assert.equal(keyed.ready, false);
+    assert.match(keyed.problem, /needs Authorization/);
+    assert.deepEqual(keyed.values, [
+      { name: "Authorization", required: true, from: keyed.values[0].from },
+    ]);
+    assert.ok(["missing", "macOS keychain"].includes(keyed.values[0].from));
+    // From the environment, the same server starts and answers.
+    const withKey = await status({ Authorization: "Bearer k" });
+    const ready = withKey.servers.find(
+      (server) => server.name === "com.example/keyed",
+    );
+    assert.equal(ready.values[0].from, "environment");
+    assert.deepEqual(ready.check, { tools: 2 });
+    assert.ok(!JSON.stringify(withKey).includes("Bearer k"));
+  } finally {
     await remotes.close();
   }
 });

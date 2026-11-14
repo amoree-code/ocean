@@ -18,6 +18,7 @@ import {
   PermissionDeniedError,
   PermissionPolicy,
 } from "@ocean/market/security/permissions.js";
+import { keychainStore } from "@ocean/market/security/secrets.js";
 
 const none = {
   filesystem: { read: [], write: [] },
@@ -185,7 +186,7 @@ test("an MCP launch is refused for an undeclared runner or variable", () => {
         ...options,
         env: { PATH: "/bin" },
       }),
-    /needs FILES_TOKEN set/,
+    /needs FILES_TOKEN: set it in the environment, or run `ocean market secret set/,
   );
 });
 
@@ -302,7 +303,7 @@ test("a remote MCP endpoint needs its host declared", () => {
   );
 });
 
-test("a remote MCP endpoint is https or loopback, a known transport, and needs no headers", () => {
+test("a remote MCP endpoint is https or loopback, a known transport, and its headers are declared", () => {
   const remote = (entry, network = ["mcp.example.com"]) => ({
     capability: "io.github.example/remote",
     version: "1.0.0",
@@ -326,11 +327,16 @@ test("a remote MCP endpoint is https or loopback, a known transport, and needs n
         url: "https://mcp.example.com/sse",
         headers: [{ name: "Authorization", isRequired: true }],
       }),
-    /needs header Authorization/,
+    /did not declare permission env "Authorization"/,
   );
   assert.deepEqual(
     plan({ type: "sse", url: "http://127.0.0.1:8123/sse" }, ["127.0.0.1"]),
-    { transport: "remote", type: "sse", url: "http://127.0.0.1:8123/sse" },
+    {
+      transport: "remote",
+      type: "sse",
+      url: "http://127.0.0.1:8123/sse",
+      headers: {},
+    },
   );
   assert.equal(
     plan({ url: "http://localhost:8123/mcp" }, ["localhost"]).type,
@@ -349,4 +355,142 @@ test("ocean market exec refuses a server that is not installed", () => {
   );
   assert.equal(result.status, 1);
   assert.match(result.stderr, /is not an installed MCP server/);
+});
+
+test("a launch takes each value from the environment, then the secret store, and leaves out an optional one that is missing", () => {
+  const installed = (server, env) => ({
+    capability: "io.github.example/gh",
+    version: "1.0.0",
+    permissions: permissions({
+      exec: ["docker"],
+      env,
+      network: ["api.example.com"],
+    }),
+    server: { name: "io.github.example/gh", ...server },
+  });
+  // Shaped like the registry's GitHub entry: an optional `{token}` inside a docker `-e`.
+  const oci = {
+    packages: [
+      {
+        registryType: "oci",
+        identifier: "ghcr.io/example/gh:2.1.0",
+        runtimeArguments: [
+          { type: "named", name: "-e", value: "PORT=8085" },
+          {
+            type: "named",
+            name: "-e",
+            value: "GH_TOKEN={token}",
+            variables: { token: { isSecret: true } },
+          },
+        ],
+        environmentVariables: [{ name: "GH_HOST", isRequired: true }],
+      },
+    ],
+  };
+  const secrets = { token: "from-keychain", GH_HOST: "github.example" };
+  const launch = planMcpLaunch(installed(oci, ["token", "GH_HOST"]), {
+    stateDir: "/tmp/s",
+    env: { PATH: "/usr/bin" },
+    secret: (name) => secrets[name],
+  });
+  assert.deepEqual(launch.args.slice(0, 7), [
+    "run",
+    "-i",
+    "--rm",
+    "-e",
+    "PORT=8085",
+    "-e",
+    "GH_TOKEN=from-keychain",
+  ]);
+  assert.equal(launch.env.GH_HOST, "github.example");
+  // The environment wins over the store.
+  assert.equal(
+    planMcpLaunch(installed(oci, ["token", "GH_HOST"]), {
+      stateDir: "/tmp/s",
+      env: { PATH: "/usr/bin", GH_HOST: "env.example" },
+      secret: (name) => secrets[name],
+    }).env.GH_HOST,
+    "env.example",
+  );
+  // An optional placeholder with no value drops the whole argument, never passes `{token}`.
+  const without = planMcpLaunch(installed(oci, ["token", "GH_HOST"]), {
+    stateDir: "/tmp/s",
+    env: { PATH: "/usr/bin", GH_HOST: "h" },
+  });
+  assert.ok(!without.args.some((arg) => arg.includes("{token}")));
+  assert.ok(!without.args.some((arg) => arg.startsWith("GH_TOKEN")));
+  // A required one names the command that sets it.
+  assert.throws(
+    () =>
+      planMcpLaunch(installed(oci, ["token", "GH_HOST"]), {
+        stateDir: "/tmp/s",
+        env: { PATH: "/usr/bin" },
+      }),
+    /needs GH_HOST: .*ocean market secret set io\.github\.example\/gh GH_HOST/,
+  );
+  // A value the capability did not declare is never looked up.
+  assert.throws(
+    () =>
+      planMcpLaunch(installed(oci, ["GH_HOST"]), {
+        stateDir: "/tmp/s",
+        env: { PATH: "/usr/bin", GH_HOST: "h" },
+        secret: (name) => secrets[name],
+      }),
+    /did not declare permission env "token"/,
+  );
+
+  const remote = {
+    remotes: [
+      {
+        type: "streamable-http",
+        url: "https://api.example.com/mcp",
+        headers: [
+          { name: "Authorization", isRequired: true, isSecret: true },
+          { name: "X-Team", value: "team-{team}" },
+        ],
+      },
+    ],
+  };
+  const headers = (secret) =>
+    planMcpLaunch(installed(remote, ["Authorization", "team"]), {
+      stateDir: "/tmp/s",
+      env: {},
+      secret,
+    }).headers;
+  assert.deepEqual(
+    headers((name) => ({ Authorization: "Bearer k", team: "core" })[name]),
+    { Authorization: "Bearer k", "X-Team": "team-core" },
+  );
+  assert.deepEqual(
+    headers((name) => ({ Authorization: "Bearer k" })[name]),
+    { Authorization: "Bearer k" },
+  );
+  assert.throws(() => headers(() => undefined), /needs Authorization/);
+});
+
+test("the keychain store keeps the value out of every argument list", () => {
+  const calls = [];
+  const runner = (command, args, input) => {
+    calls.push({ command, args, input });
+    return {
+      status: args[0] === "find-generic-password" ? 0 : 0,
+      stdout: "s3cret\n",
+    };
+  };
+  const store = keychainStore("darwin", runner);
+  store.set("io.github.example/gh", "token", 'a"b\\c');
+  assert.deepEqual(calls[0].args, ["-i"]);
+  assert.equal(
+    calls[0].input,
+    'add-generic-password -U -s "ocean-mcp" -a "io.github.example/gh:token" -w "a\\"b\\\\c"\n',
+  );
+  assert.equal(store.get("io.github.example/gh", "token"), "s3cret");
+  assert.ok(!calls[1].args.includes("s3cret"));
+  assert.throws(() => store.set("x.y/z", "token", "a\nb"), /line break/);
+  const none = keychainStore("linux", runner);
+  assert.equal(none.get("x.y/z", "token"), undefined);
+  assert.throws(
+    () => none.set("x.y/z", "token", "v"),
+    /no secret store on linux/,
+  );
 });

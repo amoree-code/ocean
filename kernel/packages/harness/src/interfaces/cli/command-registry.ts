@@ -165,6 +165,7 @@ import { runClientTestCommand } from "./client-test-command.js";
 import { runClientsCommand } from "./clients-command.js";
 import { runContextCommand, runContextCostCommand } from "./context-command.js";
 import { runDailyCommand } from "./daily-command.js";
+import { gatewayFindings } from "./gateway-findings.js";
 import { runLifecycleCommand, runPolicyCommand } from "./governance-command.js";
 import { runHandoffCommand } from "./handoff-command.js";
 import { runIdeaCommand } from "./idea-command.js";
@@ -172,6 +173,7 @@ import { intercept } from "./intercept-command.js";
 import { runLayoutCommand } from "./layout-command.js";
 import { runMarketCommand } from "./market-command.js";
 import { runMcpGatewayCommand } from "./mcp-gateway-command.js";
+import { runMcpStatusCommand } from "./mcp-status-command.js";
 import { runMemoryCommand } from "./memory-command.js";
 import { runMigrateCommand } from "./migrate-command.js";
 import { runObserveCommand } from "./observe-command.js";
@@ -493,12 +495,15 @@ async function commandMcp(): Promise<void> {
       wrapperManager: defaultWrapperManager,
       embedder: mcpEmbedder(),
     });
-  else if (action === "gateway") await runMcpGatewayCommand();
+  else if (action === "gateway")
+    await runMcpGatewayCommand(process.argv.slice(4));
+  else if (action === "status")
+    await runMcpStatusCommand(process.argv.slice(4));
   else if (action === "browser-service")
     await runBrowserServiceCommand(process.argv[4] ?? "");
   else {
     console.error(
-      "Usage: ocean mcp config|playwright-config|gateway-config|serve|gateway|browser-service uninstall",
+      "Usage: ocean mcp config|playwright-config|gateway-config|serve|gateway|status [--check] [--json]|browser-service uninstall",
     );
     process.exitCode = 1;
   }
@@ -1230,6 +1235,7 @@ async function commandDoctor(): Promise<void> {
     ...(await clientFindings()),
     ...(await nativeFindings()),
     ...(await browserFindings()),
+    ...(await gatewayFindings()),
   );
   if (process.argv.includes("--json"))
     console.log(JSON.stringify(report, null, 2));

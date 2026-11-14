@@ -1,6 +1,7 @@
 import { createInterface } from "node:readline/promises";
 import {
   applyClients,
+  defaultToGatewayOnFreshSetup,
   planClients,
   readClientState,
   recordVerification,
@@ -39,7 +40,11 @@ const stepDependencies = () => ({
   },
   clients: {
     plan: () => planClients(),
-    apply: (clients: string[]) => applyClients({ clients }),
+    // A fresh machine starts with every client going through the one gateway entry (T-309).
+    apply: async (clients: string[]) => {
+      await defaultToGatewayOnFreshSetup();
+      return applyClients({ clients });
+    },
     verify: async (client: string) => {
       const check = await verifyClient(client);
       await recordVerification(client, check.ok);
