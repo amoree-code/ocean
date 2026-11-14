@@ -8,6 +8,7 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 ## Unreleased
 
 - feat(T-309): `ocean mcp gateway` now routes remote MCP servers installed from the marketplace (streamable HTTP and SSE, through the official SDK client) alongside the stdio ones, instead of skipping them. A remote must be `https`, or `http` on loopback, with its host declared as a `network` permission; redirects stay on the same origin, and a remote that requires a header is refused rather than sent a credential. The marketplace now also accepts loopback `http` remotes at install (#267)
+- feat(T-309): `ocean market add <server.json> [--yes]` installs your own MCP server (official registry format) through the same install path as any other: Ocean writes it into the owner's index with only the permissions its launch needs (runner and declared variables, or the remote's host), then the description scan, consent and the lock decide. A refused server is taken out of the index again, so it never installs or starts; `dev.ocean` names are reserved for the engine (#268)
 
 ## 1.4.0 (2026-11-12)
 

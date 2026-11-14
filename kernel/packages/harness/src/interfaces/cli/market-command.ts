@@ -1,11 +1,14 @@
+import path from "node:path";
 import {
   createDefaultMarketplace,
   marketplacePaths,
 } from "@ocean/market/install/default-marketplace.js";
+import { addOwnMcpServer } from "@ocean/market/install/own-server.js";
 import { runInstalledMcp } from "@ocean/market/mcp/mcp-runner.js";
+import { oceanVersion } from "../../version.js";
 
 const usage =
-  "Usage: ocean market list|install <name> [--version <v>]|update <name>|uninstall <name>|exec <name> [--index <file>]... [--yes] [--accept-flagged]";
+  "Usage: ocean market list|install <name> [--version <v>]|update <name>|uninstall <name>|exec <name>|add <server.json> [--index <file>]... [--yes] [--accept-flagged]";
 
 function flagValues(args: string[], flag: string): string[] {
   return args.flatMap((arg, index) =>
@@ -18,18 +21,20 @@ export async function runMarketCommand(
   args: string[],
 ): Promise<void> {
   const approved = args.includes("--yes");
-  const marketplace = createDefaultMarketplace({
-    indexFiles: flagValues(args, "--index"),
-    acceptFlagged: args.includes("--accept-flagged"),
-    // Non-interactive: permissions are granted only by an explicit --yes, and are always shown.
-    consent: async (manifest) => {
-      console.error(
-        `${manifest.name}@${manifest.version} requests permissions: ${JSON.stringify(manifest.permissions)}`,
-      );
-      if (!approved) console.error("Re-run with --yes to grant them.");
-      return approved;
-    },
-  });
+  const createMarketplace = (indexFiles: string[]) =>
+    createDefaultMarketplace({
+      indexFiles,
+      acceptFlagged: args.includes("--accept-flagged"),
+      // Non-interactive: permissions are granted only by an explicit --yes, and are always shown.
+      consent: async (manifest) => {
+        console.error(
+          `${manifest.name}@${manifest.version} requests permissions: ${JSON.stringify(manifest.permissions)}`,
+        );
+        if (!approved) console.error("Re-run with --yes to grant them.");
+        return approved;
+      },
+    });
+  const marketplace = createMarketplace(flagValues(args, "--index"));
   const name = args.find(
     (arg, index) =>
       !arg.startsWith("--") &&
@@ -46,6 +51,21 @@ export async function runMarketCommand(
           sha256: entry.manifest.integrity.sha256,
           installedAt: entry.installedAt,
         })),
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+  if (action === "add" && name) {
+    console.log(
+      JSON.stringify(
+        await addOwnMcpServer({
+          serverFile: path.resolve(name),
+          indexFile: marketplacePaths().index,
+          oceanVersion: await oceanVersion(),
+          marketplace: () => createMarketplace([]),
+        }),
         null,
         2,
       ),

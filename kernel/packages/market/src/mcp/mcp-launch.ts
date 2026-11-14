@@ -58,6 +58,15 @@ const runners: Record<
   }),
 };
 
+// The command a registry type is started with (`npx`, `uvx`, `docker`), as an `exec` permission
+// names it.
+export function runnerCommand(registryType: string): string {
+  const runner = runners[registryType];
+  if (!runner)
+    throw new Error(`registry type ${registryType} is not supported`);
+  return runner("x", undefined, []).command;
+}
+
 type Argument = { type?: unknown; name?: unknown; value?: unknown };
 
 export function literalArguments(list: unknown, where: string): string[] {

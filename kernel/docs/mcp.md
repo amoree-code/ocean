@@ -280,6 +280,22 @@ ocean mcp gateway-config
 Logs go to stderr, which MCP clients keep as the server's log. Each member's own stderr lines
 are labelled `ocean mcp gateway [<capability>]`.
 
+### Adding your own server
+
+```sh
+ocean market add ./server.json          # shows the permissions it needs, installs nothing
+ocean market add ./server.json --yes    # grants them and installs
+```
+
+`server.json` is the official MCP registry format (a `packages` entry for npm, pypi or oci, or
+a `remotes` entry). Ocean writes it into the owner's index (`bridge/market/ocean-marketplace.json`,
+payload under `bridge/market/own/`) with the permissions its launch needs and nothing more: the
+runner (`npx`, `uvx`, `docker`) and the declared environment variables, or the remote's host.
+It then goes through the same install as any server: the description scan, consent, the lock.
+A refused server (scan finding, no `--yes`, a `dev.ocean` name) is removed from the index
+again, so it is never installed and never started. Adding the same file again is a no-op; an
+edited file is an update. `ocean market uninstall <name>` removes it.
+
 ## Obsidian sync flow
 
 `ocean obsidian discover` and `ocean obsidian sync` run read-only by default; a write only
