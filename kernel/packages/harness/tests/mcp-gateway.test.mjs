@@ -6,9 +6,12 @@ import path from "node:path";
 import test from "node:test";
 import { SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import {
+  canSee,
   GATEWAY_CAPABILITY,
   gatewayMembers,
   McpGateway,
+  readGatewayAccess,
+  sensitivityOf,
 } from "@ocean/market/mcp/mcp-gateway.js";
 import { McpClient } from "@ocean/services/infrastructure/mcp/mcp-client.js";
 
@@ -516,5 +519,144 @@ test("gateway prefixes stay unique when capability names collide", async () => {
   assert.deepEqual(
     members.map((member) => member.prefix),
     ["x", "a_b_x", "a_b_x-2"],
+  );
+});
+
+test("a server that writes files or drives a browser is sensitive", () => {
+  const installed = (capability, permissions = {}, identifier = "x") => ({
+    capability,
+    version: "1.0.0",
+    permissions: {
+      filesystem: { read: [], write: [] },
+      network: [],
+      env: [],
+      exec: [],
+      ...permissions,
+    },
+    server: {
+      name: capability,
+      packages: [{ registryType: "npm", identifier }],
+    },
+  });
+  assert.equal(
+    sensitivityOf(
+      installed("io.github.me/notes", {
+        filesystem: { read: [], write: ["~/notes"] },
+      }),
+    ),
+    "writes files",
+  );
+  assert.equal(
+    sensitivityOf(installed("dev.ocean/chrome-devtools")),
+    "controls a browser",
+  );
+  assert.equal(
+    sensitivityOf(installed("com.microsoft/x", {}, "@playwright/mcp")),
+    "controls a browser",
+  );
+  assert.equal(sensitivityOf(installed("io.github.me/search")), undefined);
+  assert.equal(sensitivityOf(installed("io.github.me/chromatic")), undefined);
+});
+
+// The phase-3 definition of done: a client that is not allowed a server does not see its tools,
+// and the server is not even started for it.
+test("each client sees only the servers it is allowed", async () => {
+  const { member } = await fixture();
+  const members = () => [
+    member("alpha", [{ name: "read" }]),
+    member("browser", [{ name: "click" }], { sensitive: "controls a browser" }),
+    // Started, this one would fail and be logged as left out.
+    member("writer", [], {
+      args: ["-e", "process.exit(3)"],
+      sensitive: "writes files",
+    }),
+  ];
+  const access = {
+    clients: {
+      "claude-code": { allow: ["test/browser"] },
+      codex: { deny: ["test/alpha"] },
+      trusted: { allow: ["*"], deny: ["test/writer"] },
+    },
+  };
+  const seen = async (client) => {
+    const log = [];
+    const gateway = new McpGateway(members(), {
+      client: (each) => new McpClient(each),
+      timeoutMs: 3000,
+      log: (line) => log.push(line),
+      access,
+    });
+    try {
+      await gateway.handle({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: client ? { clientInfo: { name: client, version: "1" } } : {},
+      });
+      const list = await gateway.handle({
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/list",
+      });
+      const hiddenCall = await gateway.handle({
+        jsonrpc: "2.0",
+        id: 3,
+        method: "tools/call",
+        params: { name: "browser__click", arguments: {} },
+      });
+      return {
+        tools: list.result.tools.map((tool) => tool.name).sort(),
+        hiddenCall: hiddenCall.error?.message,
+        log,
+      };
+    } finally {
+      gateway.close();
+    }
+  };
+
+  const unnamed = await seen(undefined);
+  assert.deepEqual(unnamed.tools, ["alpha__read"]);
+  assert.match(unnamed.hiddenCall, /Unknown MCP tool: browser__click/);
+  assert.ok(
+    unnamed.log.includes(
+      "test/browser hidden from an unnamed client (controls a browser; allow it in gateway-access.json)",
+    ),
+    unnamed.log.join("\n"),
+  );
+  assert.ok(!unnamed.log.some((line) => /writer left out/.test(line)));
+
+  const claude = await seen("claude-code");
+  assert.deepEqual(claude.tools, ["alpha__read", "browser__click"]);
+  assert.equal(claude.hiddenCall, undefined);
+  assert.ok(claude.log.includes("client: claude-code"));
+
+  const codex = await seen("codex");
+  assert.deepEqual(codex.tools, []);
+  assert.ok(
+    codex.log.includes(
+      "test/alpha hidden from codex (denied in gateway-access.json)",
+    ),
+    codex.log.join("\n"),
+  );
+
+  const trusted = await seen("trusted");
+  assert.deepEqual(trusted.tools, ["alpha__read", "browser__click"]);
+  assert.ok(!trusted.log.some((line) => /writer left out/.test(line)));
+});
+
+test("the gateway access file is optional and checked when present", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-gateway-access-"));
+  const file = path.join(root, "gateway-access.json");
+  assert.deepEqual(await readGatewayAccess(file), { clients: {} });
+  await writeFile(file, JSON.stringify({ clients: { codex: { allow: "*" } } }));
+  await assert.rejects(readGatewayAccess(file), /expected \{"clients"/);
+  await writeFile(file, "{");
+  await assert.rejects(readGatewayAccess(file), /Cannot read/);
+  const valid = { clients: { codex: { allow: ["*"], deny: ["a.b/c"] } } };
+  await writeFile(file, JSON.stringify(valid));
+  assert.deepEqual(await readGatewayAccess(file), valid);
+  assert.equal(
+    canSee(valid, "codex", { capability: "a.b/c", prefix: "c" }),
+    false,
   );
 });

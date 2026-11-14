@@ -19,18 +19,22 @@ export const GATEWAY_CAPABILITY = "dev.ocean/mcp-gateway";
 // start, or a remote endpoint to connect to.
 export type GatewayMember = StdioGatewayMember | RemoteGatewayMember;
 
-export type RemoteGatewayMember = {
-  transport: "remote";
+type MemberBase = {
   capability: string;
   prefix: string;
+  // Set when the server is hidden unless a client is allowed it by name: why (it writes files,
+  // it controls a browser).
+  sensitive?: string;
+};
+
+export type RemoteGatewayMember = MemberBase & {
+  transport: "remote";
   type: RemoteTransport;
   url: string;
 };
 
-export type StdioGatewayMember = {
+export type StdioGatewayMember = MemberBase & {
   transport?: "stdio";
-  capability: string;
-  prefix: string;
   command: string;
   args: string[];
   cwd: string;
@@ -65,6 +69,69 @@ function namespaceFor(capability: string, taken: Set<string>): string {
     prefix = `${clean(capability)}-${suffix}`;
   taken.add(prefix);
   return prefix;
+}
+
+const BROWSER =
+  /(^|[^a-z])(browser|chrome|chromium|devtools|playwright|puppeteer|selenium|webdriver)([^a-z]|$)/i;
+
+// Why an installed server is hidden from a client that was not allowed it by name, or nothing.
+// Declared file writes count; so does driving a browser, recognised by name, since a browser
+// server reads and acts inside every signed-in session whatever it declares.
+export function sensitivityOf(
+  installed: InstalledMcpServer,
+): string | undefined {
+  if (installed.permissions.filesystem.write.length) return "writes files";
+  const names = [
+    installed.capability,
+    ...(installed.server.packages ?? []).map((item) => String(item.identifier)),
+  ];
+  if (names.some((name) => BROWSER.test(name))) return "controls a browser";
+  return undefined;
+}
+
+// Which installed servers each MCP client may see, by the name it gives in `initialize`
+// (`clientInfo.name`). Missing from `bridge/market/gateway-access.json` means: every server that
+// is not sensitive. `allow` adds sensitive ones (or `"*"` for all), `deny` removes any.
+export type GatewayAccess = {
+  clients: Record<string, { allow?: string[]; deny?: string[] }>;
+};
+
+export function canSee(
+  access: GatewayAccess,
+  client: string | undefined,
+  member: GatewayMember,
+): boolean {
+  const rule = client === undefined ? undefined : access.clients[client];
+  if (rule?.deny?.includes(member.capability)) return false;
+  if (!member.sensitive) return true;
+  return Boolean(
+    rule?.allow?.includes(member.capability) || rule?.allow?.includes("*"),
+  );
+}
+
+export async function readGatewayAccess(file: string): Promise<GatewayAccess> {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(await readFile(file, "utf8"));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT")
+      return { clients: {} };
+    throw new Error(`Cannot read ${file}: ${errorMessage(error)}`);
+  }
+  const clients = isRecord(raw) ? raw.clients : undefined;
+  const list = (value: unknown) =>
+    value === undefined ||
+    (Array.isArray(value) && value.every((item) => typeof item === "string"));
+  if (
+    !isRecord(clients) ||
+    !Object.values(clients).every(
+      (rule) => isRecord(rule) && list(rule.allow) && list(rule.deny),
+    )
+  )
+    throw new Error(
+      `${file}: expected {"clients": {"<client name>": {"allow": [...], "deny": [...]}}}`,
+    );
+  return raw as GatewayAccess;
 }
 
 // The servers the gateway routes: the engine's first-party ones, then every MCP server installed
@@ -140,11 +207,16 @@ export async function gatewayMembers(options: {
         stateDir,
         env: options.env,
       });
+      const sensitive = sensitivityOf(installed);
+      const base = {
+        capability: name,
+        prefix: namespaceFor(name, taken),
+        ...(sensitive ? { sensitive } : {}),
+      };
       if (launch.transport === "remote") {
         members.push({
+          ...base,
           transport: "remote",
-          capability: name,
-          prefix: namespaceFor(name, taken),
           type: launch.type,
           url: launch.url,
         });
@@ -152,8 +224,7 @@ export async function gatewayMembers(options: {
       }
       await mkdir(stateDir, { recursive: true });
       members.push({
-        capability: name,
-        prefix: namespaceFor(name, taken),
+        ...base,
         command: launch.command,
         args: launch.args,
         cwd: launch.cwd,
@@ -249,6 +320,8 @@ export class McpGateway {
   readonly #tools: McpTool[] = [];
   readonly #clients: GatewayClient[] = [];
   #started: Promise<void> | undefined;
+  // Who is on the other end, from `initialize`; fixed once members start.
+  #client: string | undefined;
 
   constructor(
     private readonly members: GatewayMember[],
@@ -259,6 +332,7 @@ export class McpGateway {
       log?: (line: string) => void;
       serverName?: string;
       instructions?: string;
+      access?: GatewayAccess;
     },
   ) {}
 
@@ -268,12 +342,22 @@ export class McpGateway {
     return this.#started;
   }
 
+  // Only the members this client may see are started at all: a hidden server never runs and its
+  // tools never reach the client's context.
   async #connectAll(): Promise<void> {
     const timeoutMs = this.options.timeoutMs ?? 15_000;
-    const clients = this.members.map((member) => this.options.client(member));
+    const access = this.options.access ?? { clients: {} };
+    const members = this.members.filter((member) => {
+      if (canSee(access, this.#client, member)) return true;
+      this.#log(
+        `${member.capability} hidden from ${this.#client ?? "an unnamed client"}${member.sensitive ? ` (${member.sensitive}; allow it in gateway-access.json)` : " (denied in gateway-access.json)"}`,
+      );
+      return false;
+    });
+    const clients = members.map((member) => this.options.client(member));
     this.#clients.push(...clients);
     const results = await Promise.allSettled(
-      this.members.map(async (member, index) => {
+      members.map(async (member, index) => {
         await withTimeout(
           clients[index].connect(),
           timeoutMs,
@@ -287,7 +371,7 @@ export class McpGateway {
       }),
     );
     results.forEach((result, index) => {
-      const member = this.members[index];
+      const member = members[index];
       if (result.status === "rejected") {
         this.#log(
           `${member.capability} left out: ${errorMessage(result.reason)}`,
@@ -367,7 +451,14 @@ export class McpGateway {
 
   async #answer(request: Request): Promise<unknown> {
     switch (request.method) {
-      case "initialize":
+      case "initialize": {
+        const info = isRecord(request.params)
+          ? request.params.clientInfo
+          : undefined;
+        if (!this.#started && isRecord(info) && typeof info.name === "string") {
+          this.#client = info.name;
+          this.#log(`client: ${info.name}`);
+        }
         // Members start while the client finishes its handshake.
         void this.start();
         return {
@@ -381,6 +472,7 @@ export class McpGateway {
             ? { instructions: this.options.instructions }
             : {}),
         };
+      }
       case "ping":
         return {};
       case "tools/list":

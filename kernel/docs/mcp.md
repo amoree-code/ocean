@@ -280,6 +280,30 @@ ocean mcp gateway-config
 Logs go to stderr, which MCP clients keep as the server's log. Each member's own stderr lines
 are labelled `ocean mcp gateway [<capability>]`.
 
+### Which client sees which server
+
+The gateway takes the client's name from `initialize` (`clientInfo.name`, logged as
+`client: <name>`) and starts only the servers that client may see; a hidden server never runs
+and its tools never reach that client. By default a client sees every server except the
+sensitive ones: a server that declares a `filesystem.write` permission, or one that drives a
+browser (recognised by its name or package: chrome, devtools, playwright, puppeteer, selenium,
+webdriver). Allow or deny per client in `bridge/market/gateway-access.json`:
+
+```json
+{
+  "clients": {
+    "claude-code": { "allow": ["dev.ocean/chrome-devtools"] },
+    "codex-mcp-client": { "deny": ["io.github.me/files"] }
+  }
+}
+```
+
+`allow` adds sensitive servers (`"*"` for all of them), `deny` removes any server and wins over
+`allow`. A client with no entry, or one that sends no name, gets the default. Each hidden
+server is logged with the reason. The client name is what the client says it is: the allow list
+limits what reaches each client's context, it is not a boundary against a process that lies
+about its name. The file is read when the gateway starts; restart the client after editing it.
+
 ### Adding your own server
 
 ```sh

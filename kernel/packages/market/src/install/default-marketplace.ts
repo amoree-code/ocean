@@ -18,6 +18,7 @@ export const marketplacePaths = () => ({
   mcpServers: oceanPath(SYSTEM_DIR, "market", "mcp"),
   plugins: oceanPath(SYSTEM_DIR, "market", "plugins"),
   mcpState: oceanPath(SYSTEM_DIR, "market", "state"),
+  gatewayAccess: oceanPath(SYSTEM_DIR, "market", "gateway-access.json"),
   lock: oceanPath(SYSTEM_DIR, "installed", "ocean.lock"),
 });
 

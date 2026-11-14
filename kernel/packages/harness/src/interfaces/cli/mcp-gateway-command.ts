@@ -2,6 +2,7 @@ import { marketplacePaths } from "@ocean/market/install/default-marketplace.js";
 import {
   gatewayMembers,
   McpGateway,
+  readGatewayAccess,
   serveMcpGateway,
 } from "@ocean/market/mcp/mcp-gateway.js";
 import { McpClient } from "@ocean/services/infrastructure/mcp/mcp-client.js";
@@ -34,6 +35,7 @@ export async function runMcpGatewayCommand(): Promise<void> {
           }),
     version,
     log,
+    access: await readGatewayAccess(paths.gatewayAccess),
   });
   await serveMcpGateway(gateway);
 }
