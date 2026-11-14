@@ -27,6 +27,7 @@ import {
   readMemoryRecord,
   writeMemoryRecord,
 } from "./memory-write.js";
+import { isSessionFactSource } from "./session-facts.js";
 
 // Owner review of proposed memory (T-296 §3.10): every approval goes through the same validated
 // write path as an explicit save (roots, secrets, similarity), and a reviewed candidate is moved
@@ -150,6 +151,13 @@ export async function approveCandidate(options: {
 }): Promise<{ path: string; mode: "create" | "update"; auditId: string }> {
   const source = options.source ?? "owner-review";
   const item = await candidate(options.id);
+  // A fact captured from a session transcript (T-313) is the model's reading of a conversation:
+  // only the owner approves it, whatever proposeAutoApprove or pullAutoApprove say.
+  if (isSessionFactSource(item.source) && source !== "owner-review")
+    throw new MemoryContractError(
+      "PROTECTED",
+      "a fact captured from a session waits for the owner's review",
+    );
   const provenance = {
     origin: item.origin === "imported" ? "imported" : "inferred",
     candidate: options.id,

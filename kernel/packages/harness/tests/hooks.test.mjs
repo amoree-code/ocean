@@ -104,11 +104,16 @@ async function withRoot(root, run) {
 }
 
 const read = (home, relative) => readFile(path.join(home, relative), "utf8");
-// SessionStart plans keyed by client, SessionEnd plans by `<client>:end`.
+// SessionStart plans keyed by client, SessionEnd by `<client>:end`, PreCompact by
+// `<client>:compact`.
 const byClient = (plans) =>
   Object.fromEntries(
     plans.map((plan) => [
-      plan.event === "SessionEnd" ? `${plan.client}:end` : plan.client,
+      plan.event === "SessionEnd"
+        ? `${plan.client}:end`
+        : plan.event === "PreCompact"
+          ? `${plan.client}:compact`
+          : plan.client,
       plan.status,
     ]),
   );
@@ -120,6 +125,7 @@ test("plan: a missing hook is a change, a non-canonical file a manual step with 
     assert.deepEqual(byClient(plans), {
       "claude-code": "manual",
       "claude-code:end": "manual",
+      "claude-code:compact": "manual",
       codex: "change",
       "codex:end": "change",
       gemini: "change",
@@ -163,8 +169,17 @@ test("an Ocean hook that already runs (bootstrap or shim) counts as present and 
     const plans = byClient(await planHooks(env));
     assert.equal(plans["claude-code"], "current");
     assert.equal(plans["claude-code:end"], "current");
+    // PreCompact (T-313) is new: it alone is added; the running hooks stay as they are.
+    assert.equal(plans["claude-code:compact"], "change");
     await applyHooks({ env });
-    assert.equal(await read(home, ".claude/settings.json"), bootstrap);
+    const after = JSON.parse(await read(home, ".claude/settings.json"));
+    const before = JSON.parse(bootstrap);
+    assert.deepEqual(after.hooks.SessionStart, before.hooks.SessionStart);
+    assert.deepEqual(after.hooks.SessionEnd, before.hooks.SessionEnd);
+    assert.match(
+      after.hooks.PreCompact[0].hooks[0].command,
+      /hook pre-compact --client claude$/,
+    );
   });
 });
 
@@ -218,6 +233,7 @@ test("apply appends one group after the user's own, keeps every other byte, and 
     assert.deepEqual(byClient(await planHooks(env)), {
       "claude-code": "manual",
       "claude-code:end": "manual",
+      "claude-code:compact": "manual",
       codex: "current",
       "codex:end": "current",
       gemini: "current",

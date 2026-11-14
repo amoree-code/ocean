@@ -1,0 +1,16 @@
+{
+  "description": "The assistant guesses a preference, the user corrects it; the model returns both, only the user's stands.",
+  "negative": false,
+  "turns": [
+    {
+      "role": "assistant",
+      "text": "You seem to prefer Vue for your front ends."
+    },
+    {
+      "role": "user",
+      "text": "No, I build every front end with React and Next.js."
+    }
+  ],
+  "recorded": "{\"facts\": [{\"title\": \"Prefers Vue\", \"content\": \"The user prefers Vue for front ends.\", \"evidence\": \"You seem to prefer Vue for your front ends\", \"reason\": \"preference\"}, {\"title\": \"Front-end stack\", \"content\": \"The user builds every front end with React and Next.js.\", \"evidence\": \"I build every front end with React and Next.js\", \"reason\": \"standing stack choice\"}]}",
+  "expected": ["React and Next.js"]
+}

@@ -1,3 +1,8 @@
+import readline from "node:readline/promises";
+import {
+  memorySettings,
+  setSessionFacts,
+} from "@ocean/brain/memory/memory-audit.js";
 import { marketplacePaths } from "@ocean/market/install/default-marketplace.js";
 import { updateGatewayAccess } from "@ocean/market/mcp/mcp-gateway.js";
 import {
@@ -38,7 +43,39 @@ import {
 } from "../../application/clients/opencode-plugin.js";
 
 const usage =
-  "Usage: ocean clients detect|plan [--json] | apply [--client <id>…] [--yes] | verify [<id>…] | confirm <id>… --label in-app|headless|connected|blocked [--via <evidence>] [--reason <why>] | gateway [<id> on|off] [--default gateway|per-server] | allow|deny|unset <id> <server> | ledger | repair | restore [--batch <id>]";
+  "Usage: ocean clients detect|plan [--json] | apply [--client <id>…] [--yes] [--session-facts on|off] | verify [<id>…] | confirm <id>… --label in-app|headless|connected|blocked [--via <evidence>] [--reason <why>] | gateway [<id> on|off] [--default gateway|per-server] | allow|deny|unset <id> <server> | ledger | repair | restore [--batch <id>]";
+
+export const SESSION_FACTS_QUESTION =
+  "Capture durable facts from your sessions automatically? It costs one small model call per session, run by the client the session was in. Every fact goes to your review queue; nothing is saved without your approval, even with auto-approve on. [y/N] ";
+
+// The session-facts answer, asked once (T-313): `--session-facts on|off` decides; otherwise a
+// terminal is asked; with no terminal and no saved answer it stays unset (off), and
+// `ocean doctor` points to `ocean memory session-facts on|off`.
+async function sessionFactsAnswer(
+  flag: string | undefined,
+): Promise<"on" | "off" | "unset" | "kept"> {
+  if (flag === "on" || flag === "off") {
+    await setSessionFacts(flag === "on");
+    return flag;
+  }
+  if (flag !== undefined) throw new Error("--session-facts takes on or off");
+  if ((await memorySettings()).sessionFacts !== null) return "kept";
+  if (!process.stdin.isTTY || !process.stderr.isTTY) return "unset";
+  const terminal = readline.createInterface({
+    input: process.stdin,
+    output: process.stderr,
+  });
+  try {
+    const answer = (await terminal.question(SESSION_FACTS_QUESTION))
+      .trim()
+      .toLowerCase();
+    const on = answer === "y" || answer === "yes";
+    await setSessionFacts(on);
+    return on ? "on" : "off";
+  } finally {
+    terminal.close();
+  }
+}
 
 // `ocean clients` (T-296 P2/P3b): every installed AI client's `ocean` MCP entry and, where the
 // client has a verified session-start event, Ocean's session hook. `apply` shows the plan until
@@ -144,6 +181,7 @@ export async function runClientsCommand(args: string[]): Promise<void> {
       ).results,
       native: (await applyNative({ clients: selected, batch: applied.batch }))
         .results,
+      sessionFacts: await sessionFactsAnswer(values("--session-facts")[0]),
     };
   } else if (action === "verify") {
     const ids = rest.filter((arg) => !arg.startsWith("--"));

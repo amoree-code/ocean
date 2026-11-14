@@ -1,0 +1,16 @@
+{
+  "description": "The model wraps its JSON in prose and a code fence; the fact is still read.",
+  "negative": false,
+  "turns": [
+    {
+      "role": "user",
+      "text": "From now on, never push to main without asking me first."
+    },
+    {
+      "role": "assistant",
+      "text": "Noted."
+    }
+  ],
+  "recorded": "Here is the result:\n```json\n{\"facts\": [{\"title\": \"Push rule\", \"content\": \"Never push to main without asking the user first.\", \"evidence\": \"never push to main without asking me first\", \"reason\": \"standing rule\"}]}\n```",
+  "expected": ["push to main"]
+}
