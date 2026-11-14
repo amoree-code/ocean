@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+- feat(T-313): `ocean doctor` reports `RUNNING_STALE` when a client still runs an Ocean server older than the installed release (restart that client), from the release each call-ledger row now records; `ocean_status` adds `installed` and `restartNeeded`. The link check skips soft-deleted memory and candidates, which quote other tools' text (#276)
+
 ## 1.5.0 (2026-11-14)
 
 - feat(T-309): `ocean mcp gateway` now routes remote MCP servers installed from the marketplace (streamable HTTP and SSE, through the official SDK client) alongside the stdio ones, instead of skipping them. A remote must be `https`, or `http` on loopback, with its host declared as a `network` permission; redirects stay on the same origin, and a remote that requires a header is refused rather than sent a credential. The marketplace now also accepts loopback `http` remotes at install (#267)
