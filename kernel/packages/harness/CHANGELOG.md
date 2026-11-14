@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.0
+
+- feat(T-313): `ocean doctor` reports `RUNNING_STALE` when a client still runs an Ocean server older than the installed release (restart that client), from the release each call-ledger row now records; `ocean_status` adds `installed` and `restartNeeded`. The link check skips soft-deleted memory and candidates, which quote other tools' text (#276)
+
+## 1.5.1
+
+- fix(T-313): `ocean mcp gateway` now carries Ocean's memory contract (`instructions` in `initialize`, sent only to a client allowed to see Ocean's own server) and forwards resources and prompts as well as tools, so a client wired through the gateway (the default since 1.5.0) gets the same Ocean as a direct connection (#274)
+
 ## 1.5.0
 
 - feat(T-309): `ocean mcp gateway` now routes remote MCP servers installed from the marketplace (streamable HTTP and SSE, through the official SDK client) alongside the stdio ones, instead of skipping them. A remote must be `https`, or `http` on loopback, with its host declared as a `network` permission; redirects stay on the same origin, and a remote that requires a header is refused rather than sent a credential. The marketplace now also accepts loopback `http` remotes at install (#267)

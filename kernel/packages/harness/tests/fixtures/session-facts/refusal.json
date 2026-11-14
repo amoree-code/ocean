@@ -1,0 +1,13 @@
+{
+  "description": "The model answers with prose only: no fact, and the run counts as failed so the turns are read again.",
+  "negative": true,
+  "failed": true,
+  "turns": [
+    {
+      "role": "user",
+      "text": "can you rerun the build and tell me if it passes?"
+    }
+  ],
+  "recorded": "I'm not able to help with that.",
+  "expected": []
+}

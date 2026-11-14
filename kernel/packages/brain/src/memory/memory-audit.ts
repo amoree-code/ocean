@@ -1,8 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
 import { appendFile, mkdir, open, readFile } from "node:fs/promises";
 import path from "node:path";
-import { withFileLock } from "@ocean/core/shared/fs-utils.js";
-import { oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
+import { atomicWrite, withFileLock } from "@ocean/core/shared/fs-utils.js";
+import { oceanEnv, oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import { auditFile } from "./memory-paths.js";
 
 // The memory audit log and the memory settings (T-296). Every mutation appends one line, so
@@ -43,6 +43,9 @@ export type MemorySettings = {
   // A client's proposal filed to an existing project's memory or docs is written at once as a
   // new file (T-307); off by default, for review.
   proposeAutoApprove: boolean;
+  // Facts captured from session transcripts by a model call (T-313): asked once at
+  // `ocean client apply`; null until the owner answers, which means off.
+  sessionFacts: boolean | null;
 };
 
 export const DEFAULT_RETENTION_DAYS = 90;
@@ -115,7 +118,7 @@ export async function readAudit(): Promise<AuditEntry[]> {
 // bridge/config/memory.json — optional; without it MCP writes are on, copies are kept 90 days and
 // pulled memory waits for review.
 export async function memorySettings(): Promise<MemorySettings> {
-  const file = oceanPath(SYSTEM_DIR, "config", "memory.json");
+  const file = memorySettingsFile();
   let input: Record<string, unknown>;
   try {
     input = JSON.parse(await readFile(file, "utf8")) as Record<string, unknown>;
@@ -126,6 +129,7 @@ export async function memorySettings(): Promise<MemorySettings> {
         retentionDays: DEFAULT_RETENTION_DAYS,
         pullAutoApprove: false,
         proposeAutoApprove: false,
+        sessionFacts: null,
       };
     throw new Error(`Invalid memory settings in ${file}`);
   }
@@ -133,6 +137,13 @@ export async function memorySettings(): Promise<MemorySettings> {
   const days = input.retentionDays ?? DEFAULT_RETENTION_DAYS;
   const pullApprove = input.pullAutoApprove ?? "off";
   const proposeApprove = input.proposeAutoApprove ?? "off";
+  const sessionFacts = input.sessionFacts;
+  if (
+    sessionFacts !== undefined &&
+    sessionFacts !== "on" &&
+    sessionFacts !== "off"
+  )
+    throw new Error(`Invalid memory settings in ${file}`);
   if (
     (writes !== "on" && writes !== "off") ||
     (pullApprove !== "on" && pullApprove !== "off") ||
@@ -147,5 +158,36 @@ export async function memorySettings(): Promise<MemorySettings> {
     retentionDays: days,
     pullAutoApprove: pullApprove === "on",
     proposeAutoApprove: proposeApprove === "project",
+    sessionFacts: sessionFacts === undefined ? null : sessionFacts === "on",
   };
+}
+
+function memorySettingsFile(): string {
+  return oceanPath(SYSTEM_DIR, "config", "memory.json");
+}
+
+// The owner's answer to the session-facts question; every other setting is kept as it is.
+export async function setSessionFacts(on: boolean): Promise<void> {
+  const file = memorySettingsFile();
+  let input: Record<string, unknown> = {};
+  try {
+    input = JSON.parse(await readFile(file, "utf8")) as Record<string, unknown>;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT")
+      throw new Error(`Invalid memory settings in ${file}`);
+  }
+  input.sessionFacts = on ? "on" : "off";
+  await mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
+  await atomicWrite(file, `${JSON.stringify(input, null, 2)}\n`, 0o600);
+}
+
+// Whether a finished session's facts are captured: OCEAN_SESSION_FACTS=on|off overrides the
+// owner's saved answer; no answer is off.
+export async function sessionFactsEnabled(
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<boolean> {
+  const override = oceanEnv("SESSION_FACTS", env);
+  if (override === "on") return true;
+  if (override === "off") return false;
+  return (await memorySettings()).sessionFacts === true;
 }
