@@ -223,6 +223,11 @@ export function harvestLedgerFile(): string {
   return stateDir("memory", "harvest.json");
 }
 
+// Content hashes of facts captured from sessions (T-313), so one fact is proposed once.
+export function sessionFactsLedgerFile(): string {
+  return stateDir("memory", "session-facts.json");
+}
+
 export function auditFile(): string {
   return stateDir("memory", "audit.jsonl");
 }

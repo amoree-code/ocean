@@ -181,6 +181,11 @@ import { manageClients, runOnboardCommand } from "./onboard-command.js";
 import { runOperateCommand } from "./operate-command.js";
 import { runProfilesCommand } from "./profiles-command.js";
 import { runPullCommand } from "./pull-command.js";
+import {
+  insideFactsCall,
+  runSessionFactsCommand,
+  startSessionFacts,
+} from "./session-facts-command.js";
 import { parseSetupArgs, SETUP_USAGE, setup } from "./setup-command.js";
 import { runTasksCommand } from "./tasks-command.js";
 
@@ -810,6 +815,24 @@ function startBackgroundSync(): void {
 
 async function commandHook(): Promise<void> {
   const action = process.argv[3] ?? "";
+  // The model call fact capture makes is a client session too: its hooks do nothing (T-313).
+  if (insideFactsCall()) return;
+  if (action === "session-facts") {
+    await runSessionFactsCommand(process.argv.slice(4));
+    return;
+  }
+  if (action === "pre-compact") {
+    // Claude Code's PreCompact: capture the turns about to be compacted, in the background.
+    try {
+      const raw = await readBoundedStdin();
+      const payload = raw.trim() ? JSON.parse(raw) : {};
+      await startSessionFacts(payload, "claude");
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exitCode = 1;
+    }
+    return;
+  }
   if (action === "session-start") {
     const flags = process.argv.slice(4);
     if (flags.includes("--repair")) startBackgroundSync();
@@ -858,6 +881,7 @@ async function commandHook(): Promise<void> {
       const raw = await readBoundedStdin();
       const payload = raw.trim() ? JSON.parse(raw) : {};
       await claudeSessionEndHook(payload, defaultSessionStoreFactory, client);
+      await startSessionFacts(payload, client);
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));
       process.exitCode = 1;
@@ -871,7 +895,7 @@ async function commandHook(): Promise<void> {
 }
 
 const sessionEndUsage = `Usage: ocean hook session-end [--client ${SESSION_END_CLIENTS.join("|")}] (reads a hook payload from stdin)`;
-const sessionStartUsage = `Usage: ocean hook session-start [--client ${SESSION_START_CLIENTS.join("|")}] [--repair]`;
+const sessionStartUsage = `Usage: ocean hook session-start [--client ${SESSION_START_CLIENTS.join("|")}] [--repair]|pre-compact (reads a hook payload from stdin)|session-facts --client claude|codex --session <id> --transcript <path>`;
 
 async function commandIntent(): Promise<void> {
   const action = process.argv[3] ?? "classify";

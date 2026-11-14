@@ -15,6 +15,7 @@ import {
   doctorMemoryIndexes,
   syncMemoryIndexes,
 } from "@ocean/brain/memory/index-sync.js";
+import { memorySettings } from "@ocean/brain/memory/memory-audit.js";
 import type { WrapperManagerPort } from "@ocean/core/domain/ports/platform-ports.js";
 import {
   BRAIN_RECORD_DIRS,
@@ -499,6 +500,44 @@ async function checkProfileAuthority(): Promise<Finding[]> {
       ];
 }
 
+// Session fact capture (T-313) is asked once at `ocean client apply`; a machine that never
+// answered (a non-interactive install) captures nothing until the owner chooses.
+async function checkSessionFacts(): Promise<Finding[]> {
+  let saved: boolean | null;
+  try {
+    saved = (await memorySettings()).sessionFacts;
+  } catch (error) {
+    return [
+      {
+        code: "MEMORY_SETTINGS_INVALID",
+        severity: "WARN",
+        message: error instanceof Error ? error.message : String(error),
+        fixable: false,
+      },
+    ];
+  }
+  if (saved === null)
+    return [
+      {
+        code: "SESSION_FACTS_UNSET",
+        severity: "WARN",
+        message:
+          "automatic fact capture from sessions is off until you choose: ocean memory session-facts on|off",
+        fixable: false,
+      },
+    ];
+  return [
+    {
+      code: saved ? "SESSION_FACTS_ON" : "SESSION_FACTS_OFF",
+      severity: "OK",
+      message: saved
+        ? "facts from finished and compacted sessions go to the review queue"
+        : "automatic fact capture from sessions is off (owner's choice)",
+      fixable: false,
+    },
+  ];
+}
+
 async function checkVersion(): Promise<Finding[]> {
   const packageFile = enginePath("package.json");
   if (!(await exists(packageFile)))
@@ -573,6 +612,7 @@ async function scanWorkspace(
     ...(await checkStructure()),
     ...(await checkLinks()),
     ...(await checkMemory()),
+    ...(await checkSessionFacts()),
     ...(await checkVersion()),
     ...(await checkGovernance()),
     ...(await checkWrappers(wrapperManager)),

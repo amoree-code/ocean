@@ -1,0 +1,20 @@
+{
+  "description": "A pure coding exchange; a well-behaved model returns nothing.",
+  "negative": true,
+  "turns": [
+    {
+      "role": "user",
+      "text": "why does this test time out?"
+    },
+    {
+      "role": "assistant",
+      "text": "The server never closes; add child.stdin.end()."
+    },
+    {
+      "role": "user",
+      "text": "ok that worked"
+    }
+  ],
+  "recorded": "{\"facts\":[]}",
+  "expected": []
+}

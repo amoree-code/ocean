@@ -1,7 +1,11 @@
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import readline from "node:readline";
-import type { SessionStoreFactory } from "@ocean/core/domain/ports/session-store-port.js";
+import type {
+  SessionStoreFactory,
+  SessionStorePort,
+} from "@ocean/core/domain/ports/session-store-port.js";
+import type { Session } from "@ocean/core/domain/sessions/session.js";
 import { finalizeSession } from "../sessions/session-closeout.js";
 import { sessionProjectId } from "../sessions/session-projects.js";
 
@@ -27,7 +31,10 @@ export const SESSION_END_CLIENTS = [
   "qwen",
   "cursor",
 ] as const;
-const TRANSCRIPT_CLIENTS: readonly SessionEndClient[] = ["claude", "codex"];
+export const TRANSCRIPT_CLIENTS: readonly SessionEndClient[] = [
+  "claude",
+  "codex",
+];
 export type SessionEndClient = (typeof SESSION_END_CLIENTS)[number];
 
 export function isSessionEndClient(value: string): value is SessionEndClient {
@@ -68,7 +75,7 @@ function isInjectedCodexText(text: string): boolean {
 // One transcript line → the turn it holds, or null. Claude Code writes
 // {type, message:{role, content}}; Codex writes {type:"response_item",
 // payload:{type:"message", role, content:[{type:"input_text"|"output_text", text}]}}.
-function transcriptTurn(
+export function transcriptTurn(
   record: Record<string, unknown>,
   client: SessionEndClient,
 ): { role: "user" | "assistant"; text: string } | null {
@@ -164,6 +171,41 @@ export async function readTranscriptEvents(
  * Best-effort throughout: any failure is swallowed so a broken hook can never
  * block the user's actual session from ending.
  */
+// The working folder a hook payload names: `cwd`, else Cursor's first workspace root.
+export function payloadCwd(payload: ClaudeSessionEndPayload): string {
+  const roots = (payload as { workspace_roots?: unknown }).workspace_roots;
+  return (
+    payload.cwd ||
+    (Array.isArray(roots) && typeof roots[0] === "string" ? roots[0] : "") ||
+    process.cwd()
+  );
+}
+
+// A desktop client's session in the store, registered the first time any of its hooks sees it
+// (SessionEnd, or PreCompact before it), under the id the client itself assigned.
+export async function ensureHookSession(
+  store: SessionStorePort,
+  sessionId: string,
+  client: SessionEndClient,
+  cwd: string,
+): Promise<Session | null> {
+  const existing = store.get(sessionId);
+  if (existing) return existing;
+  store.create({
+    sessionId,
+    provider: client,
+    providerSessionId: sessionId,
+    parentSessionId: null,
+    profile: `desktop:${client}`,
+    profileIdentity: "",
+    workingDirectory: cwd,
+    resumeData: null,
+    projectId: await sessionProjectId(cwd),
+  });
+  store.updateStatus(sessionId, "running");
+  return store.get(sessionId);
+}
+
 export async function claudeSessionEndHook(
   payload: ClaudeSessionEndPayload,
   openStore: SessionStoreFactory,
@@ -171,30 +213,11 @@ export async function claudeSessionEndHook(
 ): Promise<void> {
   const sessionId = payload.session_id;
   if (!sessionId) return;
-  const roots = (payload as { workspace_roots?: unknown }).workspace_roots;
-  const cwd =
-    payload.cwd ||
-    (Array.isArray(roots) && typeof roots[0] === "string" ? roots[0] : "") ||
-    process.cwd();
+  const cwd = payloadCwd(payload);
 
   const store = await openStore();
   try {
-    let session = store.get(sessionId);
-    if (!session) {
-      store.create({
-        sessionId,
-        provider: client,
-        providerSessionId: sessionId,
-        parentSessionId: null,
-        profile: `desktop:${client}`,
-        profileIdentity: "",
-        workingDirectory: cwd,
-        resumeData: null,
-        projectId: await sessionProjectId(cwd),
-      });
-      store.updateStatus(sessionId, "running");
-      session = store.get(sessionId);
-    }
+    const session = await ensureHookSession(store, sessionId, client, cwd);
     if (!session || session.closedAt) return;
 
     const events =
