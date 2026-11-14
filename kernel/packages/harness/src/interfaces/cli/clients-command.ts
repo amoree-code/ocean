@@ -9,9 +9,11 @@ import {
   defaultClientEnv,
   type EvidenceLabel,
   planClients,
+  readGatewayClients,
   recordVerification,
   repairClients,
   restoreClients,
+  setGatewayClient,
   temporaryEntryProblem,
   verifyClient,
 } from "../../application/clients/clients.js";
@@ -32,7 +34,7 @@ import {
 } from "../../application/clients/opencode-plugin.js";
 
 const usage =
-  "Usage: ocean clients detect|plan [--json] | apply [--client <id>…] [--yes] | verify [<id>…] | confirm <id>… --label in-app|headless|connected|blocked [--via <evidence>] [--reason <why>] | ledger | repair | restore [--batch <id>]";
+  "Usage: ocean clients detect|plan [--json] | apply [--client <id>…] [--yes] | verify [<id>…] | confirm <id>… --label in-app|headless|connected|blocked [--via <evidence>] [--reason <why>] | gateway [<id> on|off] | ledger | repair | restore [--batch <id>]";
 
 // `ocean clients` (T-296 P2/P3b): every installed AI client's `ocean` MCP entry and, where the
 // client has a verified session-start event, Ocean's session hook. `apply` shows the plan until
@@ -172,7 +174,20 @@ export async function runClientsCommand(args: string[]): Promise<void> {
   } else if (action === "ledger")
     // Which client called which Ocean tool, and when last — the in-app evidence (T-307).
     result = attributeLedger(summarizeCallLedger(await readCallLedger()));
-  else if (action === "repair") result = await repairClients();
+  else if (action === "gateway") {
+    // Which clients get one `ocean-gateway` entry instead of an entry per marketplace server
+    // (T-309); `ocean clients apply` then rewires them.
+    const [client, state] = rest.filter((arg) => !arg.startsWith("--"));
+    if (client && state !== "on" && state !== "off")
+      throw new Error("Usage: ocean clients gateway [<id> on|off]");
+    const clients = client
+      ? await setGatewayClient(client, state === "on")
+      : [...readGatewayClients()].sort();
+    result = {
+      clients,
+      ...(client ? { next: "ocean clients apply --client " + client } : {}),
+    };
+  } else if (action === "repair") result = await repairClients();
   else if (action === "restore") {
     const restored = await restoreClients({ batch: values("--batch")[0] });
     result = restored.batch

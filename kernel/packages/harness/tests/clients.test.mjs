@@ -22,9 +22,11 @@ import {
   marketServerEntries,
   planClients,
   readClientState,
+  readGatewayClients,
   recordVerification,
   repairClients,
   restoreClients,
+  setGatewayClient,
   temporaryEntryProblem,
   verifyClient,
 } from "../dist/application/clients/clients.js";
@@ -810,4 +812,105 @@ test("market entries come from installed servers, keyed by clientKey", async () 
     notes: { command: "ocean", args: ["market", "exec", "io.example/notes"] },
   });
   assert.equal(marketServerEntries(path.join(dir, "absent")).size, 0);
+});
+
+const GATEWAY = {
+  command: "/usr/local/bin/node",
+  args: ["/srv/ocean/main.js", "mcp", "gateway", "--installed-only"],
+};
+
+// T-309 phase 4: a client wired to the gateway gets one `ocean-gateway` entry in place of one
+// entry per installed server, and switching back puts those entries back.
+test("a gateway-wired client gets one ocean-gateway entry instead of one per server", async () => {
+  const { home, root, env } = await fixtureHome();
+  const market = new Map([
+    ["chrome-devtools", MARKET("dev.ocean/chrome-devtools")],
+    ["notes", MARKET("io.example/notes")],
+  ]);
+  const claudeServers = async () =>
+    JSON.parse(await readFile(path.join(home, ".claude.json"), "utf8"))
+      .mcpServers;
+  // The owner's own full gateway entry in Cursor, added by hand, is not Ocean's to remove.
+  const cursorFile = path.join(home, ".cursor/mcp.json");
+  const cursorConfig = JSON.parse(await readFile(cursorFile, "utf8"));
+  const ownGateway = {
+    command: "/usr/local/bin/node",
+    args: ["/srv/ocean/main.js", "mcp", "gateway"],
+  };
+  cursorConfig.mcpServers["ocean-gateway"] = ownGateway;
+  await writeFile(cursorFile, json(cursorConfig));
+
+  await withRoot(root, async () => {
+    // Per-server entries first, as today.
+    await applyClients({ env: { ...env, market } });
+    assert.deepEqual(Object.keys(await claudeServers()).sort(), [
+      "chrome-devtools",
+      "notes",
+      "ocean",
+      "other",
+    ]);
+
+    const gateway = { clients: new Set(["claude-code"]), entry: GATEWAY };
+    const plans = await planClients({ ...env, market, gateway });
+    assert.deepEqual(plans.find((plan) => plan.client === "claude-code").ops, [
+      { kind: "remove", key: "chrome-devtools" },
+      { kind: "remove", key: "notes" },
+      { kind: "set", key: "ocean-gateway", value: GATEWAY },
+    ]);
+    await applyClients({ env: { ...env, market, gateway } });
+    const wired = await claudeServers();
+    assert.deepEqual(Object.keys(wired).sort(), [
+      "ocean",
+      "ocean-gateway",
+      "other",
+    ]);
+    assert.deepEqual(wired["ocean-gateway"], GATEWAY);
+    assert.deepEqual(wired.ocean, ENTRY);
+    // Other clients keep their per-server entries; Cursor's own gateway entry stays.
+    const cursor = JSON.parse(await readFile(cursorFile, "utf8")).mcpServers;
+    assert.deepEqual(cursor["ocean-gateway"], ownGateway);
+    assert.deepEqual(cursor.notes, MARKET("io.example/notes"));
+    assert.equal(
+      (await planClients({ ...env, market, gateway })).find(
+        (plan) => plan.client === "claude-code",
+      ).status,
+      "current",
+    );
+
+    // Switched back: the gateway entry goes, the per-server entries return.
+    await applyClients({ env: { ...env, market } });
+    assert.deepEqual(Object.keys(await claudeServers()).sort(), [
+      "chrome-devtools",
+      "notes",
+      "ocean",
+      "other",
+    ]);
+    assert.deepEqual(
+      JSON.parse(await readFile(cursorFile, "utf8")).mcpServers[
+        "ocean-gateway"
+      ],
+      ownGateway,
+    );
+  });
+});
+
+test("the gateway client list is recorded per client and refuses unknown ids", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "ocean-gateway-clients-"));
+  const file = path.join(dir, "state", "gateway.json");
+  assert.deepEqual([...readGatewayClients(file)], []);
+  assert.deepEqual(await setGatewayClient("claude-code", true, file), [
+    "claude-code",
+  ]);
+  assert.deepEqual(await setGatewayClient("cursor", true, file), [
+    "claude-code",
+    "cursor",
+  ]);
+  assert.deepEqual(await setGatewayClient("claude-code", false, file), [
+    "cursor",
+  ]);
+  assert.deepEqual([...readGatewayClients(file)], ["cursor"]);
+  await assert.rejects(
+    setGatewayClient("nope", true, file),
+    /Unknown client nope/,
+  );
 });

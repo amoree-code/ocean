@@ -183,15 +183,14 @@ test("one gateway serves a stdio server, a streamable HTTP server and an SSE ser
   }
 });
 
-// The phase's definition of done: a remote server installed in the marketplace is reachable
-// through the one `ocean mcp gateway` process, next to Ocean's own stdio server.
-test("ocean mcp gateway routes a client call to an installed remote server", async () => {
-  const remotes = await remoteServers();
+// A workspace with one installed remote server (and, optionally, a gateway access file), and a
+// real `ocean mcp gateway` process over it that answers JSON-RPC requests.
+async function gatewayProcess(remotes, args = [], access) {
   const root = await mkdtemp(path.join(os.tmpdir(), "ocean-gateway-cli-"));
-  const serversRoot = path.join(root, SYSTEM_DIR, "market", "mcp");
-  await mkdir(serversRoot, { recursive: true });
+  const market = path.join(root, SYSTEM_DIR, "market");
+  await mkdir(path.join(market, "mcp"), { recursive: true });
   await writeFile(
-    path.join(serversRoot, "com.example__remote.json"),
+    path.join(market, "mcp", "com.example__remote.json"),
     JSON.stringify({
       capability: "com.example/remote",
       version: "1.0.0",
@@ -207,19 +206,24 @@ test("ocean mcp gateway routes a client call to an installed remote server", asy
       },
     }),
   );
+  if (access)
+    await writeFile(
+      path.join(market, "gateway-access.json"),
+      JSON.stringify(access),
+    );
   const child = spawn(
     process.execPath,
-    [path.resolve("dist/main.js"), "mcp", "gateway"],
+    [path.resolve("dist/main.js"), "mcp", "gateway", ...args],
     {
       cwd: path.resolve("."),
       env: { ...process.env, OCEAN_ROOT: root },
       stdio: ["pipe", "pipe", "pipe"],
     },
   );
-  let stderr = "";
+  const io = { stderr: "" };
   child.stderr.setEncoding("utf8");
   child.stderr.on("data", (chunk) => {
-    stderr += chunk;
+    io.stderr += chunk;
   });
   const waiting = new Map();
   let buffer = "";
@@ -232,20 +236,37 @@ test("ocean mcp gateway routes a client call to an installed remote server", asy
       waiting.get(message.id)?.(message);
     }
   });
-  const request = (id, method, params) =>
-    new Promise((resolve) => {
-      waiting.set(id, resolve);
-      child.stdin.write(
-        `${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`,
-      );
-    });
+  return {
+    io,
+    request: (id, method, params) =>
+      new Promise((resolve) => {
+        waiting.set(id, resolve);
+        child.stdin.write(
+          `${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`,
+        );
+      }),
+    stop: async () => {
+      child.stdin.end();
+      await new Promise((resolve) => child.once("exit", resolve));
+    },
+  };
+}
+
+// The phase's definition of done: a remote server installed in the marketplace is reachable
+// through the one `ocean mcp gateway` process, next to Ocean's own stdio server.
+test("ocean mcp gateway routes a client call to an installed remote server", async () => {
+  const remotes = await remoteServers();
+  const { request, stop, io } = await gatewayProcess(remotes);
   try {
     const init = await request(1, "initialize", {});
     assert.equal(init.result.serverInfo.name, "ocean-gateway");
     const names = (await request(2, "tools/list", {})).result.tools.map(
       (tool) => tool.name,
     );
-    assert.ok(names.includes("remote__echo"), `${names.join(", ")}\n${stderr}`);
+    assert.ok(
+      names.includes("remote__echo"),
+      `${names.join(", ")}\n${io.stderr}`,
+    );
     assert.ok(!names.includes("remote__poisoned"), names.join(", "));
     assert.ok(names.includes("ocean__ocean_status"), names.join(", "));
     const echo = await request(3, "tools/call", {
@@ -259,8 +280,45 @@ test("ocean mcp gateway routes a client call to an installed remote server", asy
     });
     assert.match(text(status), /"name":"Ocean"/);
   } finally {
-    child.stdin.end();
-    await new Promise((resolve) => child.once("exit", resolve));
+    await stop();
+    await remotes.close();
+  }
+});
+
+// What a gateway-wired client runs (`ocean clients gateway <id> on`): installed servers only,
+// filtered by the access file for the name the client gives.
+test("the client gateway entry serves installed servers only, per the access file", async () => {
+  const remotes = await remoteServers();
+  const run = async (client, access) => {
+    const gateway = await gatewayProcess(remotes, ["--installed-only"], access);
+    try {
+      await gateway.request(1, "initialize", {
+        protocolVersion: "2025-06-18",
+        capabilities: {},
+        clientInfo: { name: client, version: "1" },
+      });
+      const list = await gateway.request(2, "tools/list", {});
+      return {
+        names: list.result.tools.map((tool) => tool.name),
+        stderr: gateway.io.stderr,
+      };
+    } finally {
+      await gateway.stop();
+    }
+  };
+  try {
+    const claude = await run("claude-code");
+    assert.deepEqual(claude.names, ["remote__echo"], claude.stderr);
+    assert.match(claude.stderr, /client: claude-code/);
+    const denied = await run("claude-code", {
+      clients: { "claude-code": { deny: ["com.example/remote"] } },
+    });
+    assert.deepEqual(denied.names, []);
+    assert.match(
+      denied.stderr,
+      /com\.example\/remote hidden from claude-code \(denied in gateway-access\.json\)/,
+    );
+  } finally {
     await remotes.close();
   }
 });

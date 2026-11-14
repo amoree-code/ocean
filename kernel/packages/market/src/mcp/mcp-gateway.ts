@@ -143,11 +143,14 @@ export async function gatewayMembers(options: {
   stateRoot: string;
   indexFile?: string;
   env?: NodeJS.ProcessEnv;
+  // false: installed servers only, for a client that already has Ocean's own servers directly.
+  firstParty?: boolean;
 }): Promise<{ members: GatewayMember[]; skipped: GatewaySkip[] }> {
   const members: GatewayMember[] = [];
   const skipped: GatewaySkip[] = [];
   const taken = new Set<string>();
   const notFirstParty: string[] = [];
+  const firstParty = new Set<string>();
   const index = marketplaceIndexSchema.parse(
     JSON.parse(await readFile(options.indexFile ?? engineIndexFile(), "utf8")),
   );
@@ -159,6 +162,8 @@ export async function gatewayMembers(options: {
       notFirstParty.push(manifest.name);
       continue;
     }
+    firstParty.add(manifest.name);
+    if (options.firstParty === false) continue;
     members.push({
       capability: manifest.name,
       prefix: namespaceFor(manifest.name, taken),
@@ -198,6 +203,7 @@ export async function gatewayMembers(options: {
     // An installed copy of an engine server runs the same code as the member already routed.
     if (
       name === GATEWAY_CAPABILITY ||
+      firstParty.has(name) ||
       members.some((member) => member.capability === name)
     )
       continue;

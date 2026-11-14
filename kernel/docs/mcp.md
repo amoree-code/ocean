@@ -280,6 +280,27 @@ ocean mcp gateway-config
 Logs go to stderr, which MCP clients keep as the server's log. Each member's own stderr lines
 are labelled `ocean mcp gateway [<capability>]`.
 
+### Wiring a client through the gateway
+
+By default `ocean clients apply` gives every client one `ocean market exec` entry per installed
+server. A client can instead get a single `ocean-gateway` entry for all of them:
+
+```sh
+ocean clients gateway claude-code on     # recorded in bridge/state/clients/gateway.json
+ocean clients plan                       # claude-code: remove <each server>, set ocean-gateway
+ocean clients apply --client claude-code --yes
+```
+
+That entry runs `ocean mcp gateway --installed-only`: every installed server (remote ones
+included, which per-server wiring leaves out) through one process, with the runtime scan and the
+access rules below. Ocean's own servers stay direct entries (`ocean`, `ocean-obsidian`), so
+their tool names, which skills and hooks call, do not change. A gateway entry you added by hand
+(`ocean mcp gateway-config`, without `--installed-only`) is yours and is never removed.
+`ocean clients gateway` lists the wired clients and `ocean doctor` reports them as `GATEWAY`.
+
+Rollback: `ocean clients gateway claude-code off` then `ocean clients apply`, which puts the
+per-server entries back; or `ocean clients restore --batch <id>` to undo one apply exactly.
+
 ### Which client sees which server
 
 The gateway takes the client's name from `initialize` (`clientInfo.name`, logged as

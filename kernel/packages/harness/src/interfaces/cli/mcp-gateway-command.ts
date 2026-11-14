@@ -11,12 +11,14 @@ import { oceanVersion } from "../../version.js";
 
 // `ocean mcp gateway`: one stdio MCP endpoint for every registered server. Logs go to stderr,
 // which MCP clients keep as the server's log.
-export async function runMcpGatewayCommand(): Promise<void> {
+// `--installed-only`: leave out Ocean's own servers, for a client wired to them directly.
+export async function runMcpGatewayCommand(args: string[] = []): Promise<void> {
   const log = (line: string) => console.error(`ocean mcp gateway: ${line}`);
   const paths = marketplacePaths();
   const { members, skipped } = await gatewayMembers({
     serversRoot: paths.mcpServers,
     stateRoot: paths.mcpState,
+    firstParty: !args.includes("--installed-only"),
   });
   for (const skip of skipped)
     log(`${skip.capability} not routed: ${skip.reason}`);

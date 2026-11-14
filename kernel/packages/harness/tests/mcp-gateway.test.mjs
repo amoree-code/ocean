@@ -363,6 +363,24 @@ test("gateway members are the engine's first-party servers plus installed ones, 
   );
   assert.equal(reasons["com.example/remote"], undefined);
   assert.match(reasons["com.example/undeclared"], /npx/);
+
+  // `--installed-only` (a client that has Ocean's own servers directly): no first-party member,
+  // and the installed copy of one is not reported as a launch failure.
+  const installedOnly = await gatewayMembers({
+    serversRoot,
+    stateRoot: path.join(root, "state"),
+    env: { PATH: "/usr/bin:/bin", FILES_TOKEN: "t" },
+    firstParty: false,
+  });
+  assert.deepEqual(
+    installedOnly.members.map((member) => member.capability),
+    ["com.example/files", "com.example/remote"],
+  );
+  assert.ok(
+    !installedOnly.skipped.some(
+      (skip) => skip.capability === "dev.ocean/ocean",
+    ),
+  );
   assert.match(
     reasons["com.microsoft/playwright-mcp"],
     /install it from the marketplace/,
