@@ -4,18 +4,23 @@ import { readFile } from "node:fs/promises";
 // hard-coded and drifted from the release).
 let cached: string | undefined;
 
+// Cached on first read, which a server does at `initialize`: the version this process started
+// as, even after a newer release is installed over it (T-313: a stale server is detected by it).
 export async function serverVersion(): Promise<string> {
-  if (cached) return cached;
+  cached ??= await installedVersion();
+  return cached;
+}
+
+// Read from disk on every call: what is installed now, whatever this process started as.
+export async function installedVersion(): Promise<string> {
   try {
     const manifest = JSON.parse(
       await readFile(new URL("../../../package.json", import.meta.url), "utf8"),
     ) as { version?: unknown };
-    cached =
-      typeof manifest.version === "string" && manifest.version.trim()
-        ? manifest.version
-        : "unknown";
+    return typeof manifest.version === "string" && manifest.version.trim()
+      ? manifest.version
+      : "unknown";
   } catch {
-    cached = "unknown";
+    return "unknown";
   }
-  return cached;
 }

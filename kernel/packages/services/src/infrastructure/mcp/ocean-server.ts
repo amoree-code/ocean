@@ -53,7 +53,7 @@ import { openSessionStoreReadOnly } from "@ocean/loop/infrastructure/persistence
 import { listTasksForFolder } from "@ocean/loop/tasks/list-tasks.js";
 import { hasFailures, workspaceReport } from "../../doctor/workspace-doctor.js";
 import { recordMcpCall } from "./call-ledger.js";
-import { serverVersion } from "./server-version.js";
+import { installedVersion, serverVersion } from "./server-version.js";
 import { McpToolRegistry } from "./tool-registry.js";
 
 type Request = {
@@ -512,13 +512,19 @@ async function callTool(
   args: Record<string, unknown>,
   ports: OceanMcpPorts,
 ): Promise<unknown> {
-  if (name === "ocean_status")
+  if (name === "ocean_status") {
+    const version = await serverVersion();
+    const installed = await installedVersion();
     return {
       name: "Ocean",
-      version: await serverVersion(),
+      version,
+      // A newer release installed since this server started: the client must restart it.
+      installed,
+      restartNeeded: version !== installed,
       workspace: oceanPath(),
       mcp: "stdio",
     };
+  }
   if (name === "ocean_doctor") {
     const report = await workspaceReport(ports.wrapperManager);
     return {

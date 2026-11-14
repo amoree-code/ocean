@@ -20,6 +20,7 @@ import {
   BRAIN_RECORD_DIRS,
   CHARTER_DIR,
   enginePath,
+  INBOX_DIR,
   oceanEnv,
   oceanPath,
   POLICIES_DIR,
@@ -36,6 +37,11 @@ import {
   scanProjectManifests,
   UNCATEGORIZED,
 } from "@ocean/core/shared/project-resolution.js";
+import {
+  readCallLedger,
+  runningVersions,
+} from "../infrastructure/mcp/call-ledger.js";
+import { installedVersion } from "../infrastructure/mcp/server-version.js";
 
 const execFile = promisify(execFileCallback);
 
@@ -122,13 +128,22 @@ async function checkStructure(): Promise<Finding[]> {
 // Session summaries are machine-written records that quote links from past chats, and
 // bridge/skills holds installed third-party skill docs whose links are relative to their upstream
 // repo. Neither is authored here, so their links are not ours to fix.
-const UNCHECKED_LINK_DIRS = ["sessions", "skills"];
+// Soft-deleted memory in state/memory/trash keeps the links it had when it was deleted.
+const UNCHECKED_LINK_DIRS = [
+  "sessions",
+  "skills",
+  path.join("state", "memory", "trash"),
+];
 
 async function checkLinks(): Promise<Finding[]> {
   const findings: Finding[] = [];
-  const unchecked = UNCHECKED_LINK_DIRS.map(
-    (name) => path.join(oceanPath(SYSTEM_DIR), name) + path.sep,
-  );
+  const unchecked = [
+    ...UNCHECKED_LINK_DIRS.map(
+      (name) => path.join(oceanPath(SYSTEM_DIR), name) + path.sep,
+    ),
+    // Candidates hold text copied from other tools' memory, links relative to where it was.
+    path.join(oceanPath(INBOX_DIR), "candidates") + path.sep,
+  ];
   for (const root of roots) {
     for (const file of await markdownFiles(oceanPath(root))) {
       if (unchecked.some((prefix) => file.startsWith(prefix))) continue;
@@ -499,6 +514,21 @@ async function checkProfileAuthority(): Promise<Finding[]> {
       ];
 }
 
+// A client keeps its Ocean server process until it restarts, so after an upgrade it still runs
+// the old release. The call ledger names the version that answered each call (T-313).
+async function checkRunningServers(): Promise<Finding[]> {
+  const installed = await installedVersion();
+  const stale = runningVersions(await readCallLedger()).filter(
+    (row) => row.version !== installed,
+  );
+  return stale.map((row) => ({
+    code: "RUNNING_STALE",
+    severity: "WARN",
+    message: `${row.client} last reached Ocean ${row.version} (${row.last}); ${installed} is installed: restart ${row.client}`,
+    fixable: false,
+  }));
+}
+
 async function checkVersion(): Promise<Finding[]> {
   const packageFile = enginePath("package.json");
   if (!(await exists(packageFile)))
@@ -574,6 +604,7 @@ async function scanWorkspace(
     ...(await checkLinks()),
     ...(await checkMemory()),
     ...(await checkVersion()),
+    ...(await checkRunningServers()),
     ...(await checkGovernance()),
     ...(await checkWrappers(wrapperManager)),
     ...(await checkDependencies()),
