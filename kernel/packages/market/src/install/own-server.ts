@@ -21,7 +21,11 @@ import {
   type McpServerSpec,
 } from "../adapters/mcp-adapter.js";
 import { contentDigest } from "../capability/content-digest.js";
-import { runnerCommand } from "../mcp/mcp-launch.js";
+import {
+  launchInputs,
+  runnerCommand,
+  stdioPackage,
+} from "../mcp/mcp-launch.js";
 import type {
   InstallResult,
   MarketplaceService,
@@ -31,27 +35,19 @@ import type {
 // wins on a name@version clash.
 const RESERVED = /^dev\.ocean(\.|\/)/;
 
-// The permissions a server.json needs to launch, exactly what the launcher checks: its runner,
-// the variables its stdio package declares, or its remote's host. Nothing is added "just in case".
+// The permissions a server.json needs to launch, exactly what the launcher checks: its runner or
+// its remote's host, and every value it is given (environment variables, `{placeholders}` in its
+// arguments or headers, secret headers). Nothing is added "just in case".
 export function permissionsFor(server: McpServerSpec): CapabilityPermissions {
   const permissions: CapabilityPermissions = {
     filesystem: { read: [], write: [] },
     network: [],
-    env: [],
+    env: launchInputs(server).map((input) => input.name),
     exec: [],
   };
-  const stdio = server.packages?.find((item) => {
-    const transport = (item.transport as { type?: unknown } | undefined)?.type;
-    return transport === undefined || transport === "stdio";
-  });
+  const stdio = stdioPackage(server);
   if (stdio) {
     permissions.exec.push(runnerCommand(String(stdio.registryType)));
-    const variables = Array.isArray(stdio.environmentVariables)
-      ? (stdio.environmentVariables as { name?: unknown }[])
-      : [];
-    for (const variable of variables)
-      if (typeof variable?.name === "string")
-        permissions.env.push(variable.name);
     return permissions;
   }
   const remote = server.remotes?.[0];
@@ -78,15 +74,18 @@ async function readIndex(indexFile: string): Promise<MarketplaceIndex> {
 // description scan, consent, the lock. If any step refuses, the entry and its payload are
 // removed again, so a refused server is never installed and never started.
 export async function addOwnMcpServer(options: {
-  serverFile: string;
+  // A parsed server.json: from a file the owner gave, or from the MCP registry.
+  server: unknown;
+  // Where it came from, for the manifest description: `./server.json`, `the MCP registry`.
+  from: string;
   indexFile: string;
   oceanVersion: string;
   // Built after the index is written, so the catalog reads the new entry.
   marketplace: () => MarketplaceService;
 }): Promise<InstallResult> {
-  const raw = JSON.parse(await readFile(options.serverFile, "utf8"));
-  const server = createMcpAdapter(() => "").parseSpec(raw);
-  const name = capabilityNameSchema.parse(server.name);
+  const server = createMcpAdapter(() => "").parseSpec(options.server);
+  // Registry names may carry capitals; a capability name is lowercase.
+  const name = capabilityNameSchema.parse(server.name.toLowerCase());
   if (RESERVED.test(name))
     throw new Error(`${name}: dev.ocean names are reserved for the engine`);
   const version =
@@ -114,8 +113,7 @@ export async function addOwnMcpServer(options: {
     kind: "mcp",
     name,
     version,
-    description:
-      "Added by the owner with `ocean market add`. A stdio server runs as an ordinary process of this user; only the variables listed here are passed to it.",
+    description: `Added by the owner with \`ocean market add\` from ${options.from}. A stdio server runs as an ordinary process of this user; only the values listed here are passed to it.`,
     engines: { ocean: `>=${options.oceanVersion}` },
     source: { type: "path", path: `own/${payload}` },
     integrity: { sha256 },

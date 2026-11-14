@@ -12,19 +12,22 @@ import type {
 
 // The gateway's client for a remote member (streamable HTTP or the older SSE transport).
 // Redirects stay on the same origin, so a call never leaves the host the capability declared.
-// No credentials are sent: a remote that needs headers is refused before it gets here.
+// Header values (tokens) come resolved from the launcher, from the environment or the secret
+// store; same-origin redirects keep them from reaching another host.
 export class RemoteMcpClient implements GatewayClient {
   readonly #client: Client;
   readonly #transport: StreamableHTTPClientTransport | SSEClientTransport;
 
   constructor(member: RemoteGatewayMember, version: string) {
     const url = new URL(member.url);
+    const options = {
+      redirectPolicy: "same-origin" as const,
+      ...(member.headers ? { requestInit: { headers: member.headers } } : {}),
+    };
     this.#transport =
       member.type === "sse"
-        ? new SSEClientTransport(url, { redirectPolicy: "same-origin" })
-        : new StreamableHTTPClientTransport(url, {
-            redirectPolicy: "same-origin",
-          });
+        ? new SSEClientTransport(url, options)
+        : new StreamableHTTPClientTransport(url, options);
     this.#client = new Client({ name: "ocean-gateway", version });
   }
 
