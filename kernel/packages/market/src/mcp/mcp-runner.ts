@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { mcpServerFile } from "../adapters/mcp-adapter.js";
+import { keychainStore, type SecretStore } from "../security/secrets.js";
 import { type InstalledMcpServer, planMcpLaunch } from "./mcp-launch.js";
 
 // The one way an installed MCP server is started: planned against its declared permissions,
@@ -12,6 +13,7 @@ export async function runInstalledMcp(
   options: {
     serversRoot: string;
     stateRoot: string;
+    secrets?: SecretStore;
   },
 ): Promise<number> {
   let installed: InstalledMcpServer;
@@ -27,7 +29,11 @@ export async function runInstalledMcp(
     path.basename(mcpServerFile(options.serversRoot, name), ".json"),
   );
   await mkdir(stateDir, { recursive: true });
-  const launch = planMcpLaunch(installed, { stateDir });
+  const secrets = options.secrets ?? keychainStore();
+  const launch = planMcpLaunch(installed, {
+    stateDir,
+    secret: (secret) => secrets.get(installed.capability, secret),
+  });
   if (launch.transport === "remote")
     throw new Error(
       `${name} is a remote server (${launch.type} ${launch.url}); connect the client to it directly`,

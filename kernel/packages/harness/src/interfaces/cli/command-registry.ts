@@ -173,6 +173,7 @@ import { intercept } from "./intercept-command.js";
 import { runLayoutCommand } from "./layout-command.js";
 import { runMarketCommand } from "./market-command.js";
 import { runMcpGatewayCommand } from "./mcp-gateway-command.js";
+import { runMcpStatusCommand } from "./mcp-status-command.js";
 import { runMemoryCommand } from "./memory-command.js";
 import { runMigrateCommand } from "./migrate-command.js";
 import { runObserveCommand } from "./observe-command.js";
@@ -496,11 +497,13 @@ async function commandMcp(): Promise<void> {
     });
   else if (action === "gateway")
     await runMcpGatewayCommand(process.argv.slice(4));
+  else if (action === "status")
+    await runMcpStatusCommand(process.argv.slice(4));
   else if (action === "browser-service")
     await runBrowserServiceCommand(process.argv[4] ?? "");
   else {
     console.error(
-      "Usage: ocean mcp config|playwright-config|gateway-config|serve|gateway|browser-service uninstall",
+      "Usage: ocean mcp config|playwright-config|gateway-config|serve|gateway|status [--check] [--json]|browser-service uninstall",
     );
     process.exitCode = 1;
   }

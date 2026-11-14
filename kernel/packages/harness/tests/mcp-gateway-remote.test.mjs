@@ -39,7 +39,17 @@ async function remoteServers() {
   const sse = new Map();
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, "http://127.0.0.1");
-    if (url.pathname === "/mcp") {
+    // Like a hosted server: no token, no service.
+    if (url.pathname === "/secure/mcp") {
+      if (req.headers.authorization !== "Bearer k")
+        return res.writeHead(401).end();
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: undefined,
+      });
+      res.on("close", () => void transport.close());
+      await echoServer("secure").connect(transport);
+      await transport.handleRequest(req, res);
+    } else if (url.pathname === "/mcp") {
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
       });
@@ -318,6 +328,125 @@ test("the client gateway entry serves installed servers only, per the access fil
       denied.stderr,
       /com\.example\/remote hidden from claude-code \(denied in gateway-access\.json\)/,
     );
+  } finally {
+    await remotes.close();
+  }
+});
+
+test("a remote member's headers reach its server, and only its server", async () => {
+  const remotes = await remoteServers();
+  const log = [];
+  const member = (prefix, headers) => ({
+    transport: "remote",
+    capability: `test/${prefix}`,
+    prefix,
+    type: "streamable-http",
+    url: `${remotes.base}/secure/mcp`,
+    ...(headers ? { headers } : {}),
+  });
+  const gateway = new McpGateway(
+    [member("keyed", { Authorization: "Bearer k" }), member("bare")],
+    {
+      client: (each) => new RemoteMcpClient(each, "test"),
+      timeoutMs: 5000,
+      log: (line) => log.push(line),
+    },
+  );
+  try {
+    const list = await gateway.handle({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/list",
+    });
+    assert.deepEqual(
+      list.result.tools.map((tool) => tool.name),
+      ["keyed__echo"],
+    );
+    const call = await gateway.handle({
+      jsonrpc: "2.0",
+      id: 2,
+      method: "tools/call",
+      params: { name: "keyed__echo", arguments: { text: "ok" } },
+    });
+    assert.equal(text(call), "secure:ok");
+    assert.ok(log.some((line) => /^test\/bare left out/.test(line)));
+    assert.ok(!log.join("\n").includes("Bearer k"), log.join("\n"));
+  } finally {
+    gateway.close();
+    await remotes.close();
+  }
+});
+
+// One view of every installed server: what runs, what is missing and how to set it, who sees it.
+test("ocean mcp status shows each installed server, its missing values and a real check", async () => {
+  const remotes = await remoteServers();
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-mcp-status-"));
+  const servers = path.join(root, SYSTEM_DIR, "market", "mcp");
+  await mkdir(servers, { recursive: true });
+  const install = (file, capability, network, server) =>
+    writeFile(
+      path.join(servers, file),
+      JSON.stringify({
+        capability,
+        version: "1.0.0",
+        permissions: {
+          filesystem: { read: [], write: [] },
+          network,
+          env: ["Authorization"],
+          exec: [],
+        },
+        server: { name: capability, ...server },
+      }),
+    );
+  await install("com.example__open.json", "com.example/open", ["127.0.0.1"], {
+    remotes: [{ type: "streamable-http", url: `${remotes.base}/mcp` }],
+  });
+  await install("com.example__keyed.json", "com.example/keyed", ["127.0.0.1"], {
+    remotes: [
+      {
+        type: "streamable-http",
+        url: `${remotes.base}/secure/mcp`,
+        headers: [{ name: "Authorization", isRequired: true, isSecret: true }],
+      },
+    ],
+  });
+  const status = (env = {}) =>
+    new Promise((resolve) => {
+      const child = spawn(
+        process.execPath,
+        [path.resolve("dist/main.js"), "mcp", "status", "--check", "--json"],
+        { env: { ...process.env, OCEAN_ROOT: root, ...env } },
+      );
+      let stdout = "";
+      child.stdout.on("data", (chunk) => {
+        stdout += chunk;
+      });
+      child.on("close", () => resolve(JSON.parse(stdout)));
+    });
+  try {
+    const report = await status();
+    assert.equal(report.gatewayDefault, "per-server");
+    const byName = Object.fromEntries(
+      report.servers.map((server) => [server.name, server]),
+    );
+    assert.deepEqual(byName["com.example/open"].check, { tools: 2 });
+    assert.equal(byName["com.example/open"].ready, true);
+    assert.deepEqual(byName["com.example/open"].perServerClients, []);
+    const keyed = byName["com.example/keyed"];
+    assert.equal(keyed.ready, false);
+    assert.match(keyed.problem, /needs Authorization/);
+    assert.deepEqual(keyed.values, [
+      { name: "Authorization", required: true, from: keyed.values[0].from },
+    ]);
+    assert.ok(["missing", "macOS keychain"].includes(keyed.values[0].from));
+    // From the environment, the same server starts and answers.
+    const withKey = await status({ Authorization: "Bearer k" });
+    const ready = withKey.servers.find(
+      (server) => server.name === "com.example/keyed",
+    );
+    assert.equal(ready.values[0].from, "environment");
+    assert.deepEqual(ready.check, { tools: 2 });
+    assert.ok(!JSON.stringify(withKey).includes("Bearer k"));
   } finally {
     await remotes.close();
   }

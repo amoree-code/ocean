@@ -110,7 +110,7 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
   ],
   clients: [
     "Connect installed AI clients to Ocean's MCP server and hooks; apply shows the plan until --yes.",
-    "ocean clients detect|plan [--json] | apply [--client <id>…] [--yes] | verify [<id>…] | confirm <id>… --label in-app|headless|connected|blocked [--via <evidence>] [--reason <why>] | gateway [<id> on|off] | ledger | repair | restore [--batch <id>]",
+    "ocean clients detect|plan [--json] | apply [--client <id>…] [--yes] | verify [<id>…] | confirm <id>… --label in-app|headless|connected|blocked [--via <evidence>] [--reason <why>] | gateway [<id> on|off] [--default gateway|per-server] | allow|deny|unset <id> <server> | ledger | repair | restore [--batch <id>]",
   ],
   install: [
     "Install a supported AI client CLI.",
@@ -124,11 +124,11 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
   ],
   mcp: [
     "Print MCP client configs, or serve Ocean's MCP server and gateway.",
-    "ocean mcp config|playwright-config|gateway-config|serve|gateway|browser-service uninstall",
+    "ocean mcp config|playwright-config|gateway-config|serve|gateway|status [--check] [--json]|browser-service uninstall",
   ],
   market: [
     "List, install, update and run marketplace packages; permissions need --yes.",
-    "ocean market list|install <name> [--version <v>]|update <name>|uninstall <name>|exec <name>|add <server.json> [--index <file>]... [--yes] [--accept-flagged]",
+    "ocean market list|install <name> [--version <v>]|update <name>|uninstall <name>|search <term>|add <server.json|registry name>|secret list|set|remove <name> [<value name>] [--index <file>]... [--yes] [--accept-flagged]",
   ],
   browser: [
     "Drive a browser session; uploads and submits need --approve.",

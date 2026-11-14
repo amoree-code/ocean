@@ -1,3 +1,5 @@
+import { marketplacePaths } from "@ocean/market/install/default-marketplace.js";
+import { updateGatewayAccess } from "@ocean/market/mcp/mcp-gateway.js";
 import {
   readCallLedger,
   summarizeCallLedger,
@@ -8,12 +10,14 @@ import {
   confirmClient,
   defaultClientEnv,
   type EvidenceLabel,
+  gatewayDefault,
   planClients,
   readGatewayClients,
   recordVerification,
   repairClients,
   restoreClients,
   setGatewayClient,
+  setGatewayDefault,
   temporaryEntryProblem,
   verifyClient,
 } from "../../application/clients/clients.js";
@@ -34,7 +38,7 @@ import {
 } from "../../application/clients/opencode-plugin.js";
 
 const usage =
-  "Usage: ocean clients detect|plan [--json] | apply [--client <id>…] [--yes] | verify [<id>…] | confirm <id>… --label in-app|headless|connected|blocked [--via <evidence>] [--reason <why>] | gateway [<id> on|off] | ledger | repair | restore [--batch <id>]";
+  "Usage: ocean clients detect|plan [--json] | apply [--client <id>…] [--yes] | verify [<id>…] | confirm <id>… --label in-app|headless|connected|blocked [--via <evidence>] [--reason <why>] | gateway [<id> on|off] [--default gateway|per-server] | allow|deny|unset <id> <server> | ledger | repair | restore [--batch <id>]";
 
 // `ocean clients` (T-296 P2/P3b): every installed AI client's `ocean` MCP entry and, where the
 // client has a verified session-start event, Ocean's session hook. `apply` shows the plan until
@@ -177,15 +181,46 @@ export async function runClientsCommand(args: string[]): Promise<void> {
   else if (action === "gateway") {
     // Which clients get one `ocean-gateway` entry instead of an entry per marketplace server
     // (T-309); `ocean clients apply` then rewires them.
-    const [client, state] = rest.filter((arg) => !arg.startsWith("--"));
-    if (client && state !== "on" && state !== "off")
-      throw new Error("Usage: ocean clients gateway [<id> on|off]");
+    const mode = values("--default")[0];
+    const [client, state] = rest.filter(
+      (arg, index) => !arg.startsWith("--") && rest[index - 1] !== "--default",
+    );
+    if (
+      (mode && mode !== "gateway" && mode !== "per-server") ||
+      (client && state !== "on" && state !== "off")
+    )
+      throw new Error(
+        "Usage: ocean clients gateway [<id> on|off] [--default gateway|per-server]",
+      );
+    if (mode === "gateway" || mode === "per-server")
+      await setGatewayDefault(mode);
     const clients = client
       ? await setGatewayClient(client, state === "on")
       : [...readGatewayClients()].sort();
     result = {
+      default: gatewayDefault(),
       clients,
-      ...(client ? { next: "ocean clients apply --client " + client } : {}),
+      ...(client || mode
+        ? {
+            next: `ocean clients apply${client ? ` --client ${client}` : ""} --yes`,
+          }
+        : {}),
+    };
+  } else if (action === "allow" || action === "deny" || action === "unset") {
+    // Which installed server a gateway-wired client sees (bridge/market/gateway-access.json).
+    const [client, capability] = rest.filter((arg) => !arg.startsWith("--"));
+    if (!client || !capability)
+      throw new Error(`Usage: ocean clients ${action} <id> <server name>`);
+    const access = await updateGatewayAccess(
+      marketplacePaths().gatewayAccess,
+      client,
+      capability,
+      action,
+    );
+    result = {
+      client,
+      rule: access.clients[client] ?? "default",
+      next: "restart the client (the gateway reads its rules at start)",
     };
   } else if (action === "repair") result = await repairClients();
   else if (action === "restore") {
