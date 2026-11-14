@@ -1,6 +1,8 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import {
   actionFingerprint,
+  type McpPrompt,
+  type McpResource,
   type McpTool,
   mcpToolSchema,
 } from "@ocean/core/domain/mcp/mcp-contract.js";
@@ -35,6 +37,8 @@ export class McpClient {
   >();
   private buffer = "";
   private tools = new Map<string, McpTool>();
+  // What the server said it offers in `initialize`; resources and prompts are asked for only then.
+  private serverCapabilities: Record<string, unknown> = {};
 
   constructor(private readonly options: McpClientOptions) {}
 
@@ -67,11 +71,16 @@ export class McpClient {
     this.child.once("close", () =>
       this.failPending(new Error("MCP server stopped")),
     );
-    await this.request("initialize", {
+    const initialized = (await this.request("initialize", {
       protocolVersion: "2025-06-18",
       capabilities: {},
       clientInfo: { name: "ocean", version: "0.3.2" },
-    });
+    })) as { capabilities?: unknown } | undefined;
+    const capabilities = initialized?.capabilities;
+    this.serverCapabilities =
+      capabilities && typeof capabilities === "object"
+        ? (capabilities as Record<string, unknown>)
+        : {};
     this.notify("notifications/initialized", {});
   }
 
@@ -120,6 +129,33 @@ export class McpClient {
     if (!this.isAllowed(name))
       throw new Error(`MCP tool is not allowed: ${name}`);
     return this.request("tools/call", { name, arguments: arguments_ });
+  }
+
+  async listResources(): Promise<McpResource[]> {
+    if (!this.serverCapabilities.resources) return [];
+    const result = (await this.request("resources/list", {})) as {
+      resources?: McpResource[];
+    };
+    return result.resources ?? [];
+  }
+
+  readResource(uri: string): Promise<unknown> {
+    return this.request("resources/read", { uri });
+  }
+
+  async listPrompts(): Promise<McpPrompt[]> {
+    if (!this.serverCapabilities.prompts) return [];
+    const result = (await this.request("prompts/list", {})) as {
+      prompts?: McpPrompt[];
+    };
+    return result.prompts ?? [];
+  }
+
+  getPrompt(
+    name: string,
+    arguments_: Record<string, unknown>,
+  ): Promise<unknown> {
+    return this.request("prompts/get", { name, arguments: arguments_ });
   }
 
   close(): void {

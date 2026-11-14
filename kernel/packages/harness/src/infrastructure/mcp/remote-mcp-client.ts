@@ -2,6 +2,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import {
+  type McpPrompt,
+  type McpResource,
   type McpTool,
   mcpToolSchema,
 } from "@ocean/core/domain/mcp/mcp-contract.js";
@@ -54,6 +56,49 @@ export class RemoteMcpClient implements GatewayClient {
     args: Record<string, unknown>,
   ): Promise<unknown> {
     return this.#client.callTool({ name, arguments: args });
+  }
+
+  async listResources(): Promise<McpResource[]> {
+    if (!this.#client.getServerCapabilities()?.resources) return [];
+    const resources: McpResource[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await this.#client.listResources(
+        cursor ? { cursor } : undefined,
+      );
+      resources.push(...(page.resources as McpResource[]));
+      cursor = page.nextCursor;
+    } while (cursor);
+    return resources;
+  }
+
+  readResource(uri: string): Promise<unknown> {
+    return this.#client.readResource({ uri });
+  }
+
+  async listPrompts(): Promise<McpPrompt[]> {
+    if (!this.#client.getServerCapabilities()?.prompts) return [];
+    const prompts: McpPrompt[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await this.#client.listPrompts(
+        cursor ? { cursor } : undefined,
+      );
+      prompts.push(...(page.prompts as McpPrompt[]));
+      cursor = page.nextCursor;
+    } while (cursor);
+    return prompts;
+  }
+
+  getPrompt(name: string, args: Record<string, unknown>): Promise<unknown> {
+    // MCP prompt arguments are strings; anything else is sent as its JSON text.
+    const strings = Object.fromEntries(
+      Object.entries(args).map(([key, value]) => [
+        key,
+        typeof value === "string" ? value : JSON.stringify(value),
+      ]),
+    );
+    return this.#client.getPrompt({ name, arguments: strings });
   }
 
   close(): void {

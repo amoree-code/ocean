@@ -1,7 +1,11 @@
 import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { marketplaceIndexSchema } from "@ocean/core/domain/capabilities/capability-manifest.js";
-import type { McpTool } from "@ocean/core/domain/mcp/mcp-contract.js";
+import type {
+  McpPrompt,
+  McpResource,
+  McpTool,
+} from "@ocean/core/domain/mcp/mcp-contract.js";
 import { engineRoot } from "@ocean/core/shared/paths.js";
 import type { McpServerSpec } from "../adapters/mcp-adapter.js";
 import { scanText } from "../security/description-scan.js";
@@ -57,6 +61,12 @@ export type GatewayClient = {
     name: string,
     args: Record<string, unknown>,
   ): Promise<unknown>;
+  // Resources and prompts are optional: a member without them (or a client that cannot ask) has
+  // none, and the gateway still routes its tools.
+  listResources?(): Promise<McpResource[]>;
+  readResource?(uri: string): Promise<unknown>;
+  listPrompts?(): Promise<McpPrompt[]>;
+  getPrompt?(name: string, args: Record<string, unknown>): Promise<unknown>;
   close(): void;
 };
 
@@ -287,9 +297,11 @@ export async function gatewayMembers(options: {
   return { members, skipped };
 }
 
-// Every text a model reads for a tool: its name, its description and each key and string inside
-// its input schema (property names, titles, enums and defaults included).
-function toolTexts(tool: McpTool): { at: string; text: string }[] {
+// Every text a model reads for a tool, resource or prompt: each named field, and each key and
+// string nested inside it (a tool's schema property names, titles, enums and defaults included).
+function modelTexts(
+  fields: Record<string, unknown>,
+): { at: string; text: string }[] {
   const texts: { at: string; text: string }[] = [];
   const walk = (value: unknown, at: string): void => {
     if (typeof value === "string") texts.push({ at, text: value });
@@ -303,9 +315,7 @@ function toolTexts(tool: McpTool): { at: string; text: string }[] {
         walk(item, `${at}.${key}`);
       }
   };
-  walk(tool.name, "name");
-  walk(tool.description, "description");
-  walk(tool.inputSchema, "inputSchema");
+  for (const [at, value] of Object.entries(fields)) walk(value, at);
   return texts;
 }
 
@@ -351,6 +361,12 @@ type Response = {
   error?: { code: number; message: string };
 };
 type Route = { client: GatewayClient; tool: string };
+type PromptRoute = { client: GatewayClient; prompt: string };
+type Listing = {
+  tools: McpTool[];
+  resources: McpResource[];
+  prompts: McpPrompt[];
+};
 
 // One MCP endpoint in front of many servers. Tools are exposed as `<prefix>__<tool>`; a tool
 // whose texts carry injected instructions is hidden, since clients read them as prompt. The
@@ -360,6 +376,12 @@ type Route = { client: GatewayClient; tool: string };
 export class McpGateway {
   readonly #routes = new Map<string, Route>();
   readonly #tools: McpTool[] = [];
+  // Resource URIs are exposed unchanged (a server's own texts point at them), so a URI two
+  // members both list stays with the first. Prompts are namespaced like tools.
+  readonly #resourceRoutes = new Map<string, GatewayClient>();
+  readonly #resources: McpResource[] = [];
+  readonly #promptRoutes = new Map<string, PromptRoute>();
+  readonly #prompts: McpPrompt[] = [];
   readonly #clients: GatewayClient[] = [];
   #started: Promise<void> | undefined;
   // Who is on the other end, from `initialize`; fixed once members start.
@@ -374,6 +396,9 @@ export class McpGateway {
       log?: (line: string) => void;
       serverName?: string;
       instructions?: string;
+      // The member whose policy `instructions` is: they are sent only when this client can see
+      // it, since the text claims that server's tools are callable. Unset: always sent.
+      instructionsMember?: string;
       access?: GatewayAccess;
       // The client this gateway serves, as Ocean wrote it into the client's entry
       // (`--client <id>`); then `clientInfo.name` from `initialize` is only logged.
@@ -410,11 +435,40 @@ export class McpGateway {
           timeoutMs,
           `${member.capability} did not start`,
         );
-        return withTimeout(
+        const tools = await withTimeout(
           clients[index].listTools(),
           timeoutMs,
           `${member.capability} did not list its tools`,
         );
+        // A member that cannot list resources or prompts keeps its tools.
+        const optional = async <T>(
+          what: string,
+          list: (() => Promise<T[]>) | undefined,
+        ): Promise<T[]> => {
+          if (!list) return [];
+          try {
+            return await withTimeout(
+              list(),
+              timeoutMs,
+              `${member.capability} did not list its ${what}`,
+            );
+          } catch (error) {
+            this.#log(
+              `${member.capability} ${what} left out: ${errorMessage(error)}`,
+            );
+            return [];
+          }
+        };
+        const client = clients[index];
+        const listing: Listing = {
+          tools,
+          resources: await optional(
+            "resources",
+            client.listResources?.bind(client),
+          ),
+          prompts: await optional("prompts", client.listPrompts?.bind(client)),
+        };
+        return listing;
       }),
     );
     results.forEach((result, index) => {
@@ -426,21 +480,76 @@ export class McpGateway {
         clients[index].close();
         return;
       }
-      for (const tool of result.value)
+      for (const tool of result.value.tools)
         this.#expose(member, clients[index], tool);
+      for (const resource of result.value.resources)
+        this.#exposeResource(member, clients[index], resource);
+      for (const prompt of result.value.prompts)
+        this.#exposePrompt(member, clients[index], prompt);
     });
   }
 
-  #expose(member: GatewayMember, client: GatewayClient, tool: McpTool): void {
-    const findings = toolTexts(tool).flatMap(({ at, text }) =>
+  // True when a text the model would read carries injected instructions; then it is hidden.
+  #injected(
+    member: GatewayMember,
+    kind: string,
+    name: string,
+    fields: Record<string, unknown>,
+  ): boolean {
+    const findings = modelTexts(fields).flatMap(({ at, text }) =>
       scanText(at, text),
     );
-    if (findings.length) {
+    if (!findings.length) return false;
+    this.#log(
+      `${member.capability} ${kind} ${name} hidden: ${findings.map((finding) => `${finding.rule} in ${finding.source} ("${finding.excerpt}")`).join("; ")}`,
+    );
+    return true;
+  }
+
+  #exposeResource(
+    member: GatewayMember,
+    client: GatewayClient,
+    resource: McpResource,
+  ): void {
+    if (!isRecord(resource) || typeof resource.uri !== "string") return;
+    if (this.#injected(member, "resource", resource.uri, resource)) return;
+    if (this.#resourceRoutes.has(resource.uri)) {
       this.#log(
-        `${member.capability} tool ${tool.name} hidden: ${findings.map((finding) => `${finding.rule} in ${finding.source} ("${finding.excerpt}")`).join("; ")}`,
+        `${member.capability} lists resource ${resource.uri} already routed; kept the first`,
       );
       return;
     }
+    this.#resourceRoutes.set(resource.uri, client);
+    this.#resources.push(resource);
+  }
+
+  #exposePrompt(
+    member: GatewayMember,
+    client: GatewayClient,
+    prompt: McpPrompt,
+  ): void {
+    if (!isRecord(prompt) || typeof prompt.name !== "string") return;
+    if (this.#injected(member, "prompt", prompt.name, prompt)) return;
+    const name = `${member.prefix}__${prompt.name}`;
+    if (this.#promptRoutes.has(name)) {
+      this.#log(
+        `${member.capability} lists prompt ${prompt.name} twice; kept the first`,
+      );
+      return;
+    }
+    this.#promptRoutes.set(name, { client, prompt: prompt.name });
+    this.#prompts.push({ ...prompt, name });
+  }
+
+  #expose(member: GatewayMember, client: GatewayClient, tool: McpTool): void {
+    if (
+      this.#injected(member, "tool", tool.name, {
+        name: tool.name,
+        description: tool.description,
+        inputSchema: tool.inputSchema,
+      })
+    )
+      return;
     const name = `${member.prefix}__${tool.name}`;
     if (this.#routes.has(name)) {
       this.#log(
@@ -462,6 +571,35 @@ export class McpGateway {
     const route = this.#routes.get(name);
     if (!route) throw new GatewayError(-32602, `Unknown MCP tool: ${name}`);
     return route.client.forwardToolCall(route.tool, args);
+  }
+
+  async resources(): Promise<McpResource[]> {
+    await this.start();
+    return [...this.#resources];
+  }
+
+  async readResource(uri: string): Promise<unknown> {
+    await this.start();
+    const client = this.#resourceRoutes.get(uri);
+    if (!client?.readResource)
+      throw new GatewayError(-32602, `Unknown MCP resource: ${uri}`);
+    return client.readResource(uri);
+  }
+
+  async prompts(): Promise<McpPrompt[]> {
+    await this.start();
+    return [...this.#prompts];
+  }
+
+  async getPrompt(
+    name: string,
+    args: Record<string, unknown>,
+  ): Promise<unknown> {
+    await this.start();
+    const route = this.#promptRoutes.get(name);
+    if (!route?.client.getPrompt)
+      throw new GatewayError(-32602, `Unknown MCP prompt: ${name}`);
+    return route.client.getPrompt(route.prompt, args);
   }
 
   async handle(request: unknown): Promise<Response | null> {
@@ -515,12 +653,14 @@ export class McpGateway {
         void this.start();
         return {
           protocolVersion: "2025-06-18",
-          capabilities: { tools: {} },
+          // Members start after this answer, so resources and prompts are always offered; a
+          // gateway whose members have none lists them empty, which MCP allows.
+          capabilities: { tools: {}, resources: {}, prompts: {} },
           serverInfo: {
             name: this.options.serverName ?? "ocean-gateway",
             version: this.options.version ?? "0.0.0",
           },
-          ...(this.options.instructions
+          ...(this.#instructions()
             ? { instructions: this.options.instructions }
             : {}),
         };
@@ -539,12 +679,44 @@ export class McpGateway {
           );
         return this.call(params.name, args);
       }
+      case "resources/list":
+        return { resources: await this.resources() };
+      case "resources/read": {
+        const params = isRecord(request.params) ? request.params : {};
+        if (typeof params.uri !== "string")
+          throw new GatewayError(-32602, "resources/read needs a uri");
+        return this.readResource(params.uri);
+      }
+      case "prompts/list":
+        return { prompts: await this.prompts() };
+      case "prompts/get": {
+        const params = isRecord(request.params) ? request.params : {};
+        const args = params.arguments ?? {};
+        if (typeof params.name !== "string" || !isRecord(args))
+          throw new GatewayError(
+            -32602,
+            "prompts/get needs a prompt name and an arguments object",
+          );
+        return this.getPrompt(params.name, args);
+      }
       default:
         throw new GatewayError(
           -32601,
           `Unsupported MCP method: ${request.method ?? ""}`,
         );
     }
+  }
+
+  #instructions(): boolean {
+    const { instructions, instructionsMember } = this.options;
+    if (!instructions) return false;
+    if (!instructionsMember) return true;
+    const access = this.options.access ?? { clients: {} };
+    return this.members.some(
+      (member) =>
+        member.capability === instructionsMember &&
+        canSee(access, this.#client, member),
+    );
   }
 
   close(): void {

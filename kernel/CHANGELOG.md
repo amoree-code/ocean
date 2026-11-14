@@ -7,6 +7,7 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+- fix(T-313): `ocean mcp gateway` now carries Ocean's memory contract (`instructions` in `initialize`, sent only to a client allowed to see Ocean's own server) and forwards resources and prompts as well as tools, so a client wired through the gateway (the default since 1.5.0) gets the same Ocean as a direct connection (#274)
 - feat(T-313): facts you state in a session are captured without the model having to call `memory_propose`: after a Claude Code or Codex session ends, and before Claude Code compacts one, Ocean reads the transcript (secrets redacted before any model sees it), asks the session's own client for the durable facts, keeps only those quoting your own words, and files each as a candidate for your review; session candidates are never auto-approved. A per-session cursor reads each turn once. Asked once at `ocean client apply` (`--session-facts on|off`); `ocean memory session-facts [on|off]`; `ocean doctor` reports `SESSION_FACTS_UNSET` until you choose (#275)
 
 ## 1.5.0 (2026-11-14)

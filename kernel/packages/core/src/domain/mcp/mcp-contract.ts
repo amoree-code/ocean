@@ -16,6 +16,20 @@ export const mcpToolSchema = z.object({
     .optional(),
 });
 export type McpTool = z.infer<typeof mcpToolSchema>;
+
+// The parts of an MCP resource and prompt a proxy reads; anything else passes through untouched.
+export type McpResource = {
+  uri: string;
+  name?: string;
+  description?: string;
+  [key: string]: unknown;
+};
+export type McpPrompt = {
+  name: string;
+  description?: string;
+  arguments?: unknown[];
+  [key: string]: unknown;
+};
 export const mcpApprovalSchema = z.object({
   approved: z.literal(true),
   fingerprint: z.string().length(64),
