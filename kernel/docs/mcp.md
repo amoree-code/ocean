@@ -257,7 +257,13 @@ ocean mcp gateway-config
   every MCP server installed with `ocean market install`. An installed server is started by the
   same launcher as `ocean market exec`: declared permissions, only its declared environment
   variables, inside the macOS sandbox. A third-party server joins only by being installed, never
-  by editing a client config. Remote servers are not proxied; the gateway logs their URL.
+  by editing a client config.
+- **Remote servers:** an installed server with no stdio package is reached at its first
+  `remotes` entry, over streamable HTTP or the older SSE transport, next to the stdio members in
+  the same gateway process. The URL must be `https`, or `http` on loopback (`localhost`,
+  `127.0.0.1`, `[::1]`), and its host a declared `network` permission. Redirects are followed
+  only within the same origin. No credentials are sent: a remote that requires a header (an
+  API token, say) is not routed and the gateway logs why; OAuth is not supported yet.
 - **Names:** tools are exposed as `<server>__<tool>`, for example `ocean__ocean_status` or
   `obsidian__obsidian_read`.
 - **Runtime scan:** each tool's name, its description, and every key and string inside its input

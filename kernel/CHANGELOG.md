@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+- feat(T-309): `ocean mcp gateway` now routes remote MCP servers installed from the marketplace (streamable HTTP and SSE, through the official SDK client) alongside the stdio ones, instead of skipping them. A remote must be `https`, or `http` on loopback, with its host declared as a `network` permission; redirects stay on the same origin, and a remote that requires a header is refused rather than sent a credential. The marketplace now also accepts loopback `http` remotes at install (#267)
+
 ## 1.4.0 (2026-11-12)
 
 - feat(T-298): the marketplace browser capability `dev.ocean/chrome-devtools` now runs the published npm package `ocean-browser-mcp@0.1.0` (source amoree-code/Ocean-BROWSER-MCP), which pins Chrome DevTools MCP 1.12.0 exactly and carries the attach and privacy flags itself; the name and the `chrome-devtools` client key are unchanged, so `ocean market update dev.ocean/chrome-devtools --yes` is the whole migration (#266)

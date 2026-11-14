@@ -302,6 +302,42 @@ test("a remote MCP endpoint needs its host declared", () => {
   );
 });
 
+test("a remote MCP endpoint is https or loopback, a known transport, and needs no headers", () => {
+  const remote = (entry, network = ["mcp.example.com"]) => ({
+    capability: "io.github.example/remote",
+    version: "1.0.0",
+    permissions: permissions({ network }),
+    server: { name: "io.github.example/remote", remotes: [entry] },
+  });
+  const plan = (entry, network) =>
+    planMcpLaunch(remote(entry, network), { stateDir: "/tmp/s" });
+  assert.throws(
+    () => plan({ type: "streamable-http", url: "http://mcp.example.com/mcp" }),
+    /must be https \(or http on loopback\)/,
+  );
+  assert.throws(
+    () => plan({ type: "websocket", url: "https://mcp.example.com/ws" }),
+    /transport websocket is not supported/,
+  );
+  assert.throws(
+    () =>
+      plan({
+        type: "sse",
+        url: "https://mcp.example.com/sse",
+        headers: [{ name: "Authorization", isRequired: true }],
+      }),
+    /needs header Authorization/,
+  );
+  assert.deepEqual(
+    plan({ type: "sse", url: "http://127.0.0.1:8123/sse" }, ["127.0.0.1"]),
+    { transport: "remote", type: "sse", url: "http://127.0.0.1:8123/sse" },
+  );
+  assert.equal(
+    plan({ url: "http://localhost:8123/mcp" }, ["localhost"]).type,
+    "streamable-http",
+  );
+});
+
 test("ocean market exec refuses a server that is not installed", () => {
   const result = spawnSync(
     process.execPath,

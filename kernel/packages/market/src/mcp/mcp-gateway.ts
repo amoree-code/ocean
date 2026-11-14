@@ -10,12 +10,25 @@ import {
   type InstalledMcpServer,
   literalArguments,
   planMcpLaunch,
+  type RemoteTransport,
 } from "./mcp-launch.js";
 
 export const GATEWAY_CAPABILITY = "dev.ocean/mcp-gateway";
 
-// One server behind the gateway: the exact process to start and the namespace its tools get.
-export type GatewayMember = {
+// One server behind the gateway and the namespace its tools get: either the exact process to
+// start, or a remote endpoint to connect to.
+export type GatewayMember = StdioGatewayMember | RemoteGatewayMember;
+
+export type RemoteGatewayMember = {
+  transport: "remote";
+  capability: string;
+  prefix: string;
+  type: RemoteTransport;
+  url: string;
+};
+
+export type StdioGatewayMember = {
+  transport?: "stdio";
   capability: string;
   prefix: string;
   command: string;
@@ -128,9 +141,12 @@ export async function gatewayMembers(options: {
         env: options.env,
       });
       if (launch.transport === "remote") {
-        skipped.push({
+        members.push({
+          transport: "remote",
           capability: name,
-          reason: `remote server (${launch.type} ${launch.url}); connect the client to it directly`,
+          prefix: namespaceFor(name, taken),
+          type: launch.type,
+          url: launch.url,
         });
         continue;
       }

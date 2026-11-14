@@ -1,7 +1,10 @@
 import os from "node:os";
 import path from "node:path";
 import type { CapabilityPermissions } from "@ocean/core/domain/capabilities/capability-manifest.js";
-import type { McpServerSpec } from "../adapters/mcp-adapter.js";
+import {
+  type McpServerSpec,
+  remoteUrlAllowed,
+} from "../adapters/mcp-adapter.js";
 import { PermissionPolicy } from "../security/permissions.js";
 
 // What the mcp adapter wrote for one installed server.
@@ -20,7 +23,10 @@ export type McpLaunch =
       env: Record<string, string>;
       cwd: string;
     }
-  | { transport: "remote"; type: string; url: string };
+  | { transport: "remote"; type: RemoteTransport; url: string };
+
+export type RemoteTransport = "streamable-http" | "sse";
+const remoteTransports: readonly string[] = ["streamable-http", "sse"];
 
 // Where each runner takes its own (runtime) arguments: before the package for npx and uvx,
 // after `run` for docker, so container flags such as `-e` or `-v` reach `docker run`.
@@ -103,11 +109,31 @@ export function planMcpLaunch(
       throw new Error(
         `${installed.capability} has no stdio package or remote endpoint`,
       );
+    // Checked again here, not only at install: the installed file is plain JSON on disk.
     const url = new URL(String(remote.url));
+    if (!remoteUrlAllowed(url))
+      throw new Error(
+        `${installed.capability}: remote ${url.href} must be https (or http on loopback)`,
+      );
+    const type = String(remote.type ?? "streamable-http");
+    if (!remoteTransports.includes(type))
+      throw new Error(
+        `${installed.capability}: remote transport ${type} is not supported`,
+      );
+    // Header values (tokens, mostly) would have to come from somewhere; Ocean keeps none in
+    // files, and passing them from the environment is not built yet.
+    const headers = Array.isArray(remote.headers)
+      ? (remote.headers as { name?: unknown; isRequired?: unknown }[])
+      : [];
+    const required = headers.find((header) => header?.isRequired === true);
+    if (required)
+      throw new Error(
+        `${installed.capability}: remote needs header ${String(required.name)}; remote headers are not supported yet`,
+      );
     policy.require({ type: "network", target: url.hostname });
     return {
       transport: "remote",
-      type: String(remote.type ?? "streamable-http"),
+      type: type as RemoteTransport,
       url: url.href,
     };
   }

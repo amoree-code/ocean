@@ -327,6 +327,7 @@ test("gateway members are the engine's first-party servers plus installed ones, 
       ["dev.ocean/obsidian", "obsidian"],
       ["dev.ocean/ocean", "ocean"],
       ["com.example/files", "files"],
+      ["com.example/remote", "remote"],
     ],
   );
   assert.ok(
@@ -346,14 +347,18 @@ test("gateway members are the engine's first-party servers plus installed ones, 
     "PATH",
   ]);
   assert.equal(files.cwd, path.join(root, "state", "com.example__files"));
+  assert.deepEqual(members[3], {
+    transport: "remote",
+    capability: "com.example/remote",
+    prefix: "remote",
+    type: "streamable-http",
+    url: "https://mcp.example.com/mcp",
+  });
 
   const reasons = Object.fromEntries(
     skipped.map((skip) => [skip.capability, skip.reason]),
   );
-  assert.match(
-    reasons["com.example/remote"],
-    /remote server .*mcp\.example\.com/,
-  );
+  assert.equal(reasons["com.example/remote"], undefined);
   assert.match(reasons["com.example/undeclared"], /npx/);
   assert.match(
     reasons["com.microsoft/playwright-mcp"],

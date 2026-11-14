@@ -5,6 +5,7 @@ import {
   serveMcpGateway,
 } from "@ocean/market/mcp/mcp-gateway.js";
 import { McpClient } from "@ocean/services/infrastructure/mcp/mcp-client.js";
+import { RemoteMcpClient } from "../../infrastructure/mcp/remote-mcp-client.js";
 import { oceanVersion } from "../../version.js";
 
 // `ocean mcp gateway`: one stdio MCP endpoint for every registered server. Logs go to stderr,
@@ -18,17 +19,20 @@ export async function runMcpGatewayCommand(): Promise<void> {
   });
   for (const skip of skipped)
     log(`${skip.capability} not routed: ${skip.reason}`);
+  const version = await oceanVersion();
   const gateway = new McpGateway(members, {
     client: (member) =>
-      new McpClient({
-        command: member.command,
-        args: member.args,
-        cwd: member.cwd,
-        env: member.env,
-        inheritEnv: member.inheritEnv,
-        stderrLabel: `ocean mcp gateway [${member.capability}]`,
-      }),
-    version: await oceanVersion(),
+      member.transport === "remote"
+        ? new RemoteMcpClient(member, version)
+        : new McpClient({
+            command: member.command,
+            args: member.args,
+            cwd: member.cwd,
+            env: member.env,
+            inheritEnv: member.inheritEnv,
+            stderrLabel: `ocean mcp gateway [${member.capability}]`,
+          }),
+    version,
     log,
   });
   await serveMcpGateway(gateway);
