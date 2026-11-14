@@ -37,11 +37,6 @@ import {
   scanProjectManifests,
   UNCATEGORIZED,
 } from "@ocean/core/shared/project-resolution.js";
-import {
-  readCallLedger,
-  runningVersions,
-} from "../infrastructure/mcp/call-ledger.js";
-import { installedVersion } from "../infrastructure/mcp/server-version.js";
 
 const execFile = promisify(execFileCallback);
 
@@ -514,21 +509,6 @@ async function checkProfileAuthority(): Promise<Finding[]> {
       ];
 }
 
-// A client keeps its Ocean server process until it restarts, so after an upgrade it still runs
-// the old release. The call ledger names the version that answered each call (T-313).
-async function checkRunningServers(): Promise<Finding[]> {
-  const installed = await installedVersion();
-  const stale = runningVersions(await readCallLedger()).filter(
-    (row) => row.version !== installed,
-  );
-  return stale.map((row) => ({
-    code: "RUNNING_STALE",
-    severity: "WARN",
-    message: `${row.client} last reached Ocean ${row.version} (${row.last}); ${installed} is installed: restart ${row.client}`,
-    fixable: false,
-  }));
-}
-
 async function checkVersion(): Promise<Finding[]> {
   const packageFile = enginePath("package.json");
   if (!(await exists(packageFile)))
@@ -604,7 +584,6 @@ async function scanWorkspace(
     ...(await checkLinks()),
     ...(await checkMemory()),
     ...(await checkVersion()),
-    ...(await checkRunningServers()),
     ...(await checkGovernance()),
     ...(await checkWrappers(wrapperManager)),
     ...(await checkDependencies()),
