@@ -1,0 +1,24 @@
+{
+  "description": "The user states two durable facts while coding; the model quotes them exactly.",
+  "negative": false,
+  "turns": [
+    {
+      "role": "user",
+      "text": "Before we start: I'm based in Baghdad and I want every reply in Iraqi Arabic, not Modern Standard."
+    },
+    {
+      "role": "assistant",
+      "text": "Understood. What are we building?"
+    },
+    {
+      "role": "user",
+      "text": "Fix the date picker. Also, for all my dashboards we always ship RTL first and LTR second."
+    },
+    {
+      "role": "assistant",
+      "text": "Fixed the picker's off-by-one."
+    }
+  ],
+  "recorded": "{\"facts\": [{\"title\": \"Reply language\", \"content\": \"The user wants every reply in Iraqi Arabic, not Modern Standard Arabic.\", \"evidence\": \"I want every reply in Iraqi Arabic, not Modern Standard\", \"reason\": \"standing preference\"}, {\"title\": \"Dashboards ship RTL first\", \"content\": \"The user's dashboards always ship RTL first and LTR second.\", \"evidence\": \"for all my dashboards we always ship RTL first and LTR second\", \"reason\": \"standing project rule\"}]}",
+  "expected": ["Iraqi Arabic", "RTL first"]
+}

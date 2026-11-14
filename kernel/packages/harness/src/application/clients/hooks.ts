@@ -27,7 +27,7 @@ type HookGroup = Record<string, unknown>;
 
 type WindowsShell = "cmd" | "powershell";
 
-export type HookEvent = "SessionStart" | "SessionEnd";
+export type HookEvent = "SessionStart" | "SessionEnd" | "PreCompact";
 
 // The `ocean hook` action each event runs, and what an Ocean hook for it already looks like.
 const EVENTS: Record<
@@ -43,6 +43,12 @@ const EVENTS: Record<
     action: "session-end",
     flags: "",
     pattern: /ocean-session-close|\bhook session-end\b/,
+  },
+  // Claude Code compacts a long conversation: its turns are read for facts first (T-313).
+  PreCompact: {
+    action: "pre-compact",
+    flags: "",
+    pattern: /\bhook pre-compact\b/,
   },
 };
 
@@ -69,7 +75,7 @@ export const HOOK_ADAPTERS: HookAdapter[] = [
     hookClient: "claude",
     file: ".claude/settings.json",
     windowsShell: "powershell",
-    events: ["SessionStart", "SessionEnd"],
+    events: ["SessionStart", "SessionEnd", "PreCompact"],
     group: (command, windows) => ({
       hooks: [
         {
@@ -394,7 +400,7 @@ export async function restoreHooks(options: {
   const conflicts: string[] = [];
   const undo = newBatch();
   for (const entry of entries) {
-    const label = `${entry.client}:${entry.key === "SessionEnd" ? "end-hook" : "hook"}`;
+    const label = `${entry.client}:${entry.key === "SessionEnd" ? "end-hook" : entry.key === "PreCompact" ? "compact-hook" : "hook"}`;
     // Set per attempt: edit() may run the change again when the file moved under it.
     const outcome = { restored: false };
     await edit(

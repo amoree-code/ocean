@@ -17,6 +17,11 @@ import {
   doctorMemoryIndexes,
   syncMemoryIndexes,
 } from "@ocean/brain/memory/index-sync.js";
+import {
+  memorySettings,
+  sessionFactsEnabled,
+  setSessionFacts,
+} from "@ocean/brain/memory/memory-audit.js";
 import { memoryDigest } from "@ocean/brain/memory/memory-digest.js";
 import {
   HARVEST_SOURCES,
@@ -382,6 +387,25 @@ export async function runMemoryCommand(
   if (action === "read") return runRead(args);
   if (action === "neighbors") return runNeighbors(args);
   if (action === "facts") return runFacts(args);
+  if (action === "session-facts") {
+    // Automatic fact capture from session transcripts (T-313): show or set the owner's answer.
+    const choice = args[1];
+    if (choice === "on" || choice === "off")
+      await setSessionFacts(choice === "on");
+    else if (choice !== undefined) {
+      console.error("Usage: ocean memory session-facts [on|off]");
+      process.exitCode = 1;
+      return;
+    }
+    const saved = (await memorySettings()).sessionFacts;
+    console.log(
+      JSON.stringify({
+        sessionFacts: saved === null ? "unset" : saved ? "on" : "off",
+        effective: (await sessionFactsEnabled()) ? "on" : "off",
+      }),
+    );
+    return;
+  }
   if (action === "doctor") {
     const result = await doctorMemoryIndexes();
     if (!result.ok) {
@@ -410,7 +434,7 @@ export async function runMemoryCommand(
     return;
   }
   console.error(
-    "Usage: ocean memory doctor|sync [--apply]|review [list|approve <id> [--to <path>]|reject <id>]|eval <questions.json> [--k N] [--min R]|digest|harvest [--source <id>] [--yes]|import-claude <export-dir> [--yes]|history [path] [--limit N]|restore <id> [--hash <sha256>]|delete <path> --hash <sha256>|purge [--days N] [--yes]|facts <profile> [key] [value]|facts <profile> delete <key>|reindex [--no-vectors]|search <q> [--project <id>|--all] [--json]|read <id|path>|neighbors <id|path> [--depth N] [--project <id>|--all]",
+    "Usage: ocean memory doctor|sync [--apply]|review [list|approve <id> [--to <path>]|reject <id>]|eval <questions.json> [--k N] [--min R]|digest|harvest [--source <id>] [--yes]|import-claude <export-dir> [--yes]|history [path] [--limit N]|restore <id> [--hash <sha256>]|delete <path> --hash <sha256>|purge [--days N] [--yes]|facts <profile> [key] [value]|facts <profile> delete <key>|session-facts [on|off]|reindex [--no-vectors]|search <q> [--project <id>|--all] [--json]|read <id|path>|neighbors <id|path> [--depth N] [--project <id>|--all]",
   );
   process.exitCode = 1;
 }

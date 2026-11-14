@@ -1,0 +1,16 @@
+{
+  "description": "The model invents a fact with a quote the user never said.",
+  "negative": true,
+  "turns": [
+    {
+      "role": "user",
+      "text": "rename the helper to formatDate"
+    },
+    {
+      "role": "assistant",
+      "text": "Renamed."
+    }
+  ],
+  "recorded": "{\"facts\": [{\"title\": \"Prefers TypeScript\", \"content\": \"The user prefers TypeScript over JavaScript.\", \"evidence\": \"I always prefer TypeScript over JavaScript\", \"reason\": \"preference\"}]}",
+  "expected": []
+}
