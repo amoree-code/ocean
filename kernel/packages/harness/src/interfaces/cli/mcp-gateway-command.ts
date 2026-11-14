@@ -1,3 +1,4 @@
+import { MEMORY_INSTRUCTIONS } from "@ocean/core/domain/mcp/memory-contract.js";
 import { marketplacePaths } from "@ocean/market/install/default-marketplace.js";
 import {
   type GatewayClient,
@@ -11,6 +12,8 @@ import { keychainStore } from "@ocean/market/security/secrets.js";
 import { McpClient } from "@ocean/services/infrastructure/mcp/mcp-client.js";
 import { RemoteMcpClient } from "../../infrastructure/mcp/remote-mcp-client.js";
 import { oceanVersion } from "../../version.js";
+
+const OCEAN_SERVER = "dev.ocean/ocean";
 
 // How the gateway (and `ocean mcp status --check`) talks to one member.
 export function gatewayClientFor(
@@ -37,10 +40,11 @@ export function gatewayClientFor(
 export async function runMcpGatewayCommand(args: string[] = []): Promise<void> {
   const log = (line: string) => console.error(`ocean mcp gateway: ${line}`);
   const paths = marketplacePaths();
+  const firstParty = !args.includes("--installed-only");
   const { members, skipped } = await gatewayMembers({
     serversRoot: paths.mcpServers,
     stateRoot: paths.mcpState,
-    firstParty: !args.includes("--installed-only"),
+    firstParty,
     secrets: keychainStore(),
   });
   for (const skip of skipped)
@@ -50,6 +54,11 @@ export async function runMcpGatewayCommand(args: string[] = []): Promise<void> {
     client: (member) => gatewayClientFor(member, version),
     version,
     log,
+    // When Ocean's own server sits behind the gateway and this client may see it, the client
+    // gets Ocean's memory contract in `initialize`, as on a direct connection (T-313).
+    ...(firstParty
+      ? { instructions: MEMORY_INSTRUCTIONS, instructionsMember: OCEAN_SERVER }
+      : {}),
     access: await readGatewayAccess(paths.gatewayAccess),
     clientId: args.includes("--client")
       ? args[args.indexOf("--client") + 1]
