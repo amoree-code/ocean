@@ -181,6 +181,7 @@ import { manageClients, runOnboardCommand } from "./onboard-command.js";
 import { runOperateCommand } from "./operate-command.js";
 import { runProfilesCommand } from "./profiles-command.js";
 import { runPullCommand } from "./pull-command.js";
+import { runningServerFindings } from "./running-server-findings.js";
 import {
   insideFactsCall,
   runSessionFactsCommand,
@@ -1260,6 +1261,7 @@ async function commandDoctor(): Promise<void> {
     ...(await nativeFindings()),
     ...(await browserFindings()),
     ...(await gatewayFindings()),
+    ...(await runningServerFindings()),
   );
   if (process.argv.includes("--json"))
     console.log(JSON.stringify(report, null, 2));

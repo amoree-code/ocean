@@ -2,12 +2,20 @@ import { appendFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { withFileLock } from "@ocean/core/shared/fs-utils.js";
 import { oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
+import { serverVersion } from "./server-version.js";
 
 // The MCP call ledger (T-307): proof, from Ocean's side, that a client's model actually used a
-// tool. One line per call holds exactly {ts, client, tool, ok} — never the arguments, the
-// result, the question or any record content. Owner-only, kept 90 days.
+// tool. One line per call holds exactly {ts, client, tool, ok, version} — never the arguments,
+// the result, the question or any record content. Owner-only, kept 90 days. `version` is the
+// release the answering server process started as (T-313); rows from before it have none.
 
-export type McpCall = { ts: string; client: string; tool: string; ok: boolean };
+export type McpCall = {
+  ts: string;
+  client: string;
+  tool: string;
+  ok: boolean;
+  version?: string;
+};
 
 export const CALL_LEDGER_RETENTION_DAYS = 90;
 // Past this size the oldest half goes, whatever its age.
@@ -15,6 +23,7 @@ const MAX_LEDGER_BYTES = 2_000_000;
 const DAY_MS = 86_400_000;
 
 const NAME = /^[\w .@/-]{1,64}$/;
+const VERSION = /^[\w.+-]{1,32}$/;
 
 export function callLedgerFile(): string {
   return oceanPath(SYSTEM_DIR, "state", "mcp", "calls.jsonl");
@@ -26,12 +35,14 @@ export function ledgerLine(
   tool: string,
   ok: boolean,
   now = new Date(),
+  version?: string,
 ): string {
   const call: McpCall = {
     ts: now.toISOString(),
     client: NAME.test(client) ? client : "unknown",
     tool: NAME.test(tool) ? tool : "unknown",
     ok: ok === true,
+    ...(version && VERSION.test(version) ? { version } : {}),
   };
   return `${JSON.stringify(call)}\n`;
 }
@@ -119,7 +130,8 @@ export async function recordMcpCall(
   try {
     await mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
     await withFileLock(file, async () => {
-      await appendFile(file, ledgerLine(client, tool, ok, now), {
+      const version = await serverVersion();
+      await appendFile(file, ledgerLine(client, tool, ok, now, version), {
         mode: 0o600,
       });
       const size = (await stat(file)).size;
@@ -132,6 +144,29 @@ export async function recordMcpCall(
   } catch {
     // Best effort only.
   }
+}
+
+// Per client, the server version its newest call was answered by, within `days`. A version that
+// differs from what is installed is a server process that started before the upgrade.
+export function runningVersions(
+  calls: McpCall[],
+  now = new Date(),
+  days = 7,
+): { client: string; version: string; last: string }[] {
+  const cutoff = now.getTime() - days * DAY_MS;
+  const newest = new Map<string, McpCall>();
+  for (const call of calls) {
+    if (!call.version || Date.parse(call.ts) < cutoff) continue;
+    const seen = newest.get(call.client);
+    if (!seen || call.ts > seen.ts) newest.set(call.client, call);
+  }
+  return [...newest.values()]
+    .map((call) => ({
+      client: call.client,
+      version: call.version as string,
+      last: call.ts,
+    }))
+    .sort((a, b) => a.client.localeCompare(b.client));
 }
 
 // Tests run many workspaces in one process.

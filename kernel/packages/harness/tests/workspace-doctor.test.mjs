@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
+  INBOX_DIR,
   KNOWLEDGE_DIR,
   PERSONAL_DIR,
   PROJECTS_DIR,
@@ -96,6 +97,10 @@ test("doctor skips links in generated session summaries and installed skill docs
   await put(path.join(SYSTEM_DIR, "sessions", "summaries", "s.md"));
   await put(path.join(SYSTEM_DIR, "skills", "vendored", "README.md"));
   await put(path.join(SYSTEM_DIR, "docs", "mine.md"));
+  // Soft-deleted memory keeps the links it had (T-313).
+  await put(path.join(SYSTEM_DIR, "state", "memory", "trash", "x", "old.md"));
+  // A candidate quotes another tool's memory, links relative to where it came from.
+  await put(path.join(INBOX_DIR, "candidates", "2026-11-06", "c.md"));
   const result = spawnSync(
     process.execPath,
     [path.resolve("dist/main.js"), "doctor", "--json"],
@@ -202,4 +207,56 @@ test("doctor reports a project left flat or uncategorized, and one id in two cat
       false,
       code,
     );
+});
+
+test("doctor warns when a client still runs a server older than the installed release (T-313)", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-doctor-stale-"));
+  for (const dir of [PERSONAL_DIR, KNOWLEDGE_DIR, PROJECTS_DIR, SYSTEM_DIR])
+    await mkdir(path.join(root, dir), { recursive: true });
+  const installed = JSON.parse(
+    await readFile(path.resolve("package.json"), "utf8"),
+  ).version;
+  const ledger = path.join(root, SYSTEM_DIR, "state", "mcp", "calls.jsonl");
+  await mkdir(path.dirname(ledger), { recursive: true });
+  const now = Date.now();
+  const at = (minutes) => new Date(now - minutes * 60_000).toISOString();
+  await writeFile(
+    ledger,
+    `${[
+      {
+        ts: at(30),
+        client: "claude-desktop",
+        tool: "ocean_status",
+        ok: true,
+        version: "0.0.1",
+      },
+      {
+        ts: at(10),
+        client: "codex",
+        tool: "brain_search",
+        ok: true,
+        version: installed,
+      },
+    ]
+      .map((row) => JSON.stringify(row))
+      .join("\n")}\n`,
+  );
+  const result = spawnSync(
+    process.execPath,
+    [path.resolve("dist/main.js"), "doctor", "--json"],
+    {
+      env: {
+        ...process.env,
+        OCEAN_ROOT: root,
+        OCEAN_SKIP_DEPENDENCY_AUDIT: "1",
+      },
+      encoding: "utf8",
+    },
+  );
+  const stale = JSON.parse(result.stdout).findings.filter(
+    (finding) => finding.code === "RUNNING_STALE",
+  );
+  assert.equal(stale.length, 1, JSON.stringify(stale));
+  assert.match(stale[0].message, /claude-desktop last reached Ocean 0\.0\.1/);
+  assert.match(stale[0].message, /restart claude-desktop/);
 });

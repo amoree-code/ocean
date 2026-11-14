@@ -21,6 +21,7 @@ import {
   BRAIN_RECORD_DIRS,
   CHARTER_DIR,
   enginePath,
+  INBOX_DIR,
   oceanEnv,
   oceanPath,
   POLICIES_DIR,
@@ -123,13 +124,22 @@ async function checkStructure(): Promise<Finding[]> {
 // Session summaries are machine-written records that quote links from past chats, and
 // bridge/skills holds installed third-party skill docs whose links are relative to their upstream
 // repo. Neither is authored here, so their links are not ours to fix.
-const UNCHECKED_LINK_DIRS = ["sessions", "skills"];
+// Soft-deleted memory in state/memory/trash keeps the links it had when it was deleted.
+const UNCHECKED_LINK_DIRS = [
+  "sessions",
+  "skills",
+  path.join("state", "memory", "trash"),
+];
 
 async function checkLinks(): Promise<Finding[]> {
   const findings: Finding[] = [];
-  const unchecked = UNCHECKED_LINK_DIRS.map(
-    (name) => path.join(oceanPath(SYSTEM_DIR), name) + path.sep,
-  );
+  const unchecked = [
+    ...UNCHECKED_LINK_DIRS.map(
+      (name) => path.join(oceanPath(SYSTEM_DIR), name) + path.sep,
+    ),
+    // Candidates hold text copied from other tools' memory, links relative to where it was.
+    path.join(oceanPath(INBOX_DIR), "candidates") + path.sep,
+  ];
   for (const root of roots) {
     for (const file of await markdownFiles(oceanPath(root))) {
       if (unchecked.some((prefix) => file.startsWith(prefix))) continue;

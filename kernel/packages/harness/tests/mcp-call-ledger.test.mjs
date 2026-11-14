@@ -10,6 +10,7 @@ import {
   pruneLedgerText,
   readCallLedger,
   resetCallLedgerForTests,
+  runningVersions,
   summarizeCallLedger,
 } from "@ocean/services/infrastructure/mcp/call-ledger.js";
 import { handleOceanMcpRequest } from "@ocean/services/infrastructure/mcp/ocean-server.js";
@@ -46,7 +47,7 @@ async function withRoot(run) {
 
 const SECRET = "ledger-canary-question-text";
 
-test("the call ledger records only {ts, client, tool, ok} — never questions, inputs or results", async () => {
+test("the call ledger records only {ts, client, tool, ok, version} — never questions, inputs or results", async () => {
   await withRoot(async () => {
     await handle({
       jsonrpc: "2.0",
@@ -99,7 +100,19 @@ test("the call ledger records only {ts, client, tool, ok} — never questions, i
         "ok",
         "tool",
         "ts",
+        "version",
       ]);
+    // The release the answering server started as (T-313).
+    assert.match(calls[0].version, /^\d+\.\d+\.\d+/);
+    const status = await handle({
+      jsonrpc: "2.0",
+      id: 7,
+      method: "tools/call",
+      params: { name: "ocean_status", arguments: {} },
+    });
+    const reported = JSON.parse(status.result.content[0].text);
+    assert.equal(reported.installed, reported.version);
+    assert.equal(reported.restartNeeded, false);
     assert.deepEqual(
       calls.map(({ client, tool, ok }) => [client, tool, ok]),
       [
@@ -137,6 +150,55 @@ test("ledger lines are built field by field and sanitize names", () => {
     ok: true,
   });
   assert.equal(JSON.parse(ledgerLine("codex", "brain_read", "yes")).ok, false);
+  assert.equal(
+    JSON.parse(ledgerLine("codex", "brain_read", true, new Date(0), "1.5.0"))
+      .version,
+    "1.5.0",
+  );
+  assert.equal(
+    JSON.parse(ledgerLine("codex", "brain_read", true, new Date(0), "1.5\n; x"))
+      .version,
+    undefined,
+  );
+});
+
+test("runningVersions names each client's newest answering version within the window", () => {
+  const now = new Date("2026-11-14T12:00:00Z");
+  const row = (client, ts, version) => ({
+    ts,
+    client,
+    tool: "t",
+    ok: true,
+    version,
+  });
+  assert.deepEqual(
+    runningVersions(
+      [
+        row("claude-desktop", "2026-11-14T09:00:00.000Z", "1.3.0"),
+        row("claude-desktop", "2026-11-14T10:00:00.000Z", "1.3.0"),
+        row("codex", "2026-11-13T10:00:00.000Z", "1.4.0"),
+        row("codex", "2026-11-14T11:00:00.000Z", "1.5.0"),
+        // Older than a week: that process is not evidence of anything running now.
+        row("cursor", "2026-11-01T10:00:00.000Z", "1.2.0"),
+        // Written before rows carried a version.
+        {
+          ts: "2026-11-14T11:30:00.000Z",
+          client: "gemini",
+          tool: "t",
+          ok: true,
+        },
+      ],
+      now,
+    ),
+    [
+      {
+        client: "claude-desktop",
+        version: "1.3.0",
+        last: "2026-11-14T10:00:00.000Z",
+      },
+      { client: "codex", version: "1.5.0", last: "2026-11-14T11:00:00.000Z" },
+    ],
+  );
 });
 
 test("the ledger keeps 90 days and drops torn lines", () => {

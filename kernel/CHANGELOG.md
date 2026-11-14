@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+- feat(T-313): `ocean doctor` reports `RUNNING_STALE` when a client still runs an Ocean server older than the installed release (restart that client), from the release each call-ledger row now records; `ocean_status` adds `installed` and `restartNeeded`. The link check skips soft-deleted memory and candidates, which quote other tools' text (#276)
+
 ## 1.5.1 (2026-11-14)
 
 - fix(T-313): `ocean mcp gateway` now carries Ocean's memory contract (`instructions` in `initialize`, sent only to a client allowed to see Ocean's own server) and forwards resources and prompts as well as tools, so a client wired through the gateway (the default since 1.5.0) gets the same Ocean as a direct connection (#274)
