@@ -12,6 +12,17 @@ export type McpServerSpec = {
   [field: string]: unknown;
 };
 
+// A remote endpoint Ocean will talk to: https anywhere, plain http only on this machine.
+export function remoteUrlAllowed(url: URL): boolean {
+  if (url.protocol === "https:") return true;
+  return (
+    url.protocol === "http:" &&
+    (url.hostname === "localhost" ||
+      url.hostname === "[::1]" ||
+      /^127(\.\d{1,3}){3}$/.test(url.hostname))
+  );
+}
+
 function records(
   value: unknown,
   field: string,
@@ -59,8 +70,14 @@ export function createMcpAdapter(
             "server.json packages need registryType and identifier",
           );
       for (const item of remotes ?? [])
-        if (typeof item.url !== "string" || !item.url.startsWith("https://"))
-          throw new Error("server.json remotes need an https url");
+        if (
+          typeof item.url !== "string" ||
+          !URL.canParse(item.url) ||
+          !remoteUrlAllowed(new URL(item.url))
+        )
+          throw new Error(
+            "server.json remotes need an https url (or http on loopback)",
+          );
       return record as McpServerSpec;
     },
     async install({ manifest, spec }) {
