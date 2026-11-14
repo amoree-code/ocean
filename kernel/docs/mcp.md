@@ -282,6 +282,21 @@ ocean mcp gateway-config
 Logs go to stderr, which MCP clients keep as the server's log. Each member's own stderr lines
 are labelled `ocean mcp gateway [<capability>]`.
 
+### Everything in one view: `ocean mcp status`
+
+```sh
+ocean mcp status            # every installed server: how it runs, ready or why not, who sees it
+ocean mcp status --check    # also starts each ready server and counts its tools
+ocean mcp status --json
+```
+
+For each installed server it shows how it runs (npm, pypi, oci, remote), whether it can start
+and, if not, why (a missing value, an undeclared permission), each value it takes and where
+that comes from (environment, keychain, missing) with the `ocean market secret set` command for
+a missing one, the gateway-wired clients that see it, and the clients that get their own entry
+for it. Values are never printed. `--check` starts servers for real: a browser server makes
+Chrome ask to allow the connection.
+
 ### Wiring a client through the gateway
 
 A client reaches installed servers either through one `ocean-gateway` entry or through one

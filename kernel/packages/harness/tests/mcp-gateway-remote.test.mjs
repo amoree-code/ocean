@@ -376,3 +376,78 @@ test("a remote member's headers reach its server, and only its server", async ()
     await remotes.close();
   }
 });
+
+// One view of every installed server: what runs, what is missing and how to set it, who sees it.
+test("ocean mcp status shows each installed server, its missing values and a real check", async () => {
+  const remotes = await remoteServers();
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-mcp-status-"));
+  const servers = path.join(root, SYSTEM_DIR, "market", "mcp");
+  await mkdir(servers, { recursive: true });
+  const install = (file, capability, network, server) =>
+    writeFile(
+      path.join(servers, file),
+      JSON.stringify({
+        capability,
+        version: "1.0.0",
+        permissions: {
+          filesystem: { read: [], write: [] },
+          network,
+          env: ["Authorization"],
+          exec: [],
+        },
+        server: { name: capability, ...server },
+      }),
+    );
+  await install("com.example__open.json", "com.example/open", ["127.0.0.1"], {
+    remotes: [{ type: "streamable-http", url: `${remotes.base}/mcp` }],
+  });
+  await install("com.example__keyed.json", "com.example/keyed", ["127.0.0.1"], {
+    remotes: [
+      {
+        type: "streamable-http",
+        url: `${remotes.base}/secure/mcp`,
+        headers: [{ name: "Authorization", isRequired: true, isSecret: true }],
+      },
+    ],
+  });
+  const status = (env = {}) =>
+    new Promise((resolve) => {
+      const child = spawn(
+        process.execPath,
+        [path.resolve("dist/main.js"), "mcp", "status", "--check", "--json"],
+        { env: { ...process.env, OCEAN_ROOT: root, ...env } },
+      );
+      let stdout = "";
+      child.stdout.on("data", (chunk) => {
+        stdout += chunk;
+      });
+      child.on("close", () => resolve(JSON.parse(stdout)));
+    });
+  try {
+    const report = await status();
+    assert.equal(report.gatewayDefault, "per-server");
+    const byName = Object.fromEntries(
+      report.servers.map((server) => [server.name, server]),
+    );
+    assert.deepEqual(byName["com.example/open"].check, { tools: 2 });
+    assert.equal(byName["com.example/open"].ready, true);
+    assert.deepEqual(byName["com.example/open"].perServerClients, []);
+    const keyed = byName["com.example/keyed"];
+    assert.equal(keyed.ready, false);
+    assert.match(keyed.problem, /needs Authorization/);
+    assert.deepEqual(keyed.values, [
+      { name: "Authorization", required: true, from: keyed.values[0].from },
+    ]);
+    assert.ok(["missing", "macOS keychain"].includes(keyed.values[0].from));
+    // From the environment, the same server starts and answers.
+    const withKey = await status({ Authorization: "Bearer k" });
+    const ready = withKey.servers.find(
+      (server) => server.name === "com.example/keyed",
+    );
+    assert.equal(ready.values[0].from, "environment");
+    assert.deepEqual(ready.check, { tools: 2 });
+    assert.ok(!JSON.stringify(withKey).includes("Bearer k"));
+  } finally {
+    await remotes.close();
+  }
+});
