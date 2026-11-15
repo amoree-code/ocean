@@ -7,7 +7,7 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
-- feat(T-314): session records replace the brain-dump: each finished session writes `01-daily/sessions/YYYY-MM/<date>-<time>-<slug>.md` with flat frontmatter (`type: session`, project, provider, status, session_id, date, `distilled: false`) and fixed sections (Goal, Outcome, Decisions, Problems → fixes, Learned, Verification, Files / commits, Next); `ocean memory migrate-sessions [--yes]` moves older `00-inbox/brain-dump/` files there, never deleting one (#PR)
+- feat(T-314): session records replace the brain-dump: each finished session writes `01-daily/sessions/YYYY-MM/<date>-<time>-<slug>.md` with flat frontmatter (`type: session`, project, provider, status, session_id, date, `distilled: false`) and fixed sections (Goal, Outcome, Decisions, Problems → fixes, Learned, Verification, Files / commits, Next); `ocean memory migrate-sessions [--yes]` moves older `00-inbox/brain-dump/` files there, never deleting one (#290)
 
 - feat(T-314): interest discovery for any user: `ocean interests discover [--yes]` maps the dependencies of every registered project through a kernel source registry to release feeds and proposes each new topic as a review candidate; `ocean interests keep|skip <name>` adjusts weight; `ocean interests decay [--weeks N] [--yes]` lowers discovered interests with no signal, never ones the owner wrote (#289)
 
