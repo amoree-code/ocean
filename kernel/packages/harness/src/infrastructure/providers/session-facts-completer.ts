@@ -32,6 +32,10 @@ const PROVIDER: Partial<Record<SessionEndClient, HeadlessProvider>> = {
 
 const TIMEOUT_MS = 90_000;
 
+// The whole task is in the prompt; the system prompt only keeps the answer machine-readable.
+const FACTS_SYSTEM_PROMPT =
+  "You extract durable facts from a conversation transcript. Follow the instructions in the message exactly and answer with JSON only.";
+
 // The model's final answer: the Claude SDK's `result` message, or Codex's last agent message
 // (`codex exec --json`); otherwise the plain text the client printed.
 export function finalText(events: RuntimeEvent[]): string | null {
@@ -77,6 +81,7 @@ export function sessionFactsCompleter(
       prompt,
       cwd,
       readOnly: true,
+      bare: { systemPrompt: FACTS_SYSTEM_PROMPT },
       model,
       timeoutMs: TIMEOUT_MS,
       env: oceanEnvPair(FACTS_CALL_ENV, "1"),
