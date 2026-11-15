@@ -10,6 +10,8 @@
     "02-personal/MEMORY.md": "default",
     "02-personal/goals/.gitkeep": "keep",
     "02-personal/identity/.gitkeep": "keep",
+    "02-personal/education/study/study.base": "default",
+    "02-personal/milestones/milestones.base": "default",
     "02-personal/people/people.base": "default",
     "02-personal/preferences/.gitkeep": "keep",
     "03-professional/.gitkeep": "keep",
