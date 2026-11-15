@@ -239,7 +239,8 @@ export async function buildBrief(options: {
     .slice(0, limit)
     .map(({ rank: _rank, ...item }) => item);
   const resurface = options.weekly ? null : await pickResurface(options.date);
-  if (options.dryRun || !items.length)
+  // A day with nothing new still gets its Resurface line.
+  if (options.dryRun || (!items.length && !resurface))
     return { file: null, items, failedSources, resurface };
   const relative = `${BRIEFS_DIR}/${options.date}${options.weekly ? "-weekly" : ""}.md`;
   const lines = items.map(

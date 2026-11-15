@@ -67,6 +67,20 @@ test("telemetry groups the same error across sessions and flags failing provider
     ),
     [],
   );
+  // Sessions running a moment ago are not failures; ones stuck for a day are.
+  const running = (createdAt) =>
+    sessions.map((session) => ({ ...session, status: "running", createdAt }));
+  const now = Date.parse("2026-11-16T11:00:00.000Z");
+  const since = "2026-11-01T00:00:00.000Z";
+  assert.deepEqual(
+    analyzeSessions(running("2026-11-16T10:00:00.000Z"), () => [], since, now),
+    [],
+  );
+  assert.equal(
+    analyzeSessions(running("2026-11-15T10:00:00.000Z"), () => [], since, now)
+      .length,
+    1,
+  );
 });
 
 test("telemetry findings become todo candidates that land in the backlog only on approval", async () => {

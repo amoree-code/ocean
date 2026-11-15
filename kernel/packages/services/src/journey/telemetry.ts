@@ -11,6 +11,7 @@ import type {
 // left unfinished.
 
 const MIN_REPEATS = 3;
+const STUCK_AFTER_MS = 6 * 60 * 60 * 1000;
 const ERROR_TYPES = new Set(["error", "provider_blocked", "closeout_warning"]);
 
 // The same failure with different ids, paths or numbers counts as one.
@@ -30,6 +31,7 @@ export function analyzeSessions(
   sessions: Session[],
   eventsOf: (sessionId: string) => SessionEvent[],
   sinceIso: string,
+  now = Date.now(),
 ): TelemetryFinding[] {
   const recent = sessions.filter((session) => session.createdAt >= sinceIso);
   const errors = new Map<string, Set<string>>();
@@ -53,8 +55,11 @@ export function analyzeSessions(
   for (const session of recent) {
     const entry = byProvider.get(session.provider) ?? { failed: 0, total: 0 };
     entry.total++;
-    if (session.status === "failed" || session.status === "running")
-      entry.failed++;
+    // A running session counts only once it has run longer than any real session would.
+    const stuck =
+      session.status === "running" &&
+      now - Date.parse(session.createdAt) > STUCK_AFTER_MS;
+    if (session.status === "failed" || stuck) entry.failed++;
     byProvider.set(session.provider, entry);
   }
   for (const [provider, { failed, total }] of byProvider)

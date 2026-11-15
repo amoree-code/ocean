@@ -150,3 +150,26 @@ test("daily brief: high priority only, keywords narrow general feeds, ≤5, neve
     else process.env.OCEAN_ROOT = previous;
   }
 });
+
+test("a day with no new items still writes its Resurface line", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-brief-resurface-"));
+  const previous = process.env.OCEAN_ROOT;
+  process.env.OCEAN_ROOT = root;
+  try {
+    await mkdir(path.join(root, "07-notes"), { recursive: true });
+    await writeFile(path.join(root, "07-notes", "idea.md"), "idea\n");
+    const result = await buildBrief({
+      date: "2026-11-16",
+      fetchText: async () => null,
+    });
+    assert.equal(result.items.length, 0);
+    assert.equal(result.file, "01-daily/briefs/2026-11-16.md");
+    assert.match(
+      await readFile(path.join(root, result.file), "utf8"),
+      /## Resurface\n\n- 07-notes\/idea\.md/,
+    );
+  } finally {
+    if (previous === undefined) delete process.env.OCEAN_ROOT;
+    else process.env.OCEAN_ROOT = previous;
+  }
+});
