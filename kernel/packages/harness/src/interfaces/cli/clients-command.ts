@@ -27,6 +27,11 @@ import {
   verifyClient,
 } from "../../application/clients/clients.js";
 import {
+  applyDesktopWatcher,
+  planDesktopWatcher,
+  restoreDesktopWatcher,
+} from "../../application/clients/desktop-watcher.js";
+import {
   applyHooks,
   planHooks,
   restoreHooks,
@@ -126,6 +131,13 @@ export async function runClientsCommand(args: string[]): Promise<void> {
               plugin.reason ? ` (${plugin.reason})` : ""
             }`,
           );
+      if (action === "plan")
+        for (const watcher of await planDesktopWatcher())
+          console.log(
+            `${"claude-desktop watcher".padEnd(15)} ${watcher.status.padEnd(14)} ${watcher.file} chat capture${
+              watcher.reason ? ` (${watcher.reason})` : ""
+            }`,
+          );
       return;
     }
     result =
@@ -136,6 +148,7 @@ export async function runClientsCommand(args: string[]): Promise<void> {
             hooks: await planHooks(),
             plugins: await planOpencodePlugin(),
             native: await planNative(),
+            watcher: await planDesktopWatcher(),
           };
   } else if (action === "apply") {
     const clients = values("--client");
@@ -160,9 +173,14 @@ export async function runClientsCommand(args: string[]): Promise<void> {
           plan.status === "change" &&
           (!clients.length || clients.includes(plan.client)),
       );
+      const watcher = (await planDesktopWatcher()).filter(
+        (plan) =>
+          plan.status === "change" &&
+          (!clients.length || clients.includes(plan.client)),
+      );
       console.log(
         JSON.stringify(
-          { dryRun: true, pending, hooks, plugins, native },
+          { dryRun: true, pending, hooks, plugins, native, watcher },
           null,
           2,
         ),
@@ -172,7 +190,7 @@ export async function runClientsCommand(args: string[]): Promise<void> {
     }
     const selected = clients.length ? clients : undefined;
     const applied = await applyClients({ clients: selected });
-    result = {
+    const appliedAll = {
       ...applied,
       hooks: (await applyHooks({ clients: selected, batch: applied.batch }))
         .results,
@@ -182,6 +200,13 @@ export async function runClientsCommand(args: string[]): Promise<void> {
       native: (await applyNative({ clients: selected, batch: applied.batch }))
         .results,
       sessionFacts: await sessionFactsAnswer(values("--session-facts")[0]),
+    };
+    // After the session-facts answer: the watcher exists only for capture that is on (T-315).
+    result = {
+      ...appliedAll,
+      watcher: (
+        await applyDesktopWatcher({ clients: selected, batch: applied.batch })
+      ).results,
     };
   } else if (action === "verify") {
     const ids = rest.filter((arg) => !arg.startsWith("--"));
@@ -269,6 +294,7 @@ export async function runClientsCommand(args: string[]): Promise<void> {
           hooks: await restoreHooks({ batch: restored.batch }),
           plugins: await restoreOpencodePlugin({ batch: restored.batch }),
           native: await restoreNative({ batch: restored.batch }),
+          watcher: await restoreDesktopWatcher({ batch: restored.batch }),
         }
       : restored;
   } else {
