@@ -9,5 +9,30 @@
     "career": "02-personal/career/",
     "schedule": "02-personal/schedule/",
     "project": "04-projects/{project}/memory/"
+  },
+  "records": {
+    "capture": "00-inbox/captures/",
+    "daily": "01-daily/",
+    "session": "01-daily/sessions/",
+    "brief": "01-daily/briefs/",
+    "weekly": "01-daily/weekly/",
+    "note": "07-notes/",
+    "decision": "05-knowledge/decisions/",
+    "lesson": "05-knowledge/lessons/",
+    "solution": "05-knowledge/solutions/",
+    "failure": "05-knowledge/failures/",
+    "discovery": "05-knowledge/discoveries/",
+    "architecture": "05-knowledge/architecture/",
+    "research": "05-knowledge/research/",
+    "result": "05-knowledge/results/",
+    "person": "02-personal/people/",
+    "interest": "02-personal/interests/",
+    "milestone": "02-personal/milestones/",
+    "study": "02-personal/education/study/"
+  },
+  "aliases": {
+    "experiential": "lesson",
+    "technical-solution": "solution",
+    "task-result": "result"
   }
 }

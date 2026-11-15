@@ -1,3 +1,11 @@
+---
+type: decision
+status: current
+created: {{date}}
+updated: {{date}}
+tags: []
+---
+
 ### <Decision title>
 **Date:** YYYY-MM-DD
 **Context:** <what forced a choice>

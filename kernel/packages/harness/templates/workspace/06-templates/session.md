@@ -1,3 +1,13 @@
+---
+type: session
+project:
+provider:
+status: done
+date: {{date}}
+distilled: false
+tags: []
+---
+
 # Session — <topic>
 
 **Date:** YYYY-MM-DD HH:MM
