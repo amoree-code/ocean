@@ -13,6 +13,7 @@ import {
   brainRead,
   brainSearch,
 } from "@ocean/brain/brain/brain-service.js";
+import { migrateBrainDumps } from "@ocean/brain/memory/brain-dump.js";
 import { flattenWorkspace } from "@ocean/brain/memory/frontmatter-flatten.js";
 import {
   doctorMemoryIndexes,
@@ -383,6 +384,14 @@ export async function runMemoryCommand(
     return;
   }
   if (action === "eval") return runEval(args);
+  if (action === "migrate-sessions") {
+    // T-314: brain-dump files become session records in 01-daily/sessions/YYYY-MM/.
+    const result = await migrateBrainDumps({ apply: args.includes("--yes") });
+    console.log(JSON.stringify(result, null, 2));
+    if (!args.includes("--yes"))
+      console.error("Dry run: pass --yes to move them (never deleted).");
+    return;
+  }
   if (action === "flatten") {
     // T-314: move nested `metadata:` frontmatter to top level, for Obsidian Properties/Bases.
     const result = await flattenWorkspace({ apply: args.includes("--yes") });

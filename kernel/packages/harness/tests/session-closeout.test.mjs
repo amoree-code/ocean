@@ -11,12 +11,14 @@ import { finalizeSession } from "@ocean/loop/sessions/session-closeout.js";
 // Each test uses a fresh temp OCEAN_ROOT, so at most one brain-dump file
 // exists at a time — no need to match by session id, which (deliberately)
 // no longer appears in the filename.
+// Session records (T-314) live in 01-daily/sessions/YYYY-MM/.
 async function readBrainDump(root) {
-  const files = await readdir(path.join(root, INBOX_DIR, "brain-dump")).catch(
-    () => [],
-  );
-  if (!files.length) return null;
-  return readFile(path.join(root, INBOX_DIR, "brain-dump", files[0]), "utf8");
+  const base = path.join(root, DAILY_DIR, "sessions");
+  for (const month of await readdir(base).catch(() => [])) {
+    const files = await readdir(path.join(base, month));
+    if (files.length) return readFile(path.join(base, month, files[0]), "utf8");
+  }
+  return null;
 }
 
 test("finalizes a session with a bounded human summary, metadata, and handoff", async () => {
@@ -86,7 +88,7 @@ test("finalizes a session with a bounded human summary, metadata, and handoff", 
   const brainDump = await readBrainDump(root);
   assert.match(brainDump, /# Review the session closeout behavior/);
   assert.doesNotMatch(brainDump, new RegExp(providerSecret));
-  assert.match(brainDump, /Session id: closeout-session-1/);
+  assert.match(brainDump, /session_id: "closeout-session-1"/);
 
   assert.equal(saved.summaryPath, result.summaryPath);
   assert.equal(saved.summaryHash, result.summaryHash);
@@ -208,8 +210,8 @@ test("still logs a generic-title session and its brain-dump when it has a real g
   assert.match(daily, /## Work log\n- .*claude session — completed/);
 
   const brainDump = await readBrainDump(root);
-  assert.match(brainDump, /^# project/);
-  assert.match(brainDump, /Session id: closeout-session-real-project/);
+  assert.match(brainDump, /^# project$/m);
+  assert.match(brainDump, /session_id: "closeout-session-real-project"/);
 
   store.close();
   delete process.env.OCEAN_ROOT;

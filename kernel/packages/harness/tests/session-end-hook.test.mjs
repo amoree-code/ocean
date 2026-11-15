@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { localDate } from "@ocean/core/shared/local-date.js";
-import { INBOX_DIR, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
+import { DAILY_DIR, INBOX_DIR, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import {
   claudeSessionEndHook,
   readTranscriptEvents,
@@ -167,16 +167,17 @@ test("claudeSessionEndHook registers a desktop session from its transcript and r
   assert.match(summary, /wire the brain-dump hook/);
   assert.match(summary, /Wired it up\./);
 
-  const brainDumpFiles = await readdir(
-    path.join(root, INBOX_DIR, "brain-dump"),
-  );
+  // The session record (T-314), in 01-daily/sessions/YYYY-MM/.
+  const sessions = path.join(root, DAILY_DIR, "sessions");
+  const [month] = await readdir(sessions);
+  const brainDumpFiles = await readdir(path.join(sessions, month));
   assert.equal(brainDumpFiles.length, 1);
   const brainDump = await readFile(
-    path.join(root, INBOX_DIR, "brain-dump", brainDumpFiles[0]),
+    path.join(sessions, month, brainDumpFiles[0]),
     "utf8",
   );
   assert.match(brainDump, /wire the brain-dump hook/);
-  assert.match(brainDump, /Session id: desktop-hook-session-1/);
+  assert.match(brainDump, /session_id: "desktop-hook-session-1"/);
 
   delete process.env.OCEAN_ROOT;
 });

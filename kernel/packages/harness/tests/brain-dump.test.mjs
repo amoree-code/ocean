@@ -5,7 +5,6 @@ import path from "node:path";
 import test from "node:test";
 import { writeBrainDump } from "@ocean/brain/memory/brain-dump.js";
 import { localDate, localTime } from "@ocean/core/shared/local-date.js";
-import { INBOX_DIR } from "@ocean/core/shared/paths.js";
 
 // The session's start on the machine's clock (T-297), as the file name stamps it.
 const started = new Date("2026-09-21T15:52:00.000Z");
@@ -118,7 +117,9 @@ test("appends a numeric suffix instead of overwriting when two sessions land on 
     `${stamp}-fix-the-login-bug-2.md`,
   );
 
-  const files = await readdir(path.join(root, INBOX_DIR, "brain-dump"));
+  const files = await readdir(
+    path.join(root, path.dirname(first.brainDumpPath)),
+  );
   assert.equal(files.length, 2);
 
   delete process.env.OCEAN_ROOT;
@@ -155,7 +156,7 @@ test("mirrors task-observer signals under a Signals section when present, and om
     path.join(root, withSignals.brainDumpPath),
     "utf8",
   );
-  assert.match(contentWithSignals, /## Signals/);
+  assert.match(contentWithSignals, /## Learned/);
   assert.match(
     contentWithSignals,
     /- \[repeated-correction\] Don't mock the database in integration tests \(confidence 0\.8\)/,
@@ -173,7 +174,47 @@ test("mirrors task-observer signals under a Signals section when present, and om
     path.join(root, withoutSignals.brainDumpPath),
     "utf8",
   );
-  assert.doesNotMatch(contentWithoutSignals, /## Signals/);
+  assert.doesNotMatch(contentWithoutSignals, /## Learned/);
+  // A session record: flat frontmatter, the fixed sections, in 01-daily/sessions/YYYY-MM/.
+  assert.match(
+    withoutSignals.brainDumpPath,
+    /^01-daily\/sessions\/\d{4}-\d{2}\//,
+  );
+  assert.match(
+    contentWithoutSignals,
+    /^---\ntype: session\nproject: ".*"\nprovider: ".*"\nstatus: (completed|failed)\nsession_id: "session-no-signals"\ndate: \d{4}-\d{2}-\d{2}\ntags: \[\]\ndistilled: false\n---\n/,
+  );
+  for (const heading of ["## Goal", "## Outcome", "## Verification"])
+    assert.ok(contentWithoutSignals.includes(heading), heading);
 
+  delete process.env.OCEAN_ROOT;
+});
+
+test("migrate-sessions moves brain-dump files into session records, never deleting one", async () => {
+  const { migrateBrainDumps } = await import(
+    "@ocean/brain/memory/brain-dump.js"
+  );
+  const { mkdir, writeFile } = await import("node:fs/promises");
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-migrate-sessions-"));
+  process.env.OCEAN_ROOT = root;
+  const dump = path.join(root, "00-inbox", "brain-dump");
+  await mkdir(dump, { recursive: true });
+  await writeFile(
+    path.join(dump, "2026-10-03-0915-fix-login.md"),
+    "# Fix login\n",
+  );
+  await writeFile(path.join(dump, "notes.md"), "# undated\n");
+  const target = "01-daily/sessions/2026-10/2026-10-03-0915-fix-login.md";
+  assert.deepEqual(await migrateBrainDumps({ apply: false }), {
+    moved: [target],
+    skipped: [],
+  });
+  assert.equal((await readdir(dump)).length, 2);
+  await migrateBrainDumps({ apply: true });
+  assert.equal(
+    await readFile(path.join(root, target), "utf8"),
+    "---\ntype: session\ndate: 2026-10-03\nstatus: legacy\ndistilled: false\n---\n\n# Fix login\n",
+  );
+  assert.deepEqual(await readdir(dump), ["notes.md"]);
   delete process.env.OCEAN_ROOT;
 });
