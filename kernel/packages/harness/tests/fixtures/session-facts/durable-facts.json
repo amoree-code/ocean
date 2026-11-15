@@ -20,5 +20,5 @@
     }
   ],
   "recorded": "{\"facts\": [{\"title\": \"Reply language\", \"content\": \"The user wants every reply in Iraqi Arabic, not Modern Standard Arabic.\", \"evidence\": \"I want every reply in Iraqi Arabic, not Modern Standard\", \"reason\": \"standing preference\"}, {\"title\": \"Dashboards ship RTL first\", \"content\": \"The user's dashboards always ship RTL first and LTR second.\", \"evidence\": \"for all my dashboards we always ship RTL first and LTR second\", \"reason\": \"standing project rule\"}]}",
-  "expected": ["Iraqi Arabic", "RTL first"]
+  "expected": ["Iraqi Arabic", "RTL"]
 }

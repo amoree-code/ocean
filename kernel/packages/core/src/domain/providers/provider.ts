@@ -34,6 +34,10 @@ export type ProviderRequest = {
   // Directories outside cwd that the prompt points the provider at (skill folders, context
   // references). Workspace-restricted providers are granted read access to them.
   readDirectories?: string[];
+  // A one-shot text call that needs none of the client's context (T-313: session fact capture):
+  // only this system prompt, no settings files or CLAUDE.md, no tools, no MCP servers, nothing
+  // saved as a session. Without it a Claude call loads ~30k tokens of context before the prompt.
+  bare?: { systemPrompt: string };
 };
 
 // A text completion over an OpenAI-compatible HTTP API (T-245 Phase 4). The endpoint and the
