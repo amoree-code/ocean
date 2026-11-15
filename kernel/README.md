@@ -148,6 +148,7 @@ prints its usage and never runs it. To hand `--help` to a wrapped client, put it
 | `ocean note` | `ocean note "<text>"`: capture a thought into `00-inbox/captures/` with frontmatter | Writes |
 | `ocean brief` | write the daily or weekly brief from your interests' feeds | Writes |
 | `ocean interests` | propose interests from your projects (as candidates), decay, keep/skip | Writes |
+| `ocean distill` | `--week`: a weekly digest, decisions and lessons as candidates | Writes |
 | `ocean handoff` | hand work from one session or client to another | Reads; `create` writes |
 | `ocean daily` | prepare today's note | Reads; `--apply` writes |
 | `ocean skill` | sync, add, review and learn skills | Reads; `add`, `review`, `learn`, `sync` write |

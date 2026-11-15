@@ -13,7 +13,7 @@ const commandGroups = [
   ],
   [
     "Knowledge",
-    "memory, pull, desktop, observe, capture, note, brief, interests, handoff, idea, daily, skill, catalog",
+    "memory, pull, desktop, observe, capture, note, brief, interests, distill, handoff, idea, daily, skill, catalog",
   ],
   ["Integrations", "obsidian, hook, migrate, layout, env"],
 ] as const;
@@ -161,6 +161,10 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
   interests: [
     "Propose interests from your projects' dependencies (as candidates), decay unused ones, record keep/skip.",
     "ocean interests discover [--yes] | decay [--weeks N] [--yes] | keep <name> | skip <name>",
+  ],
+  distill: [
+    "Distill a week: digest in 01-daily/weekly/, decisions and lessons as candidates, records marked distilled.",
+    "ocean distill --week [--date YYYY-MM-DD] [--yes]",
   ],
   note: [
     "Capture a thought into 00-inbox/captures with the capture frontmatter.",

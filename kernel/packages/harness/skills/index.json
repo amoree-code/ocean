@@ -52,5 +52,11 @@
     "description": "Turn implementation claims into focused, repeatable verification checks.",
     "version": "1.0.0",
     "category": "core"
+  },
+  {
+    "name": "weekly-review",
+    "description": "Walk the owner through the week to inbox zero - the weekly digest, pending memory candidates, and inbox captures - deciding each item with him.",
+    "version": "1.0.0",
+    "category": "core"
   }
 ]

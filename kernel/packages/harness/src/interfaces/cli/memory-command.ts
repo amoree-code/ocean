@@ -19,6 +19,7 @@ import {
   doctorMemoryIndexes,
   syncMemoryIndexes,
 } from "@ocean/brain/memory/index-sync.js";
+import { archiveRetiredLessons } from "@ocean/brain/memory/lessons.js";
 import {
   memorySettings,
   sessionFactsEnabled,
@@ -384,6 +385,16 @@ export async function runMemoryCommand(
     return;
   }
   if (action === "eval") return runEval(args);
+  if (action === "archive-retired") {
+    // T-314: retired lessons out of the index, into lessons/archive/ (kept).
+    const moved = await archiveRetiredLessons({
+      apply: args.includes("--yes"),
+    });
+    console.log(JSON.stringify({ moved: moved.length, files: moved }, null, 2));
+    if (!args.includes("--yes"))
+      console.error("Dry run: pass --yes to move them to lessons/archive/.");
+    return;
+  }
   if (action === "migrate-sessions") {
     // T-314: brain-dump files become session records in 01-daily/sessions/YYYY-MM/.
     const result = await migrateBrainDumps({ apply: args.includes("--yes") });

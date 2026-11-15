@@ -288,6 +288,9 @@ export const STORE_DIR = {
   memory: PERSONAL_DIR,
   knowledge: KNOWLEDGE_DIR,
   notes: NOTES_DIR,
+  // Session records and briefs (T-314), searchable beside memory and knowledge.
+  sessions: `${DAILY_DIR}/sessions`,
+  briefs: `${DAILY_DIR}/briefs`,
 } as const;
 
 // Brain-index records are "<store>/<path inside store>" ("memory/x.md", "knowledge/decisions/y.md").
