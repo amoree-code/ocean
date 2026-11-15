@@ -287,13 +287,17 @@ async function runReview(args: string[]): Promise<void> {
   if ((verb === "approve" || verb === "reject") && id) {
     const result =
       verb === "approve"
-        ? await approveCandidate({ id, to: flagValue(args, "--to") })
+        ? await approveCandidate({
+            id,
+            to: flagValue(args, "--to"),
+            type: flagValue(args, "--type"),
+          })
         : await rejectCandidate(id);
     console.log(JSON.stringify(result, null, 2));
     return;
   }
   console.error(
-    "Usage: ocean memory review [list] [--project <id>] [--json] | approve <id> [--to <record path>] | reject <id>",
+    "Usage: ocean memory review [list] [--project <id>] [--json] | approve <id> [--type <fact type> | --to <record path>] | reject <id>",
   );
   process.exitCode = 1;
 }

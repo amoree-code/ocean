@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+- feat(T-314): a session fact arrives with the place it belongs: the extraction asks the model for a fact type, and one routing table (`brain/src/memory/routing.json`: identity, preference, person, interest, goal, education, career, schedule, project) turns it into the candidate's `target`, one file per fact named after its title; a project fact goes to that project's `memory/` only when the project is registered. `ocean memory review approve <id>` needs no `--to` for such a candidate, and `--type <type>` routes one that has no target through the same table (#PR)
+
 - feat(T-315): `ocean desktop capture --export <folder>` reads the official claude.ai data export's `conversations.json`, so a conversation from the web or the phone reaches the same capture, with the same cursor (message times): a conversation already read from the app is not read again. `docs/mcp.md` gets a Watcher tier for Claude Desktop chat and explains the local store, its limits and `DESKTOP_CHAT_UNREADABLE` (#283)
 
 - feat(T-315): Claude Desktop chat is captured with no command run: `ocean clients apply` adds a per-user LaunchAgent (macOS, Claude Desktop installed, session facts on) that runs `ocean desktop capture` when the app writes its chat store (at most every 5 minutes) and every 15 minutes. It is journaled and loaded with `launchctl`; `ocean clients restore` unloads and removes it, and a plist Ocean did not write is never touched. `ocean doctor` reports `DESKTOP_WATCHER_MISSING`, the last run, and `DESKTOP_CHAT_UNREADABLE` when an app update changed the store's format (#282)
