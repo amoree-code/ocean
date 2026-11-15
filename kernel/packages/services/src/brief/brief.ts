@@ -112,9 +112,10 @@ export function parseFeed(xml: string): FeedItem[] {
     const date = decode(
       tag("updated") ?? tag("published") ?? tag("pubDate") ?? "",
     );
-    if (title && /^https:\/\//.test(link))
+    // A link that could break out of the markdown line it is written into is dropped.
+    if (title && /^https:\/\/[^\s()<>[\]]+$/.test(link))
       items.push({
-        title: title.slice(0, 200),
+        title: title.replace(/[<>[\]]/g, "").slice(0, 200),
         link,
         date: Number.isNaN(Date.parse(date))
           ? ""
@@ -163,7 +164,7 @@ export async function buildBrief(options: {
   const fetchText = options.fetchText ?? defaultFetch;
   const seen = await readSeen();
   const failedSources: string[] = [];
-  const found: BriefItem[] = [];
+  const found: (BriefItem & { rank: number })[] = [];
   const order = { high: 0, medium: 1, low: 2 };
   const interests = (await listInterests())
     .filter((interest) => options.weekly || interest.priority === "high")
@@ -188,20 +189,20 @@ export async function buildBrief(options: {
           !keywords.some((word) => item.title.toLowerCase().includes(word))
         )
           continue;
-        found.push({ ...item, interest: interest.name });
+        found.push({
+          ...item,
+          interest: interest.name,
+          rank: order[interest.priority],
+        });
       }
     }
   }
   const limit = options.weekly ? WEEKLY_LIMIT : DAILY_LIMIT;
-  const rank = new Map(interests.map((i) => [i.name, order[i.priority]]));
   // Higher priority first, then newest; feed order breaks ties (Array.sort is stable).
   const items = [...found]
-    .sort(
-      (a, b) =>
-        (rank.get(a.interest) ?? 2) - (rank.get(b.interest) ?? 2) ||
-        b.date.localeCompare(a.date),
-    )
-    .slice(0, limit);
+    .sort((a, b) => a.rank - b.rank || b.date.localeCompare(a.date))
+    .slice(0, limit)
+    .map(({ rank: _rank, ...item }) => item);
   if (options.dryRun || !items.length)
     return { file: null, items, failedSources };
   const relative = `${BRIEFS_DIR}/${options.date}${options.weekly ? "-weekly" : ""}.md`;
@@ -210,10 +211,15 @@ export async function buildBrief(options: {
       `- **${item.interest}** — [${item.title.replace(/[[\]]/g, "")}](${item.link})${item.date ? ` (${item.date.slice(0, 10)})` : ""}`,
   );
   const file = oceanPath(relative);
+  // A second run the same day adds to that day's brief; the items already there stay.
+  const earlier = (await readFile(file, "utf8").catch(() => ""))
+    .split("\n")
+    .filter((line) => line.startsWith("- **"));
+  const all = [...earlier, ...lines];
   await mkdir(path.dirname(file), { recursive: true });
   await atomicWrite(
     file,
-    `---\ntype: brief\ndate: ${options.date}\ncadence: ${options.weekly ? "weekly" : "daily"}\nitems: ${items.length}\n---\n\n# Brief — ${options.date}\n\n${lines.join("\n")}\n`,
+    `---\ntype: brief\ndate: ${options.date}\ncadence: ${options.weekly ? "weekly" : "daily"}\nitems: ${all.length}\n---\n\n# Brief — ${options.date}\n\n${all.join("\n")}\n`,
   );
   for (const item of items) seen[itemKey(item)] = options.date;
   await mkdir(path.dirname(seenFile()), { recursive: true });

@@ -42,6 +42,14 @@ test("parseFeed reads Atom and RSS, keeps https links only, decodes entities", (
   );
   assert.equal(parseFeed(rss([["a", "javascript:alert(1)", ""]])).length, 0);
   assert.equal(
+    parseFeed(rss([["a", "https://x.dev/a) [evil](https://e.dev", ""]])).length,
+    0,
+  );
+  assert.equal(
+    parseFeed(rss([["&lt;img src=x&gt; [b]", "https://x.dev/b", ""]]))[0].title,
+    "img src=x b",
+  );
+  assert.equal(
     parseFeed(
       rss([["MCP news", "https://b.dev/1", "Mon, 09 Nov 2026 10:00:00 GMT"]]),
     )[0].date,
@@ -111,6 +119,20 @@ test("daily brief: high priority only, keywords narrow general feeds, ≤5, neve
     assert.deepEqual(
       second.items.map((item) => item.link),
       ["https://gh.dev/r/2", "https://gh.dev/r/1"],
+    );
+    // A second run the same day keeps the first run's items in the file.
+    feeds["https://github.com/anthropics/claude-code/releases.atom"] += atom([
+      ["v1.9", "https://gh.dev/r/9", "2026-11-09T00:00:00Z"],
+    ]);
+    const rerun = await buildBrief({ date: "2026-11-17", fetchText });
+    assert.deepEqual(
+      rerun.items.map((item) => item.link),
+      ["https://gh.dev/r/9"],
+    );
+    const day = await readFile(path.join(root, rerun.file), "utf8");
+    assert.match(day, /items: 3\n/);
+    assert.ok(
+      day.includes("https://gh.dev/r/1") && day.includes("https://gh.dev/r/9"),
     );
     const dry = await buildBrief({
       date: "2026-11-18",
