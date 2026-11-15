@@ -124,6 +124,13 @@ you use, English and Arabic). The `people_lookup` MCP tool matches a name exactl
 title or alias — and `02-personal/people/people.base` lists them in Obsidian. Record
 work-relevant facts only; nothing sensitive about other people.
 
+Interests live one per file in `02-personal/interests/` (`type: interest`, `priority`,
+`keywords`, `sources`). A source is an `https://` RSS/Atom feed or `github:<owner>/<repo>` (its
+releases). `ocean brief` writes `01-daily/briefs/<date>.md`: high-priority interests, five
+items at most, newest first; `--weekly` takes every interest, fifteen at most. A general feed
+is narrowed by the interest's keywords; a releases feed is taken whole. A seen-ledger in
+`bridge/state/brief/` keeps an item from coming back; a source that fails is listed, not fatal.
+
 ## Task completion and archive
 
 

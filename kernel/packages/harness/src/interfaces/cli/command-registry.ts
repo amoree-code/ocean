@@ -159,6 +159,7 @@ import {
   wrapperStatus,
 } from "../../infrastructure/wrappers/wrapper-manager.js";
 import { runAuthCommand } from "./auth-command.js";
+import { runBriefCommand } from "./brief-command.js";
 import { runBrowserCommand } from "./browser-command.js";
 import { browserFindings } from "./browser-findings.js";
 import { runBrowserServiceCommand } from "./browser-service-command.js";
@@ -1593,6 +1594,7 @@ export const commandRegistry: Record<string, CommandHandler> = {
   operate: commandOperate,
   idea: commandIdea,
   note: () => runNoteCommand(process.argv.slice(3)),
+  brief: () => runBriefCommand(process.argv.slice(3)),
   daily: commandDaily,
   schedule: commandSchedule,
   loop: commandLoop,
