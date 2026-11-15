@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+- feat(T-314): flat frontmatter, so Obsidian Properties and Bases can read a record: `ocean memory flatten [--yes]` moves a nested `metadata:` block to top level (a key already top-level keeps its value; originals are copied to `bridge/archive/` first; `07-notes` is never touched), and session promotion and capture now write flat frontmatter (#284)
+
 - feat(T-314): `ocean doctor` warns `INBOX_STALE` when inbox items sat more than 7 days, counted by folder (the inbox index and the clients' native memory staging are not items) (#284)
 
 - feat(T-314): `07-notes/` is the owner's own notes root: `ocean setup` creates it, a memory write under it is refused as `PROTECTED`, and the brain index reads it as a `notes` store whose hits carry `origin: "human"` and rank above agent-written records on the same question (others carry `origin: "agent"`). A workspace made before it gets a `ROOT_MISSING` warning, not a failure (#284)

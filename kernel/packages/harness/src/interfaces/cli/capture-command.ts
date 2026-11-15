@@ -161,7 +161,7 @@ async function promote(
   await mkdir(path.dirname(file), { recursive: true });
   await writeFile(
     file,
-    `---\nname: ${slug}-${item.captureId}\ndescription: Candidate promoted from a reviewed session input\nmetadata:\n  type: ${match[1] === "results" ? "task-result" : match[1].slice(0, -1)}\n  domain: ${match[1]}\n  status: current\n  verification: unverified\n  source: session-capture-${item.captureId}\n---\n\n${item.content.trim()}\n`,
+    `---\nname: ${slug}-${item.captureId}\ndescription: Candidate promoted from a reviewed session input\ntype: ${match[1] === "results" ? "task-result" : match[1].slice(0, -1)}\ndomain: ${match[1]}\nstatus: current\nverification: unverified\nsource: session-capture-${item.captureId}\n---\n\n${item.content.trim()}\n`,
   );
   await syncMemoryIndexes(true);
 }
