@@ -7,7 +7,7 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
-- feat(T-314): people, one file each in `02-personal/people/` (`type: person`, aliases in English and Arabic): the read-only `people_lookup` MCP tool matches a name exactly (file name, title or alias; case, spacing and Unicode form ignored; never part of a name), and the workspace template ships `people.base` (#PR)
+- feat(T-314): people, one file each in `02-personal/people/` (`type: person`, aliases in English and Arabic): the read-only `people_lookup` MCP tool matches a name exactly (file name, title or alias; case, spacing and Unicode form ignored; never part of a name), and the workspace template ships `people.base` (#287)
 
 - feat(T-314): capture from anywhere: `ocean note "<text>"` writes a capture with frontmatter into `00-inbox/captures/` (secrets redacted), and `ocean obsidian templates [--yes]` generates Templater folder templates from `routing.json` (the owner's entries for other folders are kept); `docs/workspace.md` documents the Obsidian URI for Shortcuts, Raycast and QuickAdd (#286)
 
