@@ -119,6 +119,8 @@ Every record type with one home is named in `packages/brain/src/memory/routing.j
   note created in a type's folder starts from `06-templates/<type>.md`; entries for other
   folders are kept, and a type without a template is listed as `missing`.
 
+## Task completion and archive
+
 
 
 Use the governed completion command when a task is genuinely finished:
