@@ -58,8 +58,11 @@ export async function listPeople(): Promise<Person[]> {
       "\n",
     );
     const fields = parseFrontmatter(source);
-    if (fields.type && fields.type !== "person") continue;
-    const heading = /^#\s+(.+)$/m.exec(source)?.[1]?.trim();
+    // The same rule as people.base: a file is a person only when it says so.
+    if (fields.type !== "person") continue;
+    const end = source.startsWith("---") ? source.indexOf("\n---", 3) : -1;
+    const body = end < 0 ? source : source.slice(end + 4);
+    const heading = /^#\s+(.+)$/m.exec(body)?.[1]?.trim();
     people.push({
       file: `${PEOPLE_DIR}/${entry}`,
       name: heading ?? entry.replace(/\.md$/, ""),

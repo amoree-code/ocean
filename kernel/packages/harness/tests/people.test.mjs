@@ -36,6 +36,11 @@ async function workspace() {
     path.join(dir, "notes.md"),
     "---\ntype: note\n---\n\n# Ali\n",
   );
+  await writeFile(path.join(dir, "README.md"), "# Ali\n");
+  await writeFile(
+    path.join(dir, "omar.md"),
+    "---\ntype: person\n# old aliases\naliases: []\n---\n\n# Omar Saleh\n",
+  );
   return root;
 }
 
@@ -72,7 +77,18 @@ test("lookupPerson matches file name, title or alias exactly, never a part of a 
       (await lookupPerson("sara k")).map((p) => p.name),
       ["Sara Karim"],
     );
-    for (const name of ["Has", "Hassan", "", "Karim S"])
+    assert.deepEqual(
+      (await lookupPerson("Omar Saleh")).map((p) => p.name),
+      ["Omar Saleh"],
+    );
+    for (const name of [
+      "Has",
+      "Hassan",
+      "",
+      "Karim S",
+      "old aliases",
+      "README",
+    ])
       assert.deepEqual(await lookupPerson(name), [], name);
   });
 });
