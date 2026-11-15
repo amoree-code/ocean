@@ -39,6 +39,7 @@ const DENIED_ROOT_DIRS = new Set([
   "04-projects",
   "05-knowledge",
   "06-templates",
+  "07-notes",
   ".index",
 ]);
 // Denied at any depth: dependency dirs, and machine-local agent and tool configuration, which

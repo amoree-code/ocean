@@ -42,6 +42,7 @@ const RECORD_AREAS = [
   "04-projects",
   "05-knowledge",
   "06-templates",
+  "07-notes",
   "99-archive",
   ".index",
   "charter",

@@ -22,6 +22,7 @@ import {
   CHARTER_DIR,
   enginePath,
   INBOX_DIR,
+  NOTES_DIR,
   oceanEnv,
   oceanPath,
   POLICIES_DIR,
@@ -109,13 +110,22 @@ async function checkStructure(): Promise<Finding[]> {
             message: `${root} root exists`,
             fixable: false,
           }
-        : {
-            code: "ROOT_MISSING",
-            severity: "FAIL",
-            path: root,
-            message: `${root} root is missing`,
-            fixable: false,
-          },
+        : // 07-notes arrived in a later version (T-314): a workspace made before it is not broken.
+          root === NOTES_DIR
+          ? {
+              code: "ROOT_MISSING",
+              severity: "WARN",
+              path: root,
+              message: `${root} (your own notes) does not exist yet; \`ocean setup\` creates it`,
+              fixable: false,
+            }
+          : {
+              code: "ROOT_MISSING",
+              severity: "FAIL",
+              path: root,
+              message: `${root} root is missing`,
+              fixable: false,
+            },
     );
   }
   return findings;

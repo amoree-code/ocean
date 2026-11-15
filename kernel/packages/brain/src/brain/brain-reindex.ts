@@ -24,7 +24,7 @@ import {
   normalizeRecord,
 } from "./brain-markdown.js";
 
-const STORES = ["memory", "knowledge"] as const;
+const STORES = ["memory", "knowledge", "notes"] as const;
 const MAX_FILES = 10_000;
 
 async function walk(root: string, depth = 0): Promise<string[]> {

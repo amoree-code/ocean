@@ -198,6 +198,7 @@ session, and `ocean skill review <candidate-id> promoted` activates it.
 ~/ocean/                        private workspace (OCEAN_ROOT) — local only, never published
 ├── 00-inbox/ … 06-templates/   your records: inbox, daily, personal, professional,
 │                               projects, knowledge, templates
+├── 07-notes/                   your own notes: agents read them, never write them
 ├── charter/                    your rules and the policies they route to
 └── bridge/                     machine state: sessions, config, client integrations, shims
 

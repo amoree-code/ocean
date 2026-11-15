@@ -7,6 +7,7 @@ import {
   INBOX_DIR,
   KNOWLEDGE_DIR,
   liveEngineEntry,
+  NOTES_DIR,
   oceanPath,
   oceanRoot,
   PERSONAL_DIR,
@@ -29,6 +30,7 @@ const personalDirectories = [
   DAILY_DIR,
   INBOX_DIR,
   TEMPLATES_DIR,
+  NOTES_DIR,
 ];
 
 const REGISTRY_FILES = [

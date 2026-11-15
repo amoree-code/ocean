@@ -22,6 +22,8 @@ named its old folder (T-311).
 │   └── 04-projects/         project data: registry, backlog, and each project in its
 │                            category folder, <category>/<id>/ (company, personal,
 │                            freelance, former-company, vendor; new ones in uncategorized/)
+├── 07-notes/                your own notes: agents read and index them (ranked above what
+│                            agents wrote), never write there (PROTECTED)
 ├── charter/                 private governance: core.md, policies/
 ├── kernel/                  this repository
 └── bridge/                  machine-local state, no git
@@ -64,7 +66,7 @@ isolated workspaces from one engine checkout.
 the same three constants, so they track any future layout change):
 
 - Creates `02-personal`, `05-knowledge`, `01-daily`, `00-inbox`,
-  `06-templates`, and the workspace project's `04-projects/personal/ocean/tasks`
+  `06-templates`, `07-notes`, and the workspace project's `04-projects/personal/ocean/tasks`
   under the workspace root.
 - Creates `bridge/config/startup`, `bridge/profiles`, `bridge/sessions`, `bridge/registry`,
   `bridge/integrations`, `bridge/archive` and `bridge/runtime/{shims,temporary}` under the

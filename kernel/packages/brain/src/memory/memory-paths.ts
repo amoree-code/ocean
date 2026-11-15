@@ -3,6 +3,7 @@ import path from "node:path";
 import { MemoryContractError } from "@ocean/core/domain/mcp/memory-contract.js";
 import {
   INBOX_DIR,
+  NOTES_DIR,
   oceanPath,
   PERSONAL_DIR,
   PROJECTS_DIR,
@@ -105,6 +106,11 @@ export function permanentRecord(relative: string): PermanentRecord {
       `${name} is maintained by Ocean, not written as a record`,
     );
   const joined = parts.join("/");
+  if (joined.startsWith(`${NOTES_DIR}/`))
+    throw new MemoryContractError(
+      "PROTECTED",
+      `${NOTES_DIR}/ is the owner's own notes; agents read it and propose, never write`,
+    );
   const under = (dir: string) =>
     joined.startsWith(`${dir}/`)
       ? joined.slice(dir.length + 1).split("/")

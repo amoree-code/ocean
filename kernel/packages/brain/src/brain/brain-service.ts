@@ -66,6 +66,8 @@ export type BrainSearchHit = {
   snippet: string;
   score: number;
   matchedBy: "fts" | "vector" | "both";
+  // Who wrote the record: the owner's own notes (07-notes) are "human", everything else "agent".
+  origin: "human" | "agent";
 };
 
 export type BrainSearchResult = {
@@ -76,6 +78,9 @@ export type BrainSearchResult = {
 };
 
 const RRF_K = 60;
+// The owner's own notes outrank what agents wrote on the same question (T-314).
+const HUMAN_BOOST = 1.5;
+const isHumanNote = (storePath: string) => storePath.startsWith("notes/");
 
 function snippetOf(text: string, maxLen = 240): string {
   const trimmed = text.trim().replace(/\s+/g, " ");
@@ -172,7 +177,13 @@ export async function brainSearch(
     }
 
     const ranked = [...byDoc.entries()]
-      .map(([docId, entry]) => ({ docId, ...entry }))
+      .map(([docId, entry]) => ({
+        docId,
+        ...entry,
+        score: isHumanNote(String(reader.getDoc(docId)?.path ?? ""))
+          ? entry.score * HUMAN_BOOST
+          : entry.score,
+      }))
       .sort((a, b) => b.score - a.score || a.docId - b.docId);
 
     const results: BrainSearchHit[] = [];
@@ -208,6 +219,7 @@ export async function brainSearch(
         snippet: chunk ? snippetOf(String(chunk.text)) : "",
         score: Math.round(item.score * 1_000_000) / 1_000_000,
         matchedBy: item.fts && item.vec ? "both" : item.vec ? "vector" : "fts",
+        origin: isHumanNote(String(doc.path)) ? "human" : "agent",
       });
       if (results.length >= limit) break;
     }
