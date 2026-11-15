@@ -13,7 +13,7 @@ const commandGroups = [
   ],
   [
     "Knowledge",
-    "memory, pull, observe, capture, handoff, idea, daily, skill, catalog",
+    "memory, pull, desktop, observe, capture, handoff, idea, daily, skill, catalog",
   ],
   ["Integrations", "obsidian, hook, migrate, layout, env"],
 ] as const;
@@ -141,6 +141,10 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
   pull: [
     "Pull what AI clients hold into Ocean as review candidates; a dry run until --yes.",
     "ocean pull [--yes] [--daily] | search [words…] [--project <id>] [--client <id>] [--limit N] [--json] | report",
+  ],
+  desktop: [
+    "Read Claude Desktop's local chat store; the dry run lists conversations and message counts, never text.",
+    "ocean desktop capture --dry-run [--json]",
   ],
   observe: [
     "Run a command and record its output, or show a recording.",
