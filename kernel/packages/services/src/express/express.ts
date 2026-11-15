@@ -27,10 +27,10 @@ export async function listMilestones(): Promise<Milestone[]> {
   const milestones: Milestone[] = [];
   for (const name of await readdir(dir).catch(() => [] as string[])) {
     if (!name.endsWith(".md")) continue;
-    const text = (await readFile(path.join(dir, name), "utf8")).replace(
-      /\r\n/g,
-      "\n",
-    );
+    // One unreadable file is skipped, not fatal to the draft.
+    const raw = await readFile(path.join(dir, name), "utf8").catch(() => null);
+    if (raw === null) continue;
+    const text = raw.replace(/\r\n/g, "\n");
     const fields = parseFrontmatter(text);
     if (fields.type !== "milestone") continue;
     const end = text.startsWith("---") ? text.indexOf("\n---", 3) : -1;
@@ -47,8 +47,9 @@ export async function listMilestones(): Promise<Milestone[]> {
     milestones.push({
       title,
       date: fields.date ?? "",
-      kind: fields.kind ?? "other",
-      status: fields.status ?? "done",
+      kind: fields.kind || "other",
+      // Only a milestone that says it is done is drafted as an achievement.
+      status: fields.status ?? "",
       summary,
     });
   }

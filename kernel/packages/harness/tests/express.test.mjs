@@ -50,12 +50,23 @@ test("drafts list done milestones newest first, grouped for a CV, academic ones 
       path.join(dir, "note.md"),
       "---\ntype: note\n---\n\n# Not a milestone\n",
     );
+    // No status is not "done"; an empty kind groups as "other"; an unreadable *.md is skipped.
+    await writeFile(
+      path.join(dir, "nostatus.md"),
+      "---\ntype: milestone\ndate: 2026-10-01\n---\n\n# Maybe done\n",
+    );
+    await writeFile(
+      path.join(dir, "blank.md"),
+      "---\ntype: milestone\ndate: 2026-08-01\nkind:\nstatus: done\n---\n\n# Blank kind\n",
+    );
+    await mkdir(path.join(dir, "folder.md"));
     const items = await listMilestones();
     assert.deepEqual(
       items.map((m) => m.title),
-      ["Ocean 1.6", "IELTS 7.0"],
+      ["Ocean 1.6", "IELTS 7.0", "Blank kind"],
     );
     const cv = draft("cv", items);
+    assert.match(cv, /## Other\n\n- \*\*Blank kind\*\*/);
     assert.match(
       cv,
       /## Exam\n\n- \*\*IELTS 7\.0\*\* \(2026-09\) — Short note on IELTS 7\.0\./,
