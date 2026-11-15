@@ -13,7 +13,7 @@ const commandGroups = [
   ],
   [
     "Knowledge",
-    "memory, pull, desktop, observe, capture, note, brief, interests, distill, telemetry, handoff, idea, daily, skill, catalog",
+    "memory, pull, desktop, observe, capture, note, brief, interests, distill, telemetry, express, handoff, idea, daily, skill, catalog",
   ],
   ["Integrations", "obsidian, hook, migrate, layout, env"],
 ] as const;
@@ -169,6 +169,10 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
   telemetry: [
     "Find recurring errors and failing providers in recent sessions; propose them as backlog lines.",
     "ocean telemetry [--days N] [--yes]",
+  ],
+  express: [
+    "Draft a CV section, LinkedIn post or scholarship paragraph from your milestones into 00-inbox/drafts/.",
+    "ocean express cv|linkedin|scholarship [--dry-run]",
   ],
   note: [
     "Capture a thought into 00-inbox/captures with the capture frontmatter.",

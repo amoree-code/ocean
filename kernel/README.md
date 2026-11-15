@@ -150,6 +150,7 @@ prints its usage and never runs it. To hand `--help` to a wrapped client, put it
 | `ocean interests` | propose interests from your projects (as candidates), decay, keep/skip | Writes |
 | `ocean distill` | `--week`: a weekly digest, decisions and lessons as candidates | Writes |
 | `ocean telemetry` | recurring session errors and failing providers, as proposed backlog lines | Writes |
+| `ocean express` | draft a CV section, LinkedIn post or scholarship paragraph from milestones | Writes |
 | `ocean handoff` | hand work from one session or client to another | Reads; `create` writes |
 | `ocean daily` | prepare today's note | Reads; `--apply` writes |
 | `ocean skill` | sync, add, review and learn skills | Reads; `add`, `review`, `learn`, `sync` write |

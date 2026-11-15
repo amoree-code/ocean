@@ -159,6 +159,11 @@ days back, else your least recently touched note in `07-notes/`. `ocean telemetr
 [--yes]` finds errors that recur across sessions and providers whose sessions keep failing, and
 proposes each as a backlog line for review.
 
+`ocean express cv|linkedin|scholarship [--dry-run]` turns your done milestones into a draft in
+`00-inbox/drafts/` — a CV section grouped by kind, a LinkedIn post from the latest three, or a
+scholarship paragraph from academic milestones (exam, certificate, course, education,
+scholarship). Built from the records only: no model, nothing invented, nothing sent.
+
 ## Task completion and archive
 
 
