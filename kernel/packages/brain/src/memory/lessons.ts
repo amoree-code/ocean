@@ -432,7 +432,8 @@ export async function archiveRetiredLessons(options: {
   for (const name of names.sort()) {
     if (!name.endsWith(".md") || name === "CONFLICTS.md") continue;
     const text = await readFile(path.join(dir, name), "utf8");
-    if (!/^status:\s*retired\s*$/m.test(text.split(/\r?\n---/, 1)[0])) continue;
+    if (!/^status:\s*["']?retired["']?\s*$/m.test(text.split(/\r?\n---/, 1)[0]))
+      continue;
     moved.push(name);
     if (!options.apply) continue;
     await mkdir(path.join(dir, "archive"), { recursive: true });

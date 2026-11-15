@@ -51,7 +51,8 @@ async function markdownIn(dir: string): Promise<string[]> {
 
 function section(text: string, heading: string): string {
   const match = new RegExp(
-    `^## ${heading}\\n+([\\s\\S]*?)(?=\\n## |\\n\\S*Raw events|$)`,
+    // `(?![\\s\\S])` is the end of the text: with the m flag, `$` would end it at the first line.
+    `^## ${heading}\\n+([\\s\\S]*?)(?=\\n## |\\nRaw events|(?![\\s\\S]))`,
     "m",
   ).exec(text);
   return match?.[1]?.trim() ?? "";
@@ -60,10 +61,15 @@ function section(text: string, heading: string): string {
 const relativeOf = (file: string) =>
   path.relative(oceanPath(), file).split(path.sep).join("/");
 
+// Within the frontmatter only: a body line that happens to start with `distilled:` is left alone.
 function setDistilled(text: string): string {
-  return /^distilled:.*$/m.test(text)
-    ? text.replace(/^distilled:.*$/m, "distilled: true")
-    : text.replace(/^---\n/, "---\ndistilled: true\n");
+  const end = text.startsWith("---\n") ? text.indexOf("\n---", 3) : -1;
+  if (end < 0) return text;
+  const head = text.slice(0, end);
+  const next = /^distilled:.*$/m.test(head)
+    ? head.replace(/^distilled:.*$/m, "distilled: true")
+    : `${head}\ndistilled: true`;
+  return next + text.slice(end);
 }
 
 export type DistillResult = {
@@ -112,7 +118,23 @@ export async function distillWeek(options: {
       (file) => `${INBOX_DIR}/archive/${week.label}/${path.basename(file)}`,
     ),
   };
-  if (!sessions.length && !briefs.length) return result;
+  const archiveCaptures = async () => {
+    for (const file of captures) {
+      const target = oceanPath(
+        INBOX_DIR,
+        "archive",
+        week.label,
+        path.basename(file),
+      );
+      await mkdir(path.dirname(target), { recursive: true });
+      await rename(file, target);
+    }
+  };
+  if (!sessions.length && !briefs.length) {
+    // No digest without records, but processed captures still leave the inbox.
+    if (options.apply) await archiveCaptures();
+    return result;
+  }
   const pick = (heading: string) =>
     sessions
       .map((item) => ({ item, text: section(item.text, heading) }))
@@ -194,15 +216,6 @@ export async function distillWeek(options: {
     }
   for (const item of sessions)
     await atomicWrite(item.file, setDistilled(item.text));
-  for (const file of captures) {
-    const target = oceanPath(
-      INBOX_DIR,
-      "archive",
-      week.label,
-      path.basename(file),
-    );
-    await mkdir(path.dirname(target), { recursive: true });
-    await rename(file, target);
-  }
+  await archiveCaptures();
   return result;
 }

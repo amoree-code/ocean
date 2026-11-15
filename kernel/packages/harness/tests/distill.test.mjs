@@ -57,7 +57,7 @@ test("distill --week writes a digest, proposes decisions and lessons, marks reco
       record(
         "2026-11-17",
         "Ship routing",
-        "\n## Decisions\n\nOne table routes every type.\n\n## Learned\n\n- [x] Biome reorders imports\n",
+        "\n## Decisions\n\nOne table routes every type.\n- Second decision stays too.\n\n## Learned\n\n- [x] Biome reorders imports\n",
       ),
     );
     await write(
@@ -102,6 +102,8 @@ test("distill --week writes a digest, proposes decisions and lessons, marks reco
     );
     assert.match(digest, /\[2026-11-18\]\(\.\.\/briefs\/2026-11-18\.md\)/);
     assert.ok(!digest.includes("Last week"));
+    // A section with several lines is taken whole.
+    assert.ok(digest.includes("Second decision stays too."));
     assert.equal(done.candidates.length, 2);
     assert.match(
       await readFile(path.join(root, done.candidates[0]), "utf8"),
@@ -157,5 +159,27 @@ test("retired records leave search; archive-retired moves retired lessons, keepi
       await readdir(path.join(root, "05-knowledge/lessons/archive")),
       ["old.md"],
     );
+  });
+});
+
+test("a week with only processed captures still archives them; quoted retired lessons are archived", async () => {
+  await withRoot(async (root) => {
+    await write(
+      root,
+      "00-inbox/captures/done.md",
+      "---\ntype: capture\nstatus: processed\n---\n\nx\n",
+    );
+    const result = await distillWeek({ date: "2026-11-19", apply: true });
+    assert.equal(result.digest, null);
+    assert.deepEqual(
+      await readdir(path.join(root, "00-inbox/archive/2026-W47")),
+      ["done.md"],
+    );
+    await write(
+      root,
+      "05-knowledge/lessons/q.md",
+      '---\nstatus: "retired"\n---\n\nq\n',
+    );
+    assert.deepEqual(await archiveRetiredLessons({ apply: false }), ["q.md"]);
   });
 });
