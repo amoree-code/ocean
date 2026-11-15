@@ -23,6 +23,11 @@ pre-commit:
 
 pre-push:
   commands:
+    # The root .gitignore is a whitelist (T-310): one wrong `!` line would publish private data,
+    # so the scan runs again on what is about to leave the machine (T-313).
+    privacy:
+      root: kernel/
+      run: pnpm check:privacy
     test:
       root: kernel/
       run: pnpm test
