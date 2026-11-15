@@ -119,6 +119,11 @@ Every record type with one home is named in `packages/brain/src/memory/routing.j
   note created in a type's folder starts from `06-templates/<type>.md`; entries for other
   folders are kept, and a type without a template is listed as `missing`.
 
+People live one per file in `02-personal/people/` (`type: person`, `aliases` in every spelling
+you use, English and Arabic). The `people_lookup` MCP tool matches a name exactly — file name,
+title or alias — and `02-personal/people/people.base` lists them in Obsidian. Record
+work-relevant facts only; nothing sensitive about other people.
+
 ## Task completion and archive
 
 

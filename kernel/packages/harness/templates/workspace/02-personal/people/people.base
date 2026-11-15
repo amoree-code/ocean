@@ -1,0 +1,18 @@
+filters:
+  and:
+    - file.inFolder("02-personal/people")
+    - type == "person"
+views:
+  - type: table
+    name: People
+    order:
+      - file.name
+      - aliases
+      - role
+      - org
+      - relation
+      - projects
+      - last_seen
+    sort:
+      - property: last_seen
+        direction: DESC
