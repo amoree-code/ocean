@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+- fix(T-313): session fact capture with Claude no longer loads Claude Code's own context: the call runs isolated (its own short system prompt, no settings or CLAUDE.md, no tools, no MCP servers, no saved session), which takes its fixed cost from about 30,700 tokens to about 1,000 per call
+
 ## 1.6.1 (2026-11-15)
 
 - docs(T-313): `docs/mcp.md` explains how the memory loop runs in code (read at session start, facts captured at session end and before a compaction) and what each client gets, from full integration to MCP-only best effort; the privacy scan now also runs before every push, not only before a commit and in CI (#277)

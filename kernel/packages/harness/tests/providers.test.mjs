@@ -34,6 +34,34 @@ test("maps a Claude request onto Claude Agent SDK options, not CLI arguments", (
   );
 });
 
+test("a bare Claude request loads no settings, CLAUDE.md, tools or MCP servers and saves no session (T-313)", () => {
+  const { env, ...options } = claudeSdkOptions(
+    {
+      provider: "claude",
+      prompt: "x",
+      cwd: "/tmp",
+      model: "haiku",
+      readOnly: true,
+      bare: { systemPrompt: "Answer with JSON only." },
+      env: { OCEAN_FACTS_CALL: "1" },
+    },
+    "/opt/claude",
+  );
+  assert.deepEqual(options, {
+    pathToClaudeCodeExecutable: "/opt/claude",
+    cwd: path.resolve("/tmp"),
+    systemPrompt: "Answer with JSON only.",
+    settingSources: [],
+    tools: [],
+    mcpServers: {},
+    strictMcpConfig: true,
+    maxTurns: 1,
+    persistSession: false,
+    model: "haiku",
+  });
+  assert.equal(env.OCEAN_FACTS_CALL, "1");
+});
+
 test("exposes one adapter with capabilities for every registered headless provider", () => {
   assert.deepEqual(Object.keys(providerAdapterRegistry).sort(), [
     "antigravity",
