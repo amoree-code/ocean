@@ -89,6 +89,7 @@ import {
   parseConflictSide,
   resolveConflict,
 } from "@ocean/services/obsidian/conflict-log.js";
+import { syncFolderTemplates } from "@ocean/services/obsidian/folder-templates.js";
 import {
   listInboxCandidates,
   promoteInboxNote,
@@ -178,6 +179,7 @@ import { runMcpGatewayCommand } from "./mcp-gateway-command.js";
 import { runMcpStatusCommand } from "./mcp-status-command.js";
 import { runMemoryCommand } from "./memory-command.js";
 import { runMigrateCommand } from "./migrate-command.js";
+import { runNoteCommand } from "./note-command.js";
 import { runObserveCommand } from "./observe-command.js";
 import { manageClients, runOnboardCommand } from "./onboard-command.js";
 import { runOperateCommand } from "./operate-command.js";
@@ -525,6 +527,7 @@ async function commandObsidian(): Promise<void> {
       "connect",
       "discover",
       "sync",
+      "templates",
       "watch",
       "inbox",
       "write",
@@ -532,11 +535,21 @@ async function commandObsidian(): Promise<void> {
     ].includes(action)
   ) {
     console.error(
-      "Usage: ocean obsidian connect <vault-path> [--read-write]|discover|sync|watch|inbox|write|conflicts resolve <id> --keep=vault|ocean",
+      "Usage: ocean obsidian connect <vault-path> [--read-write]|discover|sync|templates [--yes]|watch|inbox|write|conflicts resolve <id> --keep=vault|ocean",
     );
     process.exitCode = 1;
   } else {
     try {
+      if (action === "templates") {
+        // T-314: Templater folder templates generated from routing.json; a dry run until --yes.
+        const result = await syncFolderTemplates({
+          apply: process.argv.includes("--yes"),
+        });
+        console.log(JSON.stringify(result, null, 2));
+        if (!result.written)
+          console.error("Dry run: pass --yes to write the Templater config.");
+        return;
+      }
       if (action === "connect") {
         const vaultPath = process.argv[4];
         if (!vaultPath)
@@ -1579,6 +1592,7 @@ export const commandRegistry: Record<string, CommandHandler> = {
   intent: commandIntent,
   operate: commandOperate,
   idea: commandIdea,
+  note: () => runNoteCommand(process.argv.slice(3)),
   daily: commandDaily,
   schedule: commandSchedule,
   loop: commandLoop,

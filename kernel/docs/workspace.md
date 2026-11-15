@@ -105,7 +105,21 @@ workspace's private records (`01-daily`, `02-personal`, `03-professional`, `04-p
 It prints `{file, line, rule}` only, never the matched text. Run it before publishing a change to
 the template.
 
-## Task completion and archive
+## Capture and templates (T-314)
+
+Every record type with one home is named in `packages/brain/src/memory/routing.json`
+(`records`); `ocean doctor` reports `TYPE_LOCATION` and `FRONTMATTER_MISSING` against it.
+
+- `ocean note "<text>"` writes `00-inbox/captures/<time>-<slug>.md` with `type: capture`
+  frontmatter (secrets redacted).
+- From anywhere else, an Obsidian URI does the same through the app:
+  `obsidian://new?vault=<vault>&file=00-inbox/captures/<name>&content=<text>` — bind it to a
+  macOS Shortcut, a Raycast quicklink or a QuickAdd capture choice.
+- `ocean obsidian templates [--yes]` writes Templater's folder templates from the table, so a
+  note created in a type's folder starts from `06-templates/<type>.md`; entries for other
+  folders are kept, and a type without a template is listed as `missing`.
+
+
 
 Use the governed completion command when a task is genuinely finished:
 

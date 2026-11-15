@@ -13,7 +13,7 @@ const commandGroups = [
   ],
   [
     "Knowledge",
-    "memory, pull, desktop, observe, capture, handoff, idea, daily, skill, catalog",
+    "memory, pull, desktop, observe, capture, note, handoff, idea, daily, skill, catalog",
   ],
   ["Integrations", "obsidian, hook, migrate, layout, env"],
 ] as const;
@@ -154,6 +154,10 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
     "Capture ideas and promote or discard them.",
     "ocean capture add <idea>|scan [session-id]|list [status]|promote <id> <target>|discard <id>",
   ],
+  note: [
+    "Capture a thought into 00-inbox/captures with the capture frontmatter.",
+    'ocean note "<text>"',
+  ],
   handoff: [
     "Create, show and list handoffs between sessions.",
     "ocean handoff create [--task <id>] [--session <id>] [--next <action>]|show <id>|context <id>|list [--task <id>] [--project <id>]",
@@ -176,7 +180,7 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
   ],
   obsidian: [
     "Connect, sync and write to an Obsidian vault (read-only unless --read-write).",
-    "ocean obsidian connect <vault-path> [--read-write]|discover|sync|watch|inbox|write|conflicts resolve <id> --keep=vault|ocean",
+    "ocean obsidian connect <vault-path> [--read-write]|discover|sync|templates [--yes]|watch|inbox|write|conflicts resolve <id> --keep=vault|ocean",
   ],
   hook: [
     "Session hooks the AI clients call; session-end reads its payload from stdin.",
