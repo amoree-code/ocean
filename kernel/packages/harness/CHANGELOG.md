@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.1
+
+- docs(T-313): `docs/mcp.md` explains how the memory loop runs in code (read at session start, facts captured at session end and before a compaction) and what each client gets, from full integration to MCP-only best effort; the privacy scan now also runs before every push, not only before a commit and in CI (#277)
+
 ## 1.6.0
 
 - feat(T-313): `ocean doctor` reports `RUNNING_STALE` when a client still runs an Ocean server older than the installed release (restart that client), from the release each call-ledger row now records; `ocean_status` adds `installed` and `restartNeeded`. The link check skips soft-deleted memory and candidates, which quote other tools' text (#276)
