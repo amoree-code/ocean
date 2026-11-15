@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { listCandidates } from "@ocean/brain/memory/memory-review.js";
 import { proposeMemory } from "@ocean/brain/memory/memory-write.js";
 import { MemoryContractError } from "@ocean/core/domain/mcp/memory-contract.js";
 import { atomicWrite } from "@ocean/core/shared/fs-utils.js";
@@ -70,6 +71,8 @@ export async function proposeDiscoveredInterests(options: {
 }): Promise<{
   proposed: string[];
   known: string[];
+  // A candidate for the topic already waits for review, or the proposal was refused.
+  pending: { topic: string; reason: string }[];
   found: DiscoveredInterest[];
 }> {
   const found = await discoverStack();
@@ -80,12 +83,21 @@ export async function proposeDiscoveredInterests(options: {
       ...interest.sources,
     ]),
   );
+  const waiting = new Set((await listCandidates()).map((item) => item.target));
   const proposed: string[] = [];
   const known: string[] = [];
+  const pending: { topic: string; reason: string }[] = [];
   for (const item of found) {
     const slug = projectSlug(item.topic);
     if (have.has(slug) || have.has(item.source)) {
       known.push(item.topic);
+      continue;
+    }
+    if (waiting.has(`${INTERESTS_DIR}/${slug}.md`)) {
+      pending.push({
+        topic: item.topic,
+        reason: "a candidate waits for review",
+      });
       continue;
     }
     if (!options.apply) {
@@ -104,9 +116,13 @@ export async function proposeDiscoveredInterests(options: {
       proposed.push(candidate);
     } catch (error) {
       if (!(error instanceof MemoryContractError)) throw error;
+      pending.push({
+        topic: item.topic,
+        reason: `${error.code}: ${error.message}`,
+      });
     }
   }
-  return { proposed, known, found };
+  return { proposed, known, pending, found };
 }
 
 function setField(source: string, key: string, value: string): string {
@@ -169,15 +185,22 @@ export async function decayInterests(options: {
     const { text, weight } = await readWeight(interest.file);
     const origin = /^origin:\s*(\S+)/m.exec(text)?.[1] ?? "owner";
     if (origin === "owner") continue;
-    const signal = Date.parse(/^last_signal:\s*(\S+)/m.exec(text)?.[1] ?? "");
-    if (!Number.isNaN(signal) && signal >= cutoff) continue;
+    // The later of the last signal and the last decay: one step per window, not per run.
+    const dates = [/^last_signal:\s*(\S+)/m, /^decayed:\s*(\S+)/m]
+      .map((pattern) => Date.parse(pattern.exec(text)?.[1] ?? ""))
+      .filter((time) => !Number.isNaN(time));
+    if (dates.length && Math.max(...dates) >= cutoff) continue;
     const to = clampWeight(weight - WEIGHT_STEP);
     if (to === weight) continue;
     changed.push({ file: interest.file, from: weight, to });
     if (options.apply)
       await atomicWrite(
         oceanPath(interest.file),
-        setField(text, "weight", String(to)),
+        setField(
+          setField(text, "weight", String(to)),
+          "decayed",
+          options.today ?? localDate(),
+        ),
       );
   }
   return changed;

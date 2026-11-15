@@ -92,10 +92,12 @@ test("discover maps project dependencies to interests and proposes only new ones
       id: path.basename(applied.proposed[0], ".md"),
     });
     assert.equal(approved.path, "02-personal/interests/react.md");
-    assert.deepEqual(
-      (await proposeDiscoveredInterests({ apply: false })).proposed,
-      ["Next.js"],
-    );
+    // Next.js waits as a candidate: reported pending, not proposed again and not lost.
+    const after = await proposeDiscoveredInterests({ apply: false });
+    assert.deepEqual(after.proposed, []);
+    assert.deepEqual(after.pending, [
+      { topic: "Next.js", reason: "a candidate waits for review" },
+    ]);
   });
 });
 
@@ -123,6 +125,11 @@ test("keep/skip move weight within bounds; decay lowers only discovered interest
     assert.match(
       await readFile(path.join(dir, "old.md"), "utf8"),
       /weight: 0.75\n/,
+    );
+    // A second run inside the same window does not decay it again.
+    assert.deepEqual(
+      await decayInterests({ apply: true, today: "2026-11-20" }),
+      [],
     );
     const kept = await interestFeedback("NestJS", "keep", "2026-11-16");
     assert.deepEqual(kept, { file: `${INTERESTS_DIR}/nest.md`, weight: 1.25 });
