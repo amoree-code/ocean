@@ -143,8 +143,8 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
     "ocean pull [--yes] [--daily] | search [words…] [--project <id>] [--client <id>] [--limit N] [--json] | report",
   ],
   desktop: [
-    "Read Claude Desktop's local chat store; the dry run lists conversations and message counts, never text.",
-    "ocean desktop capture --dry-run [--json]",
+    "Capture facts from Claude Desktop's chat, read from the app's local store; --dry-run lists conversations and message counts, never text.",
+    "ocean desktop capture [--dry-run] [--since <date>] [--quiet <minutes>] [--json]",
   ],
   observe: [
     "Run a command and record its output, or show a recording.",

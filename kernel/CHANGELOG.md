@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+- feat(T-315): Claude Desktop chat gets the same fact capture as Claude Code: `ocean desktop capture` sends the new turns of each conversation quiet for 10 minutes (`--quiet`) to the T-313 extraction, with a per-conversation cursor so each turn is read once and a failed model call hands its turns back. Candidates carry `source: session:desktop:<uuid>` and stay review-only. The cursor and the last run's outcome (for `ocean doctor`) hold ids and counts, never text (#281)
+
 - feat(T-315): Ocean can read Claude Desktop's plain chat from the app's own local IndexedDB, with no dependency: a LevelDB reader (MANIFEST, logs, Snappy tables), Chromium IndexedDB keys, value wrappers and blob files, and Blink/V8 values. The folder is copied aside and read, never opened in place. `ocean desktop capture --dry-run` lists the conversations the app holds, with message counts and never text; an unreadable store is reported as `DESKTOP_CHAT_UNREADABLE` (#280)
 
 ## 1.6.1 (2026-11-15)
