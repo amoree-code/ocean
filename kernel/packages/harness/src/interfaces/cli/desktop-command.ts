@@ -4,21 +4,27 @@ import {
   runDesktopFacts,
 } from "@ocean/loop/hooks/desktop-facts.js";
 import {
+  ClaudeExportError,
+  readExportChats,
+} from "../../infrastructure/desktop/claude-export.js";
+import {
   DesktopChatUnreadable,
   readDesktopChats,
 } from "../../infrastructure/desktop/desktop-chat.js";
 import { sessionFactsCompleter } from "../../infrastructure/providers/session-facts-completer.js";
 
 export const desktopUsage =
-  "ocean desktop capture [--dry-run] [--since <date>] [--quiet <minutes>] [--json]";
+  "ocean desktop capture [--dry-run] [--export <folder>] [--since <date>] [--quiet <minutes>] [--json]";
 
 function flagValue(args: string[], flag: string): string | undefined {
   const index = args.indexOf(flag);
   return index >= 0 ? args[index + 1] : undefined;
 }
 
-async function dryRun(json: boolean): Promise<void> {
-  const read = await readDesktopChats();
+type Source = typeof readDesktopChats;
+
+async function dryRun(source: Source, json: boolean): Promise<void> {
+  const read = await source();
   if (read.status === "absent") {
     if (json) console.log(JSON.stringify({ status: "absent" }));
     else console.log("Claude Desktop's local chat store was not found.");
@@ -41,7 +47,7 @@ async function dryRun(json: boolean): Promise<void> {
     return;
   }
   console.log(
-    `${rows.length} Desktop conversation(s) readable${read.skipped ? `, ${read.skipped} record(s) skipped` : ""}:`,
+    `${rows.length} conversation(s) readable${read.skipped ? `, ${read.skipped} record(s) skipped` : ""}:`,
   );
   for (const row of rows)
     console.log(
@@ -52,7 +58,10 @@ async function dryRun(json: boolean): Promise<void> {
 // `ocean desktop capture` (T-315): Claude Desktop chat has no hooks, so this is what the
 // watcher runs. `--dry-run` lists the conversations Ocean can read, with message counts; the
 // real run sends the new turns of each quiet conversation to fact capture. Neither prints
-// message text; the run's outcome is kept for `ocean doctor`.
+// message text; the run's outcome is kept for `ocean doctor`. `--export <folder>` reads an
+// unpacked claude.ai data export's conversations.json instead (every device's conversations),
+// with the same cursor, so a conversation already read from the app is not read again; an
+// export is static, so it has no quiet window, and its run is not the watcher's last run.
 export async function runDesktopCommand(args: string[]): Promise<void> {
   const [action, ...rest] = args;
   const since = flagValue(rest, "--since");
@@ -70,18 +79,35 @@ export async function runDesktopCommand(args: string[]): Promise<void> {
     return;
   }
   const json = rest.includes("--json");
+  const exportDir = flagValue(rest, "--export");
+  if (rest.includes("--export") && (!exportDir || exportDir.startsWith("--"))) {
+    console.error(`Usage: ${desktopUsage}`);
+    process.exitCode = 1;
+    return;
+  }
+  const read: Source = exportDir
+    ? () => readExportChats(exportDir)
+    : () => readDesktopChats();
   try {
     if (rest.includes("--dry-run")) {
-      await dryRun(json);
+      await dryRun(read, json);
       return;
     }
     const run = await runDesktopFacts({
-      read: readDesktopChats,
+      read,
       complete: sessionFactsCompleter("claude"),
       since: sinceDate,
       quietMs:
-        quietMinutes === undefined ? DEFAULT_QUIET_MS : quietMinutes * 60_000,
+        quietMinutes !== undefined
+          ? quietMinutes * 60_000
+          : exportDir
+            ? 0
+            : DEFAULT_QUIET_MS,
     });
+    if (exportDir) {
+      console.log(JSON.stringify(run, null, 2));
+      return;
+    }
     const candidates =
       run.status === "done"
         ? run.runs.reduce(
@@ -102,6 +128,11 @@ export async function runDesktopCommand(args: string[]): Promise<void> {
     });
     console.log(JSON.stringify(run, null, 2));
   } catch (error) {
+    if (error instanceof ClaudeExportError) {
+      console.error(error.message);
+      process.exitCode = 1;
+      return;
+    }
     if (!(error instanceof DesktopChatUnreadable)) throw error;
     await recordDesktopRun({
       at: new Date().toISOString(),
