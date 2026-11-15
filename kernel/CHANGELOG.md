@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+- feat(T-314): `ocean doctor` warns `INBOX_STALE` when inbox items sat more than 7 days, counted by folder (the inbox index and the clients' native memory staging are not items) (#284)
+
 - feat(T-314): `07-notes/` is the owner's own notes root: `ocean setup` creates it, a memory write under it is refused as `PROTECTED`, and the brain index reads it as a `notes` store whose hits carry `origin: "human"` and rank above agent-written records on the same question (others carry `origin: "agent"`). A workspace made before it gets a `ROOT_MISSING` warning, not a failure (#284)
 
 - feat(T-314): a session fact arrives with the place it belongs: the extraction asks the model for a fact type, and one routing table (`brain/src/memory/routing.json`: identity, preference, person, interest, goal, education, career, schedule, project) turns it into the candidate's `target`, one file per fact named after its title; a project fact goes to that project's `memory/` only when the project is registered. `ocean memory review approve <id>` needs no `--to` for such a candidate, and `--type <type>` routes one that has no target through the same table (#284)
