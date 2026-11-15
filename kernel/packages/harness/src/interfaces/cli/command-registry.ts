@@ -174,6 +174,7 @@ import { runLifecycleCommand, runPolicyCommand } from "./governance-command.js";
 import { runHandoffCommand } from "./handoff-command.js";
 import { runIdeaCommand } from "./idea-command.js";
 import { intercept } from "./intercept-command.js";
+import { runInterestsCommand } from "./interests-command.js";
 import { runLayoutCommand } from "./layout-command.js";
 import { runMarketCommand } from "./market-command.js";
 import { runMcpGatewayCommand } from "./mcp-gateway-command.js";
@@ -1595,6 +1596,7 @@ export const commandRegistry: Record<string, CommandHandler> = {
   idea: commandIdea,
   note: () => runNoteCommand(process.argv.slice(3)),
   brief: () => runBriefCommand(process.argv.slice(3)),
+  interests: () => runInterestsCommand(process.argv.slice(3)),
   daily: commandDaily,
   schedule: commandSchedule,
   loop: commandLoop,

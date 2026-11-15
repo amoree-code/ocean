@@ -131,6 +131,13 @@ items at most, newest first; `--weekly` takes every interest, fifteen at most. A
 is narrowed by the interest's keywords; a releases feed is taken whole. A seen-ledger in
 `bridge/state/brief/` keeps an item from coming back; a source that fails is listed, not fatal.
 
+`ocean interests discover [--yes]` reads the `package.json` of every registered project and
+maps known packages (`packages/services/src/brief/source-registry.json`) to their release
+feeds; each topic without an interest file becomes a review candidate (`origin: discovered`),
+never a file. `ocean interests keep|skip <name>` moves an interest's weight (and `keep` its
+`last_signal`); `ocean interests decay [--weeks N] [--yes]` lowers a discovered interest with
+no signal for 8 weeks. An interest you wrote yourself is never decayed.
+
 ## Task completion and archive
 
 

@@ -1,0 +1,35 @@
+{
+  "react": { "topic": "React", "source": "github:facebook/react" },
+  "next": { "topic": "Next.js", "source": "github:vercel/next.js" },
+  "vite": { "topic": "Vite", "source": "github:vitejs/vite" },
+  "vue": { "topic": "Vue", "source": "github:vuejs/core" },
+  "tailwindcss": {
+    "topic": "Tailwind CSS",
+    "source": "github:tailwindlabs/tailwindcss"
+  },
+  "typescript": {
+    "topic": "TypeScript",
+    "source": "github:microsoft/TypeScript"
+  },
+  "@nestjs/core": { "topic": "NestJS", "source": "github:nestjs/nest" },
+  "@prisma/client": { "topic": "Prisma", "source": "github:prisma/prisma" },
+  "prisma": { "topic": "Prisma", "source": "github:prisma/prisma" },
+  "express": { "topic": "Express", "source": "github:expressjs/express" },
+  "zod": { "topic": "Zod", "source": "github:colinhacks/zod" },
+  "@tanstack/react-query": {
+    "topic": "TanStack Query",
+    "source": "github:TanStack/query"
+  },
+  "@modelcontextprotocol/sdk": {
+    "topic": "MCP",
+    "source": "github:modelcontextprotocol/typescript-sdk"
+  },
+  "@anthropic-ai/sdk": {
+    "topic": "Anthropic SDK",
+    "source": "github:anthropics/anthropic-sdk-typescript"
+  },
+  "@anthropic-ai/claude-agent-sdk": {
+    "topic": "Claude Agent SDK",
+    "source": "github:anthropics/claude-agent-sdk-typescript"
+  }
+}
