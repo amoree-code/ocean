@@ -76,8 +76,12 @@ export async function createHandoffWithStore(
   const handoff = validateHandoff({
     handoffId: `handoff-${randomUUID()}`,
     taskId: task?.id ?? session?.taskId ?? null,
+    // A session's title defaults to "", which `??` would keep and the schema rejects.
     title:
-      input.title ?? task?.title ?? session?.title ?? "Ocean session handoff",
+      input.title?.trim() ||
+      task?.title?.trim() ||
+      session?.title?.trim() ||
+      "Ocean session handoff",
     objective:
       task?.objective ??
       "Continue the selected Ocean session with bounded context.",
