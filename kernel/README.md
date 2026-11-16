@@ -142,7 +142,7 @@ prints its usage and never runs it. To hand `--help` to a wrapped client, put it
 | `ocean browser` | drive a browser session | Runs; `upload`, `submit` need `--approve` |
 | `ocean memory` | search, read, review and maintain memory | Reads; `approve`, `delete`, `restore`, `reindex`, `sync --apply`, `purge --yes` write |
 | `ocean pull` | pull what AI clients hold into Ocean as review candidates | Reads (dry run); `--yes` writes |
-| `ocean desktop` | read Claude Desktop's local chat store (conversations and message counts, never text) | Reads |
+| `ocean desktop` | capture facts from Claude Desktop's chat, read from the app's local store, as review candidates | Reads (`--dry-run`); a run writes candidates |
 | `ocean observe` | run a command and record its output | Runs |
 | `ocean capture` / `idea` | capture ideas, then promote or discard them | Writes |
 | `ocean handoff` | hand work from one session or client to another | Reads; `create` writes |
