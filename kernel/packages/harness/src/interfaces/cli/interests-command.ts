@@ -2,10 +2,11 @@ import {
   decayInterests,
   interestFeedback,
   proposeDiscoveredInterests,
+  proposeSignalInterests,
 } from "@ocean/services/brief/interest-discovery.js";
 
 const USAGE =
-  "Usage: ocean interests discover [--yes] | decay [--weeks N] [--yes] | keep <name> | skip <name>";
+  "Usage: ocean interests discover [--yes] | signals [--weeks N] [--yes] | decay [--weeks N] [--yes] | keep <name> | skip <name>";
 
 // `ocean interests` (T-314): discover candidate interests from registered projects, decay the
 // ones with no signal, and record keep/skip feedback on brief items.
@@ -15,7 +16,12 @@ export async function runInterestsCommand(args: string[]): Promise<void> {
   let result: unknown;
   if (action === "discover")
     result = await proposeDiscoveredInterests({ apply });
-  else if (action === "decay") {
+  else if (action === "signals") {
+    const at = args.indexOf("--weeks");
+    const weeks = at >= 0 ? Number(args[at + 1]) : undefined;
+    if (weeks !== undefined && !(weeks > 0)) throw new Error(USAGE);
+    result = await proposeSignalInterests({ apply, weeks });
+  } else if (action === "decay") {
     const at = args.indexOf("--weeks");
     const weeks = at >= 0 ? Number(args[at + 1]) : undefined;
     if (weeks !== undefined && !(weeks > 0)) throw new Error(USAGE);
@@ -24,6 +30,6 @@ export async function runInterestsCommand(args: string[]): Promise<void> {
     result = await interestFeedback(rest.join(" "), action);
   else throw new Error(USAGE);
   console.log(JSON.stringify(result, null, 2));
-  if ((action === "discover" || action === "decay") && !apply)
+  if (["discover", "signals", "decay"].includes(action) && !apply)
     console.error("Dry run: pass --yes to apply.");
 }

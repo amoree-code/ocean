@@ -16,6 +16,7 @@
     "session": "01-daily/sessions/",
     "brief": "01-daily/briefs/",
     "weekly": "01-daily/weekly/",
+    "monthly": "01-daily/monthly/",
     "note": "07-notes/",
     "decision": "05-knowledge/decisions/",
     "lesson": "05-knowledge/lessons/",

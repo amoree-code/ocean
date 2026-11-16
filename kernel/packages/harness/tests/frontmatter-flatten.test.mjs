@@ -88,7 +88,9 @@ test("flatten is a dry run until --yes, skips 07-notes, backs up and keeps permi
       await readFile(file, "utf8"),
       "---\ntype: feedback\n---\n\nx\n",
     );
-    assert.equal((await stat(file)).mode & 0o777, 0o600);
+    // Windows has no POSIX permission bits to keep.
+    if (process.platform !== "win32")
+      assert.equal((await stat(file)).mode & 0o777, 0o600);
     assert.equal(
       await readFile(
         path.join(root, applied.backup, "02-personal/work/a.md"),

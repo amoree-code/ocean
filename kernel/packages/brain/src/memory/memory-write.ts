@@ -6,6 +6,7 @@ import { atomicWrite, withFileLock } from "@ocean/core/shared/fs-utils.js";
 import { localDate } from "@ocean/core/shared/local-date.js";
 import {
   listProjectDirs,
+  NOTES_DIR,
   oceanPath,
   PERSONAL_DIR,
 } from "@ocean/core/shared/paths.js";
@@ -267,9 +268,16 @@ export async function proposeMemory(options: {
   reason?: string;
   source?: string;
   meta?: CandidateMeta;
-}): Promise<{ candidate: string; auditId: string }> {
+  // A note in 07-notes this fact disagrees with: the owner's note wins until he decides.
+  contradicts?: string;
+}): Promise<{ candidate: string; auditId: string; conflict?: string }> {
   checkContent(options.content);
-  const extra = metaLines(options.meta);
+  const note = options.contradicts
+    ? await humanNote(options.contradicts)
+    : null;
+  const extra = metaLines(
+    note ? { ...options.meta, contradicts: note } : options.meta,
+  );
   if (options.origin !== "inferred" && options.origin !== "imported")
     throw new MemoryContractError(
       "INVALID",
@@ -297,5 +305,59 @@ export async function proposeMemory(options: {
     beforeSha: null,
     afterSha: sha256(body),
   });
-  return { candidate, auditId: id };
+  if (!note) return { candidate, auditId: id };
+  await recordNoteConflict({
+    note,
+    candidate,
+    content: options.content,
+    reason,
+  });
+  return { candidate, auditId: id, conflict: `${PERSONAL_DIR}/CONFLICTS.md` };
+}
+
+// 07-notes is the owner's: an agent never edits it, and a fact that disagrees with one of his
+// notes is not reconciled by the agent. It waits in CONFLICTS.md, beside the candidate.
+async function humanNote(relative: string): Promise<string> {
+  const clean = path.posix.normalize(relative.replace(/\\/g, "/"));
+  if (
+    path.posix.isAbsolute(clean) ||
+    !clean.startsWith(`${NOTES_DIR}/`) ||
+    !clean.endsWith(".md")
+  )
+    throw new MemoryContractError(
+      "INVALID",
+      `contradicts must name a note under ${NOTES_DIR}/`,
+    );
+  if ((await readIfPresent(oceanPath(clean))) === null)
+    throw new MemoryContractError("MISSING", `${clean} not found`);
+  return clean;
+}
+
+async function recordNoteConflict(entry: {
+  note: string;
+  candidate: string;
+  content: string;
+  reason: string;
+}): Promise<void> {
+  const file = oceanPath(PERSONAL_DIR, "CONFLICTS.md");
+  const claim = entry.content.replace(/\s+/g, " ").trim().slice(0, 300);
+  const section = [
+    `## ${localDate()} — ${entry.note}`,
+    "",
+    `- Your note: \`${entry.note}\``,
+    `- An agent's fact that disagrees: ${claim}`,
+    ...(entry.reason ? [`- Why it thinks so: ${entry.reason}`] : []),
+    `- Waiting as \`${entry.candidate}\`: approve or reject it once you decide, then fix the note if it changed.`,
+    "",
+  ].join("\n");
+  await mkdir(path.dirname(file), { recursive: true });
+  await withFileLock(file, async () => {
+    const current =
+      (await readIfPresent(file)) ??
+      "# Conflicts\n\nOpen contradictions for the owner to resolve. Nothing here is reconciled by an agent.\n";
+    await atomicWrite(
+      file,
+      `${current.endsWith("\n") ? current : `${current}\n`}\n${section}`,
+    );
+  });
 }

@@ -159,12 +159,12 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
     "ocean brief [--weekly] [--dry-run] [--date YYYY-MM-DD]",
   ],
   interests: [
-    "Propose interests from your projects' dependencies (as candidates), decay unused ones, record keep/skip.",
-    "ocean interests discover [--yes] | decay [--weeks N] [--yes] | keep <name> | skip <name>",
+    "Propose interests from your projects' dependencies or topics recurring in your sessions (as candidates), decay unused ones, record keep/skip.",
+    "ocean interests discover [--yes] | signals [--weeks N] [--yes] | decay [--weeks N] [--yes] | keep <name> | skip <name>",
   ],
   distill: [
-    "Distill a week: digest in 01-daily/weekly/, decisions and lessons as candidates, records marked distilled.",
-    "ocean distill --week [--date YYYY-MM-DD] [--yes]",
+    "Distill a week (digest in 01-daily/weekly/, decisions and lessons as candidates), or review last month against goals.md (01-daily/monthly/).",
+    "ocean distill --week [--date YYYY-MM-DD] [--yes] | --month [--month-of YYYY-MM] [--yes]",
   ],
   telemetry: [
     "Find recurring errors and failing providers in recent sessions; propose them as backlog lines.",
