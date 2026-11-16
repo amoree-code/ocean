@@ -194,16 +194,34 @@ test("the monthly review sets the month's weeks and milestones beside the active
   assert.equal(previousMonth("2026-01-05"), "2025-12");
   assert.equal(previousMonth("2026-11-16"), "2026-10");
   await withRoot(async (root) => {
-    assert.equal((await reviewMonth({ month: "2026-10", apply: true })).review, null);
+    assert.equal(
+      (await reviewMonth({ month: "2026-10", apply: true })).review,
+      null,
+    );
     await write(
       root,
       "02-personal/goals.md",
       "---\nname: goals\n---\n\n# Goals\n\n- **Back-end mastery (NestJS).** detail\n- **IELTS 6.5–7.0.** detail\n\n## Set aside\n\n- **Ship a SaaS** later\n",
     );
-    assert.deepEqual(await goalNames(), ["Back-end mastery (NestJS)", "IELTS 6.5–7.0"]);
-    await write(root, "01-daily/weekly/2026-W40.md", "---\ntype: weekly\nfrom: 2026-09-28\nto: 2026-10-04\n---\n");
-    await write(root, "01-daily/weekly/2026-W45.md", "---\ntype: weekly\nfrom: 2026-11-02\nto: 2026-11-08\n---\n");
-    await write(root, "01-daily/sessions/2026-10/a.md", record("2026-10-03", "A"));
+    assert.deepEqual(await goalNames(), [
+      "Back-end mastery (NestJS)",
+      "IELTS 6.5–7.0",
+    ]);
+    await write(
+      root,
+      "01-daily/weekly/2026-W40.md",
+      "---\ntype: weekly\nfrom: 2026-09-28\nto: 2026-10-04\n---\n",
+    );
+    await write(
+      root,
+      "01-daily/weekly/2026-W45.md",
+      "---\ntype: weekly\nfrom: 2026-11-02\nto: 2026-11-08\n---\n",
+    );
+    await write(
+      root,
+      "01-daily/sessions/2026-10/a.md",
+      record("2026-10-03", "A"),
+    );
     await write(
       root,
       "02-personal/milestones/cert.md",
@@ -213,7 +231,9 @@ test("the monthly review sets the month's weeks and milestones beside the active
     assert.deepEqual(dry.weeks, ["01-daily/weekly/2026-W40.md"]);
     assert.deepEqual(dry.milestones, ["NestJS certificate"]);
     assert.equal(dry.sessions, 1);
-    await assert.rejects(readFile(path.join(root, "01-daily/monthly/2026-10.md")));
+    await assert.rejects(
+      readFile(path.join(root, "01-daily/monthly/2026-10.md")),
+    );
     await reviewMonth({ month: "2026-10", apply: true });
     const file = path.join(root, "01-daily/monthly/2026-10.md");
     const text = await readFile(file, "utf8");

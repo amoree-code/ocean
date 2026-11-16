@@ -1,11 +1,11 @@
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { listCandidates } from "@ocean/brain/memory/memory-review.js";
 import { proposeMemory } from "@ocean/brain/memory/memory-write.js";
 import { MemoryContractError } from "@ocean/core/domain/mcp/memory-contract.js";
-import { atomicWrite } from "@ocean/core/shared/fs-utils.js";
+import { atomicWrite, parseFrontmatter } from "@ocean/core/shared/fs-utils.js";
 import { localDate } from "@ocean/core/shared/local-date.js";
-import { oceanPath } from "@ocean/core/shared/paths.js";
+import { DAILY_DIR, oceanPath } from "@ocean/core/shared/paths.js";
 import {
   expandHome,
   listProjectManifests,
@@ -65,17 +65,27 @@ export async function discoverStack(): Promise<DiscoveredInterest[]> {
   );
 }
 
-// Each discovered topic without an interest file yet becomes one candidate (dry run unless apply).
-export async function proposeDiscoveredInterests(options: {
-  apply: boolean;
-}): Promise<{
+export type InterestProposal = {
+  topic: string;
+  sources: string[];
+  keywords: string[];
+  reason: string;
+  note: string;
+};
+
+export type ProposalResult = {
   proposed: string[];
   known: string[];
   // A candidate for the topic already waits for review, or the proposal was refused.
   pending: { topic: string; reason: string }[];
-  found: DiscoveredInterest[];
-}> {
-  const found = await discoverStack();
+};
+
+// Each topic without an interest file yet becomes one candidate (dry run unless apply). Shared by
+// every way Ocean learns what the owner follows: his projects, his own answers, his sessions.
+export async function proposeInterests(
+  items: InterestProposal[],
+  options: { apply: boolean; origin: string; source: string },
+): Promise<ProposalResult> {
   const existing = await listInterests();
   const have = new Set(
     existing.flatMap((interest) => [
@@ -84,45 +94,158 @@ export async function proposeDiscoveredInterests(options: {
     ]),
   );
   const waiting = new Set((await listCandidates()).map((item) => item.target));
-  const proposed: string[] = [];
-  const known: string[] = [];
-  const pending: { topic: string; reason: string }[] = [];
-  for (const item of found) {
+  const result: ProposalResult = { proposed: [], known: [], pending: [] };
+  const batch = new Set<string>();
+  for (const item of items) {
     const slug = projectSlug(item.topic);
-    if (have.has(slug) || have.has(item.source)) {
-      known.push(item.topic);
+    // The same topic twice in one batch (stack and topics both name it) is one proposal.
+    if (!slug || batch.has(slug)) continue;
+    batch.add(slug);
+    if (have.has(slug) || item.sources.some((source) => have.has(source))) {
+      result.known.push(item.topic);
       continue;
     }
     if (waiting.has(`${INTERESTS_DIR}/${slug}.md`)) {
-      pending.push({
+      result.pending.push({
         topic: item.topic,
         reason: "a candidate waits for review",
       });
       continue;
     }
     if (!options.apply) {
-      proposed.push(item.topic);
+      result.proposed.push(item.topic);
       continue;
     }
+    const list = (values: string[]) =>
+      `[${values.map((value) => JSON.stringify(value)).join(", ")}]`;
     try {
       const { candidate } = await proposeMemory({
-        content: `---\ntype: interest\npriority: medium\nkeywords: []\nsources: [${item.source}]\ncadence: weekly\norigin: discovered\nweight: 1\nlast_signal: ${localDate()}\n---\n\n# ${item.topic}\n\nUsed in: ${item.projects.join(", ")}.\n`,
+        content: `---\ntype: interest\npriority: medium\nkeywords: ${list(item.keywords)}\nsources: ${list(item.sources)}\ncadence: weekly\norigin: ${options.origin}\nweight: 1\nlast_signal: ${localDate()}\n---\n\n# ${item.topic.replace(/\s+/g, " ").trim()}\n\n${item.note}\n`,
         origin: "inferred",
-        source: "interest-discovery",
+        source: options.source,
         target: `${INTERESTS_DIR}/${slug}.md`,
-        reason: `a dependency of ${item.projects.length} registered project(s)`,
+        reason: item.reason,
         meta: { kind: "interest" },
       });
-      proposed.push(candidate);
+      result.proposed.push(candidate);
     } catch (error) {
       if (!(error instanceof MemoryContractError)) throw error;
-      pending.push({
+      result.pending.push({
         topic: item.topic,
         reason: `${error.code}: ${error.message}`,
       });
     }
   }
-  return { proposed, known, pending, found };
+  return result;
+}
+
+export async function proposeDiscoveredInterests(options: {
+  apply: boolean;
+}): Promise<ProposalResult & { found: DiscoveredInterest[] }> {
+  const found = await discoverStack();
+  const result = await proposeInterests(
+    found.map((item) => ({
+      topic: item.topic,
+      sources: [item.source],
+      keywords: [],
+      reason: `a dependency of ${item.projects.length} registered project(s)`,
+      note: `Used in: ${item.projects.join(", ")}.`,
+    })),
+    {
+      apply: options.apply,
+      origin: "discovered",
+      source: "interest-discovery",
+    },
+  );
+  return { ...result, found };
+}
+
+// A topic the owner names (setup's onboarding question) is matched to the registry by topic or
+// package name for its feed; one the registry does not know is followed by its keywords alone.
+export function topicProposal(topic: string, reason: string): InterestProposal {
+  const wanted = topic.trim().toLowerCase();
+  const entry = Object.entries(SOURCES).find(
+    ([name, item]) => name === wanted || item.topic.toLowerCase() === wanted,
+  )?.[1];
+  return {
+    topic: entry?.topic ?? topic.trim(),
+    sources: entry ? [entry.source] : [],
+    keywords: entry ? [] : [wanted],
+    reason,
+    note: entry ? "" : "Add a feed under sources to follow it in the brief.",
+  };
+}
+
+const SIGNAL_SESSIONS = 3;
+
+// Implicit signal: a registry topic named in at least three session records of the last `weeks`
+// weeks (or a tag they carry) is proposed as an interest. Proposed, never added.
+export async function sessionSignals(options: {
+  weeks?: number;
+  today?: string;
+}): Promise<{ topic: string; sessions: number }[]> {
+  const cutoff = new Date(
+    Date.parse(options.today ?? localDate()) -
+      (options.weeks ?? 4) * 7 * 24 * 60 * 60 * 1000,
+  )
+    .toISOString()
+    .slice(0, 10);
+  const topics = [...new Set(Object.values(SOURCES).map((item) => item.topic))];
+  const counts = new Map<string, number>();
+  const root = oceanPath(DAILY_DIR, "sessions");
+  for (const month of await readdir(root).catch(() => [] as string[])) {
+    if (!/^\d{4}-\d{2}$/.test(month) || `${month}-31` < cutoff) continue;
+    for (const name of await readdir(path.join(root, month)).catch(
+      () => [] as string[],
+    )) {
+      if (!name.endsWith(".md")) continue;
+      const text = await readFile(path.join(root, month, name), "utf8").catch(
+        () => "",
+      );
+      const fields = parseFrontmatter(text);
+      if (fields.type !== "session" || (fields.date ?? "") < cutoff) continue;
+      const seen = new Set<string>();
+      for (const topic of topics)
+        if (
+          new RegExp(`(^|[^\\w.])${escapeRegex(topic)}(?![\\w])`, "i").test(
+            text,
+          )
+        )
+          seen.add(topic);
+      const tags = /^tags:\s*\[(.*)\]/m.exec(text)?.[1] ?? "";
+      for (const tag of tags.split(","))
+        if (tag.trim()) seen.add(tag.trim().replace(/^["']|["']$/g, ""));
+      for (const topic of seen) counts.set(topic, (counts.get(topic) ?? 0) + 1);
+    }
+  }
+  return [...counts]
+    .filter(([, sessions]) => sessions >= SIGNAL_SESSIONS)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([topic, sessions]) => ({ topic, sessions }));
+}
+
+const escapeRegex = (text: string) =>
+  text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+export async function proposeSignalInterests(options: {
+  apply: boolean;
+  weeks?: number;
+  today?: string;
+}): Promise<
+  ProposalResult & { signals: { topic: string; sessions: number }[] }
+> {
+  const signals = await sessionSignals(options);
+  const result = await proposeInterests(
+    signals.map((signal) => ({
+      ...topicProposal(
+        signal.topic,
+        `named in ${signal.sessions} recent session records`,
+      ),
+      note: `Came up in ${signal.sessions} sessions in the last ${options.weeks ?? 4} weeks.`,
+    })),
+    { apply: options.apply, origin: "signal", source: "session-signals" },
+  );
+  return { ...result, signals };
 }
 
 function setField(source: string, key: string, value: string): string {

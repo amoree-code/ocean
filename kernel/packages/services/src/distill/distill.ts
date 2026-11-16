@@ -283,7 +283,13 @@ export async function reviewMonth(options: {
   if (!options.apply) return result;
   const file = oceanPath(relative);
   // The owner's answers live in this file; a rerun never overwrites them.
-  if (await readFile(file, "utf8").then(() => true, () => false)) return result;
+  if (
+    await readFile(file, "utf8").then(
+      () => true,
+      () => false,
+    )
+  )
+    return result;
   const link = (target: string, label: string) =>
     `[${label.replace(/[[\]]/g, "")}](../${path.relative(oceanPath(DAILY_DIR), target).split(path.sep).join("/")})`;
   const body = [

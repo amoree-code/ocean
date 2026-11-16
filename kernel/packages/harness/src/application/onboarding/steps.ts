@@ -6,12 +6,17 @@ import {
   populateSkillHub,
 } from "@ocean/market/skills/skill-hub.js";
 import { connectObsidianVault } from "@ocean/services/obsidian/vault-discovery.js";
+import {
+  ONBOARDING_QUESTIONS,
+  type OnboardingAnswers,
+  onboard,
+} from "@ocean/services/onboarding/onboarding.js";
 import type { ClientPlan } from "../clients/clients.js";
 import type { HookPlan } from "../clients/hooks.js";
 import type { NativePlan } from "../clients/native.js";
 
 // Bump when a step is added; completed steps stay completed, only new ids run.
-export const ONBOARDING_VERSION = 3;
+export const ONBOARDING_VERSION = 4;
 
 export type OnboardingIO = {
   interactive: boolean;
@@ -231,6 +236,25 @@ export function buildSteps(deps: StepDependencies): OnboardingStep[] {
           if (error.code !== "EEXIST") throw error;
           io.say("  identity.md already exists; left unchanged.");
         });
+        return "done";
+      },
+    },
+    {
+      id: "interests",
+      title: "Goals and interests (proposed for your review)",
+      optional: true,
+      async run(io) {
+        const answers: OnboardingAnswers = {};
+        for (const { key, question } of ONBOARDING_QUESTIONS)
+          answers[key] = (await io.ask(`  ${question} `, "")).trim();
+        if (!Object.values(answers).some(Boolean)) return "skipped";
+        const result = await onboard(answers);
+        const count = result.facts.length + result.interests.proposed.length;
+        io.say(
+          count
+            ? `  ${count} proposal(s) wait for review: ocean memory review`
+            : "  Nothing new to propose.",
+        );
         return "done";
       },
     },

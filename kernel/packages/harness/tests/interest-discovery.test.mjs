@@ -87,7 +87,7 @@ test("discover maps project dependencies to interests and proposes only new ones
     assert.equal(applied.proposed.length, 2);
     const text = await readFile(path.join(root, applied.proposed[0]), "utf8");
     assert.match(text, /^target: "02-personal\/interests\/react\.md"$/m);
-    assert.match(text, /sources: \[github:facebook\/react\]/);
+    assert.match(text, /sources: \["github:facebook\/react"\]/);
     const approved = await approveCandidate({
       id: path.basename(applied.proposed[0], ".md"),
     });
@@ -144,6 +144,61 @@ test("keep/skip move weight within bounds; decay lowers only discovered interest
     await assert.rejects(
       interestFeedback("nobody", "keep"),
       /no interest named/,
+    );
+  });
+});
+
+test("onboarding answers become a goals candidate and interest candidates, one per topic", async () => {
+  const { onboard } = await import("@ocean/services/onboarding/onboarding.js");
+  const root = await workspace();
+  await withRoot(root, async () => {
+    const result = await onboard({
+      stack: "NestJS, react, NestJS",
+      goals: "IELTS 7; Back-end mastery",
+      topics: "nestjs, Rust embedded",
+    });
+    assert.equal(result.facts.length, 1);
+    const goals = await readFile(path.join(root, result.facts[0]), "utf8");
+    assert.match(goals, /^target: "02-personal\/goals\/goals\.md"$/m);
+    assert.match(goals, /- \*\*IELTS 7\*\*\n- \*\*Back-end mastery\*\*/);
+    // NestJS is already followed (named three times, reported once); a topic the registry lacks
+    // is followed by its keywords.
+    assert.deepEqual(result.interests.known, ["NestJS"]);
+    assert.equal(result.interests.proposed.length, 2);
+    const rust = await readFile(
+      path.join(root, result.interests.proposed[1]),
+      "utf8",
+    );
+    assert.match(rust, /keywords: \["rust embedded"\]/);
+    assert.match(rust, /sources: \[\]/);
+    assert.match(rust, /origin: onboarding/);
+  });
+});
+
+test("a registry topic named in three recent sessions is proposed; older or rarer ones are not", async () => {
+  const { proposeSignalInterests } = await import(
+    "@ocean/services/brief/interest-discovery.js"
+  );
+  const root = await workspace();
+  await withRoot(root, async () => {
+    const session = async (name, date, body) => {
+      const file = path.join(root, "01-daily/sessions", date.slice(0, 7), `${name}.md`);
+      await mkdir(path.dirname(file), { recursive: true });
+      await writeFile(file, `---\ntype: session\ndate: ${date}\n---\n\n# ${body}\n`);
+    };
+    await session("a", "2026-11-10", "Prisma migration for the API");
+    await session("b", "2026-11-11", "fix prisma client types");
+    await session("c", "2026-11-12", "Prisma seed and Vite config");
+    await session("d", "2026-11-13", "Vite build");
+    await session("e", "2026-08-01", "Vite again, long ago");
+    await session("f", "2026-11-14", "prismatic colours, not the ORM");
+    const dry = await proposeSignalInterests({ apply: false, today: "2026-11-16" });
+    assert.deepEqual(dry.signals, [{ topic: "Prisma", sessions: 3 }]);
+    assert.deepEqual(dry.proposed, ["Prisma"]);
+    const applied = await proposeSignalInterests({ apply: true, today: "2026-11-16" });
+    assert.match(
+      await readFile(path.join(root, applied.proposed[0]), "utf8"),
+      /sources: \["github:prisma\/prisma"\][\s\S]*origin: signal/,
     );
   });
 });

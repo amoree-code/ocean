@@ -60,7 +60,11 @@ test("a fact that disagrees with an owner's note waits in CONFLICTS.md; the note
     await mkdir(path.join(root, NOTES_DIR), { recursive: true });
     const note = "I start work at 9.\n";
     await writeFile(path.join(root, NOTES_DIR, "hours.md"), note);
-    for (const bad of ["02-personal/x.md", `${NOTES_DIR}/../x.md`, `${NOTES_DIR}/none.md`])
+    for (const bad of [
+      "02-personal/x.md",
+      `${NOTES_DIR}/../x.md`,
+      `${NOTES_DIR}/none.md`,
+    ])
       await assert.rejects(
         proposeMemory({ content: "x", origin: "inferred", contradicts: bad }),
         MemoryContractError,

@@ -306,7 +306,12 @@ export async function proposeMemory(options: {
     afterSha: sha256(body),
   });
   if (!note) return { candidate, auditId: id };
-  await recordNoteConflict({ note, candidate, content: options.content, reason });
+  await recordNoteConflict({
+    note,
+    candidate,
+    content: options.content,
+    reason,
+  });
   return { candidate, auditId: id, conflict: `${PERSONAL_DIR}/CONFLICTS.md` };
 }
 
