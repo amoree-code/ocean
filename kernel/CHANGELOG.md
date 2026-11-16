@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+- feat(T-314): `ocean obsidian templates --yes` also gives QuickAdd one "Ocean: New <type>" choice per routed type with a template (from routing.json, like Templater's folder templates); types only Ocean writes and captures get none, choices the owner made are kept, and nothing is written when QuickAdd is not installed
+
 - style: `pnpm check:style` passes on main again (comma operators in two test callbacks, unused imports left by the closeout change, test formatting); no behaviour change (#297)
 
 ## 1.9.0 (2026-11-16)

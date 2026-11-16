@@ -97,6 +97,100 @@ export async function syncFolderTemplates(options: {
   return { file: relative, ...plan, written: true };
 }
 
+// QuickAdd choices, one "Ocean: New <type>" per routed type with a template, so the command
+// palette offers the same table Templater uses. Types only Ocean writes (sessions, briefs, weekly
+// and monthly reviews) and captures (the Quick capture choice) get none. Choices Ocean did not
+// generate are kept; a generated one is replaced. Nothing is written if QuickAdd is not installed.
+
+const QUICKADD_CONFIG = [".obsidian", "plugins", "quickadd", "data.json"];
+const OCEAN_WRITTEN = new Set([
+  "session",
+  "brief",
+  "weekly",
+  "monthly",
+  "capture",
+]);
+const choiceId = (type: string) => `ocean-quickadd-${type}`;
+
+type Choice = { id?: unknown; [key: string]: unknown };
+
+function templateChoice(
+  type: string,
+  folder: string,
+  template: string,
+): Choice {
+  const name = type[0].toUpperCase() + type.slice(1);
+  return {
+    id: choiceId(type),
+    name: `Ocean: New ${name}`,
+    type: "Template",
+    command: true,
+    templatePath: template,
+    folder: {
+      enabled: true,
+      folders: [folder],
+      chooseWhenCreatingNote: false,
+      createInSameFolderAsActiveFile: false,
+      chooseFromSubfolders: false,
+    },
+    fileNameFormat: {
+      enabled: true,
+      format: type === "daily" ? "{{DATE:YYYY-MM-DD}}" : "{{NAME}}",
+    },
+    appendLink: false,
+    openFile: true,
+    fileOpening: {
+      location: "tab",
+      direction: "vertical",
+      mode: "default",
+      focus: true,
+    },
+    fileExistsBehavior: { kind: "prompt" },
+  };
+}
+
+export async function syncQuickAddChoices(options: {
+  apply: boolean;
+}): Promise<{
+  file: string;
+  choices: string[];
+  written: boolean;
+}> {
+  const relative = QUICKADD_CONFIG.join("/");
+  const file = oceanPath(...QUICKADD_CONFIG);
+  let config: Record<string, unknown>;
+  try {
+    config = JSON.parse(await readFile(file, "utf8"));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT")
+      return { file: relative, choices: [], written: false };
+    throw new Error(`${relative} is not valid JSON`);
+  }
+  const generated: Choice[] = [];
+  for (const type of RECORD_TYPES) {
+    if (OCEAN_WRITTEN.has(type)) continue;
+    const folder = recordFolder(type)?.replace(/\/$/, "");
+    const template = `${TEMPLATES_DIR}/${type}.md`;
+    if (folder && (await exists(oceanPath(template))))
+      generated.push(templateChoice(type, folder, template));
+  }
+  const ours = new Set(RECORD_TYPES.map(choiceId));
+  const current = Array.isArray(config.choices)
+    ? (config.choices as Choice[])
+    : [];
+  const choices = [
+    ...current.filter((choice) => !ours.has(String(choice?.id))),
+    ...generated,
+  ];
+  const names = generated.map((choice) => String(choice.name));
+  if (!options.apply) return { file: relative, choices: names, written: false };
+  await atomicWrite(
+    file,
+    `${JSON.stringify({ ...config, choices }, null, 2)}\n`,
+  );
+  return { file: relative, choices: names, written: true };
+}
+
 // A quick note from anywhere (`ocean note "<text>"`): one file in 00-inbox/captures with the
 // capture frontmatter, named by time and its first words. Secrets are redacted before writing.
 export async function writeCapture(

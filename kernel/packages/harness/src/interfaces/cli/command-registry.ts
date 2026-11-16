@@ -89,7 +89,10 @@ import {
   parseConflictSide,
   resolveConflict,
 } from "@ocean/services/obsidian/conflict-log.js";
-import { syncFolderTemplates } from "@ocean/services/obsidian/folder-templates.js";
+import {
+  syncFolderTemplates,
+  syncQuickAddChoices,
+} from "@ocean/services/obsidian/folder-templates.js";
 import {
   listInboxCandidates,
   promoteInboxNote,
@@ -549,13 +552,16 @@ async function commandObsidian(): Promise<void> {
   } else {
     try {
       if (action === "templates") {
-        // T-314: Templater folder templates generated from routing.json; a dry run until --yes.
-        const result = await syncFolderTemplates({
-          apply: process.argv.includes("--yes"),
-        });
-        console.log(JSON.stringify(result, null, 2));
+        // T-314: Templater folder templates and QuickAdd choices generated from routing.json; a dry run
+        // until --yes.
+        const apply = process.argv.includes("--yes");
+        const result = await syncFolderTemplates({ apply });
+        const quickadd = await syncQuickAddChoices({ apply });
+        console.log(JSON.stringify({ ...result, quickadd }, null, 2));
         if (!result.written)
-          console.error("Dry run: pass --yes to write the Templater config.");
+          console.error(
+            "Dry run: pass --yes to write the Templater and QuickAdd config.",
+          );
         return;
       }
       if (action === "connect") {

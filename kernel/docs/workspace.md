@@ -117,7 +117,9 @@ Every record type with one home is named in `packages/brain/src/memory/routing.j
   macOS Shortcut, a Raycast quicklink or a QuickAdd capture choice.
 - `ocean obsidian templates [--yes]` writes Templater's folder templates from the table, so a
   note created in a type's folder starts from `06-templates/<type>.md`; entries for other
-  folders are kept, and a type without a template is listed as `missing`.
+  folders are kept, and a type without a template is listed as `missing`. The same run gives
+  QuickAdd (when installed) one "Ocean: New <type>" choice per routed template; types only Ocean
+  writes (session, brief, weekly, monthly) and captures get none, and choices you made are kept.
 
 People live one per file in `02-personal/people/` (`type: person`, `aliases` in every spelling
 you use, English and Arabic). The `people_lookup` MCP tool matches a name exactly — file name,

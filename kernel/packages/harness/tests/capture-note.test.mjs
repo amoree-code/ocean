@@ -98,3 +98,52 @@ test("obsidian templates maps each routed folder to its template and keeps the o
     assert.deepEqual(written.folder_templates, dry.entries);
   });
 });
+
+test("obsidian templates offers one QuickAdd choice per routed template, keeps the owner's choices", async () => {
+  await inRoot(async (root) => {
+    const { syncQuickAddChoices } = await import(
+      "@ocean/services/obsidian/folder-templates.js"
+    );
+    // QuickAdd not installed: nothing is written.
+    assert.deepEqual(await syncQuickAddChoices({ apply: true }), {
+      file: ".obsidian/plugins/quickadd/data.json",
+      choices: [],
+      written: false,
+    });
+    await mkdir(path.join(root, "06-templates"), { recursive: true });
+    for (const name of ["decision", "daily", "session", "capture"])
+      await writeFile(
+        path.join(root, "06-templates", `${name}.md`),
+        "---\n---\n",
+      );
+    const config = path.join(root, ".obsidian/plugins/quickadd/data.json");
+    await mkdir(path.dirname(config), { recursive: true });
+    await writeFile(
+      config,
+      JSON.stringify({
+        devMode: false,
+        choices: [
+          { id: "mine", name: "My capture", type: "Capture" },
+          { id: "ocean-quickadd-decision", name: "stale", type: "Template" },
+        ],
+      }),
+    );
+    const dry = await syncQuickAddChoices({ apply: false });
+    assert.deepEqual(dry.choices, ["Ocean: New Daily", "Ocean: New Decision"]);
+    assert.match(await readFile(config, "utf8"), /stale/);
+    await syncQuickAddChoices({ apply: true });
+    const written = JSON.parse(await readFile(config, "utf8"));
+    assert.equal(written.devMode, false);
+    assert.deepEqual(
+      written.choices.map((choice) => choice.id),
+      ["mine", "ocean-quickadd-daily", "ocean-quickadd-decision"],
+    );
+    const decision = written.choices.at(-1);
+    assert.equal(decision.templatePath, "06-templates/decision.md");
+    assert.deepEqual(decision.folder.folders, ["05-knowledge/decisions"]);
+    assert.equal(
+      written.choices[1].fileNameFormat.format,
+      "{{DATE:YYYY-MM-DD}}",
+    );
+  });
+});
