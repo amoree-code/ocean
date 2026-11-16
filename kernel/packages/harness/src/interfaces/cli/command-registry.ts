@@ -165,6 +165,7 @@ import { runClientTestCommand } from "./client-test-command.js";
 import { runClientsCommand } from "./clients-command.js";
 import { runContextCommand, runContextCostCommand } from "./context-command.js";
 import { runDailyCommand } from "./daily-command.js";
+import { runDesktopCommand } from "./desktop-command.js";
 import { gatewayFindings } from "./gateway-findings.js";
 import { runLifecycleCommand, runPolicyCommand } from "./governance-command.js";
 import { runHandoffCommand } from "./handoff-command.js";
@@ -1564,6 +1565,7 @@ export const commandRegistry: Record<string, CommandHandler> = {
   layout: commandLayout,
   memory: commandMemory,
   pull: () => runPullCommand(process.argv.slice(3)),
+  desktop: () => runDesktopCommand(process.argv.slice(3)),
   mcp: commandMcp,
   market: commandMarket,
   obsidian: commandObsidian,

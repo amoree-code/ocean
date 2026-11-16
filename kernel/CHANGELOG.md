@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+- feat(T-315): Ocean can read Claude Desktop's plain chat from the app's own local IndexedDB, with no dependency: a LevelDB reader (MANIFEST, logs, Snappy tables), Chromium IndexedDB keys, value wrappers and blob files, and Blink/V8 values. The folder is copied aside and read, never opened in place. `ocean desktop capture --dry-run` lists the conversations the app holds, with message counts and never text; an unreadable store is reported as `DESKTOP_CHAT_UNREADABLE` (#280)
+
 ## 1.6.2 (2026-11-15)
 
 - fix(T-313): session fact capture with Claude no longer loads Claude Code's own context: the call runs isolated (its own short system prompt, no settings or CLAUDE.md, no tools, no MCP servers, no saved session), which takes its fixed cost from about 30,700 tokens to about 1,000 per call
