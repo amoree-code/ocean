@@ -144,6 +144,14 @@ Decisions, Problems → fixes, Learned, Verification, Files / commits, Next). Th
 from one cheap model call when available, else from the session's events; trivial sessions are
 skipped. `ocean memory migrate-sessions [--yes]` moves older `00-inbox/brain-dump/` files there.
 
+`ocean distill --week [--yes]` closes a week (ISO, Monday–Sunday): one digest in
+`01-daily/weekly/<YYYY-Www>.md` linking the week's session records and briefs, each record's
+Decisions and Learned proposed as knowledge candidates, records marked `distilled: true`, and
+captures marked `status: processed` moved to `00-inbox/archive/<week>/`. The `/weekly-review`
+skill walks you from there to inbox zero. Search covers session records and briefs; a record
+with `status: retired` stays on disk but out of search, and `ocean memory archive-retired
+[--yes]` moves retired lessons into `05-knowledge/lessons/archive/`.
+
 ## Task completion and archive
 
 

@@ -169,6 +169,7 @@ import { runClientsCommand } from "./clients-command.js";
 import { runContextCommand, runContextCostCommand } from "./context-command.js";
 import { runDailyCommand } from "./daily-command.js";
 import { runDesktopCommand } from "./desktop-command.js";
+import { runDistillCommand } from "./distill-command.js";
 import { gatewayFindings } from "./gateway-findings.js";
 import { runLifecycleCommand, runPolicyCommand } from "./governance-command.js";
 import { runHandoffCommand } from "./handoff-command.js";
@@ -1597,6 +1598,7 @@ export const commandRegistry: Record<string, CommandHandler> = {
   note: () => runNoteCommand(process.argv.slice(3)),
   brief: () => runBriefCommand(process.argv.slice(3)),
   interests: () => runInterestsCommand(process.argv.slice(3)),
+  distill: () => runDistillCommand(process.argv.slice(3)),
   daily: commandDaily,
   schedule: commandSchedule,
   loop: commandLoop,

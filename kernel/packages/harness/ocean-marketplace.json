@@ -165,6 +165,24 @@
       }
     },
     {
+      "kind": "skill",
+      "name": "dev.ocean.skills.weekly-review",
+      "version": "1.6.1",
+      "engines": {
+        "ocean": ">=1.6.1"
+      },
+      "source": {
+        "type": "path",
+        "path": "skills/core/weekly-review"
+      },
+      "integrity": {
+        "sha256": "b7cb9dc2e0e425648cbbf7081c4445fb3ebdb1cdaa333265f2ca9163e01974ea"
+      },
+      "spec": {
+        "directory": "weekly-review"
+      }
+    },
+    {
       "kind": "mcp",
       "name": "dev.ocean/chrome-devtools",
       "description": "Control the owner's real, signed-in Chrome through the ocean-browser-mcp package (pinned Chrome DevTools MCP): tabs, navigation, clicks, forms, uploads, screenshots, console and network errors. Reads every open tab and acts inside any signed-in session of the attached Chrome, for every client wired to it. Chrome asks to allow each new connection. The filesystem permission is declared for consent but not enforced at runtime, and the npm package is pinned by version, not by digest.",
