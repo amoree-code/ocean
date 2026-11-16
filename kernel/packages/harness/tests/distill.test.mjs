@@ -12,8 +12,8 @@ import {
   isoWeek,
   reviewMonth,
 } from "@ocean/services/distill/distill.js";
-import { previousMonth } from "../dist/interfaces/cli/distill-command.js";
 import { defaultBrainIndexPort as indexPort } from "../dist/composition/runtime.js";
+import { previousMonth } from "../dist/interfaces/cli/distill-command.js";
 
 // T-314: a week of records becomes one digest and review candidates; retired lessons leave search.
 

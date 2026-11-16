@@ -94,7 +94,30 @@ export function selectTurns(
     .map(({ role, text }) => ({ role, text }));
 }
 
-export function buildFactsPrompt(turns: FactTurn[]): string {
+// A short account of the conversation for the day's log (T-314), asked for in the same call as
+// the facts so a chat summary costs a few output tokens, never a second model call.
+export type SessionDigest = {
+  title: string;
+  goal: string;
+  outcome: string;
+  decisions: string[];
+  fixes: string[];
+  learned: string[];
+  next: string[];
+};
+
+const DIGEST_ITEMS = 3;
+const DIGEST_ITEM_CHARS = 220;
+
+const DIGEST_PROMPT = [
+  "Also summarize the whole conversation for the user's daily log, in the digest field. Plain short sentences in English; lists may be empty; never a secret or a [REDACTED] value.",
+  `title: what the conversation was about, at most 8 words. goal and outcome: one sentence each. decisions, fixes ("problem → fix"), learned, next: at most ${DIGEST_ITEMS} items each.`,
+];
+
+export function buildFactsPrompt(
+  turns: FactTurn[],
+  options: { digest?: boolean } = {},
+): string {
   const transcript = turns
     .map(
       (turn) => `[${turn.role === "user" ? "USER" : "ASSISTANT"}] ${turn.text}`,
@@ -106,8 +129,9 @@ export function buildFactsPrompt(turns: FactTurn[]): string {
     "Only extract what the USER stated or explicitly confirmed. Never extract the assistant's suggestions, guesses or plans the user did not confirm.",
     "Never extract temporary state (what is being debugged right now, today's to-do, a file being edited), secrets, credentials, or anything marked [REDACTED] or [PRIVATE_PATH].",
     `Return at most ${MAX_FACTS} facts. Returning none is correct and common.`,
+    ...(options.digest ? DIGEST_PROMPT : []),
     "Answer with JSON only, no prose and no code fence:",
-    '{"facts":[{"title":"short label","content":"the fact as one or two plain sentences","evidence":"an exact quote, copied character for character from one USER line","reason":"why it is durable","type":"one of the types below","project":"project name if the fact is about one, else omit"}]}',
+    `{"facts":[{"title":"short label","content":"the fact as one or two plain sentences","evidence":"an exact quote, copied character for character from one USER line","reason":"why it is durable","type":"one of the types below","project":"project name if the fact is about one, else omit"}]${options.digest ? ',"digest":{"title":"","goal":"","outcome":"","decisions":[],"fixes":[],"learned":[],"next":[]}' : ""}}`,
     `type is one of: ${FACT_TYPES.join(", ")}. Use project only for a fact about one project, and then also give its project name; a fact about the user stays a personal type even when it came up in a project.`,
     'Answer {"facts":[]} when nothing qualifies.',
     "",
@@ -141,6 +165,39 @@ function factsList(text: string | null): unknown[] | null {
     Array.isArray((parsed as { facts?: unknown }).facts)
     ? (parsed as { facts: unknown[] }).facts
     : null;
+}
+
+// The digest the answer holds, cleaned and bounded; null when there is none or it says nothing.
+export function parseDigest(text: string | null): SessionDigest | null {
+  if (!text) return null;
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start < 0 || end <= start) return null;
+  let value: Record<string, unknown>;
+  try {
+    const parsed = JSON.parse(text.slice(start, end + 1)) as {
+      digest?: unknown;
+    };
+    if (!parsed.digest || typeof parsed.digest !== "object") return null;
+    value = parsed.digest as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+  const list = (key: string) =>
+    (Array.isArray(value[key]) ? (value[key] as unknown[]) : [])
+      .map((item) => redactSecrets(clean(item, DIGEST_ITEM_CHARS)))
+      .filter((item) => item && !/\[(redacted|private_path)\]/i.test(item))
+      .slice(0, DIGEST_ITEMS);
+  const digest: SessionDigest = {
+    title: redactSecrets(clean(value.title, 80)),
+    goal: redactSecrets(clean(value.goal, DIGEST_ITEM_CHARS)),
+    outcome: redactSecrets(clean(value.outcome, DIGEST_ITEM_CHARS)),
+    decisions: list("decisions"),
+    fixes: list("fixes"),
+    learned: list("learned"),
+    next: list("next"),
+  };
+  return digest.title || digest.goal ? digest : null;
 }
 
 export function parseFacts(text: string | null): SessionFact[] {
@@ -193,17 +250,20 @@ export type ExtractionResult = {
   turns: number;
   // The model gave no readable answer; nothing was learned from these turns.
   failed: boolean;
+  // The conversation's summary, when it was asked for (digest: true) and given.
+  digest?: SessionDigest | null;
 };
 
 export async function extractSessionFacts(options: {
   turns: FactTurn[];
   complete: CompleteText;
   budgetChars?: number;
+  digest?: boolean;
 }): Promise<ExtractionResult> {
   const turns = selectTurns(options.turns, options.budgetChars);
   if (!turns.some((turn) => turn.role === "user"))
     return { facts: [], rejected: [], prompt: "", turns: 0, failed: false };
-  const prompt = buildFactsPrompt(turns);
+  const prompt = buildFactsPrompt(turns, { digest: options.digest });
   let answer: string | null = null;
   try {
     answer = await options.complete(prompt);
@@ -226,6 +286,7 @@ export async function extractSessionFacts(options: {
     prompt,
     turns: turns.length,
     failed: factsList(answer) === null,
+    ...(options.digest ? { digest: parseDigest(answer) } : {}),
   };
 }
 

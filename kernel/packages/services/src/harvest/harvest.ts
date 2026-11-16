@@ -13,16 +13,22 @@ import type {
   Session,
   SessionEvent,
 } from "@ocean/core/domain/sessions/session.js";
-import { atomicWrite, parseFrontmatter } from "@ocean/core/shared/fs-utils.js";
+import {
+  atomicWrite,
+  parseFrontmatter,
+  withFileLock,
+} from "@ocean/core/shared/fs-utils.js";
 import {
   DAILY_DIR,
+  INBOX_DIR,
   KNOWLEDGE_DIR,
   oceanPath,
   SYSTEM_DIR,
 } from "@ocean/core/shared/paths.js";
+import { keepTicks, noteFile, putBlock, readBlock } from "../day/note.js";
 import { section } from "../distill/distill.js";
 
-// The daily harvest (T-316): every session of a day, from every AI client, becomes one summary in
+// The daily harvest (T-314): every session of a day, from every AI client, becomes one summary in
 // that day's note, and what the sessions decided, fixed and learned is filed into 05-knowledge on
 // its own, with no review step (owner's decision, 2026-11-16). Safety instead of review: a record
 // that already says the same thing is strengthened, not duplicated; every write is in a ledger
@@ -30,8 +36,6 @@ import { section } from "../distill/distill.js";
 // here calls a model: the judgement work (legacy records, imports, corrections that become rules)
 // is the daily-harvest skill's.
 
-const MARK_START = "<!-- ocean:harvest:start -->";
-const MARK_END = "<!-- ocean:harvest:end -->";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_SESSION_MS = 8 * 60 * 60 * 1000;
 const MIN_ITEM = 25;
@@ -94,6 +98,21 @@ async function markdownIn(dir: string, skipArchive = true): Promise<string[]> {
   return files.sort();
 }
 
+// A title made from a client's raw first turn carries its tags (`<command-message>…`,
+// `<ide_opened_file>…`); what is left after them, or the project, is the title.
+export function cleanTitle(raw: string, fallback: string): string {
+  const text = raw
+    .replace(/<([\w-]+)>[\s\S]*?<\/\1>/g, (whole, tag: string) =>
+      /^(command-name|command-args)$/.test(tag)
+        ? whole.replace(/<[^>]+>/g, " ")
+        : " ",
+    )
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return (text || fallback).slice(0, 120);
+}
+
 export async function daySessions(date: string): Promise<DaySession[]> {
   const sessions: DaySession[] = [];
   for (const file of await markdownIn(
@@ -105,10 +124,16 @@ export async function daySessions(date: string): Promise<DaySession[]> {
     sessions.push({
       file,
       relative: relativeOf(file),
-      title: /^# (.+)$/m.exec(text)?.[1]?.trim() ?? path.basename(file, ".md"),
+      title: cleanTitle(
+        /^# (.+)$/m.exec(text)?.[1] ?? "",
+        fields.project || path.basename(file, ".md"),
+      ),
       date,
-      project: fields.project || "",
-      provider: fields.provider || "",
+      project:
+        fields.project || /^- Project: (.+)$/m.exec(text)?.[1]?.trim() || "",
+      // A legacy record keeps its client in the body ("- Provider: claude").
+      provider:
+        fields.provider || /^- Provider: (.+)$/m.exec(text)?.[1]?.trim() || "",
       status: fields.status || "",
       text,
     });
@@ -333,6 +358,7 @@ function dayBlock(input: {
   filed: Map<HarvestItem, string>;
   corrections: string[];
   minutes: Record<string, number>;
+  captures: string[];
   date: string;
 }): string {
   const link = (session: DaySession) =>
@@ -360,14 +386,14 @@ function dayBlock(input: {
         ]
       : [];
   };
-  const next = input.sessions.flatMap((session) =>
+  // Every Next a session left is an open loop: carried forward each morning until ticked.
+  const loops = input.sessions.flatMap((session) =>
     sectionItems(session.text, "Next").map(
-      (item) => `- ${item} (${link(session)})`,
+      (item) => `- [ ] ${item} (${link(session)})`,
     ),
   );
   const minutes = Object.entries(input.minutes).sort((a, b) => b[1] - a[1]);
   return [
-    MARK_START,
     "## Day summary",
     "",
     `${input.sessions.length} session(s): ${[...byProvider].map(([provider, n]) => `${provider} ${n}`).join(", ") || "none"}.`,
@@ -383,11 +409,20 @@ function dayBlock(input: {
     ...kind("decision", "Decisions"),
     ...kind("solution", "Problems → fixes"),
     ...kind("discovery", "Learned"),
-    ...(next.length ? ["", "### Open next", "", ...next] : []),
+    ...(input.captures.length
+      ? ["", "### Captured", "", ...input.captures]
+      : []),
+    ...(input.filed.size
+      ? [
+          "",
+          `_Filed into knowledge on its own; undo with \`ocean harvest undo ${input.date}\`._`,
+        ]
+      : []),
+    ...(loops.length ? ["", "## Open loops", "", ...loops] : []),
     ...(input.corrections.length
       ? [
           "",
-          "### Corrections you made",
+          "## Corrections",
           "",
           ...input.corrections.map((text) => `- ${text}`),
         ]
@@ -395,7 +430,7 @@ function dayBlock(input: {
     ...(minutes.length
       ? [
           "",
-          "### Time",
+          "## Time",
           "",
           ...minutes.map(
             ([project, n]) =>
@@ -403,29 +438,26 @@ function dayBlock(input: {
           ),
         ]
       : []),
-    ...(input.filed.size
-      ? [
-          "",
-          `Filed into knowledge on its own; undo with \`ocean harvest undo ${input.date}\`.`,
-        ]
-      : []),
-    MARK_END,
   ].join("\n");
 }
 
-// The day's note keeps what the owner wrote: only the block between the markers is Ocean's.
-export function withBlock(
-  note: string | null,
-  date: string,
-  block: string,
-): string {
-  if (note === null)
-    return `---\ntype: daily\ndate: ${date}\n---\n\n# ${date}\n\n${block}\n`;
-  const start = note.indexOf(MARK_START);
-  const end = note.indexOf(MARK_END);
-  if (start >= 0 && end > start)
-    return note.slice(0, start) + block + note.slice(end + MARK_END.length);
-  return `${note.replace(/\n*$/, "")}\n\n${block}\n`;
+// Captures written that day (00-inbox/captures/), linked from the day's account.
+async function dayCaptures(date: string): Promise<string[]> {
+  const dir = oceanPath(INBOX_DIR, "captures");
+  const lines: string[] = [];
+  for (const name of (await readdir(dir).catch(() => [] as string[])).sort()) {
+    if (!name.endsWith(".md")) continue;
+    const text = await readFile(path.join(dir, name), "utf8").catch(() => "");
+    const fields = parseFrontmatter(text);
+    const created = fields.created || fields.date || name;
+    if (!created.startsWith(date) && localDay(created) !== date) continue;
+    const title =
+      /^# (.+)$/m.exec(text)?.[1]?.trim() || name.replace(/\.md$/, "");
+    lines.push(
+      `- [${title.replace(/[[\]]/g, "")}](../${INBOX_DIR}/captures/${name})`,
+    );
+  }
+  return lines;
 }
 
 const ledgerFile = (date: string) => stateDir("ledger", `${date}.json`);
@@ -460,7 +492,8 @@ export async function harvestDay(options: {
     corrections,
     minutes,
   };
-  if (!sessions.length && !ofDay.length) return result;
+  const captures = await dayCaptures(date);
+  if (!sessions.length && !ofDay.length && !captures.length) return result;
   result.note = `${DAILY_DIR}/${date}.md`;
   if (!options.apply) {
     result.created = items.map(
@@ -480,16 +513,22 @@ export async function harvestDay(options: {
   }
   await mkdir(path.dirname(ledgerFile(date)), { recursive: true });
   await atomicWrite(ledgerFile(date), `${JSON.stringify(previous, null, 2)}\n`);
-  const noteFile = oceanPath(result.note);
-  const note = await readFile(noteFile, "utf8").catch(() => null);
-  await atomicWrite(
-    noteFile,
-    withBlock(
-      note,
-      date,
-      dayBlock({ sessions, items, filed, corrections, minutes, date }),
-    ),
-  );
+  const file = noteFile(date);
+  await mkdir(path.dirname(file), { recursive: true });
+  const body = dayBlock({
+    sessions,
+    items,
+    filed,
+    corrections,
+    minutes,
+    captures,
+    date,
+  });
+  await withFileLock(file, async () => {
+    const note = await readFile(file, "utf8").catch(() => null);
+    const kept = keepTicks(note ? readBlock(note, "harvest") : "", body);
+    await atomicWrite(file, putBlock(note, date, "harvest", kept));
+  });
   // A legacy record (no sections) is summarized here but read by the daily-harvest skill, which
   // marks it once it has mined it.
   for (const session of sessions.filter(structured))
@@ -595,12 +634,30 @@ export async function archiveHarvested(options: {
       kind: "notes",
     });
   }
-  const result = { notes: [] as string[], sessions: [] as string[] };
+  const result = {
+    notes: [] as string[],
+    sessions: [] as string[],
+    emptied: [] as string[],
+  };
   for (const move of moves) {
     result[move.kind].push(relativeOf(move.to));
     if (!options.apply) continue;
     await mkdir(path.dirname(move.to), { recursive: true });
     await rename(move.from, move.to);
+  }
+  // The inbox keeps no empty folders: reviewed candidate days, the retired brain-dump folder.
+  const candidates = oceanPath(INBOX_DIR, "candidates");
+  const empty = [
+    ...(await readdir(candidates).catch(() => [] as string[])).map((name) =>
+      path.join(candidates, name),
+    ),
+    oceanPath(INBOX_DIR, "brain-dump"),
+  ];
+  for (const dir of empty) {
+    const inside = await readdir(dir).catch(() => null);
+    if (!inside || inside.some((name) => name !== ".DS_Store")) continue;
+    result.emptied.push(relativeOf(dir));
+    if (options.apply) await rm(dir, { recursive: true, force: true });
   }
   return result;
 }

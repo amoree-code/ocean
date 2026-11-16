@@ -22,6 +22,8 @@ const BRIEFS_DIR = `${DAILY_DIR}/briefs`;
 const DAILY_LIMIT = 5;
 const WEEKLY_LIMIT = 15;
 const FETCH_TIMEOUT_MS = 10_000;
+const PRERELEASE =
+  /[-.](dev|rc|alpha|beta|canary|nightly|next|insiders|pre)(\b|\d|\.)/i;
 
 export type Interest = {
   file: string;
@@ -216,8 +218,10 @@ export async function buildBrief(options: {
       for (const item of parseFeed(xml)) {
         if (seen[itemKey(item)]) continue;
         if (found.some((other) => other.link === item.link)) continue;
-        // A releases feed is wanted whole; a general feed is narrowed by the keywords.
+        // A releases feed is wanted whole, less its pre-releases (dev, rc, beta, canary…: daily
+        // noise); a general feed is narrowed by the keywords.
         const general = !source.startsWith("github:");
+        if (!general && PRERELEASE.test(item.title)) continue;
         if (
           general &&
           keywords.length &&

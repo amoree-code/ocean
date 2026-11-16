@@ -1,5 +1,6 @@
 import { mkdir, open, stat } from "node:fs/promises";
 import path from "node:path";
+import { writeDigestRecord } from "@ocean/brain/memory/brain-dump.js";
 import { sessionFactsEnabled } from "@ocean/brain/memory/memory-audit.js";
 import {
   type CompleteText,
@@ -133,6 +134,7 @@ export type SessionFactsRun =
       status: "done";
       from: number;
       to: number;
+      record?: string;
       candidates: string[];
       rejected: number;
       skipped: number;
@@ -143,7 +145,9 @@ export async function runSessionFacts(
   openStore: SessionStoreFactory,
   client: SessionEndClient,
   completer: FactsCompleter,
-  options: { enabled?: () => Promise<boolean> } = {},
+  // digest: the same call also returns the stretch's summary, written as a session record so a
+  // long session is in the day's account before it ends (T-314) — no second model call.
+  options: { enabled?: () => Promise<boolean>; digest?: boolean } = {},
 ): Promise<SessionFactsRun> {
   if (!(await (options.enabled ?? sessionFactsEnabled)()))
     return { status: "off" };
@@ -185,6 +189,7 @@ export async function runSessionFacts(
   const extraction = await extractSessionFacts({
     turns: claim.slice.turns,
     complete,
+    digest: options.digest,
   });
   if (extraction.failed) {
     // Nothing was learned: hand the turns back, unless a later run already claimed past them.
@@ -214,8 +219,23 @@ export async function runSessionFacts(
     client,
     facts: extraction.facts,
   });
+  let record: string | undefined;
+  if (extraction.digest) {
+    const now = new Date().toISOString();
+    record = (
+      await writeDigestRecord({
+        provider: client,
+        sessionId,
+        startedAt: now,
+        endedAt: now,
+        digest: extraction.digest,
+        project: payload.cwd ? path.basename(payload.cwd) : "",
+      })
+    ).path;
+  }
   const run: SessionFactsRun = {
     status: "done",
+    ...(record ? { record } : {}),
     from: claim.from,
     to: claim.slice.offset,
     candidates: proposed.proposed,

@@ -84,20 +84,24 @@ export function startBackgroundPull(): void {
     })
       .on("error", () => {})
       .unref();
-    // The daily harvest (T-316) rides the same start: days not yet harvested, then the archive.
-    // It returns at once when nothing is pending.
-    spawn(
-      process.execPath,
-      [process.argv[1], "harvest", "--pending", "--yes"],
-      {
-        detached: true,
-        stdio: "ignore",
-      },
-    )
+  } catch {
+    // no pull this time; the next try runs it
+  }
+}
+
+// The day's rhythm (T-314) — morning note, harvest, archive, weekly and monthly reviews — each
+// at most once per period, with no model. Session starts and ends run it; so does the service.
+export function startBackgroundRhythm(): void {
+  if (process.env.OCEAN_NO_PULL_ON_START === "1") return;
+  try {
+    spawn(process.execPath, [process.argv[1], "rhythm", "--yes"], {
+      detached: true,
+      stdio: "ignore",
+    })
       .on("error", () => {})
       .unref();
   } catch {
-    // no pull this time; the next try runs it
+    // the next start runs it
   }
 }
 
@@ -291,7 +295,11 @@ export async function runService(shutdownAfterMs?: number): Promise<void> {
   }
   const heartbeat = setInterval(() => undefined, 60_000);
   startBackgroundPull();
-  const dailyPull = setInterval(startBackgroundPull, HOUR_MS);
+  startBackgroundRhythm();
+  const dailyPull = setInterval(() => {
+    startBackgroundPull();
+    startBackgroundRhythm();
+  }, HOUR_MS);
   startAutoReindex();
   const autoReindex = setInterval(startAutoReindex, REINDEX_CHECK_MS);
   startClaudeProjectsRefresh();

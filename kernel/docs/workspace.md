@@ -162,6 +162,19 @@ days back, else your least recently touched note in `07-notes/`. `ocean telemetr
 [--yes]` finds errors that recur across sessions and providers whose sessions keep failing, and
 proposes each as a backlog line for review.
 
+The daily note (`01-daily/<date>.md`) has one shape. Under the title, Ocean's morning block:
+`## Today` — Focus (open tasks), Coming up (dated lines in your records within 30 days), Open
+loops (every unticked Next from the last two weeks, carried until you tick it), Your hours (from
+`02-personal/schedule/`), Waiting on you — and `## Brief` (the top items from the interests you
+follow, with today's full brief). Then the day's account written by the harvest: `## Day summary`,
+`## Open loops`, `## Corrections`, `## Time`. Last, `## Notes`: yours, never written by Ocean. Both
+blocks sit between markers and are rewritten in place; a tick you make in them is kept. Session
+closeout no longer adds its own lines to the note — the day is told once, by the harvest.
+`ocean daily start --apply` writes the morning block; `ocean rhythm --yes` runs the morning
+block, the harvest of every pending day and of today so far, the archive, last week's digest and
+last month's review, each once per period — the service runs it at session start and end and
+hourly, with no model.
+
 `ocean harvest [--date YYYY-MM-DD | --pending] [--yes]` is the daily harvest. Every session of a
 day, from every AI client, becomes one summary block in `01-daily/<date>.md` (sessions per client,
 decisions, problems → fixes, lessons, open next, the corrections you made, time per project); the
@@ -171,7 +184,7 @@ same thing gains the day as evidence and a fresh `last_verified` instead of a du
 write is in a ledger with the previous version; `ocean harvest undo <date>` takes a day back. The
 background service runs `--pending --yes` once a day, then `ocean harvest archive`: harvested days
 older than 30 days move to `01-daily/archive/<YYYY-MM>/` and `01-daily/sessions/archive/<YYYY-MM>/`
-(still searched). The `daily-harvest` skill does the judgement work on top: imported memories and
+(still searched). Claude Desktop conversations are in it too: the fact extraction that already reads each quiet conversation returns a short digest in the same call (goal, outcome, decisions, fixes, lessons, next), written as a session record with `provider: "claude-desktop"` — a few output tokens, never a second model call. The `daily-harvest` skill does the judgement work on top: imported memories and
 candidates filed by topic, legacy records, corrections turned into rules, the system's own gaps.
 
 `ocean distill --month [--month-of YYYY-MM] [--yes]` writes last month's review to

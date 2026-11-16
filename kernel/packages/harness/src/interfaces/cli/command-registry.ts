@@ -147,6 +147,7 @@ import {
   restartService,
   runService,
   startBackgroundPull,
+  startBackgroundRhythm,
 } from "../../infrastructure/process/service.js";
 import { createOllamaEmbedder } from "../../infrastructure/providers/ollama-embedder.js";
 import { loadProviderRegistry } from "../../infrastructure/providers/provider-registry.js";
@@ -170,11 +171,11 @@ import { runContextCommand, runContextCostCommand } from "./context-command.js";
 import { runDailyCommand } from "./daily-command.js";
 import { runDesktopCommand } from "./desktop-command.js";
 import { runDistillCommand } from "./distill-command.js";
-import { runHarvestCommand } from "./harvest-command.js";
 import { runExpressCommand } from "./express-command.js";
 import { gatewayFindings } from "./gateway-findings.js";
 import { runLifecycleCommand, runPolicyCommand } from "./governance-command.js";
 import { runHandoffCommand } from "./handoff-command.js";
+import { runHarvestCommand } from "./harvest-command.js";
 import { runIdeaCommand } from "./idea-command.js";
 import { intercept } from "./intercept-command.js";
 import { runInterestsCommand } from "./interests-command.js";
@@ -190,6 +191,7 @@ import { manageClients, runOnboardCommand } from "./onboard-command.js";
 import { runOperateCommand } from "./operate-command.js";
 import { runProfilesCommand } from "./profiles-command.js";
 import { runPullCommand } from "./pull-command.js";
+import { runRhythmCommand } from "./rhythm-command.js";
 import { runningServerFindings } from "./running-server-findings.js";
 import {
   insideFactsCall,
@@ -859,6 +861,7 @@ async function commandHook(): Promise<void> {
     const flags = process.argv.slice(4);
     if (flags.includes("--repair")) startBackgroundSync();
     startBackgroundPull();
+    startBackgroundRhythm();
     const inline = flags.find((arg) => arg.startsWith("--client="));
     const clientIndex = flags.indexOf("--client");
     const client = inline
@@ -904,6 +907,8 @@ async function commandHook(): Promise<void> {
       const payload = raw.trim() ? JSON.parse(raw) : {};
       await claudeSessionEndHook(payload, defaultSessionStoreFactory, client);
       await startSessionFacts(payload, client);
+      // The day's account picks up the session just closed (T-314), in the background.
+      startBackgroundRhythm();
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));
       process.exitCode = 1;
@@ -1603,6 +1608,7 @@ export const commandRegistry: Record<string, CommandHandler> = {
   interests: () => runInterestsCommand(process.argv.slice(3)),
   distill: () => runDistillCommand(process.argv.slice(3)),
   harvest: () => runHarvestCommand(process.argv.slice(3)),
+  rhythm: () => runRhythmCommand(process.argv.slice(3)),
   telemetry: () => runTelemetryCommand(process.argv.slice(3)),
   express: () => runExpressCommand(process.argv.slice(3)),
   daily: commandDaily,

@@ -13,7 +13,7 @@ import {
   undoDay,
 } from "@ocean/services/harvest/harvest.js";
 
-// T-316: a day's sessions from every client become one summary and filed knowledge, undoable,
+// T-314: a day's sessions from every client become one summary and filed knowledge, undoable,
 // archived after 30 days.
 
 async function withRoot(run) {
@@ -25,7 +25,11 @@ async function withRoot(run) {
       ["02-personal", "MEMORY.md"],
       ["05-knowledge", "KNOWLEDGE.md"],
     ])
-      await write(root, `${dir}/${index}`, "# Index\n\n## Records (generated)\n");
+      await write(
+        root,
+        `${dir}/${index}`,
+        "# Index\n\n## Records (generated)\n",
+      );
     await run(root);
   } finally {
     if (previous === undefined) delete process.env.OCEAN_ROOT;
@@ -94,36 +98,71 @@ test("a day becomes one summary block and filed knowledge; a rerun changes nothi
   await withRoot(async (root) => {
     const sections =
       "## Decisions\n\n- Keep the cart in server state, not local storage.\n\n## Problems → fixes\n\n- The checkout total drifted by a cent: round once, at the end.\n\n## Learned\n\n- Stripe test cards need a future expiry date to pass.\n\n## Next\n\n- Ship the checkout page with the new totals.\n";
-    await write(root, "01-daily/sessions/2026-11/a.md", record("2026-11-16", "claude", "Cart work", sections));
-    await write(root, "01-daily/sessions/2026-11/b.md", record("2026-11-16", "codex", "Checkout", "## Outcome\n\nDone.\n"));
-    await write(root, "01-daily/sessions/2026-11/c.md", record("2026-11-15", "codex", "Other day", ""));
+    await write(
+      root,
+      "01-daily/sessions/2026-11/a.md",
+      record("2026-11-16", "claude", "Cart work", sections),
+    );
+    await write(
+      root,
+      "01-daily/sessions/2026-11/b.md",
+      record("2026-11-16", "codex", "Checkout", "## Outcome\n\nDone.\n"),
+    );
+    await write(
+      root,
+      "01-daily/sessions/2026-11/c.md",
+      record("2026-11-15", "codex", "Other day", ""),
+    );
     // A decision already on record is strengthened, not duplicated.
     await write(
       root,
       "05-knowledge/decisions/cart-state.md",
       "---\ntype: decision\nlast_verified: 2026-01-01\n---\n\n# Keep the cart in server state\n\nBecause.\n",
     );
-    await write(root, "01-daily/2026-11-16.md", "---\ntype: daily\n---\n\n# Monday\n\nMy own plan.\n");
-    assert.deepEqual(await pendingDays("2026-11-17"), ["2026-11-15", "2026-11-16"]);
+    await write(
+      root,
+      "01-daily/2026-11-16.md",
+      "---\ntype: daily\n---\n\n# Monday\n\nMy own plan.\n",
+    );
+    assert.deepEqual(await pendingDays("2026-11-17"), [
+      "2026-11-15",
+      "2026-11-16",
+    ]);
 
     const dry = await harvestDay({ date: "2026-11-16", apply: false });
     assert.equal(dry.sessions, 2);
-    await assert.rejects(readFile(path.join(root, "05-knowledge/solutions"), "utf8"));
+    await assert.rejects(
+      readFile(path.join(root, "05-knowledge/solutions"), "utf8"),
+    );
 
     const result = await harvestDay({ date: "2026-11-16", apply: true });
-    assert.deepEqual(result.strengthened, ["05-knowledge/decisions/cart-state.md"]);
+    assert.deepEqual(result.strengthened, [
+      "05-knowledge/decisions/cart-state.md",
+    ]);
     assert.equal(result.created.length, 2);
-    const note = await readFile(path.join(root, "01-daily/2026-11-16.md"), "utf8");
+    const note = await readFile(
+      path.join(root, "01-daily/2026-11-16.md"),
+      "utf8",
+    );
     assert.match(note, /My own plan\./);
     assert.match(note, /2 session\(s\): claude 1, codex 1\./);
     assert.match(note, /### Problems → fixes\n\n- The checkout total drifted/);
-    assert.match(note, /### Open next\n\n- Ship the checkout page/);
+    assert.match(note, /## Open loops\n\n- \[ \] Ship the checkout page/);
     assert.match(note, /undo with `ocean harvest undo 2026-11-16`/);
-    const decision = await readFile(path.join(root, "05-knowledge/decisions/cart-state.md"), "utf8");
+    const decision = await readFile(
+      path.join(root, "05-knowledge/decisions/cart-state.md"),
+      "utf8",
+    );
     assert.match(decision, /^last_verified: 2026-11-16$/m);
-    assert.match(decision, /## Evidence\n\n- 2026-11-16: \[Cart work\]\(\.\.\/\.\.\/01-daily\/sessions\/2026-11\/a\.md\)/);
+    assert.match(
+      decision,
+      /## Evidence\n\n- 2026-11-16: \[Cart work\]\(\.\.\/\.\.\/01-daily\/sessions\/2026-11\/a\.md\)/,
+    );
     const [solution] = await readdir(path.join(root, "05-knowledge/solutions"));
-    const solutionText = await readFile(path.join(root, "05-knowledge/solutions", solution), "utf8");
+    const solutionText = await readFile(
+      path.join(root, "05-knowledge/solutions", solution),
+      "utf8",
+    );
     assert.match(solutionText, /^type: solution$/m);
     assert.match(solutionText, /^origin: harvested$/m);
     assert.match(
@@ -135,10 +174,18 @@ test("a day becomes one summary block and filed knowledge; a rerun changes nothi
     // A rerun keeps one block, one evidence line, no new records.
     const again = await harvestDay({ date: "2026-11-16", apply: true });
     assert.deepEqual([again.created, again.strengthened], [[], []]);
-    const rerun = await readFile(path.join(root, "01-daily/2026-11-16.md"), "utf8");
+    const rerun = await readFile(
+      path.join(root, "01-daily/2026-11-16.md"),
+      "utf8",
+    );
     assert.equal(rerun.split("<!-- ocean:harvest:start -->").length, 2);
     assert.equal(
-      (await readFile(path.join(root, "05-knowledge/decisions/cart-state.md"), "utf8")).split("- 2026-11-16:").length,
+      (
+        await readFile(
+          path.join(root, "05-knowledge/decisions/cart-state.md"),
+          "utf8",
+        )
+      ).split("- 2026-11-16:").length,
       2,
     );
 
@@ -146,32 +193,71 @@ test("a day becomes one summary block and filed knowledge; a rerun changes nothi
     assert.equal(undone.removed.length, 2);
     assert.deepEqual(undone.restored, ["05-knowledge/decisions/cart-state.md"]);
     assert.match(
-      await readFile(path.join(root, "05-knowledge/decisions/cart-state.md"), "utf8"),
+      await readFile(
+        path.join(root, "05-knowledge/decisions/cart-state.md"),
+        "utf8",
+      ),
       /^last_verified: 2026-01-01$/m,
     );
-    assert.deepEqual(await readdir(path.join(root, "05-knowledge/solutions")), []);
+    assert.deepEqual(
+      await readdir(path.join(root, "05-knowledge/solutions")),
+      [],
+    );
   });
 });
 
 test("archive moves harvested days older than 30 days, keeps the rest", async () => {
   await withRoot(async (root) => {
-    await write(root, "01-daily/sessions/2026-09/old.md", record("2026-09-01", "claude", "Old", ""));
-    await write(root, "01-daily/sessions/2026-09/waiting.md", record("2026-09-02", "claude", "Waiting", ""));
-    await write(root, "01-daily/sessions/2026-11/new.md", record("2026-11-10", "claude", "New", ""));
+    await write(
+      root,
+      "01-daily/sessions/2026-09/old.md",
+      record("2026-09-01", "claude", "Old", ""),
+    );
+    await write(
+      root,
+      "01-daily/sessions/2026-09/waiting.md",
+      record("2026-09-02", "claude", "Waiting", ""),
+    );
+    await write(
+      root,
+      "01-daily/sessions/2026-11/new.md",
+      record("2026-11-10", "claude", "New", ""),
+    );
     await write(root, "01-daily/2026-09-01.md", "# day\n");
     await write(root, "01-daily/2026-09-02.md", "# day\n");
     await write(root, "01-daily/2026-09-03.md", "# a day with no sessions\n");
     await write(root, "01-daily/2026-11-10.md", "# day\n");
-    for (const date of ["2026-09-01", "2026-11-10"]) await harvestDay({ date, apply: true });
+    // Empty inbox folders go; one with a candidate stays.
+    await mkdir(path.join(root, "00-inbox/candidates/2026-10-01"), {
+      recursive: true,
+    });
+    await mkdir(path.join(root, "00-inbox/brain-dump"), { recursive: true });
+    await write(root, "00-inbox/candidates/2026-11-15/x.md", "x\n");
+    for (const date of ["2026-09-01", "2026-11-10"])
+      await harvestDay({ date, apply: true });
     const dry = await archiveHarvested({ today: "2026-11-16", apply: false });
     assert.deepEqual(dry, {
-      notes: ["01-daily/archive/2026-09/2026-09-01.md", "01-daily/archive/2026-09/2026-09-03.md"],
+      notes: [
+        "01-daily/archive/2026-09/2026-09-01.md",
+        "01-daily/archive/2026-09/2026-09-03.md",
+      ],
       sessions: ["01-daily/sessions/archive/2026-09/old.md"],
+      emptied: ["00-inbox/candidates/2026-10-01", "00-inbox/brain-dump"],
     });
     await archiveHarvested({ today: "2026-11-16", apply: true });
-    assert.deepEqual((await readdir(path.join(root, "01-daily/sessions/2026-09"))).sort(), ["waiting.md"]);
-    assert.ok((await readdir(path.join(root, "01-daily"))).includes("2026-11-10.md"));
-    assert.ok((await readdir(path.join(root, "01-daily"))).includes("2026-09-02.md"));
+    assert.deepEqual(await readdir(path.join(root, "00-inbox/candidates")), [
+      "2026-11-15",
+    ]);
+    assert.deepEqual(
+      (await readdir(path.join(root, "01-daily/sessions/2026-09"))).sort(),
+      ["waiting.md"],
+    );
+    assert.ok(
+      (await readdir(path.join(root, "01-daily"))).includes("2026-11-10.md"),
+    );
+    assert.ok(
+      (await readdir(path.join(root, "01-daily"))).includes("2026-09-02.md"),
+    );
   });
 });
 
@@ -198,8 +284,16 @@ test("legacy records are summarized but left unmarked for the skill; injected te
           },
         ],
         eventsOf: () => [
-          { type: "user_input", data: "Base directory for this skill: /srv/x. No, do not.", createdAt: at },
-          { type: "user_input", data: "don't rename the folder", createdAt: at },
+          {
+            type: "user_input",
+            data: "Base directory for this skill: /srv/x. No, do not.",
+            createdAt: at,
+          },
+          {
+            type: "user_input",
+            data: "don't rename the folder",
+            createdAt: at,
+          },
         ],
       },
     });
@@ -207,7 +301,10 @@ test("legacy records are summarized but left unmarked for the skill; injected te
     assert.deepEqual(result.corrections, ["don't rename the folder"]);
     assert.deepEqual(result.minutes, {});
     assert.doesNotMatch(
-      await readFile(path.join(root, "01-daily/sessions/2026-11/legacy.md"), "utf8"),
+      await readFile(
+        path.join(root, "01-daily/sessions/2026-11/legacy.md"),
+        "utf8",
+      ),
       /^harvested:/m,
     );
     assert.match(

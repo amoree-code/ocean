@@ -193,3 +193,76 @@ test("--since leaves older conversations alone", async () => {
     assert.equal(run.runs.length, 0);
   });
 });
+
+test("the same call returns a digest; the conversation becomes a session record the harvest reads", async () => {
+  const { parseDigest, buildFactsPrompt } = await import(
+    "@ocean/brain/memory/session-facts.js"
+  );
+  const { harvestDay } = await import("@ocean/services/harvest/harvest.js");
+  await inWorkspace(async (root) => {
+    const prompts = [];
+    const answer = JSON.stringify({
+      ...JSON.parse(ANSWER),
+      digest: {
+        title: "Plan the Friday deploy",
+        goal: "Decide how releases go out.",
+        outcome: "A weekly release routine was agreed.",
+        decisions: [
+          "Release every Friday after the full test suite passes on main.",
+        ],
+        fixes: [
+          "The tag raced a merge → cut the tag only after main is pushed.",
+        ],
+        learned: [],
+        next: ["Write the release checklist into the project docs."],
+      },
+    });
+    const run = await runDesktopFacts({
+      read: async () => ({
+        status: "ok",
+        conversations: [chat("quiet", minutesAgo(30), [STATED, "Noted."])],
+      }),
+      complete: async (prompt) => (prompts.push(prompt), answer),
+      now: NOW,
+      enabled: on,
+    });
+    // One model call for facts and digest together.
+    assert.equal(prompts.length, 1);
+    assert.match(prompts[0], /digest field/);
+    const [done] = run.runs;
+    assert.match(
+      done.record,
+      /^01-daily\/sessions\/2025-12\/2025-12-31-\d{4}-plan-the-friday-deploy\.md$/,
+    );
+    const record = await readFile(path.join(root, done.record), "utf8");
+    assert.match(record, /^provider: "claude-desktop"$/m);
+    assert.match(record, /^## Decisions\n\n- Release every Friday/m);
+    assert.match(record, /^## Problems → fixes\n\n- The tag raced a merge/m);
+    assert.doesNotMatch(record, /## Learned/);
+    // The daily harvest reads it like any other session.
+    const day = await harvestDay({ date: "2025-12-31", apply: false });
+    assert.equal(day.sessions, 1);
+    assert.equal(day.created.length, 2);
+  });
+  // Bounded and cleaned; no digest without a title or goal; the plain prompt asks for none.
+  const long = "x".repeat(500);
+  const digest = parseDigest(
+    JSON.stringify({
+      facts: [],
+      digest: {
+        title: "t",
+        decisions: [long, "b", "c", "d"],
+        learned: ["a [REDACTED] value"],
+      },
+    }),
+  );
+  assert.equal(digest.decisions.length, 3);
+  assert.ok(digest.decisions[0].length <= 220);
+  assert.deepEqual(digest.learned, []);
+  assert.equal(parseDigest('{"facts":[],"digest":{"decisions":["x"]}}'), null);
+  assert.equal(parseDigest('{"facts":[]}'), null);
+  assert.doesNotMatch(
+    buildFactsPrompt([{ role: "user", text: "hi" }]),
+    /digest/,
+  );
+});

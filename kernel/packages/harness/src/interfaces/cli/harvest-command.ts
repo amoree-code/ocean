@@ -11,7 +11,7 @@ const USAGE =
   "Usage: ocean harvest [--date YYYY-MM-DD | --pending] [--yes] | archive [--days N] [--yes] | undo <YYYY-MM-DD>";
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-// `ocean harvest` (T-316): a day's sessions from every AI client into that day's summary, their
+// `ocean harvest` (T-314): a day's sessions from every AI client into that day's summary, their
 // decisions, fixes and lessons into 05-knowledge on their own (undo per day), then archiving after
 // 30 days. A dry run until --yes. The service runs `--pending --yes` once a day.
 export async function runHarvestCommand(args: string[]): Promise<void> {

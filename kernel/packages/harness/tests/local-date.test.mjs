@@ -34,7 +34,7 @@ test("a record written after local midnight but before UTC midnight gets today's
 
 // The same boundary through a real closeout, with the clock pinned so it holds at any hour: the
 // suites that assert these paths only ever see it if they happen to run in that window (T-301).
-test("a session closed after local midnight files its daily log and summary under today's date", async () => {
+test("a session closed after local midnight files its session record and summary under today's date", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ocean-local-date-"));
   const script = `
     import { mkdirSync, readdirSync } from "node:fs";
@@ -70,7 +70,8 @@ test("a session closed after local midnight files its daily log and summary unde
     store.updateStatus("boundary-session", "completed");
     await finalizeSession(store, "boundary-session", { exitCode: 0 });
     store.close();
-    console.log(readdirSync(path.join(root, DAILY_DIR)).filter((name) => name.endsWith(".md")).join(), readdirSync(path.join(sessions, "summaries")).join());
+    // The day's record (T-314: the harvest writes the note from it) is filed under the local date.
+    console.log(readdirSync(path.join(root, DAILY_DIR, "sessions", "2026-10")).map((name) => name.slice(0, 10) + ".md").join(), readdirSync(path.join(sessions, "summaries")).join());
   `;
   const run = spawnSync(
     process.execPath,
