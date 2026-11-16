@@ -70,7 +70,9 @@ test("blocks: morning under the title, the day's account before Notes, the owner
   );
   // The old template's empty headings go; one with content stays.
   assert.equal(
-    dropEmptyStubs("# d\n\n## Focus\n\n## Work log\n- 10:00 a\n\n## Decisions\n\n## Notes\n"),
+    dropEmptyStubs(
+      "# d\n\n## Focus\n\n## Work log\n- 10:00 a\n\n## Decisions\n\n## Notes\n",
+    ),
     "# d\n\n## Work log\n- 10:00 a\n\n## Notes\n",
   );
   // Ticks the owner made inside a block survive the rewrite.
@@ -92,7 +94,11 @@ test("coming up: dated lines in the owner's records within 30 days, not frontmat
     );
     // Today's date as a "checked on" note is not an event; an exam today is.
     assert.equal((await upcoming("2026-11-16")).length, 1);
-    await write(root, "02-personal/schedule/today.md", "- Mock exam 2026-11-16 at 18:00\n");
+    await write(
+      root,
+      "02-personal/schedule/today.md",
+      "- Mock exam 2026-11-16 at 18:00\n",
+    );
     assert.equal((await upcoming("2026-11-16")).length, 2);
     await write(root, "02-personal/schedule/today.md", "");
     assert.deepEqual(await upcoming("2026-11-16"), [

@@ -6,7 +6,6 @@ import test from "node:test";
 import {
   appendConflict,
   parseConflictSide,
-  readConflictRecord,
   resolveConflict,
 } from "@ocean/services/obsidian/conflict-log.js";
 

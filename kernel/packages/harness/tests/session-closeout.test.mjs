@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { localDate } from "@ocean/core/shared/local-date.js";
-import { DAILY_DIR, INBOX_DIR, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
+import { DAILY_DIR, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import { SessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
 import { finalizeSession } from "@ocean/loop/sessions/session-closeout.js";
 
