@@ -17,6 +17,7 @@ test("lists the public core skill catalog without loading full instructions", as
     "business-logic",
     "catch-up",
     "core-thinking",
+    "daily-harvest",
     "design-thinking",
     "graft",
     "loop",

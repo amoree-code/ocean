@@ -13,7 +13,7 @@ const commandGroups = [
   ],
   [
     "Knowledge",
-    "memory, pull, desktop, observe, capture, note, brief, interests, distill, telemetry, express, handoff, idea, daily, skill, catalog",
+    "memory, pull, desktop, observe, capture, note, brief, interests, distill, harvest, telemetry, express, handoff, idea, daily, skill, catalog",
   ],
   ["Integrations", "obsidian, hook, migrate, layout, env"],
 ] as const;
@@ -165,6 +165,10 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
   distill: [
     "Distill a week (digest in 01-daily/weekly/, decisions and lessons as candidates), or review last month against goals.md (01-daily/monthly/).",
     "ocean distill --week [--date YYYY-MM-DD] [--yes] | --month [--month-of YYYY-MM] [--yes]",
+  ],
+  harvest: [
+    "Harvest a day's sessions from every AI client: the day's summary, decisions, fixes and lessons filed into 05-knowledge (undo per day), archive after 30 days.",
+    "ocean harvest [--date YYYY-MM-DD | --pending] [--yes] | archive [--days N] [--yes] | undo <YYYY-MM-DD>",
   ],
   telemetry: [
     "Find recurring errors and failing providers in recent sessions; propose them as backlog lines.",

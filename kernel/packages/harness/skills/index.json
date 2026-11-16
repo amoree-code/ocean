@@ -18,6 +18,12 @@
     "category": "core"
   },
   {
+    "name": "daily-harvest",
+    "description": "Turn everything the inbox and the daily folder hold - sessions from every AI client, imported memories, candidates, corrections - into filed knowledge and a better system, with no manual review, then archive. Use when the owner says harvest, process the inbox, file everything, improve the knowledge, or clean up 00-inbox and 01-daily.",
+    "version": "1.0.0",
+    "category": "core"
+  },
+  {
     "name": "design-thinking",
     "description": "Frame a problem, clarify the desired outcome, compare simple solutions, and define success before implementation.",
     "version": "1.0.0",

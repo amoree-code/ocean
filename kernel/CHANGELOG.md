@@ -9,6 +9,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 - feat(skills): `memory-review` core skill: review pending memory candidates one at a time with the owner — group duplicates, compare each with the record it would change, recommend, and merge an approved fact into that record as one current statement instead of an appended paragraph (#PR)
 
+- feat(T-316): `ocean harvest`: each day's sessions from every AI client become one summary in that day's note (decisions, fixes, lessons, open next, the owner's corrections, time per project), and their decisions, fixes and lessons are filed into `05-knowledge/` with no review step — strengthening a record that already says it, undoable per day with `ocean harvest undo <date>`. The background service runs it daily and archives harvested days after 30 days. The `daily-harvest` skill does the judgement work: imports and candidates filed by topic, legacy records, corrections into rules (#PR)
+
 ## 1.7.0 (2026-11-16)
 
 - fix(T-313): `ocean memory session-facts on|off` now sets the answer; it read the word after it instead, so it only ever showed the setting

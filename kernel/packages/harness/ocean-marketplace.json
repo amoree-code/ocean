@@ -58,6 +58,24 @@
     },
     {
       "kind": "skill",
+      "name": "dev.ocean.skills.daily-harvest",
+      "version": "1.7.0",
+      "engines": {
+        "ocean": ">=1.7.0"
+      },
+      "source": {
+        "type": "path",
+        "path": "skills/core/daily-harvest"
+      },
+      "integrity": {
+        "sha256": "356cc76057780394e2ed485e6853fc675d1d03bfc3541268ccc3e9d3b2bfd76d"
+      },
+      "spec": {
+        "directory": "daily-harvest"
+      }
+    },
+    {
+      "kind": "skill",
       "name": "dev.ocean.skills.design-thinking",
       "version": "1.7.0",
       "engines": {

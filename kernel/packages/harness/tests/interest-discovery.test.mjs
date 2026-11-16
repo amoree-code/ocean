@@ -190,9 +190,17 @@ test("a registry topic named in three recent sessions is proposed; older or rare
   const root = await workspace();
   await withRoot(root, async () => {
     const session = async (name, date, body) => {
-      const file = path.join(root, "01-daily/sessions", date.slice(0, 7), `${name}.md`);
+      const file = path.join(
+        root,
+        "01-daily/sessions",
+        date.slice(0, 7),
+        `${name}.md`,
+      );
       await mkdir(path.dirname(file), { recursive: true });
-      await writeFile(file, `---\ntype: session\ndate: ${date}\n---\n\n# ${body}\n`);
+      await writeFile(
+        file,
+        `---\ntype: session\ndate: ${date}\n---\n\n# ${body}\n`,
+      );
     };
     await session("a", "2026-11-10", "Prisma migration for the API");
     await session("b", "2026-11-11", "fix prisma client types");
@@ -200,10 +208,16 @@ test("a registry topic named in three recent sessions is proposed; older or rare
     await session("d", "2026-11-13", "Vite build");
     await session("e", "2026-08-01", "Vite again, long ago");
     await session("f", "2026-11-14", "prismatic colours, not the ORM");
-    const dry = await proposeSignalInterests({ apply: false, today: "2026-11-16" });
+    const dry = await proposeSignalInterests({
+      apply: false,
+      today: "2026-11-16",
+    });
     assert.deepEqual(dry.signals, [{ topic: "Prisma", sessions: 3 }]);
     assert.deepEqual(dry.proposed, ["Prisma"]);
-    const applied = await proposeSignalInterests({ apply: true, today: "2026-11-16" });
+    const applied = await proposeSignalInterests({
+      apply: true,
+      today: "2026-11-16",
+    });
     assert.match(
       await readFile(path.join(root, applied.proposed[0]), "utf8"),
       /sources: \["github:prisma\/prisma"\][\s\S]*origin: signal/,
