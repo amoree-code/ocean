@@ -7,42 +7,26 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+## 1.7.0 (2026-11-16)
+
 - fix(T-313): `ocean memory session-facts on|off` now sets the answer; it read the word after it instead, so it only ever showed the setting
-
 - feat(T-314): follow-ups. `07-notes/` ships in the public repo as an empty folder; a session with no title gets its closeout handoff again (zod `too_small` on `title`, found by `ocean telemetry` in 113 sessions); `memory_propose` takes `contradicts: 07-notes/<note>.md`, and the disagreement waits in `02-personal/CONFLICTS.md`, the note untouched; `ocean distill --month` reviews last month against `goals.md`; `ocean onboard` asks stack, goals and topics, and `ocean interests signals` proposes topics recurring in sessions, all as candidates (#294)
-
 - feat(T-314): `ocean express cv|linkedin|scholarship [--dry-run]` drafts a CV section, a LinkedIn post or a scholarship paragraph from the done milestones in `02-personal/milestones/` into `00-inbox/drafts/` for review — from the records only, no model, nothing sent (#293)
-
 - feat(T-314): the journey: milestone and study Bases in the workspace template; each daily brief resurfaces one decision due for re-evaluation (last verified over 90 days ago) or one quiet note from `07-notes`; `ocean telemetry [--days N] [--yes]` turns errors recurring across sessions and providers that keep failing into proposed backlog lines (#292)
-
 - feat(T-314): distill and review: `ocean distill --week [--yes]` writes `01-daily/weekly/<YYYY-Www>.md` from the week's session records and briefs, proposes their decisions and lessons as candidates, marks records `distilled: true` and archives processed captures; a `/weekly-review` skill walks to inbox zero; search now covers session records and briefs and skips `status: retired` records; `ocean memory archive-retired [--yes]` moves retired lessons to `lessons/archive/` (#291)
-
 - feat(T-314): session records replace the brain-dump: each finished session writes `01-daily/sessions/YYYY-MM/<date>-<time>-<slug>.md` with flat frontmatter (`type: session`, project, provider, status, session_id, date, `distilled: false`) and fixed sections (Goal, Outcome, Decisions, Problems → fixes, Learned, Verification, Files / commits, Next); `ocean memory migrate-sessions [--yes]` moves older `00-inbox/brain-dump/` files there, never deleting one (#290)
-
 - feat(T-314): interest discovery for any user: `ocean interests discover [--yes]` maps the dependencies of every registered project through a kernel source registry to release feeds and proposes each new topic as a review candidate; `ocean interests keep|skip <name>` adjusts weight; `ocean interests decay [--weeks N] [--yes]` lowers discovered interests with no signal, never ones the owner wrote (#289)
-
 - feat(T-314): `ocean brief [--weekly] [--dry-run]` writes `01-daily/briefs/<date>.md` from the feeds of the interests in `02-personal/interests/` (`https://` RSS/Atom, or `github:<owner>/<repo>` releases): high priority and at most 5 items daily, every interest and at most 15 weekly, keywords narrow general feeds, a seen-ledger prevents repeats, and a failing source is listed rather than fatal (#288)
-
 - feat(T-314): people, one file each in `02-personal/people/` (`type: person`, aliases in English and Arabic): the read-only `people_lookup` MCP tool matches a name exactly (file name, title or alias; case, spacing and Unicode form ignored; never part of a name), and the workspace template ships `people.base` (#287)
-
 - feat(T-314): capture from anywhere: `ocean note "<text>"` writes a capture with frontmatter into `00-inbox/captures/` (secrets redacted), and `ocean obsidian templates [--yes]` generates Templater folder templates from `routing.json` (the owner's entries for other folders are kept); `docs/workspace.md` documents the Obsidian URI for Shortcuts, Raycast and QuickAdd (#286)
-
 - feat(T-314): one routing table for records too: `routing.json` names the folder of every type with one home (capture, daily, session, brief, weekly, note, decision, lesson, solution, failure, discovery, architecture, research, result, person, interest, milestone, study; `experiential`, `technical-solution`, `task-result` as aliases). `ocean doctor` reports `TYPE_LOCATION` for a record outside its type's folder (a project's own memory/docs may hold any type) and `FRONTMATTER_MISSING` for a record without frontmatter; the workspace template ships a frontmatter template per type (#285)
-
 - feat(T-314): flat frontmatter, so Obsidian Properties and Bases can read a record: `ocean memory flatten [--yes]` moves a nested `metadata:` block to top level (a key already top-level keeps its value; originals are copied to `bridge/archive/` first; `07-notes` is never touched), and session promotion and capture now write flat frontmatter (#284)
-
 - feat(T-314): `ocean doctor` warns `INBOX_STALE` when inbox items sat more than 7 days, counted by folder (the inbox index and the clients' native memory staging are not items) (#284)
-
 - feat(T-314): `07-notes/` is the owner's own notes root: `ocean setup` creates it, a memory write under it is refused as `PROTECTED`, and the brain index reads it as a `notes` store whose hits carry `origin: "human"` and rank above agent-written records on the same question (others carry `origin: "agent"`). A workspace made before it gets a `ROOT_MISSING` warning, not a failure (#284)
-
 - feat(T-314): a session fact arrives with the place it belongs: the extraction asks the model for a fact type, and one routing table (`brain/src/memory/routing.json`: identity, preference, person, interest, goal, education, career, schedule, project) turns it into the candidate's `target`, one file per fact named after its title; a project fact goes to that project's `memory/` only when the project is registered. `ocean memory review approve <id>` needs no `--to` for such a candidate, and `--type <type>` routes one that has no target through the same table (#284)
-
 - feat(T-315): `ocean desktop capture --export <folder>` reads the official claude.ai data export's `conversations.json`, so a conversation from the web or the phone reaches the same capture, with the same cursor (message times): a conversation already read from the app is not read again. `docs/mcp.md` gets a Watcher tier for Claude Desktop chat and explains the local store, its limits and `DESKTOP_CHAT_UNREADABLE` (#283)
-
 - feat(T-315): Claude Desktop chat is captured with no command run: `ocean clients apply` adds a per-user LaunchAgent (macOS, Claude Desktop installed, session facts on) that runs `ocean desktop capture` when the app writes its chat store (at most every 5 minutes) and every 15 minutes. It is journaled and loaded with `launchctl`; `ocean clients restore` unloads and removes it, and a plist Ocean did not write is never touched. `ocean doctor` reports `DESKTOP_WATCHER_MISSING`, the last run, and `DESKTOP_CHAT_UNREADABLE` when an app update changed the store's format (#282)
-
 - feat(T-315): Claude Desktop chat gets the same fact capture as Claude Code: `ocean desktop capture` sends the new turns of each conversation quiet for 10 minutes (`--quiet`) to the T-313 extraction, with a per-conversation cursor so each turn is read once and a failed model call hands its turns back. Candidates carry `source: session:desktop:<uuid>` and stay review-only. The cursor and the last run's outcome (for `ocean doctor`) hold ids and counts, never text (#281)
-
 - feat(T-315): Ocean can read Claude Desktop's plain chat from the app's own local IndexedDB, with no dependency: a LevelDB reader (MANIFEST, logs, Snappy tables), Chromium IndexedDB keys, value wrappers and blob files, and Blink/V8 values. The folder is copied aside and read, never opened in place. `ocean desktop capture --dry-run` lists the conversations the app holds, with message counts and never text; an unreadable store is reported as `DESKTOP_CHAT_UNREADABLE` (#280)
 
 ## 1.6.2 (2026-11-15)
