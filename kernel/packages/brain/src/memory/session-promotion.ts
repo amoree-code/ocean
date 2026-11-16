@@ -69,7 +69,7 @@ export async function promoteSessionToKnowledge(
     await mkdir(path.dirname(file), { recursive: true });
     await writeFile(
       file,
-      `---\nname: ${slug}\ndescription: Human-approved result from an Ocean session\nmetadata:\n  type: session-result\n  domain: ${match[1]}\n  status: current\n  verification: human-approved\n  source-session: ${sessionId}\n  provider: ${session.provider}\n---\n\n# ${session.provider} review\n\n## Request\n\n${redactRuntimeText(input)}\n\n## Result\n\n${outputs.join("\n\n")}\n`,
+      `---\nname: ${slug}\ndescription: Human-approved result from an Ocean session\ntype: session-result\ndomain: ${match[1]}\nstatus: current\nverification: human-approved\nsource-session: ${sessionId}\nprovider: ${session.provider}\n---\n\n# ${session.provider} review\n\n## Request\n\n${redactRuntimeText(input)}\n\n## Result\n\n${outputs.join("\n\n")}\n`,
     );
     store.appendEvent(
       sessionId,

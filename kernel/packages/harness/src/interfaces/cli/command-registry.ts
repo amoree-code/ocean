@@ -89,6 +89,7 @@ import {
   parseConflictSide,
   resolveConflict,
 } from "@ocean/services/obsidian/conflict-log.js";
+import { syncFolderTemplates } from "@ocean/services/obsidian/folder-templates.js";
 import {
   listInboxCandidates,
   promoteInboxNote,
@@ -107,6 +108,7 @@ import {
   clientFindings,
   repairClients,
 } from "../../application/clients/clients.js";
+import { desktopWatcherFindings } from "../../application/clients/desktop-watcher.js";
 import { nativeFindings } from "../../application/clients/native.js";
 import { createWebhookGateway } from "../../application/gateway/webhook-gateway.js";
 import {
@@ -157,6 +159,7 @@ import {
   wrapperStatus,
 } from "../../infrastructure/wrappers/wrapper-manager.js";
 import { runAuthCommand } from "./auth-command.js";
+import { runBriefCommand } from "./brief-command.js";
 import { runBrowserCommand } from "./browser-command.js";
 import { browserFindings } from "./browser-findings.js";
 import { runBrowserServiceCommand } from "./browser-service-command.js";
@@ -165,17 +168,22 @@ import { runClientTestCommand } from "./client-test-command.js";
 import { runClientsCommand } from "./clients-command.js";
 import { runContextCommand, runContextCostCommand } from "./context-command.js";
 import { runDailyCommand } from "./daily-command.js";
+import { runDesktopCommand } from "./desktop-command.js";
+import { runDistillCommand } from "./distill-command.js";
+import { runExpressCommand } from "./express-command.js";
 import { gatewayFindings } from "./gateway-findings.js";
 import { runLifecycleCommand, runPolicyCommand } from "./governance-command.js";
 import { runHandoffCommand } from "./handoff-command.js";
 import { runIdeaCommand } from "./idea-command.js";
 import { intercept } from "./intercept-command.js";
+import { runInterestsCommand } from "./interests-command.js";
 import { runLayoutCommand } from "./layout-command.js";
 import { runMarketCommand } from "./market-command.js";
 import { runMcpGatewayCommand } from "./mcp-gateway-command.js";
 import { runMcpStatusCommand } from "./mcp-status-command.js";
 import { runMemoryCommand } from "./memory-command.js";
 import { runMigrateCommand } from "./migrate-command.js";
+import { runNoteCommand } from "./note-command.js";
 import { runObserveCommand } from "./observe-command.js";
 import { manageClients, runOnboardCommand } from "./onboard-command.js";
 import { runOperateCommand } from "./operate-command.js";
@@ -189,6 +197,7 @@ import {
 } from "./session-facts-command.js";
 import { parseSetupArgs, SETUP_USAGE, setup } from "./setup-command.js";
 import { runTasksCommand } from "./tasks-command.js";
+import { runTelemetryCommand } from "./telemetry-command.js";
 
 export type CommandHandler = () => Promise<void> | void;
 
@@ -523,6 +532,7 @@ async function commandObsidian(): Promise<void> {
       "connect",
       "discover",
       "sync",
+      "templates",
       "watch",
       "inbox",
       "write",
@@ -530,11 +540,21 @@ async function commandObsidian(): Promise<void> {
     ].includes(action)
   ) {
     console.error(
-      "Usage: ocean obsidian connect <vault-path> [--read-write]|discover|sync|watch|inbox|write|conflicts resolve <id> --keep=vault|ocean",
+      "Usage: ocean obsidian connect <vault-path> [--read-write]|discover|sync|templates [--yes]|watch|inbox|write|conflicts resolve <id> --keep=vault|ocean",
     );
     process.exitCode = 1;
   } else {
     try {
+      if (action === "templates") {
+        // T-314: Templater folder templates generated from routing.json; a dry run until --yes.
+        const result = await syncFolderTemplates({
+          apply: process.argv.includes("--yes"),
+        });
+        console.log(JSON.stringify(result, null, 2));
+        if (!result.written)
+          console.error("Dry run: pass --yes to write the Templater config.");
+        return;
+      }
       if (action === "connect") {
         const vaultPath = process.argv[4];
         if (!vaultPath)
@@ -1258,6 +1278,7 @@ async function commandDoctor(): Promise<void> {
   // T-296: every installed AI client's `ocean` entry (supported fail, unknown warn).
   report.findings.push(
     ...(await clientFindings()),
+    ...(await desktopWatcherFindings()),
     ...(await nativeFindings()),
     ...(await browserFindings()),
     ...(await gatewayFindings()),
@@ -1564,6 +1585,7 @@ export const commandRegistry: Record<string, CommandHandler> = {
   layout: commandLayout,
   memory: commandMemory,
   pull: () => runPullCommand(process.argv.slice(3)),
+  desktop: () => runDesktopCommand(process.argv.slice(3)),
   mcp: commandMcp,
   market: commandMarket,
   obsidian: commandObsidian,
@@ -1575,6 +1597,12 @@ export const commandRegistry: Record<string, CommandHandler> = {
   intent: commandIntent,
   operate: commandOperate,
   idea: commandIdea,
+  note: () => runNoteCommand(process.argv.slice(3)),
+  brief: () => runBriefCommand(process.argv.slice(3)),
+  interests: () => runInterestsCommand(process.argv.slice(3)),
+  distill: () => runDistillCommand(process.argv.slice(3)),
+  telemetry: () => runTelemetryCommand(process.argv.slice(3)),
+  express: () => runExpressCommand(process.argv.slice(3)),
   daily: commandDaily,
   schedule: commandSchedule,
   loop: commandLoop,

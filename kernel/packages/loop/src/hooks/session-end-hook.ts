@@ -165,7 +165,7 @@ export async function readTranscriptEvents(
  * its transcript as bounded user_input/provider_output events, and runs it
  * through the same finalizeSession pipeline as `ocean run` and `ocean
  * intercept` sessions — producing the summary, daily narrative, and
- * brain/00-inbox/brain-dump/ entry. Reuses the sessionId Claude Code itself
+ * session record in 01-daily/sessions/YYYY-MM/ (T-314). Reuses the sessionId Claude Code itself
  * assigned, so a hook re-run for the same session (e.g. `/clear` followed by
  * another SessionEnd) is idempotent via finalizeSession's own closeout guard.
  * Best-effort throughout: any failure is swallowed so a broken hook can never

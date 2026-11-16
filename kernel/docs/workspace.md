@@ -22,6 +22,8 @@ named its old folder (T-311).
 │   └── 04-projects/         project data: registry, backlog, and each project in its
 │                            category folder, <category>/<id>/ (company, personal,
 │                            freelance, former-company, vendor; new ones in uncategorized/)
+├── 07-notes/                your own notes: agents read and index them (ranked above what
+│                            agents wrote), never write there (PROTECTED)
 ├── charter/                 private governance: core.md, policies/
 ├── kernel/                  this repository
 └── bridge/                  machine-local state, no git
@@ -64,7 +66,7 @@ isolated workspaces from one engine checkout.
 the same three constants, so they track any future layout change):
 
 - Creates `02-personal`, `05-knowledge`, `01-daily`, `00-inbox`,
-  `06-templates`, and the workspace project's `04-projects/personal/ocean/tasks`
+  `06-templates`, `07-notes`, and the workspace project's `04-projects/personal/ocean/tasks`
   under the workspace root.
 - Creates `bridge/config/startup`, `bridge/profiles`, `bridge/sessions`, `bridge/registry`,
   `bridge/integrations`, `bridge/archive` and `bridge/runtime/{shims,temporary}` under the
@@ -103,7 +105,68 @@ workspace's private records (`01-daily`, `02-personal`, `03-professional`, `04-p
 It prints `{file, line, rule}` only, never the matched text. Run it before publishing a change to
 the template.
 
+## Capture and templates (T-314)
+
+Every record type with one home is named in `packages/brain/src/memory/routing.json`
+(`records`); `ocean doctor` reports `TYPE_LOCATION` and `FRONTMATTER_MISSING` against it.
+
+- `ocean note "<text>"` writes `00-inbox/captures/<time>-<slug>.md` with `type: capture`
+  frontmatter (secrets redacted).
+- From anywhere else, an Obsidian URI does the same through the app:
+  `obsidian://new?vault=<vault>&file=00-inbox/captures/<name>&content=<text>` — bind it to a
+  macOS Shortcut, a Raycast quicklink or a QuickAdd capture choice.
+- `ocean obsidian templates [--yes]` writes Templater's folder templates from the table, so a
+  note created in a type's folder starts from `06-templates/<type>.md`; entries for other
+  folders are kept, and a type without a template is listed as `missing`.
+
+People live one per file in `02-personal/people/` (`type: person`, `aliases` in every spelling
+you use, English and Arabic). The `people_lookup` MCP tool matches a name exactly — file name,
+title or alias — and `02-personal/people/people.base` lists them in Obsidian. Record
+work-relevant facts only; nothing sensitive about other people.
+
+Interests live one per file in `02-personal/interests/` (`type: interest`, `priority`,
+`keywords`, `sources`). A source is an `https://` RSS/Atom feed or `github:<owner>/<repo>` (its
+releases). `ocean brief` writes `01-daily/briefs/<date>.md`: high-priority interests, five
+items at most, newest first; `--weekly` takes every interest, fifteen at most. A general feed
+is narrowed by the interest's keywords; a releases feed is taken whole. A seen-ledger in
+`bridge/state/brief/` keeps an item from coming back; a source that fails is listed, not fatal.
+
+`ocean interests discover [--yes]` reads the `package.json` of every registered project and
+maps known packages (`packages/services/src/brief/source-registry.json`) to their release
+feeds; each topic without an interest file becomes a review candidate (`origin: discovered`),
+never a file. `ocean interests keep|skip <name>` moves an interest's weight (and `keep` its
+`last_signal`); `ocean interests decay [--weeks N] [--yes]` lowers a discovered interest with
+no signal for 8 weeks. An interest you wrote yourself is never decayed.
+
+Every finished session writes one record to `01-daily/sessions/YYYY-MM/` (`type: session`,
+project, provider, status, session_id, date, `distilled: false`; sections Goal, Outcome,
+Decisions, Problems → fixes, Learned, Verification, Files / commits, Next). The narrative comes
+from one cheap model call when available, else from the session's events; trivial sessions are
+skipped. `ocean memory migrate-sessions [--yes]` moves older `00-inbox/brain-dump/` files there.
+
+`ocean distill --week [--yes]` closes a week (ISO, Monday–Sunday): one digest in
+`01-daily/weekly/<YYYY-Www>.md` linking the week's session records and briefs, each record's
+Decisions and Learned proposed as knowledge candidates, records marked `distilled: true`, and
+captures marked `status: processed` moved to `00-inbox/archive/<week>/`. The `/weekly-review`
+skill walks you from there to inbox zero. Search covers session records and briefs; a record
+with `status: retired` stays on disk but out of search, and `ocean memory archive-retired
+[--yes]` moves retired lessons into `05-knowledge/lessons/archive/`.
+
+Your journey: milestones (`type: milestone`, `02-personal/milestones/`, `milestones.base`
+timeline) and study plans (`type: study`, `02-personal/education/study/`, `study.base`). Each daily
+brief adds one **Resurface** line: the decision verified longest ago once that is more than 90
+days back, else your least recently touched note in `07-notes/`. `ocean telemetry [--days N]
+[--yes]` finds errors that recur across sessions and providers whose sessions keep failing, and
+proposes each as a backlog line for review.
+
+`ocean express cv|linkedin|scholarship [--dry-run]` turns your done milestones into a draft in
+`00-inbox/drafts/` — a CV section grouped by kind, a LinkedIn post from the latest three, or a
+scholarship paragraph from academic milestones (exam, certificate, course, education,
+scholarship). Built from the records only: no model, nothing invented, nothing sent.
+
 ## Task completion and archive
+
+
 
 Use the governed completion command when a task is genuinely finished:
 

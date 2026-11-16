@@ -13,7 +13,7 @@ const commandGroups = [
   ],
   [
     "Knowledge",
-    "memory, pull, observe, capture, handoff, idea, daily, skill, catalog",
+    "memory, pull, desktop, observe, capture, note, brief, interests, distill, telemetry, express, handoff, idea, daily, skill, catalog",
   ],
   ["Integrations", "obsidian, hook, migrate, layout, env"],
 ] as const;
@@ -142,6 +142,10 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
     "Pull what AI clients hold into Ocean as review candidates; a dry run until --yes.",
     "ocean pull [--yes] [--daily] | search [words…] [--project <id>] [--client <id>] [--limit N] [--json] | report",
   ],
+  desktop: [
+    "Capture facts from Claude Desktop's chat, read from the app's local store; --export reads an unpacked claude.ai data export; --dry-run lists conversations and message counts, never text.",
+    "ocean desktop capture [--dry-run] [--export <folder>] [--since <date>] [--quiet <minutes>] [--json]",
+  ],
   observe: [
     "Run a command and record its output, or show a recording.",
     "ocean observe -- <command> [args] | show <id> [--grep <pattern>]",
@@ -149,6 +153,30 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
   capture: [
     "Capture ideas and promote or discard them.",
     "ocean capture add <idea>|scan [session-id]|list [status]|promote <id> <target>|discard <id>",
+  ],
+  brief: [
+    "Write today's brief from your interests' feeds to 01-daily/briefs/ (high priority daily, all weekly).",
+    "ocean brief [--weekly] [--dry-run] [--date YYYY-MM-DD]",
+  ],
+  interests: [
+    "Propose interests from your projects' dependencies (as candidates), decay unused ones, record keep/skip.",
+    "ocean interests discover [--yes] | decay [--weeks N] [--yes] | keep <name> | skip <name>",
+  ],
+  distill: [
+    "Distill a week: digest in 01-daily/weekly/, decisions and lessons as candidates, records marked distilled.",
+    "ocean distill --week [--date YYYY-MM-DD] [--yes]",
+  ],
+  telemetry: [
+    "Find recurring errors and failing providers in recent sessions; propose them as backlog lines.",
+    "ocean telemetry [--days N] [--yes]",
+  ],
+  express: [
+    "Draft a CV section, LinkedIn post or scholarship paragraph from your milestones into 00-inbox/drafts/.",
+    "ocean express cv|linkedin|scholarship [--dry-run]",
+  ],
+  note: [
+    "Capture a thought into 00-inbox/captures with the capture frontmatter.",
+    'ocean note "<text>"',
   ],
   handoff: [
     "Create, show and list handoffs between sessions.",
@@ -172,7 +200,7 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
   ],
   obsidian: [
     "Connect, sync and write to an Obsidian vault (read-only unless --read-write).",
-    "ocean obsidian connect <vault-path> [--read-write]|discover|sync|watch|inbox|write|conflicts resolve <id> --keep=vault|ocean",
+    "ocean obsidian connect <vault-path> [--read-write]|discover|sync|templates [--yes]|watch|inbox|write|conflicts resolve <id> --keep=vault|ocean",
   ],
   hook: [
     "Session hooks the AI clients call; session-end reads its payload from stdin.",

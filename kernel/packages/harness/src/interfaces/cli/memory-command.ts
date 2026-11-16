@@ -13,10 +13,13 @@ import {
   brainRead,
   brainSearch,
 } from "@ocean/brain/brain/brain-service.js";
+import { migrateBrainDumps } from "@ocean/brain/memory/brain-dump.js";
+import { flattenWorkspace } from "@ocean/brain/memory/frontmatter-flatten.js";
 import {
   doctorMemoryIndexes,
   syncMemoryIndexes,
 } from "@ocean/brain/memory/index-sync.js";
+import { archiveRetiredLessons } from "@ocean/brain/memory/lessons.js";
 import {
   memorySettings,
   sessionFactsEnabled,
@@ -287,13 +290,17 @@ async function runReview(args: string[]): Promise<void> {
   if ((verb === "approve" || verb === "reject") && id) {
     const result =
       verb === "approve"
-        ? await approveCandidate({ id, to: flagValue(args, "--to") })
+        ? await approveCandidate({
+            id,
+            to: flagValue(args, "--to"),
+            type: flagValue(args, "--type"),
+          })
         : await rejectCandidate(id);
     console.log(JSON.stringify(result, null, 2));
     return;
   }
   console.error(
-    "Usage: ocean memory review [list] [--project <id>] [--json] | approve <id> [--to <record path>] | reject <id>",
+    "Usage: ocean memory review [list] [--project <id>] [--json] | approve <id> [--type <fact type> | --to <record path>] | reject <id>",
   );
   process.exitCode = 1;
 }
@@ -378,6 +385,34 @@ export async function runMemoryCommand(
     return;
   }
   if (action === "eval") return runEval(args);
+  if (action === "archive-retired") {
+    // T-314: retired lessons out of the index, into lessons/archive/ (kept).
+    const moved = await archiveRetiredLessons({
+      apply: args.includes("--yes"),
+    });
+    console.log(JSON.stringify({ moved: moved.length, files: moved }, null, 2));
+    if (!args.includes("--yes"))
+      console.error("Dry run: pass --yes to move them to lessons/archive/.");
+    return;
+  }
+  if (action === "migrate-sessions") {
+    // T-314: brain-dump files become session records in 01-daily/sessions/YYYY-MM/.
+    const result = await migrateBrainDumps({ apply: args.includes("--yes") });
+    console.log(JSON.stringify(result, null, 2));
+    if (!args.includes("--yes"))
+      console.error("Dry run: pass --yes to move them (never deleted).");
+    return;
+  }
+  if (action === "flatten") {
+    // T-314: move nested `metadata:` frontmatter to top level, for Obsidian Properties/Bases.
+    const result = await flattenWorkspace({ apply: args.includes("--yes") });
+    console.log(JSON.stringify(result, null, 2));
+    if (!args.includes("--yes"))
+      console.error(
+        "Dry run: pass --yes to rewrite them (originals are copied to the archive).",
+      );
+    return;
+  }
   if (action === "digest") {
     const lines = await memoryDigest({ stale: await indexIsStale() });
     console.log(lines.length ? lines.join("\n") : "memory: nothing to review");

@@ -62,6 +62,7 @@ test("Ocean MCP exposes provider-neutral tools without Obsidian", async () => {
         "ocean_context",
         "ocean_projects_list",
         "ocean_handoff_create",
+        "people_lookup",
       ],
     );
     const status = await handle({

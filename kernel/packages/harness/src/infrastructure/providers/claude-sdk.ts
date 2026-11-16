@@ -23,6 +23,22 @@ export function claudeSdkOptions(
   executable: string,
 ): Options {
   const model = explicitModel(request.model);
+  if (request.bare)
+    return {
+      pathToClaudeCodeExecutable: executable,
+      cwd: path.resolve(request.cwd),
+      env: { ...process.env, ...request.env },
+      systemPrompt: request.bare.systemPrompt,
+      // SDK isolation: no user, project or local settings (so no CLAUDE.md, no hooks), no
+      // built-in tools, no MCP servers, one turn, and no transcript under ~/.claude/projects.
+      settingSources: [],
+      tools: [],
+      mcpServers: {},
+      strictMcpConfig: true,
+      maxTurns: 1,
+      persistSession: false,
+      ...(model ? { model } : {}),
+    };
   return {
     // The user's own Claude Code, past Ocean's shims, never the SDK's bundled copy.
     pathToClaudeCodeExecutable: executable,

@@ -17,13 +17,15 @@ import {
 } from "@ocean/brain/memory/memory-audit.js";
 import { approveCandidate } from "@ocean/brain/memory/memory-review.js";
 import {
+  buildFactsPrompt,
   extractSessionFacts,
   parseFacts,
   proposeSessionFacts,
   selectTurns,
 } from "@ocean/brain/memory/session-facts.js";
 import { MemoryContractError } from "@ocean/core/domain/mcp/memory-contract.js";
-import { INBOX_DIR, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
+import { INBOX_DIR, STORE_DIR, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
+import { registerNamedProject } from "@ocean/core/shared/project-resolution.js";
 import {
   FACTS_CLAIM_EVENT,
   readTranscriptSlice,
@@ -155,6 +157,91 @@ test("parseFacts keeps at most five well-formed facts and drops incomplete ones"
     ["t1", "t2", "t3", "t4", "t5"],
   );
   assert.deepEqual(parseFacts("not json"), []);
+});
+
+// T-314: the model names a type, the routing table names the place, and approval needs no path.
+test("a typed session fact arrives with its target; approve routes an untyped one by --type", async () => {
+  await inWorkspace("routing", async (root) => {
+    assert.equal(
+      parseFacts(
+        JSON.stringify({
+          facts: [
+            { title: "a", content: "c", evidence: "e", type: "career" },
+            { title: "b", content: "c", evidence: "e", type: "astrology" },
+          ],
+        }),
+      )
+        .map((fact) => fact.type ?? "-")
+        .join(","),
+      "career,-",
+    );
+    assert.match(
+      buildFactsPrompt([{ role: "user", text: "hi" }]),
+      /preference, person/,
+    );
+    for (const [store, index] of [
+      ["memory", "MEMORY.md"],
+      ["knowledge", "KNOWLEDGE.md"],
+    ]) {
+      await mkdir(path.join(root, STORE_DIR[store]), { recursive: true });
+      await writeFile(path.join(root, STORE_DIR[store], index), "# Index\n");
+    }
+    await registerNamedProject("Harbor");
+    const fact = (title, type, project) => ({
+      title,
+      content: `${title} content.`,
+      evidence: `${title} evidence`,
+      reason: "r",
+      ...(type ? { type } : {}),
+      ...(project ? { project } : {}),
+    });
+    const { proposed } = await proposeSessionFacts({
+      sessionId: "s-route",
+      client: "claude",
+      facts: [
+        fact("Tabs Over Spaces", "preference"),
+        fact("Harbor uses Postgres", "project", "harbor"),
+        fact("Unknown project", "project", "Nowhere"),
+        fact("No type at all"),
+      ],
+    });
+    const targets = [];
+    for (const file of proposed) {
+      const text = await readFile(path.join(root, file), "utf8");
+      targets.push(/^target: "(.*)"$/m.exec(text)[1]);
+    }
+    assert.deepEqual(targets, [
+      "02-personal/work/tabs-over-spaces.md",
+      "04-projects/uncategorized/harbor/memory/harbor-uses-postgres.md",
+      "",
+      "",
+    ]);
+    assert.match(
+      await readFile(path.join(root, proposed[0]), "utf8"),
+      /^type: "preference"$/m,
+    );
+    const id = (file) => path.basename(file, ".md");
+    const approved = await approveCandidate({ id: id(proposed[0]) });
+    assert.equal(approved.path, "02-personal/work/tabs-over-spaces.md");
+    await assert.rejects(
+      approveCandidate({ id: id(proposed[3]) }),
+      (error) => error.code === "INVALID" && /--type/.test(error.message),
+    );
+    await assert.rejects(
+      approveCandidate({ id: id(proposed[3]), type: "astrology" }),
+      (error) =>
+        error.code === "INVALID" && /unknown fact type/.test(error.message),
+    );
+    const routed = await approveCandidate({
+      id: id(proposed[3]),
+      type: "goal",
+    });
+    assert.equal(routed.path, "02-personal/goals/no-type-at-all.md");
+    assert.match(
+      await readFile(path.join(root, routed.path), "utf8"),
+      /No type at all content/,
+    );
+  });
 });
 
 test("finalText reads the Claude SDK result and the last Codex agent message", () => {

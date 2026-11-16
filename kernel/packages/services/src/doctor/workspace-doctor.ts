@@ -11,6 +11,7 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
+import { inTypeLocation } from "@ocean/brain/memory/fact-routing.js";
 import {
   doctorMemoryIndexes,
   syncMemoryIndexes,
@@ -22,6 +23,7 @@ import {
   CHARTER_DIR,
   enginePath,
   INBOX_DIR,
+  NOTES_DIR,
   oceanEnv,
   oceanPath,
   POLICIES_DIR,
@@ -109,13 +111,22 @@ async function checkStructure(): Promise<Finding[]> {
             message: `${root} root exists`,
             fixable: false,
           }
-        : {
-            code: "ROOT_MISSING",
-            severity: "FAIL",
-            path: root,
-            message: `${root} root is missing`,
-            fixable: false,
-          },
+        : // 07-notes arrived in a later version (T-314): a workspace made before it is not broken.
+          root === NOTES_DIR
+          ? {
+              code: "ROOT_MISSING",
+              severity: "WARN",
+              path: root,
+              message: `${root} (your own notes) does not exist yet; \`ocean setup\` creates it`,
+              fixable: false,
+            }
+          : {
+              code: "ROOT_MISSING",
+              severity: "FAIL",
+              path: root,
+              message: `${root} root is missing`,
+              fixable: false,
+            },
     );
   }
   return findings;
@@ -439,6 +450,112 @@ async function checkProjectCategories(): Promise<Finding[]> {
   return findings;
 }
 
+// The inbox is a waiting room, not a home (T-314): what sits there longer than a week was never
+// sorted. Its own index and the clients' native memory staging are not items.
+const INBOX_STALE_DAYS = 7;
+
+async function checkInboxStale(now = Date.now()): Promise<Finding[]> {
+  const inbox = oceanPath(INBOX_DIR);
+  const cutoff = now - INBOX_STALE_DAYS * 24 * 60 * 60 * 1000;
+  const byFolder = new Map<string, number>();
+  for (const file of await markdownFiles(inbox)) {
+    const [folder, ...rest] = path.relative(inbox, file).split(path.sep);
+    if (!rest.length || folder === "native") continue;
+    if ((await stat(file)).mtimeMs >= cutoff) continue;
+    byFolder.set(folder, (byFolder.get(folder) ?? 0) + 1);
+  }
+  const total = [...byFolder.values()].reduce((sum, n) => sum + n, 0);
+  return [
+    total
+      ? {
+          code: "INBOX_STALE",
+          severity: "WARN",
+          path: INBOX_DIR,
+          message: `${total} inbox item(s) older than ${INBOX_STALE_DAYS} days: ${[
+            ...byFolder,
+          ]
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([folder, n]) => `${folder} ${n}`)
+            .join(", ")}; sort them or archive them`,
+          fixable: false,
+        }
+      : {
+          code: "INBOX_FRESH",
+          severity: "OK",
+          path: INBOX_DIR,
+          message: `nothing in the inbox is older than ${INBOX_STALE_DAYS} days`,
+          fixable: false,
+        },
+  ];
+}
+
+// Every record carries frontmatter, and a record whose type has one home sits there (T-314,
+// routing.json). Index files, templates, task folders and the inbox's machine areas are not
+// records; neither are the owner's notes, which are his to shape.
+const INDEX_FILE = /^[A-Z][A-Z0-9_-]*\.md$/;
+const NOT_RECORDS = [
+  /^00-inbox\/(?:candidates|native|brain-dump)\//,
+  /^06-templates\//,
+  /^07-notes\//,
+  /^04-projects\/(?:.+\/)?tasks\//,
+];
+
+async function checkRecordShape(): Promise<Finding[]> {
+  // Relative to the records prefix (flat: the root; nested: brain/), the form routing.json uses.
+  const base = oceanPath(path.posix.dirname(INBOX_DIR));
+  const missing = new Map<string, number>();
+  const misplaced: string[] = [];
+  for (const root of new Set([...BRAIN_RECORD_DIRS, PROJECTS_DIR]))
+    for (const file of await markdownFiles(oceanPath(root))) {
+      const relative = path.relative(base, file).split(path.sep).join("/");
+      if (INDEX_FILE.test(path.basename(file))) continue;
+      if (NOT_RECORDS.some((pattern) => pattern.test(relative))) continue;
+      const text = await readFile(file, "utf8");
+      if (!/^---\r?\n/.test(text)) {
+        const area = relative.split("/")[0];
+        missing.set(area, (missing.get(area) ?? 0) + 1);
+        continue;
+      }
+      const head = text.split(/\r?\n---/, 1)[0];
+      const type = /^type:\s*["']?([\w-]+)/m.exec(head)?.[1];
+      if (type && !inTypeLocation(relative, type))
+        misplaced.push(`${relative} (${type})`);
+    }
+  const total = [...missing.values()].reduce((sum, n) => sum + n, 0);
+  const counts = [...missing]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([area, n]) => `${area} ${n}`)
+    .join(", ");
+  return [
+    total
+      ? {
+          code: "FRONTMATTER_MISSING",
+          severity: "WARN",
+          message: `${total} record(s) without frontmatter: ${counts}`,
+          fixable: false,
+        }
+      : {
+          code: "FRONTMATTER_PRESENT",
+          severity: "OK",
+          message: "every record has frontmatter",
+          fixable: false,
+        },
+    misplaced.length
+      ? {
+          code: "TYPE_LOCATION",
+          severity: "WARN",
+          message: `${misplaced.length} record(s) outside their type's folder (routing.json): ${misplaced.slice(0, 5).join("; ")}${misplaced.length > 5 ? "; …" : ""}`,
+          fixable: false,
+        }
+      : {
+          code: "TYPE_LOCATION_OK",
+          severity: "OK",
+          message: "every typed record sits in its type's folder",
+          fixable: false,
+        },
+  ];
+}
+
 async function checkDuplicates(): Promise<Finding[]> {
   const seen = new Map<string, string>();
   const duplicates: string[] = [];
@@ -630,6 +747,8 @@ async function scanWorkspace(
     ...(await checkWorkspaceContracts()),
     ...(await checkPermissions()),
     ...(await checkDuplicates()),
+    ...(await checkInboxStale()),
+    ...(await checkRecordShape()),
     ...(await checkProjectLayout()),
     ...(await checkClaudeProjects()),
     ...(await checkProjectCategories()),

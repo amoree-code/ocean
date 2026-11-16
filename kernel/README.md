@@ -142,8 +142,15 @@ prints its usage and never runs it. To hand `--help` to a wrapped client, put it
 | `ocean browser` | drive a browser session | Runs; `upload`, `submit` need `--approve` |
 | `ocean memory` | search, read, review and maintain memory | Reads; `approve`, `delete`, `restore`, `reindex`, `sync --apply`, `purge --yes` write |
 | `ocean pull` | pull what AI clients hold into Ocean as review candidates | Reads (dry run); `--yes` writes |
+| `ocean desktop` | capture facts from Claude Desktop's chat, read from the app's local store, as review candidates | Reads (`--dry-run`); a run writes candidates |
 | `ocean observe` | run a command and record its output | Runs |
 | `ocean capture` / `idea` | capture ideas, then promote or discard them | Writes |
+| `ocean note` | `ocean note "<text>"`: capture a thought into `00-inbox/captures/` with frontmatter | Writes |
+| `ocean brief` | write the daily or weekly brief from your interests' feeds | Writes |
+| `ocean interests` | propose interests from your projects (as candidates), decay, keep/skip | Writes |
+| `ocean distill` | `--week`: a weekly digest, decisions and lessons as candidates | Writes |
+| `ocean telemetry` | recurring session errors and failing providers, as proposed backlog lines | Writes |
+| `ocean express` | draft a CV section, LinkedIn post or scholarship paragraph from milestones | Writes |
 | `ocean handoff` | hand work from one session or client to another | Reads; `create` writes |
 | `ocean daily` | prepare today's note | Reads; `--apply` writes |
 | `ocean skill` | sync, add, review and learn skills | Reads; `add`, `review`, `learn`, `sync` write |
@@ -166,7 +173,7 @@ only and receives no provider credentials. It offers:
 
 - **reads** — `brain_search`, `brain_read`, `brain_neighbors`, `memory_read`,
   `memory_history`, tasks, sessions, handoffs, projects, profiles, `ocean_context`,
-  `ocean_status` and `ocean_doctor`;
+  `ocean_status`, `ocean_doctor` and `people_lookup` (a person by exact name or alias);
 - **writes** — `memory_write` (only when you ask a client to remember or change something;
   an update must name the record's current hash), `memory_propose` (a candidate for your
   review), `memory_delete` (soft, undone by `memory_restore`), `ocean_handoff_create`, and
@@ -197,6 +204,7 @@ session, and `ocean skill review <candidate-id> promoted` activates it.
 ~/ocean/                        private workspace (OCEAN_ROOT) — local only, never published
 ├── 00-inbox/ … 06-templates/   your records: inbox, daily, personal, professional,
 │                               projects, knowledge, templates
+├── 07-notes/                   your own notes: agents read them, never write them
 ├── charter/                    your rules and the policies they route to
 └── bridge/                     machine state: sessions, config, client integrations, shims
 

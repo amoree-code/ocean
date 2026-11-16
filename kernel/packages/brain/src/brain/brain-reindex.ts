@@ -24,7 +24,7 @@ import {
   normalizeRecord,
 } from "./brain-markdown.js";
 
-const STORES = ["memory", "knowledge"] as const;
+const STORES = ["memory", "knowledge", "notes", "sessions", "briefs"] as const;
 const MAX_FILES = 10_000;
 
 async function walk(root: string, depth = 0): Promise<string[]> {
@@ -183,6 +183,11 @@ export async function reindexBrain(
         `brain reindex found more than ${MAX_FILES} markdown files — refusing to index an unbounded corpus`,
       );
     const source = await readFile(file, "utf8");
+    // A retired record (a superseded lesson or decision) stays on disk but out of search (T-314).
+    if (
+      /^status:\s*["']?retired["']?\s*$/m.test(source.split(/\r?\n---/, 1)[0])
+    )
+      continue;
     const { record, conformance, body, rawScope } = normalizeRecord(
       relative,
       source,

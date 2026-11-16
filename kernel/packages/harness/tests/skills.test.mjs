@@ -23,6 +23,7 @@ test("lists the public core skill catalog without loading full instructions", as
     "session-handoff",
     "use-browser",
     "verification",
+    "weekly-review",
   ]);
   assert.equal(Object.hasOwn(skills[0], "instructions"), false);
 });

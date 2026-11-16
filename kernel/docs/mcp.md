@@ -292,11 +292,34 @@ what the user asks for explicitly ("remember this", "forget that").
 | Full | Claude Code, Codex | session-start hook | after the session ends, and before a compaction (Claude Code) | runs in code; every fact reviewed |
 | Hooks, no transcript | Gemini CLI, Qwen Code, Cursor agent | session-start hook | no; the session is recorded from metadata | start is in code; saving depends on the model calling `memory_propose` |
 | Plugin | OpenCode | plugin adds the start line | no session-end event | start is in code; saving depends on the model |
-| MCP only | any other MCP client, Claude Desktop, claude.ai | `instructions` and tool descriptions | no | best effort: the model decides; some hosts drop `instructions`, so the tool descriptions carry the same rule |
+| Watcher | Claude Desktop chat (macOS) | `instructions` and tool descriptions | after a conversation is quiet for 10 minutes, read from the app's local store | automatic, best effort: the store's format is undocumented; every fact reviewed |
+| MCP only | any other MCP client, claude.ai on the web or phone | `instructions` and tool descriptions | no (an export can be read by hand, below) | best effort: the model decides; some hosts drop `instructions`, so the tool descriptions carry the same rule |
 
-Claude Desktop and claude.ai conversations are also picked up by `ocean pull` from the app's local
-cache when it holds them. That cache is not a documented interface: it keeps only what the app
-happened to store, and it can be cleared at any time.
+**Claude Desktop chat** has no hooks. The app keeps the conversations it has open, or opened
+recently, in a Chromium IndexedDB under `~/Library/Application Support/Claude/IndexedDB/`.
+`ocean desktop capture` copies that LevelDB folder aside, reads the copy (never the app's files in
+place, never its lock), and sends the new turns of each conversation quiet for 10 minutes to the
+same extraction as above. A per-user LaunchAgent, `com.ocean.desktop-capture`, runs it when the
+app writes the store (at most every 5 minutes) and every 15 minutes. `ocean clients apply` adds it
+when session facts are on, and `ocean clients restore` removes it. The cursor is each conversation's
+newest message time already read; it and the last run's outcome hold ids, times and counts, never
+text. Candidates carry `source: session:desktop:<uuid>`.
+
+The format is not a documented interface. Any surprise stops the read with
+`DESKTOP_CHAT_UNREADABLE`, which `ocean doctor` reports, and no fact is guessed from a partial
+read. The app keeps only conversations it has opened, so a conversation from another device is
+captured once it is opened in the app, or from an export:
+
+```bash
+ocean desktop capture --dry-run                   # what Ocean can read: ids and message counts
+ocean desktop capture --export ~/Downloads/data-… # an unpacked claude.ai export, same cursor
+```
+
+An export holds every conversation, and each one is a model call, so limit a first run with
+`--since <date>`.
+
+`ocean pull` still reads titles, dates and project names of claude.ai conversations from the
+app's and the browsers' HTTP caches when they hold them.
 
 ### A server that kept running through an upgrade
 

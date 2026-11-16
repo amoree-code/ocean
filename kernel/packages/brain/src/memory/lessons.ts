@@ -420,3 +420,24 @@ export async function migrateLegacyLessons(
     if (existed) await rename(file, `${file}.migrated`);
   return result;
 }
+
+// Lesson hygiene (T-314): retired lessons move to lessons/archive/, which the index never walks.
+// Kept, never deleted. Dry run unless `apply`.
+export async function archiveRetiredLessons(options: {
+  apply: boolean;
+}): Promise<string[]> {
+  const dir = lessonsDir();
+  const names = await readdir(dir).catch(() => [] as string[]);
+  const moved: string[] = [];
+  for (const name of names.sort()) {
+    if (!name.endsWith(".md") || name === "CONFLICTS.md") continue;
+    const text = await readFile(path.join(dir, name), "utf8");
+    if (!/^status:\s*["']?retired["']?\s*$/m.test(text.split(/\r?\n---/, 1)[0]))
+      continue;
+    moved.push(name);
+    if (!options.apply) continue;
+    await mkdir(path.join(dir, "archive"), { recursive: true });
+    await rename(path.join(dir, name), path.join(dir, "archive", name));
+  }
+  return moved;
+}

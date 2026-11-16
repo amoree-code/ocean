@@ -20,6 +20,7 @@ import {
   readMemoryRecord,
   writeMemoryRecord,
 } from "@ocean/brain/memory/memory-write.js";
+import { lookupPerson } from "@ocean/brain/memory/people.js";
 import { promoteSessionToKnowledge } from "@ocean/brain/memory/session-promotion.js";
 import { isValidProjectId } from "@ocean/core/domain/context/project-id.js";
 import {
@@ -412,6 +413,18 @@ const tools = new McpToolRegistry([
       additionalProperties: false,
     },
   },
+  {
+    name: "people_lookup",
+    description:
+      "Find a person the user knows by name, in English or Arabic: matches a file name, title or alias in 02-personal/people/ exactly (case and spacing ignored), never a part of a name. Returns each match's file, name, aliases, role, org, relation and last_seen; read the file with memory_read for the history.",
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      type: "object",
+      properties: { name: { type: "string" } },
+      required: ["name"],
+      additionalProperties: false,
+    },
+  },
 ]);
 
 // What one MCP handoff may hold, summed over its texts (T-307).
@@ -697,6 +710,8 @@ async function callTool(
         .sort((a, b) => a.id.localeCompare(b.id)),
     };
   if (name === "ocean_handoff_create") return createClientHandoff(args, ports);
+  if (name === "people_lookup")
+    return lookupPerson(requiredArgument(args, "name"));
   if (name === "memory_read")
     return readMemoryRecord(requiredArgument(args, "path"));
   if (name === "memory_history")

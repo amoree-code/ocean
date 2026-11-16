@@ -9,7 +9,8 @@
     "declaration": true,
     "sourceMap": true,
     "skipLibCheck": true,
-    "types": ["node"]
+    "types": ["node"],
+    "resolveJsonModule": true
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.json"]
 }
