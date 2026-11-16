@@ -170,6 +170,7 @@ import { runContextCommand, runContextCostCommand } from "./context-command.js";
 import { runDailyCommand } from "./daily-command.js";
 import { runDesktopCommand } from "./desktop-command.js";
 import { runDistillCommand } from "./distill-command.js";
+import { runExpressCommand } from "./express-command.js";
 import { gatewayFindings } from "./gateway-findings.js";
 import { runLifecycleCommand, runPolicyCommand } from "./governance-command.js";
 import { runHandoffCommand } from "./handoff-command.js";
@@ -1601,6 +1602,7 @@ export const commandRegistry: Record<string, CommandHandler> = {
   interests: () => runInterestsCommand(process.argv.slice(3)),
   distill: () => runDistillCommand(process.argv.slice(3)),
   telemetry: () => runTelemetryCommand(process.argv.slice(3)),
+  express: () => runExpressCommand(process.argv.slice(3)),
   daily: commandDaily,
   schedule: commandSchedule,
   loop: commandLoop,

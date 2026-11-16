@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+- feat(T-314): `ocean express cv|linkedin|scholarship [--dry-run]` drafts a CV section, a LinkedIn post or a scholarship paragraph from the done milestones in `02-personal/milestones/` into `00-inbox/drafts/` for review — from the records only, no model, nothing sent (#293)
+
 - feat(T-314): the journey: milestone and study Bases in the workspace template; each daily brief resurfaces one decision due for re-evaluation (last verified over 90 days ago) or one quiet note from `07-notes`; `ocean telemetry [--days N] [--yes]` turns errors recurring across sessions and providers that keep failing into proposed backlog lines (#292)
 
 - feat(T-314): distill and review: `ocean distill --week [--yes]` writes `01-daily/weekly/<YYYY-Www>.md` from the week's session records and briefs, proposes their decisions and lessons as candidates, marks records `distilled: true` and archives processed captures; a `/weekly-review` skill walks to inbox zero; search now covers session records and briefs and skips `status: retired` records; `ocean memory archive-retired [--yes]` moves retired lessons to `lessons/archive/` (#291)
