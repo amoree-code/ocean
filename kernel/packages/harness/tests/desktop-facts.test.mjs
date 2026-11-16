@@ -117,7 +117,10 @@ test("a quiet Desktop conversation becomes a review-only candidate, once", async
     ];
     const third = await runDesktopFacts({
       read,
-      complete: async (p) => (prompts.push(p), '{"facts": []}'),
+      complete: async (p) => {
+        prompts.push(p);
+        return '{"facts": []}';
+      },
       now: NOW,
       enabled: on,
     });
@@ -222,7 +225,10 @@ test("the same call returns a digest; the conversation becomes a session record 
         status: "ok",
         conversations: [chat("quiet", minutesAgo(30), [STATED, "Noted."])],
       }),
-      complete: async (prompt) => (prompts.push(prompt), answer),
+      complete: async (prompt) => {
+        prompts.push(prompt);
+        return answer;
+      },
       now: NOW,
       enabled: on,
     });

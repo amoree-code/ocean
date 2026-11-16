@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+- style: `pnpm check:style` passes on main again (comma operators in two test callbacks, unused imports left by the closeout change, test formatting); no behaviour change (#297)
+
 ## 1.9.0 (2026-11-16)
 
 - feat(T-314): the daily note, redesigned: a morning block (`ocean daily start`, no model) with focus, what is coming in the next 30 days from your records, open loops carried until ticked, your hours, what waits on you and the brief; the harvest writes the day's account (summary, open loops, corrections, time) in the same note before your `## Notes`, and keeps your ticks. Closeout stops adding duplicate lines. `ocean rhythm` runs morning note, harvest, archive, last week's digest and last month's review once per period from the service and session hooks. Long Claude Code sessions reach the day through the digest their compaction fact capture returns in the same call. The archive also removes empty inbox folders, and the brief drops pre-releases (dev, rc, beta, canary) from release feeds (#296)
