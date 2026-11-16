@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+- feat(T-314): interest discovery for any user: `ocean interests discover [--yes]` maps the dependencies of every registered project through a kernel source registry to release feeds and proposes each new topic as a review candidate; `ocean interests keep|skip <name>` adjusts weight; `ocean interests decay [--weeks N] [--yes]` lowers discovered interests with no signal, never ones the owner wrote (#289)
+
 - feat(T-314): `ocean brief [--weekly] [--dry-run]` writes `01-daily/briefs/<date>.md` from the feeds of the interests in `02-personal/interests/` (`https://` RSS/Atom, or `github:<owner>/<repo>` releases): high priority and at most 5 items daily, every interest and at most 15 weekly, keywords narrow general feeds, a seen-ledger prevents repeats, and a failing source is listed rather than fatal (#288)
 
 - feat(T-314): people, one file each in `02-personal/people/` (`type: person`, aliases in English and Arabic): the read-only `people_lookup` MCP tool matches a name exactly (file name, title or alias; case, spacing and Unicode form ignored; never part of a name), and the workspace template ships `people.base` (#287)

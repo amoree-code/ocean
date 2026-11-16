@@ -13,7 +13,7 @@ const commandGroups = [
   ],
   [
     "Knowledge",
-    "memory, pull, desktop, observe, capture, note, brief, handoff, idea, daily, skill, catalog",
+    "memory, pull, desktop, observe, capture, note, brief, interests, handoff, idea, daily, skill, catalog",
   ],
   ["Integrations", "obsidian, hook, migrate, layout, env"],
 ] as const;
@@ -157,6 +157,10 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
   brief: [
     "Write today's brief from your interests' feeds to 01-daily/briefs/ (high priority daily, all weekly).",
     "ocean brief [--weekly] [--dry-run] [--date YYYY-MM-DD]",
+  ],
+  interests: [
+    "Propose interests from your projects' dependencies (as candidates), decay unused ones, record keep/skip.",
+    "ocean interests discover [--yes] | decay [--weeks N] [--yes] | keep <name> | skip <name>",
   ],
   note: [
     "Capture a thought into 00-inbox/captures with the capture frontmatter.",
