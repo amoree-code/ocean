@@ -70,7 +70,7 @@ test("a session closed after local midnight files its daily log and summary unde
     store.updateStatus("boundary-session", "completed");
     await finalizeSession(store, "boundary-session", { exitCode: 0 });
     store.close();
-    console.log(readdirSync(path.join(root, DAILY_DIR)).join(), readdirSync(path.join(sessions, "summaries")).join());
+    console.log(readdirSync(path.join(root, DAILY_DIR)).filter((name) => name.endsWith(".md")).join(), readdirSync(path.join(sessions, "summaries")).join());
   `;
   const run = spawnSync(
     process.execPath,

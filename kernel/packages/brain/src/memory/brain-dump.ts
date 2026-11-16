@@ -1,4 +1,4 @@
-import { mkdir, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { redactRuntimeText } from "@ocean/core/domain/redaction/redaction.js";
 import type {
@@ -10,7 +10,12 @@ import {
   localMoment,
   localTime,
 } from "@ocean/core/shared/local-date.js";
-import { INBOX_DIR, oceanPath, oceanRoot } from "@ocean/core/shared/paths.js";
+import {
+  DAILY_DIR,
+  INBOX_DIR,
+  oceanPath,
+  oceanRoot,
+} from "@ocean/core/shared/paths.js";
 import { findGitRoot } from "@ocean/core/shared/project-resolution.js";
 import type { LearnedSignal } from "./lesson-learning.js";
 import type { ModelNarrative } from "./model-narrative.js";
@@ -64,7 +69,7 @@ async function uniqueFilename(
 }
 
 /**
- * One human-readable Markdown file per session under brain/00-inbox/brain-dump/,
+ * One session record per session in 01-daily/sessions/YYYY-MM/ (T-314; was 00-inbox/brain-dump/),
  * separate from the machine-oriented kernel/bridge/sessions/summaries/ dump. Prefers
  * the cheap model narrative (see model-narrative.ts) and falls back to the
  * same deterministic heuristics as daily-narrative.ts when it is unavailable.
@@ -137,34 +142,36 @@ export async function writeBrainDump(input: {
       : "failed";
   const title = isGenericContent(workLog) ? project : workLog;
 
+  // A session record (T-314): flat frontmatter Obsidian can read, then fixed sections. The
+  // narrative comes from one model call when there was one; otherwise from the events.
+  const quote = (value: string) => JSON.stringify(value);
   const lines = [
+    "---",
+    "type: session",
+    `project: ${quote(project)}`,
+    `provider: ${quote(session.provider)}`,
+    `status: ${status}`,
+    `session_id: ${quote(session.sessionId)}`,
+    `date: ${date}`,
+    "tags: []",
+    "distilled: false",
+    "---",
+    "",
     `# ${title}`,
     "",
-    `- Date: ${date} ${time}`,
-    `- Provider: ${session.provider}`,
-    `- Project: ${project}`,
-    `- Status: ${status}`,
-    "",
-    "## What happened",
+    "## Goal",
     "",
     workLog || "No objective was captured.",
-    ...(decision ? ["", "## Decision", "", decision] : []),
-    ...(problem ? ["", "## Problem", "", problem] : []),
-    ...(changedFiles.length
-      ? [
-          "",
-          "## Files changed",
-          "",
-          ...changedFiles.map((f) => `- ${safeText(f, 240)}`),
-        ]
-      : []),
-    ...(hasNextAction
-      ? ["", "## Next", "", safeText(nextAction as string, 300)]
-      : []),
+    "",
+    "## Outcome",
+    "",
+    status === "completed" ? "Completed." : "Did not complete.",
+    ...(decision ? ["", "## Decisions", "", decision] : []),
+    ...(problem ? ["", "## Problems → fixes", "", problem] : []),
     ...(observations?.length
       ? [
           "",
-          "## Signals",
+          "## Learned",
           "",
           ...observations.map(
             (o) =>
@@ -173,12 +180,28 @@ export async function writeBrainDump(input: {
         ]
       : []),
     "",
-    "---",
+    "## Verification",
     "",
-    `Session id: ${session.sessionId} · Raw events: \`ocean session events ${session.sessionId}\``,
+    status === "completed" && (input.exitCode ?? 0) === 0
+      ? "NOT PROVEN — the session ended cleanly; no check is recorded here."
+      : `NOT PROVEN — exit code ${input.exitCode ?? "unknown"}.`,
+    ...(changedFiles.length
+      ? [
+          "",
+          "## Files / commits",
+          "",
+          ...changedFiles.map((f) => `- ${safeText(f, 240)}`),
+        ]
+      : []),
+    ...(hasNextAction
+      ? ["", "## Next", "", safeText(nextAction as string, 300)]
+      : []),
+    "",
+    `Raw events: \`ocean session events ${session.sessionId}\``,
   ];
 
-  const directory = oceanPath(INBOX_DIR, "brain-dump");
+  // 01-daily/sessions/YYYY-MM/, where the session-record template and Templater point.
+  const directory = oceanPath(DAILY_DIR, "sessions", date.slice(0, 7));
   await mkdir(directory, { recursive: true });
 
   const titleSlug = slugify(title);
@@ -198,4 +221,46 @@ export async function writeBrainDump(input: {
   return {
     brainDumpPath: path.relative(oceanRoot(), file).split(path.sep).join("/"),
   };
+}
+
+// The one-time move (T-314): brain-dump files written before session records become records,
+// moved — never deleted — to 01-daily/sessions/YYYY-MM/ by the date in their name, with a
+// `type: session` frontmatter added when they have none. Dry run unless `apply`; a target that
+// already exists is left alone and reported.
+export async function migrateBrainDumps(options: { apply: boolean }): Promise<{
+  moved: string[];
+  skipped: string[];
+}> {
+  const source = oceanPath(INBOX_DIR, "brain-dump");
+  const names = await readdir(source).catch(() => [] as string[]);
+  const moved: string[] = [];
+  const skipped: string[] = [];
+  for (const name of names.sort()) {
+    const date = /^(\d{4}-\d{2}-\d{2})-/.exec(name)?.[1];
+    if (!name.endsWith(".md") || !date) continue;
+    const relative = `${DAILY_DIR}/sessions/${date.slice(0, 7)}/${name}`;
+    const target = oceanPath(relative);
+    if (
+      await readFile(target).then(
+        () => true,
+        () => false,
+      )
+    ) {
+      skipped.push(relative);
+      continue;
+    }
+    moved.push(relative);
+    if (!options.apply) continue;
+    const text = await readFile(path.join(source, name), "utf8");
+    await mkdir(path.dirname(target), { recursive: true });
+    await writeFile(
+      target,
+      text.startsWith("---")
+        ? text
+        : `---\ntype: session\ndate: ${date}\nstatus: legacy\ndistilled: false\n---\n\n${text}`,
+      "utf8",
+    );
+    await rm(path.join(source, name));
+  }
+  return { moved, skipped };
 }

@@ -138,6 +138,12 @@ never a file. `ocean interests keep|skip <name>` moves an interest's weight (and
 `last_signal`); `ocean interests decay [--weeks N] [--yes]` lowers a discovered interest with
 no signal for 8 weeks. An interest you wrote yourself is never decayed.
 
+Every finished session writes one record to `01-daily/sessions/YYYY-MM/` (`type: session`,
+project, provider, status, session_id, date, `distilled: false`; sections Goal, Outcome,
+Decisions, Problems → fixes, Learned, Verification, Files / commits, Next). The narrative comes
+from one cheap model call when available, else from the session's events; trivial sessions are
+skipped. `ocean memory migrate-sessions [--yes]` moves older `00-inbox/brain-dump/` files there.
+
 ## Task completion and archive
 
 
