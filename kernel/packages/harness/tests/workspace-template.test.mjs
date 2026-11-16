@@ -166,3 +166,49 @@ test("--optional passes only a tree without the template; a present one is still
   await writeFile(path.join(root, "01-daily/.gitkeep"), "x");
   assert.equal(check(["--root", root, "--optional"]).code, 1);
 });
+
+test("doctor warns about inbox items older than a week, not the index or native staging", async () => {
+  const { utimes } = await import("node:fs/promises");
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-inbox-stale-"));
+  await seedWorkspaceTemplate(root, TEMPLATE);
+  const doctor = () => {
+    const run = spawnSync(
+      process.execPath,
+      [path.resolve("dist/main.js"), "doctor", "--json"],
+      {
+        env: {
+          ...process.env,
+          OCEAN_ROOT: root,
+          OCEAN_SKIP_DEPENDENCY_AUDIT: "1",
+        },
+        encoding: "utf8",
+      },
+    );
+    return JSON.parse(run.stdout).findings.filter((f) =>
+      f.code.startsWith("INBOX_"),
+    );
+  };
+  assert.deepEqual(
+    doctor().map((f) => f.code),
+    ["INBOX_FRESH"],
+  );
+  const old = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
+  for (const file of [
+    "00-inbox/captures/idea.md",
+    "00-inbox/captures/fresh.md",
+    "00-inbox/native/claude/staged.md",
+    "00-inbox/INBOX.md",
+  ]) {
+    await mkdir(path.dirname(path.join(root, file)), { recursive: true });
+    await writeFile(path.join(root, file), "# x\n");
+    if (!file.endsWith("fresh.md"))
+      await utimes(path.join(root, file), old, old);
+  }
+  const [finding] = doctor();
+  assert.equal(finding.code, "INBOX_STALE");
+  assert.equal(finding.severity, "WARN");
+  assert.match(
+    finding.message,
+    /^1 inbox item\(s\) older than 7 days: captures 1;/,
+  );
+});

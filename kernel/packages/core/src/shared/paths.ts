@@ -106,6 +106,8 @@ export const KNOWLEDGE_DIR = brainArea("05-knowledge");
 export const DAILY_DIR = brainArea("01-daily");
 export const INBOX_DIR = brainArea("00-inbox");
 export const TEMPLATES_DIR = brainArea("06-templates");
+// The owner's own notes (T-314): agents read and index them, and never write there.
+export const NOTES_DIR = brainArea("07-notes");
 export const INDEX_DIR = brainArea(".index");
 export const PROJECTS_DIR = brainArea("04-projects");
 // Every top-level brain area that holds markdown records (used by the doctor and the
@@ -117,6 +119,7 @@ export const BRAIN_RECORD_DIRS = [
   brainArea("03-professional"),
   KNOWLEDGE_DIR,
   TEMPLATES_DIR,
+  NOTES_DIR,
 ] as const;
 // The workspace's own project. Callers use these helpers instead of a literal.
 export const WORKSPACE_PROJECT_ID = "ocean";
@@ -284,6 +287,7 @@ export const POLICIES_DIR = `${CHARTER_DIR}/policies`;
 export const STORE_DIR = {
   memory: PERSONAL_DIR,
   knowledge: KNOWLEDGE_DIR,
+  notes: NOTES_DIR,
 } as const;
 
 // Brain-index records are "<store>/<path inside store>" ("memory/x.md", "knowledge/decisions/y.md").

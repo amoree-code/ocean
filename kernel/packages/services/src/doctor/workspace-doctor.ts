@@ -22,6 +22,7 @@ import {
   CHARTER_DIR,
   enginePath,
   INBOX_DIR,
+  NOTES_DIR,
   oceanEnv,
   oceanPath,
   POLICIES_DIR,
@@ -109,13 +110,22 @@ async function checkStructure(): Promise<Finding[]> {
             message: `${root} root exists`,
             fixable: false,
           }
-        : {
-            code: "ROOT_MISSING",
-            severity: "FAIL",
-            path: root,
-            message: `${root} root is missing`,
-            fixable: false,
-          },
+        : // 07-notes arrived in a later version (T-314): a workspace made before it is not broken.
+          root === NOTES_DIR
+          ? {
+              code: "ROOT_MISSING",
+              severity: "WARN",
+              path: root,
+              message: `${root} (your own notes) does not exist yet; \`ocean setup\` creates it`,
+              fixable: false,
+            }
+          : {
+              code: "ROOT_MISSING",
+              severity: "FAIL",
+              path: root,
+              message: `${root} root is missing`,
+              fixable: false,
+            },
     );
   }
   return findings;
@@ -439,6 +449,45 @@ async function checkProjectCategories(): Promise<Finding[]> {
   return findings;
 }
 
+// The inbox is a waiting room, not a home (T-314): what sits there longer than a week was never
+// sorted. Its own index and the clients' native memory staging are not items.
+const INBOX_STALE_DAYS = 7;
+
+async function checkInboxStale(now = Date.now()): Promise<Finding[]> {
+  const inbox = oceanPath(INBOX_DIR);
+  const cutoff = now - INBOX_STALE_DAYS * 24 * 60 * 60 * 1000;
+  const byFolder = new Map<string, number>();
+  for (const file of await markdownFiles(inbox)) {
+    const [folder, ...rest] = path.relative(inbox, file).split(path.sep);
+    if (!rest.length || folder === "native") continue;
+    if ((await stat(file)).mtimeMs >= cutoff) continue;
+    byFolder.set(folder, (byFolder.get(folder) ?? 0) + 1);
+  }
+  const total = [...byFolder.values()].reduce((sum, n) => sum + n, 0);
+  return [
+    total
+      ? {
+          code: "INBOX_STALE",
+          severity: "WARN",
+          path: INBOX_DIR,
+          message: `${total} inbox item(s) older than ${INBOX_STALE_DAYS} days: ${[
+            ...byFolder,
+          ]
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([folder, n]) => `${folder} ${n}`)
+            .join(", ")}; sort them or archive them`,
+          fixable: false,
+        }
+      : {
+          code: "INBOX_FRESH",
+          severity: "OK",
+          path: INBOX_DIR,
+          message: `nothing in the inbox is older than ${INBOX_STALE_DAYS} days`,
+          fixable: false,
+        },
+  ];
+}
+
 async function checkDuplicates(): Promise<Finding[]> {
   const seen = new Map<string, string>();
   const duplicates: string[] = [];
@@ -630,6 +679,7 @@ async function scanWorkspace(
     ...(await checkWorkspaceContracts()),
     ...(await checkPermissions()),
     ...(await checkDuplicates()),
+    ...(await checkInboxStale()),
     ...(await checkProjectLayout()),
     ...(await checkClaudeProjects()),
     ...(await checkProjectCategories()),

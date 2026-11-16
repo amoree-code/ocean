@@ -13,6 +13,7 @@ import {
   readClaudeProjects,
   registerNamedProject,
 } from "@ocean/core/shared/project-resolution.js";
+import { FACT_TYPES, factTarget, isFactType } from "./fact-routing.js";
 import {
   appendAudit,
   memorySettings,
@@ -140,12 +141,32 @@ async function retire(
   return id;
 }
 
+// A candidate with no target gets one from the routing table (T-314): by the type passed, else
+// by the type the extractor wrote. The title is the candidate's first heading.
+async function routedTarget(item: Candidate, type?: string): Promise<string> {
+  if (type !== undefined && !isFactType(type))
+    throw new MemoryContractError(
+      "INVALID",
+      `unknown fact type '${type}'; one of: ${FACT_TYPES.join(", ")}`,
+    );
+  const title = /^# (.+)$/m.exec(item.content)?.[1]?.trim() ?? "";
+  const project =
+    typeof item.meta.project === "string" ? item.meta.project : undefined;
+  return factTarget({
+    type: type ?? (typeof item.meta.type === "string" ? item.meta.type : ""),
+    title,
+    project,
+  });
+}
+
 // Writes the candidate's content to `to` (default: its proposed target). A new record is
 // created; an existing one gets the content appended, guarded by its current hash — unless
 // `createOnly` (an approval nobody looked at), which leaves that one to the owner's review.
 export async function approveCandidate(options: {
   id: string;
   to?: string;
+  // A fact type from the routing table: the target when the candidate names none.
+  type?: string;
   createOnly?: boolean;
   source?: string;
 }): Promise<{ path: string; mode: "create" | "update"; auditId: string }> {
@@ -164,11 +185,15 @@ export async function approveCandidate(options: {
   } as const;
   if (item.meta.kind === "todo" && !options.to)
     return approveTodo(item, source);
-  const target = options.to ?? item.target;
+  const target =
+    options.to ??
+    (options.type !== undefined
+      ? await routedTarget(item, options.type)
+      : item.target || (await routedTarget(item)));
   if (!target)
     throw new MemoryContractError(
       "INVALID",
-      "the candidate names no target; pass --to <record path>",
+      `the candidate names no target; pass --type <${FACT_TYPES.join("|")}> or --to <record path>`,
     );
   // A project doc is only ever created: an existing one stays the owner's (T-307).
   if (/^04-projects\/[^/]+\/docs\//.test(target)) {

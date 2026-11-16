@@ -25,6 +25,7 @@
     "06-templates/project-claude.md": "default",
     "06-templates/session.md": "default",
     "06-templates/task.md": "default",
+    "07-notes/.gitkeep": "keep",
     "bridge/config/CONFIG.md": "default",
     "bridge/config/runtime.json": "default",
     "charter/core.md": "default",

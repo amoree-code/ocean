@@ -3,6 +3,12 @@ import path from "node:path";
 import { MemoryContractError } from "@ocean/core/domain/mcp/memory-contract.js";
 import { redactSecrets } from "@ocean/core/domain/redaction/redaction.js";
 import { atomicWrite, withFileLock } from "@ocean/core/shared/fs-utils.js";
+import {
+  FACT_TYPES,
+  type FactType,
+  factTarget,
+  isFactType,
+} from "./fact-routing.js";
 import { sha256 } from "./memory-audit.js";
 import { sessionFactsLedgerFile } from "./memory-paths.js";
 import { proposeMemory } from "./memory-write.js";
@@ -25,6 +31,8 @@ export type SessionFact = {
   evidence: string;
   reason: string;
   project?: string;
+  // Which row of the routing table the fact belongs to; its target follows from it (T-314).
+  type?: FactType;
 };
 
 // One model call: prompt in, the model's final text out; null when the call failed.
@@ -99,7 +107,8 @@ export function buildFactsPrompt(turns: FactTurn[]): string {
     "Never extract temporary state (what is being debugged right now, today's to-do, a file being edited), secrets, credentials, or anything marked [REDACTED] or [PRIVATE_PATH].",
     `Return at most ${MAX_FACTS} facts. Returning none is correct and common.`,
     "Answer with JSON only, no prose and no code fence:",
-    '{"facts":[{"title":"short label","content":"the fact as one or two plain sentences","evidence":"an exact quote, copied character for character from one USER line","reason":"why it is durable","project":"project name if the fact is about one, else omit"}]}',
+    '{"facts":[{"title":"short label","content":"the fact as one or two plain sentences","evidence":"an exact quote, copied character for character from one USER line","reason":"why it is durable","type":"one of the types below","project":"project name if the fact is about one, else omit"}]}',
+    `type is one of: ${FACT_TYPES.join(", ")}. Use project only for a fact about one project, and then also give its project name; a fact about the user stays a personal type even when it came up in a project.`,
     'Answer {"facts":[]} when nothing qualifies.',
     "",
     "Conversation:",
@@ -148,6 +157,7 @@ export function parseFacts(text: string | null): SessionFact[] {
     };
     const project = clean(value.project, 64);
     if (project) fact.project = project;
+    if (isFactType(value.type)) fact.type = value.type;
     if (fact.title && fact.content && fact.evidence) facts.push(fact);
     if (facts.length === MAX_FACTS) break;
   }
@@ -282,9 +292,11 @@ async function proposeLocked(options: {
         origin: "inferred",
         source: `${SESSION_FACTS_SOURCE_PREFIX}${options.sessionId}`,
         reason: fact.reason || "stated by the user in a session",
+        target: await factTarget(fact),
         meta: {
           kind: "fact",
           client: options.client,
+          ...(fact.type ? { type: fact.type } : {}),
           ...(fact.project ? { project: fact.project } : {}),
         },
       });

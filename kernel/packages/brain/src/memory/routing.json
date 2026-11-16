@@ -1,0 +1,13 @@
+{
+  "facts": {
+    "identity": "02-personal/identity/",
+    "preference": "02-personal/work/",
+    "person": "02-personal/people/",
+    "interest": "02-personal/interests/",
+    "goal": "02-personal/goals/",
+    "education": "02-personal/education/",
+    "career": "02-personal/career/",
+    "schedule": "02-personal/schedule/",
+    "project": "04-projects/{project}/memory/"
+  }
+}

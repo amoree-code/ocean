@@ -13,6 +13,7 @@ import {
   brainRead,
   brainSearch,
 } from "@ocean/brain/brain/brain-service.js";
+import { flattenWorkspace } from "@ocean/brain/memory/frontmatter-flatten.js";
 import {
   doctorMemoryIndexes,
   syncMemoryIndexes,
@@ -287,13 +288,17 @@ async function runReview(args: string[]): Promise<void> {
   if ((verb === "approve" || verb === "reject") && id) {
     const result =
       verb === "approve"
-        ? await approveCandidate({ id, to: flagValue(args, "--to") })
+        ? await approveCandidate({
+            id,
+            to: flagValue(args, "--to"),
+            type: flagValue(args, "--type"),
+          })
         : await rejectCandidate(id);
     console.log(JSON.stringify(result, null, 2));
     return;
   }
   console.error(
-    "Usage: ocean memory review [list] [--project <id>] [--json] | approve <id> [--to <record path>] | reject <id>",
+    "Usage: ocean memory review [list] [--project <id>] [--json] | approve <id> [--type <fact type> | --to <record path>] | reject <id>",
   );
   process.exitCode = 1;
 }
@@ -378,6 +383,16 @@ export async function runMemoryCommand(
     return;
   }
   if (action === "eval") return runEval(args);
+  if (action === "flatten") {
+    // T-314: move nested `metadata:` frontmatter to top level, for Obsidian Properties/Bases.
+    const result = await flattenWorkspace({ apply: args.includes("--yes") });
+    console.log(JSON.stringify(result, null, 2));
+    if (!args.includes("--yes"))
+      console.error(
+        "Dry run: pass --yes to rewrite them (originals are copied to the archive).",
+      );
+    return;
+  }
   if (action === "digest") {
     const lines = await memoryDigest({ stale: await indexIsStale() });
     console.log(lines.length ? lines.join("\n") : "memory: nothing to review");
