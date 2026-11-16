@@ -162,6 +162,18 @@ days back, else your least recently touched note in `07-notes/`. `ocean telemetr
 [--yes]` finds errors that recur across sessions and providers whose sessions keep failing, and
 proposes each as a backlog line for review.
 
+`ocean harvest [--date YYYY-MM-DD | --pending] [--yes]` is the daily harvest. Every session of a
+day, from every AI client, becomes one summary block in `01-daily/<date>.md` (sessions per client,
+decisions, problems → fixes, lessons, open next, the corrections you made, time per project); the
+rest of the note stays yours. Decisions, fixes and lessons are filed into `05-knowledge/`
+(`decisions/`, `solutions/`, `discoveries/`) with no review step: a record that already says the
+same thing gains the day as evidence and a fresh `last_verified` instead of a duplicate. Every
+write is in a ledger with the previous version; `ocean harvest undo <date>` takes a day back. The
+background service runs `--pending --yes` once a day, then `ocean harvest archive`: harvested days
+older than 30 days move to `01-daily/archive/<YYYY-MM>/` and `01-daily/sessions/archive/<YYYY-MM>/`
+(still searched). The `daily-harvest` skill does the judgement work on top: imported memories and
+candidates filed by topic, legacy records, corrections turned into rules, the system's own gaps.
+
 `ocean distill --month [--month-of YYYY-MM] [--yes]` writes last month's review to
 `01-daily/monthly/<YYYY-MM>.md`: the active goals from `02-personal/goals.md` as a checklist you
 answer, the milestones finished that month, its weekly digests and its session count. It is

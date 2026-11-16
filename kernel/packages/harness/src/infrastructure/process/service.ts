@@ -84,6 +84,18 @@ export function startBackgroundPull(): void {
     })
       .on("error", () => {})
       .unref();
+    // The daily harvest (T-316) rides the same start: days not yet harvested, then the archive.
+    // It returns at once when nothing is pending.
+    spawn(
+      process.execPath,
+      [process.argv[1], "harvest", "--pending", "--yes"],
+      {
+        detached: true,
+        stdio: "ignore",
+      },
+    )
+      .on("error", () => {})
+      .unref();
   } catch {
     // no pull this time; the next try runs it
   }

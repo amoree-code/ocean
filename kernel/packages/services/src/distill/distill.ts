@@ -51,7 +51,7 @@ async function markdownIn(dir: string): Promise<string[]> {
   return files.sort();
 }
 
-function section(text: string, heading: string): string {
+export function section(text: string, heading: string): string {
   const match = new RegExp(
     // `(?![\\s\\S])` is the end of the text: with the m flag, `$` would end it at the first line.
     `^## ${heading}\\n+([\\s\\S]*?)(?=\\n## |\\nRaw events|(?![\\s\\S]))`,

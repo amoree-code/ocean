@@ -58,6 +58,24 @@
     },
     {
       "kind": "skill",
+      "name": "dev.ocean.skills.daily-harvest",
+      "version": "1.7.0",
+      "engines": {
+        "ocean": ">=1.7.0"
+      },
+      "source": {
+        "type": "path",
+        "path": "skills/core/daily-harvest"
+      },
+      "integrity": {
+        "sha256": "356cc76057780394e2ed485e6853fc675d1d03bfc3541268ccc3e9d3b2bfd76d"
+      },
+      "spec": {
+        "directory": "daily-harvest"
+      }
+    },
+    {
+      "kind": "skill",
       "name": "dev.ocean.skills.design-thinking",
       "version": "1.7.0",
       "engines": {
@@ -108,6 +126,24 @@
       },
       "spec": {
         "directory": "loop"
+      }
+    },
+    {
+      "kind": "skill",
+      "name": "dev.ocean.skills.memory-review",
+      "version": "1.7.0",
+      "engines": {
+        "ocean": ">=1.7.0"
+      },
+      "source": {
+        "type": "path",
+        "path": "skills/core/memory-review"
+      },
+      "integrity": {
+        "sha256": "9d43b15aa4fe676a4e260943f072452fba749c83b99df94f2fc18a82a3efb8cd"
+      },
+      "spec": {
+        "directory": "memory-review"
       }
     },
     {
