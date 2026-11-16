@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.0
+
+- feat(T-314): the daily note, redesigned: a morning block (`ocean daily start`, no model) with focus, what is coming in the next 30 days from your records, open loops carried until ticked, your hours, what waits on you and the brief; the harvest writes the day's account (summary, open loops, corrections, time) in the same note before your `## Notes`, and keeps your ticks. Closeout stops adding duplicate lines. `ocean rhythm` runs morning note, harvest, archive, last week's digest and last month's review once per period from the service and session hooks. Long Claude Code sessions reach the day through the digest their compaction fact capture returns in the same call. The archive also removes empty inbox folders, and the brief drops pre-releases (dev, rc, beta, canary) from release feeds (#296)
+- feat(T-314): Claude Desktop conversations reach the daily summary: the fact extraction that already reads each quiet conversation also returns a short digest in the same call (goal, outcome, decisions, problems → fixes, lessons, next; bounded and redacted), and it is written as a session record (`provider: "claude-desktop"`) that `ocean harvest` summarizes and files like any other session. No second model call (#296)
+
 ## 1.8.0
 
 - feat(skills): `memory-review` core skill: review pending memory candidates one at a time with the owner — group duplicates, compare each with the record it would change, recommend, and merge an approved fact into that record as one current statement instead of an appended paragraph (#295)
