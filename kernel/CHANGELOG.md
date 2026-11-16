@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+## 1.9.1 (2026-11-16)
+
 - style: `pnpm check:style` passes on main again (comma operators in two test callbacks, unused imports left by the closeout change, test formatting); no behaviour change (#297)
 
 ## 1.9.0 (2026-11-16)
