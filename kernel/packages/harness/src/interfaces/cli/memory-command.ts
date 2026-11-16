@@ -424,7 +424,8 @@ export async function runMemoryCommand(
   if (action === "facts") return runFacts(args);
   if (action === "session-facts") {
     // Automatic fact capture from session transcripts (T-313): show or set the owner's answer.
-    const choice = args[1];
+    // `args` starts after the action: `ocean memory session-facts on` → ["on"].
+    const choice = args[0];
     if (choice === "on" || choice === "off")
       await setSessionFacts(choice === "on");
     else if (choice !== undefined) {

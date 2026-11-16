@@ -533,3 +533,22 @@ test("capture is off without the owner's answer, and without a model claims noth
     assert.equal(called.length, 1);
   });
 });
+
+test("ocean memory session-facts on|off sets the answer and shows it", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-facts-cli-"));
+  const { spawnSync } = await import("node:child_process");
+  const run = (...args) =>
+    JSON.parse(
+      spawnSync(
+        process.execPath,
+        [path.resolve("dist/main.js"), "memory", "session-facts", ...args],
+        {
+          env: { ...process.env, OCEAN_ROOT: root, OCEAN_SESSION_FACTS: "" },
+          encoding: "utf8",
+        },
+      ).stdout,
+    );
+  assert.deepEqual(run(), { sessionFacts: "unset", effective: "off" });
+  assert.deepEqual(run("on"), { sessionFacts: "on", effective: "on" });
+  assert.deepEqual(run("off"), { sessionFacts: "off", effective: "off" });
+});
