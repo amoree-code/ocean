@@ -112,6 +112,24 @@
     },
     {
       "kind": "skill",
+      "name": "dev.ocean.skills.memory-review",
+      "version": "1.7.0",
+      "engines": {
+        "ocean": ">=1.7.0"
+      },
+      "source": {
+        "type": "path",
+        "path": "skills/core/memory-review"
+      },
+      "integrity": {
+        "sha256": "9d43b15aa4fe676a4e260943f072452fba749c83b99df94f2fc18a82a3efb8cd"
+      },
+      "spec": {
+        "directory": "memory-review"
+      }
+    },
+    {
+      "kind": "skill",
       "name": "dev.ocean.skills.session-handoff",
       "version": "1.7.0",
       "engines": {

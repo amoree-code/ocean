@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+- feat(skills): `memory-review` core skill: review pending memory candidates one at a time with the owner — group duplicates, compare each with the record it would change, recommend, and merge an approved fact into that record as one current statement instead of an appended paragraph (#PR)
+
 ## 1.7.0 (2026-11-16)
 
 - fix(T-313): `ocean memory session-facts on|off` now sets the answer; it read the word after it instead, so it only ever showed the setting

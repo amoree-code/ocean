@@ -20,6 +20,7 @@ test("lists the public core skill catalog without loading full instructions", as
     "design-thinking",
     "graft",
     "loop",
+    "memory-review",
     "session-handoff",
     "use-browser",
     "verification",

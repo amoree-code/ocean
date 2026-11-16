@@ -36,6 +36,12 @@
     "category": "core"
   },
   {
+    "name": "memory-review",
+    "description": "Review pending memory candidates with the owner one at a time - compare each with the record it would change, recommend, and merge approved facts cleanly into that record. Use when he says review candidates, review my memory, go through the proposals, or clear the inbox candidates.",
+    "version": "1.0.0",
+    "category": "core"
+  },
+  {
     "name": "session-handoff",
     "description": "Produce a compact continuation packet with the next action and verification commands.",
     "version": "1.0.0",
