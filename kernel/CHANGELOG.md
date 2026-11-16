@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+- feat(T-314): people, one file each in `02-personal/people/` (`type: person`, aliases in English and Arabic): the read-only `people_lookup` MCP tool matches a name exactly (file name, title or alias; case, spacing and Unicode form ignored; never part of a name), and the workspace template ships `people.base` (#287)
+
 - feat(T-314): capture from anywhere: `ocean note "<text>"` writes a capture with frontmatter into `00-inbox/captures/` (secrets redacted), and `ocean obsidian templates [--yes]` generates Templater folder templates from `routing.json` (the owner's entries for other folders are kept); `docs/workspace.md` documents the Obsidian URI for Shortcuts, Raycast and QuickAdd (#286)
 
 - feat(T-314): one routing table for records too: `routing.json` names the folder of every type with one home (capture, daily, session, brief, weekly, note, decision, lesson, solution, failure, discovery, architecture, research, result, person, interest, milestone, study; `experiential`, `technical-solution`, `task-result` as aliases). `ocean doctor` reports `TYPE_LOCATION` for a record outside its type's folder (a project's own memory/docs may hold any type) and `FRONTMATTER_MISSING` for a record without frontmatter; the workspace template ships a frontmatter template per type (#285)

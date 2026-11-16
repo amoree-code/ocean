@@ -168,7 +168,7 @@ only and receives no provider credentials. It offers:
 
 - **reads** — `brain_search`, `brain_read`, `brain_neighbors`, `memory_read`,
   `memory_history`, tasks, sessions, handoffs, projects, profiles, `ocean_context`,
-  `ocean_status` and `ocean_doctor`;
+  `ocean_status`, `ocean_doctor` and `people_lookup` (a person by exact name or alias);
 - **writes** — `memory_write` (only when you ask a client to remember or change something;
   an update must name the record's current hash), `memory_propose` (a candidate for your
   review), `memory_delete` (soft, undone by `memory_restore`), `ocean_handoff_create`, and
