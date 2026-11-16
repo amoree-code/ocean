@@ -23,8 +23,9 @@ const MARKER = "// Ocean session context for OpenCode";
 
 const sha = (text: string) => createHash("sha256").update(text).digest("hex");
 
-// The engine invocation the plugin spawns (no shell: argv words only).
-function invocation(env: ClientEnv): string[] {
+// The engine invocation the plugin spawns (no shell: argv words only); the Desktop watcher
+// runs the same.
+export function oceanInvocation(env: ClientEnv): string[] {
   const program = Array.isArray(env.entry.args)
     ? String(env.entry.args[0])
     : "";
@@ -37,7 +38,7 @@ export function opencodePluginSource(env: ClientEnv): string {
   return `${MARKER} (written by \`ocean clients apply\`; \`ocean clients restore\` removes it).
 import { spawn } from "node:child_process";
 
-const OCEAN = ${JSON.stringify(invocation(env))};
+const OCEAN = ${JSON.stringify(oceanInvocation(env))};
 const contexts = new Map();
 
 function startLine(sessionID, directory) {

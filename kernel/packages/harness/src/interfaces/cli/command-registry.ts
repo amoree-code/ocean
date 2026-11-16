@@ -107,6 +107,7 @@ import {
   clientFindings,
   repairClients,
 } from "../../application/clients/clients.js";
+import { desktopWatcherFindings } from "../../application/clients/desktop-watcher.js";
 import { nativeFindings } from "../../application/clients/native.js";
 import { createWebhookGateway } from "../../application/gateway/webhook-gateway.js";
 import {
@@ -1259,6 +1260,7 @@ async function commandDoctor(): Promise<void> {
   // T-296: every installed AI client's `ocean` entry (supported fail, unknown warn).
   report.findings.push(
     ...(await clientFindings()),
+    ...(await desktopWatcherFindings()),
     ...(await nativeFindings()),
     ...(await browserFindings()),
     ...(await gatewayFindings()),
