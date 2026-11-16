@@ -498,6 +498,9 @@ const NOT_RECORDS = [
   /^06-templates\//,
   /^07-notes\//,
   /^04-projects\/(?:.+\/)?tasks\//,
+  // Indexes Ocean generates or appends to, not records: frontmatter there would be rewritten away.
+  /^04-projects\/(?:backlog|registry)\.md$/,
+  /^04-projects\/.+\/index\.md$/,
 ];
 
 async function checkRecordShape(): Promise<Finding[]> {

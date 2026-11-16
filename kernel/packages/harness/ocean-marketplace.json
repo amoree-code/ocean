@@ -167,9 +167,9 @@
     {
       "kind": "skill",
       "name": "dev.ocean.skills.weekly-review",
-      "version": "1.6.1",
+      "version": "1.6.2",
       "engines": {
-        "ocean": ">=1.6.1"
+        "ocean": ">=1.6.2"
       },
       "source": {
         "type": "path",

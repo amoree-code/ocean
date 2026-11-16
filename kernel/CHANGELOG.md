@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+- feat(T-314): follow-ups. `07-notes/` ships in the public repo as an empty folder; a session with no title gets its closeout handoff again (zod `too_small` on `title`, found by `ocean telemetry` in 113 sessions); `memory_propose` takes `contradicts: 07-notes/<note>.md`, and the disagreement waits in `02-personal/CONFLICTS.md`, the note untouched; `ocean distill --month` reviews last month against `goals.md`; `ocean onboard` asks stack, goals and topics, and `ocean interests signals` proposes topics recurring in sessions, all as candidates (#PR)
+
 - feat(T-314): `ocean express cv|linkedin|scholarship [--dry-run]` drafts a CV section, a LinkedIn post or a scholarship paragraph from the done milestones in `02-personal/milestones/` into `00-inbox/drafts/` for review — from the records only, no model, nothing sent (#293)
 
 - feat(T-314): the journey: milestone and study Bases in the workspace template; each daily brief resurfaces one decision due for re-evaluation (last verified over 90 days ago) or one quiet note from `07-notes`; `ocean telemetry [--days N] [--yes]` turns errors recurring across sessions and providers that keep failing into proposed backlog lines (#292)
