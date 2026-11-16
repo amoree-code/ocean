@@ -145,6 +145,7 @@ prints its usage and never runs it. To hand `--help` to a wrapped client, put it
 | `ocean desktop` | capture facts from Claude Desktop's chat, read from the app's local store, as review candidates | Reads (`--dry-run`); a run writes candidates |
 | `ocean observe` | run a command and record its output | Runs |
 | `ocean capture` / `idea` | capture ideas, then promote or discard them | Writes |
+| `ocean note` | `ocean note "<text>"`: capture a thought into `00-inbox/captures/` with frontmatter | Writes |
 | `ocean handoff` | hand work from one session or client to another | Reads; `create` writes |
 | `ocean daily` | prepare today's note | Reads; `--apply` writes |
 | `ocean skill` | sync, add, review and learn skills | Reads; `add`, `review`, `learn`, `sync` write |

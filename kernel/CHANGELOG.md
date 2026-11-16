@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+- feat(T-314): capture from anywhere: `ocean note "<text>"` writes a capture with frontmatter into `00-inbox/captures/` (secrets redacted), and `ocean obsidian templates [--yes]` generates Templater folder templates from `routing.json` (the owner's entries for other folders are kept); `docs/workspace.md` documents the Obsidian URI for Shortcuts, Raycast and QuickAdd (#286)
+
 - feat(T-314): one routing table for records too: `routing.json` names the folder of every type with one home (capture, daily, session, brief, weekly, note, decision, lesson, solution, failure, discovery, architecture, research, result, person, interest, milestone, study; `experiential`, `technical-solution`, `task-result` as aliases). `ocean doctor` reports `TYPE_LOCATION` for a record outside its type's folder (a project's own memory/docs may hold any type) and `FRONTMATTER_MISSING` for a record without frontmatter; the workspace template ships a frontmatter template per type (#285)
 
 - feat(T-314): flat frontmatter, so Obsidian Properties and Bases can read a record: `ocean memory flatten [--yes]` moves a nested `metadata:` block to top level (a key already top-level keeps its value; originals are copied to `bridge/archive/` first; `07-notes` is never touched), and session promotion and capture now write flat frontmatter (#284)
