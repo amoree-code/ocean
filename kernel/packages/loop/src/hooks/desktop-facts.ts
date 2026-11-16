@@ -1,5 +1,6 @@
 import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
+import { writeDigestRecord } from "@ocean/brain/memory/brain-dump.js";
 import { sessionFactsEnabled } from "@ocean/brain/memory/memory-audit.js";
 import {
   type CompleteText,
@@ -116,6 +117,8 @@ export type DesktopConversationRun = {
   status: "done" | "failed" | "no-user-text" | "no-provider";
   from: string;
   to: string;
+  // The session record written from the conversation's digest (T-316).
+  record?: string;
   candidates?: string[];
   rejected?: number;
   skipped?: number;
@@ -202,7 +205,12 @@ async function captureOne(
     .map(toTurn);
   if (!turns.some((turn) => turn.role === "user"))
     return { ...base, status: "no-user-text" };
-  const extraction = await extractSessionFacts({ turns, complete });
+  // The same call also returns the conversation's digest for the day's log (no second call).
+  const extraction = await extractSessionFacts({
+    turns,
+    complete,
+    digest: true,
+  });
   if (extraction.failed) {
     // Nothing was learned: hand the turns back, unless a later run already claimed past them.
     await locked(async (state) => {
@@ -225,9 +233,25 @@ async function captureOne(
     client: DESKTOP_CLIENT,
     facts: extraction.facts,
   });
+  let record: string | undefined;
+  if (extraction.digest) {
+    const times = dated
+      .filter((message) => message.createdAt > claim.from)
+      .map((message) => message.createdAt);
+    record = (
+      await writeDigestRecord({
+        provider: DESKTOP_CLIENT,
+        sessionId: `desktop:${conversation.uuid}`,
+        startedAt: times[0] ?? newest,
+        endedAt: newest,
+        digest: extraction.digest,
+      })
+    ).path;
+  }
   return {
     ...base,
     status: "done",
+    ...(record ? { record } : {}),
     candidates: proposed.proposed,
     rejected: extraction.rejected.length,
     skipped: proposed.skipped.length,

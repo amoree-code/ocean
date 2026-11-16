@@ -171,7 +171,7 @@ same thing gains the day as evidence and a fresh `last_verified` instead of a du
 write is in a ledger with the previous version; `ocean harvest undo <date>` takes a day back. The
 background service runs `--pending --yes` once a day, then `ocean harvest archive`: harvested days
 older than 30 days move to `01-daily/archive/<YYYY-MM>/` and `01-daily/sessions/archive/<YYYY-MM>/`
-(still searched). The `daily-harvest` skill does the judgement work on top: imported memories and
+(still searched). Claude Desktop conversations are in it too: the fact extraction that already reads each quiet conversation returns a short digest in the same call (goal, outcome, decisions, fixes, lessons, next), written as a session record with `provider: "claude-desktop"` — a few output tokens, never a second model call. The `daily-harvest` skill does the judgement work on top: imported memories and
 candidates filed by topic, legacy records, corrections turned into rules, the system's own gaps.
 
 `ocean distill --month [--month-of YYYY-MM] [--yes]` writes last month's review to

@@ -19,6 +19,7 @@ import {
 import { findGitRoot } from "@ocean/core/shared/project-resolution.js";
 import type { LearnedSignal } from "./lesson-learning.js";
 import type { ModelNarrative } from "./model-narrative.js";
+import type { SessionDigest } from "./session-facts.js";
 
 // Same fallback title stamped on a session with no explicit title (see
 // daily-narrative.ts) — never meaningful content on its own.
@@ -263,4 +264,72 @@ export async function migrateBrainDumps(options: { apply: boolean }): Promise<{
     await rm(path.join(source, name));
   }
   return { moved, skipped };
+}
+
+// A chat with no session in the store (Claude Desktop, an export: T-316) gets the same record, from
+// the digest its fact extraction returned — no model call of its own. One record per captured
+// stretch of the conversation, dated by its newest message.
+export async function writeDigestRecord(input: {
+  provider: string;
+  sessionId: string;
+  startedAt: string;
+  endedAt: string;
+  digest: SessionDigest;
+  project?: string;
+}): Promise<{ path: string }> {
+  const { digest } = input;
+  const date = localDate(localMoment(input.endedAt));
+  const time = localTime(localMoment(input.startedAt));
+  const title = safeText(digest.title || digest.goal, 120) || "Conversation";
+  const quote = (value: string) => JSON.stringify(value);
+  const list = (heading: string, items: string[]) =>
+    items.length
+      ? [
+          "",
+          `## ${heading}`,
+          "",
+          ...items.map((item) => `- ${safeText(item, 300)}`),
+        ]
+      : [];
+  const lines = [
+    "---",
+    "type: session",
+    `project: ${quote(input.project ?? "")}`,
+    `provider: ${quote(input.provider)}`,
+    "status: completed",
+    `session_id: ${quote(input.sessionId)}`,
+    `date: ${date}`,
+    "tags: []",
+    "distilled: false",
+    "---",
+    "",
+    `# ${title}`,
+    "",
+    "## Goal",
+    "",
+    safeText(digest.goal, 300) || "Not stated.",
+    "",
+    "## Outcome",
+    "",
+    safeText(digest.outcome, 300) || "Not stated.",
+    ...list("Decisions", digest.decisions),
+    ...list("Problems → fixes", digest.fixes),
+    ...list("Learned", digest.learned),
+    "",
+    "## Verification",
+    "",
+    "NOT PROVEN — summarized from a chat; nothing was run.",
+    ...list("Next", digest.next),
+    "",
+  ];
+  const directory = oceanPath(DAILY_DIR, "sessions", date.slice(0, 7));
+  await mkdir(directory, { recursive: true });
+  const filename = await uniqueFilename(
+    directory,
+    `${date}-${time.replace(":", "")}-${slugify(title).length >= MIN_USEFUL_SLUG_LENGTH ? slugify(title) : input.provider}`,
+    ".md",
+  );
+  const file = path.join(directory, filename);
+  await writeFile(file, `${lines.join("\n")}\n`, "utf8");
+  return { path: path.relative(oceanRoot(), file).split(path.sep).join("/") };
 }

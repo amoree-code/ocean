@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+- feat(T-316): Claude Desktop conversations reach the daily summary: the fact extraction that already reads each quiet conversation also returns a short digest in the same call (goal, outcome, decisions, problems → fixes, lessons, next; bounded and redacted), and it is written as a session record (`provider: "claude-desktop"`) that `ocean harvest` summarizes and files like any other session. No second model call (#PR)
+
 ## 1.8.0 (2026-11-16)
 
 - feat(skills): `memory-review` core skill: review pending memory candidates one at a time with the owner — group duplicates, compare each with the record it would change, recommend, and merge an approved fact into that record as one current statement instead of an appended paragraph (#295)
