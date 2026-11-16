@@ -11,6 +11,7 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
+import { inTypeLocation } from "@ocean/brain/memory/fact-routing.js";
 import {
   doctorMemoryIndexes,
   syncMemoryIndexes,
@@ -488,6 +489,73 @@ async function checkInboxStale(now = Date.now()): Promise<Finding[]> {
   ];
 }
 
+// Every record carries frontmatter, and a record whose type has one home sits there (T-314,
+// routing.json). Index files, templates, task folders and the inbox's machine areas are not
+// records; neither are the owner's notes, which are his to shape.
+const INDEX_FILE = /^[A-Z][A-Z0-9_-]*\.md$/;
+const NOT_RECORDS = [
+  /^00-inbox\/(?:candidates|native|brain-dump)\//,
+  /^06-templates\//,
+  /^07-notes\//,
+  /^04-projects\/(?:.+\/)?tasks\//,
+];
+
+async function checkRecordShape(): Promise<Finding[]> {
+  // Relative to the records prefix (flat: the root; nested: brain/), the form routing.json uses.
+  const base = oceanPath(path.posix.dirname(INBOX_DIR));
+  const missing = new Map<string, number>();
+  const misplaced: string[] = [];
+  for (const root of new Set([...BRAIN_RECORD_DIRS, PROJECTS_DIR]))
+    for (const file of await markdownFiles(oceanPath(root))) {
+      const relative = path.relative(base, file).split(path.sep).join("/");
+      if (INDEX_FILE.test(path.basename(file))) continue;
+      if (NOT_RECORDS.some((pattern) => pattern.test(relative))) continue;
+      const text = await readFile(file, "utf8");
+      if (!/^---\r?\n/.test(text)) {
+        const area = relative.split("/")[0];
+        missing.set(area, (missing.get(area) ?? 0) + 1);
+        continue;
+      }
+      const head = text.split(/\r?\n---/, 1)[0];
+      const type = /^type:\s*["']?([\w-]+)/m.exec(head)?.[1];
+      if (type && !inTypeLocation(relative, type))
+        misplaced.push(`${relative} (${type})`);
+    }
+  const total = [...missing.values()].reduce((sum, n) => sum + n, 0);
+  const counts = [...missing]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([area, n]) => `${area} ${n}`)
+    .join(", ");
+  return [
+    total
+      ? {
+          code: "FRONTMATTER_MISSING",
+          severity: "WARN",
+          message: `${total} record(s) without frontmatter: ${counts}`,
+          fixable: false,
+        }
+      : {
+          code: "FRONTMATTER_PRESENT",
+          severity: "OK",
+          message: "every record has frontmatter",
+          fixable: false,
+        },
+    misplaced.length
+      ? {
+          code: "TYPE_LOCATION",
+          severity: "WARN",
+          message: `${misplaced.length} record(s) outside their type's folder (routing.json): ${misplaced.slice(0, 5).join("; ")}${misplaced.length > 5 ? "; …" : ""}`,
+          fixable: false,
+        }
+      : {
+          code: "TYPE_LOCATION_OK",
+          severity: "OK",
+          message: "every typed record sits in its type's folder",
+          fixable: false,
+        },
+  ];
+}
+
 async function checkDuplicates(): Promise<Finding[]> {
   const seen = new Map<string, string>();
   const duplicates: string[] = [];
@@ -680,6 +748,7 @@ async function scanWorkspace(
     ...(await checkPermissions()),
     ...(await checkDuplicates()),
     ...(await checkInboxStale()),
+    ...(await checkRecordShape()),
     ...(await checkProjectLayout()),
     ...(await checkClaudeProjects()),
     ...(await checkProjectCategories()),

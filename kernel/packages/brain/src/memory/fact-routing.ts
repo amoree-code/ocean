@@ -40,3 +40,24 @@ export async function factTarget(fact: {
     return "";
   }
 }
+
+// Records (T-314): every type with one home. A type outside this table (a client memory kind such
+// as `feedback` or `long-term`) has no fixed folder and is never reported as misplaced.
+export const RECORD_TYPES = Object.keys(routing.records);
+
+export function recordFolder(type: string): string | null {
+  const aliases: Record<string, string> = routing.aliases;
+  const canonical = Object.hasOwn(aliases, type) ? aliases[type] : type;
+  const records: Record<string, string> = routing.records;
+  return Object.hasOwn(records, canonical) ? records[canonical] : null;
+}
+
+// Whether a workspace-relative markdown file sits where its type lives. A project's own
+// memory/ and docs/ may hold any type: a decision about one project belongs to that project.
+export function inTypeLocation(relative: string, type: string): boolean {
+  const folder = recordFolder(type);
+  if (!folder) return true;
+  if (/^04-projects\/(?:[^/]+\/)?[^/]+\/(?:memory|docs)\//.test(relative))
+    return true;
+  return relative.startsWith(folder);
+}

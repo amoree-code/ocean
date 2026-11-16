@@ -1,3 +1,10 @@
+---
+type: research
+status: current
+created: {{date}}
+tags: []
+---
+
 # <Topic>
 
 **Date:** YYYY-MM-DD
