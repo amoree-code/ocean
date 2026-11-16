@@ -57,15 +57,23 @@ async function workspace() {
 }
 
 async function withRoot(root, run) {
-  const previous = { root: process.env.OCEAN_ROOT, home: process.env.HOME };
+  const previous = {
+    root: process.env.OCEAN_ROOT,
+    home: process.env.HOME,
+    profile: process.env.USERPROFILE,
+  };
   process.env.OCEAN_ROOT = root;
+  // os.homedir() reads HOME on POSIX and USERPROFILE on Windows.
   process.env.HOME = root;
+  process.env.USERPROFILE = root;
   try {
     return await run();
   } finally {
     if (previous.root === undefined) delete process.env.OCEAN_ROOT;
     else process.env.OCEAN_ROOT = previous.root;
     process.env.HOME = previous.home;
+    if (previous.profile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previous.profile;
   }
 }
 

@@ -33,7 +33,11 @@ test("every shipped record template declares a routed type", async () => {
   for (const name of await readdir(dir)) {
     if (!name.endsWith(".md") || name === "TEMPLATES.md") continue;
     if (name === "task.md" || name === "project-claude.md") continue;
-    const text = await readFile(path.join(dir, name), "utf8");
+    // A Windows checkout may carry CRLF line endings.
+    const text = (await readFile(path.join(dir, name), "utf8")).replace(
+      /\r\n/g,
+      "\n",
+    );
     const type = /^---\n[\s\S]*?^type: ([\w-]+)$/m.exec(text)?.[1];
     assert.ok(type, `${name} has no frontmatter type`);
     assert.ok(
