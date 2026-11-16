@@ -6,7 +6,13 @@ import test from "node:test";
 import { reindexBrain } from "@ocean/brain/brain/brain-reindex.js";
 import { brainSearch } from "@ocean/brain/brain/brain-service.js";
 import { archiveRetiredLessons } from "@ocean/brain/memory/lessons.js";
-import { distillWeek, isoWeek } from "@ocean/services/distill/distill.js";
+import {
+  distillWeek,
+  goalNames,
+  isoWeek,
+  reviewMonth,
+} from "@ocean/services/distill/distill.js";
+import { previousMonth } from "../dist/interfaces/cli/distill-command.js";
 import { defaultBrainIndexPort as indexPort } from "../dist/composition/runtime.js";
 
 // T-314: a week of records becomes one digest and review candidates; retired lessons leave search.
@@ -181,5 +187,63 @@ test("a week with only processed captures still archives them; quoted retired le
       '---\nstatus: "retired"\n---\n\nq\n',
     );
     assert.deepEqual(await archiveRetiredLessons({ apply: false }), ["q.md"]);
+  });
+});
+
+test("the monthly review sets the month's weeks and milestones beside the active goals, once", async () => {
+  assert.equal(previousMonth("2026-01-05"), "2025-12");
+  assert.equal(previousMonth("2026-11-16"), "2026-10");
+  await withRoot(async (root) => {
+    assert.equal(
+      (await reviewMonth({ month: "2026-10", apply: true })).review,
+      null,
+    );
+    await write(
+      root,
+      "02-personal/goals.md",
+      "---\nname: goals\n---\n\n# Goals\n\n- **Back-end mastery (NestJS).** detail\n- **IELTS 6.5–7.0.** detail\n\n## Set aside\n\n- **Ship a SaaS** later\n",
+    );
+    assert.deepEqual(await goalNames(), [
+      "Back-end mastery (NestJS)",
+      "IELTS 6.5–7.0",
+    ]);
+    await write(
+      root,
+      "01-daily/weekly/2026-W40.md",
+      "---\ntype: weekly\nfrom: 2026-09-28\nto: 2026-10-04\n---\n",
+    );
+    await write(
+      root,
+      "01-daily/weekly/2026-W45.md",
+      "---\ntype: weekly\nfrom: 2026-11-02\nto: 2026-11-08\n---\n",
+    );
+    await write(
+      root,
+      "01-daily/sessions/2026-10/a.md",
+      record("2026-10-03", "A"),
+    );
+    await write(
+      root,
+      "02-personal/milestones/cert.md",
+      "---\ntype: milestone\ndate: 2026-10-20\nkind: certificate\nstatus: done\n---\n\n# NestJS certificate\n",
+    );
+    const dry = await reviewMonth({ month: "2026-10", apply: false });
+    assert.deepEqual(dry.weeks, ["01-daily/weekly/2026-W40.md"]);
+    assert.deepEqual(dry.milestones, ["NestJS certificate"]);
+    assert.equal(dry.sessions, 1);
+    await assert.rejects(
+      readFile(path.join(root, "01-daily/monthly/2026-10.md")),
+    );
+    await reviewMonth({ month: "2026-10", apply: true });
+    const file = path.join(root, "01-daily/monthly/2026-10.md");
+    const text = await readFile(file, "utf8");
+    assert.match(text, /^type: monthly$/m);
+    assert.match(text, /^- \[ \] \*\*Back-end mastery \(NestJS\)\*\* — $/m);
+    assert.doesNotMatch(text, /Ship a SaaS/);
+    assert.match(text, /\[2026-W40\]\(\.\.\/weekly\/2026-W40\.md\)/);
+    // The owner's answers survive a rerun.
+    await writeFile(file, `${text}\nmine\n`);
+    await reviewMonth({ month: "2026-10", apply: true });
+    assert.match(await readFile(file, "utf8"), /\nmine\n$/);
   });
 });

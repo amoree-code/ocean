@@ -49,3 +49,50 @@ test("07-notes is indexed as human and outranks an agent record on the same word
     ["agent", "agent"],
   );
 });
+
+test("a fact that disagrees with an owner's note waits in CONFLICTS.md; the note is untouched", async () => {
+  const { proposeMemory } = await import("@ocean/brain/memory/memory-write.js");
+  const { readFile } = await import("node:fs/promises");
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-notes-conflict-"));
+  const previous = process.env.OCEAN_ROOT;
+  process.env.OCEAN_ROOT = root;
+  try {
+    await mkdir(path.join(root, NOTES_DIR), { recursive: true });
+    const note = "I start work at 9.\n";
+    await writeFile(path.join(root, NOTES_DIR, "hours.md"), note);
+    for (const bad of [
+      "02-personal/x.md",
+      `${NOTES_DIR}/../x.md`,
+      `${NOTES_DIR}/none.md`,
+    ])
+      await assert.rejects(
+        proposeMemory({ content: "x", origin: "inferred", contradicts: bad }),
+        MemoryContractError,
+      );
+    const result = await proposeMemory({
+      content: "He starts work at 10.",
+      origin: "inferred",
+      reason: "said so in a session",
+      contradicts: `${NOTES_DIR}/hours.md`,
+    });
+    assert.equal(result.conflict, "02-personal/CONFLICTS.md");
+    const conflicts = await readFile(
+      path.join(root, "02-personal/CONFLICTS.md"),
+      "utf8",
+    );
+    assert.match(conflicts, /^## \d{4}-\d{2}-\d{2} — 07-notes\/hours\.md$/m);
+    assert.match(conflicts, /He starts work at 10\./);
+    assert.ok(conflicts.includes(result.candidate));
+    assert.match(
+      await readFile(path.join(root, result.candidate), "utf8"),
+      /^contradicts: "07-notes\/hours\.md"$/m,
+    );
+    assert.equal(
+      await readFile(path.join(root, NOTES_DIR, "hours.md"), "utf8"),
+      note,
+    );
+  } finally {
+    if (previous === undefined) delete process.env.OCEAN_ROOT;
+    else process.env.OCEAN_ROOT = previous;
+  }
+});

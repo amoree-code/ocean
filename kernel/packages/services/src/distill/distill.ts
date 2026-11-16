@@ -8,7 +8,9 @@ import {
   INBOX_DIR,
   KNOWLEDGE_DIR,
   oceanPath,
+  PERSONAL_DIR,
 } from "@ocean/core/shared/paths.js";
+import { listMilestones } from "../express/express.js";
 
 // The weekly distill (T-314): a week's session records and briefs become one digest in
 // 01-daily/weekly/, the Decisions and Learned sections become knowledge candidates for review,
@@ -217,5 +219,120 @@ export async function distillWeek(options: {
   for (const item of sessions)
     await atomicWrite(item.file, setDistilled(item.text));
   await archiveCaptures();
+  return result;
+}
+
+// The monthly review (T-314): the month's weekly digests, the milestones finished in it and the
+// session count, set beside the owner's goals so he can say, goal by goal, whether the month moved
+// it. It gathers; the judgement is his, written into the file. Dry run unless `apply`.
+export type MonthResult = {
+  month: string;
+  review: string | null;
+  weeks: string[];
+  milestones: string[];
+  sessions: number;
+  goals: string[];
+};
+
+export async function goalNames(): Promise<string[]> {
+  const text = await readFile(
+    oceanPath(PERSONAL_DIR, "goals.md"),
+    "utf8",
+  ).catch(() => "");
+  // Active goals are the bold-led bullets before the first `## ` section (set-aside goals follow).
+  const body = text.replace(/^---\n[\s\S]*?\n---\n/, "").split(/^## /m)[0];
+  return [...body.matchAll(/^- \*\*(.+?)\*\*/gm)].map((match) =>
+    match[1].replace(/[.:]$/, "").trim(),
+  );
+}
+
+export async function reviewMonth(options: {
+  month: string;
+  apply: boolean;
+}): Promise<MonthResult> {
+  const { month } = options;
+  const first = `${month}-01`;
+  const last = `${month}-31`;
+  const weeks: string[] = [];
+  for (const file of await markdownIn(oceanPath(DAILY_DIR, "weekly"))) {
+    const fields = parseFrontmatter(await readFile(file, "utf8"));
+    if (fields.type !== "weekly") continue;
+    // A week that straddles two months belongs to both reviews.
+    if ((fields.to ?? "") >= first && (fields.from ?? "") <= last)
+      weeks.push(file);
+  }
+  const milestones = (await listMilestones()).filter((item) =>
+    item.date.startsWith(month),
+  );
+  const sessions = (await markdownIn(oceanPath(DAILY_DIR, "sessions", month)))
+    .length;
+  const goals = await goalNames();
+  const relative = `${DAILY_DIR}/monthly/${month}.md`;
+  const result: MonthResult = {
+    month,
+    review: relative,
+    weeks: weeks.map(relativeOf),
+    milestones: milestones.map((item) => item.title),
+    sessions,
+    goals,
+  };
+  if (!weeks.length && !milestones.length && !sessions) {
+    result.review = null;
+    return result;
+  }
+  if (!options.apply) return result;
+  const file = oceanPath(relative);
+  // The owner's answers live in this file; a rerun never overwrites them.
+  if (
+    await readFile(file, "utf8").then(
+      () => true,
+      () => false,
+    )
+  )
+    return result;
+  const link = (target: string, label: string) =>
+    `[${label.replace(/[[\]]/g, "")}](../${path.relative(oceanPath(DAILY_DIR), target).split(path.sep).join("/")})`;
+  const body = [
+    "---",
+    "type: monthly",
+    `month: ${month}`,
+    `sessions: ${sessions}`,
+    `milestones: ${milestones.length}`,
+    "reviewed: false",
+    "---",
+    "",
+    `# Month ${month}`,
+    "",
+    "## Goals",
+    "",
+    "For each goal: did this month move it? One line of evidence, or why not.",
+    "",
+    ...(goals.length
+      ? goals.map((goal) => `- [ ] **${goal}** — `)
+      : [`- none found in ${PERSONAL_DIR}/goals.md`]),
+    "",
+    "## Finished",
+    "",
+    ...(milestones.length
+      ? milestones.map(
+          (item) => `- **${item.title}** (${item.date}) — ${item.kind}`,
+        )
+      : ["- no milestone marked done"]),
+    "",
+    "## Weeks",
+    "",
+    ...(weeks.length
+      ? weeks.map((week) => `- ${link(week, path.basename(week, ".md"))}`)
+      : ["- no weekly digest"]),
+    "",
+    `Sessions recorded: ${sessions}.`,
+    "",
+    "## Next month",
+    "",
+    "- ",
+    "",
+  ].join("\n");
+  await mkdir(path.dirname(file), { recursive: true });
+  await atomicWrite(file, body);
   return result;
 }

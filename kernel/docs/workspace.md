@@ -134,7 +134,10 @@ is narrowed by the interest's keywords; a releases feed is taken whole. A seen-l
 `ocean interests discover [--yes]` reads the `package.json` of every registered project and
 maps known packages (`packages/services/src/brief/source-registry.json`) to their release
 feeds; each topic without an interest file becomes a review candidate (`origin: discovered`),
-never a file. `ocean interests keep|skip <name>` moves an interest's weight (and `keep` its
+never a file. `ocean interests signals [--weeks N] [--yes]` does the same for a registry topic
+named in at least three session records of the last four weeks (`origin: signal`), and the
+`interests` step of `ocean onboard` for the stack, goals and topics you answer (goals become one
+fact candidate). `ocean interests keep|skip <name>` moves an interest's weight (and `keep` its
 `last_signal`); `ocean interests decay [--weeks N] [--yes]` lowers a discovered interest with
 no signal for 8 weeks. An interest you wrote yourself is never decayed.
 
@@ -158,6 +161,15 @@ brief adds one **Resurface** line: the decision verified longest ago once that i
 days back, else your least recently touched note in `07-notes/`. `ocean telemetry [--days N]
 [--yes]` finds errors that recur across sessions and providers whose sessions keep failing, and
 proposes each as a backlog line for review.
+
+`ocean distill --month [--month-of YYYY-MM] [--yes]` writes last month's review to
+`01-daily/monthly/<YYYY-MM>.md`: the active goals from `02-personal/goals.md` as a checklist you
+answer, the milestones finished that month, its weekly digests and its session count. It is
+written once; a rerun never overwrites your answers.
+
+Your notes in `07-notes/` are never edited by an agent. When an agent's fact disagrees with one,
+it proposes the fact with `contradicts: 07-notes/<note>.md`; the disagreement is added to
+`02-personal/CONFLICTS.md` beside the waiting candidate, and you decide.
 
 `ocean express cv|linkedin|scholarship [--dry-run]` turns your done milestones into a draft in
 `00-inbox/drafts/` — a CV section grouped by kind, a LinkedIn post from the latest three, or a
