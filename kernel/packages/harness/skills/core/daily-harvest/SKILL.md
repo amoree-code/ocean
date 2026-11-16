@@ -24,11 +24,17 @@ with a way to undo it. Only a contradiction stops and waits for him.
 
 ## 1. The mechanical pass
 
-Run `ocean harvest --pending --yes` (the service also runs it daily). For each day it writes the
-summary block in `01-daily/<date>.md` (sessions per client, decisions, fixes, lessons, open next,
-the owner's corrections, time per project), files structured Decisions / Problems → fixes /
-Learned into `05-knowledge/` (a record that already says it is strengthened instead), and marks
-the sessions harvested. Read its JSON: that is your work list.
+`ocean rhythm --yes` runs it all with no model, each part once per period (the service runs it
+at every session start and end, and hourly): the morning block of today's note, every day not yet
+harvested plus today so far, the archive, last week's digest, last month's review.
+
+The daily note has one shape: `## Today` and `## Brief` (morning, under the title), then the day's
+account — `## Day summary` (sessions per client, decisions, fixes, lessons, captures), `## Open
+loops` (every Next, `- [ ]`, carried each morning until ticked), `## Corrections`, `## Time` — and
+last `## Notes`, which is the owner's and never written. Claude Desktop chats and long Claude Code
+sessions are in it through the digest their fact capture returns in the same call.
+
+Read the JSON of `ocean harvest --pending --yes` (or the day's note): that is your work list.
 
 ## 2. The judgement pass
 

@@ -207,8 +207,12 @@ test("the same call returns a digest; the conversation becomes a session record 
         title: "Plan the Friday deploy",
         goal: "Decide how releases go out.",
         outcome: "A weekly release routine was agreed.",
-        decisions: ["Release every Friday after the full test suite passes on main."],
-        fixes: ["The tag raced a merge → cut the tag only after main is pushed."],
+        decisions: [
+          "Release every Friday after the full test suite passes on main.",
+        ],
+        fixes: [
+          "The tag raced a merge → cut the tag only after main is pushed.",
+        ],
         learned: [],
         next: ["Write the release checklist into the project docs."],
       },
@@ -226,7 +230,10 @@ test("the same call returns a digest; the conversation becomes a session record 
     assert.equal(prompts.length, 1);
     assert.match(prompts[0], /digest field/);
     const [done] = run.runs;
-    assert.match(done.record, /^01-daily\/sessions\/2025-12\/2025-12-31-\d{4}-plan-the-friday-deploy\.md$/);
+    assert.match(
+      done.record,
+      /^01-daily\/sessions\/2025-12\/2025-12-31-\d{4}-plan-the-friday-deploy\.md$/,
+    );
     const record = await readFile(path.join(root, done.record), "utf8");
     assert.match(record, /^provider: "claude-desktop"$/m);
     assert.match(record, /^## Decisions\n\n- Release every Friday/m);
@@ -240,12 +247,22 @@ test("the same call returns a digest; the conversation becomes a session record 
   // Bounded and cleaned; no digest without a title or goal; the plain prompt asks for none.
   const long = "x".repeat(500);
   const digest = parseDigest(
-    JSON.stringify({ facts: [], digest: { title: "t", decisions: [long, "b", "c", "d"], learned: ["a [REDACTED] value"] } }),
+    JSON.stringify({
+      facts: [],
+      digest: {
+        title: "t",
+        decisions: [long, "b", "c", "d"],
+        learned: ["a [REDACTED] value"],
+      },
+    }),
   );
   assert.equal(digest.decisions.length, 3);
   assert.ok(digest.decisions[0].length <= 220);
   assert.deepEqual(digest.learned, []);
   assert.equal(parseDigest('{"facts":[],"digest":{"decisions":["x"]}}'), null);
   assert.equal(parseDigest('{"facts":[]}'), null);
-  assert.doesNotMatch(buildFactsPrompt([{ role: "user", text: "hi" }]), /digest/);
+  assert.doesNotMatch(
+    buildFactsPrompt([{ role: "user", text: "hi" }]),
+    /digest/,
+  );
 });

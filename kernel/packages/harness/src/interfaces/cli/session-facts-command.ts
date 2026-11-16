@@ -81,6 +81,7 @@ export async function runSessionFactsCommand(args: string[]): Promise<void> {
     defaultSessionStoreFactory,
     client,
     (each) => sessionFactsCompleter(each),
+    { digest: true },
   );
   console.log(JSON.stringify(run, null, 2));
 }

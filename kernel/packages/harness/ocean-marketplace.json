@@ -68,7 +68,7 @@
         "path": "skills/core/daily-harvest"
       },
       "integrity": {
-        "sha256": "356cc76057780394e2ed485e6853fc675d1d03bfc3541268ccc3e9d3b2bfd76d"
+        "sha256": "4314c029393052b95bb675ead75a9ecbfb5138457c7367fd761d6efa8f2580ba"
       },
       "spec": {
         "directory": "daily-harvest"

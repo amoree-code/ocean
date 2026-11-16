@@ -1,13 +1,7 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import path from "node:path";
 import { createInterface } from "node:readline/promises";
 import { listLessons, setLessonStatus } from "@ocean/brain/memory/lessons.js";
-import type { Session } from "@ocean/core/domain/sessions/session.js";
-import { withFileLock } from "@ocean/core/shared/fs-utils.js";
 import { localDate } from "@ocean/core/shared/local-date.js";
-import { DAILY_DIR, oceanPath } from "@ocean/core/shared/paths.js";
-import { openSessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
-import { listTasks } from "./tasks-command.js";
+import { prepareDay } from "@ocean/services/day/day.js";
 
 /**
  * Interactive human-in-the-loop gate for candidate lessons (see lessons.ts). Only runs on a
@@ -73,81 +67,9 @@ export async function runDailyCommand(
           .join(" ")
           .slice(0, 4_000)
       : "";
-  const tasks = await listTasks();
-  const store = await openSessionStore();
-  let sessions: Array<
-    Pick<Session, "sessionId" | "title" | "provider" | "status" | "nextAction">
-  >;
-  try {
-    sessions = store
-      .list()
-      .slice(0, 5)
-      .map((session) => ({
-        sessionId: session.sessionId,
-        title: session.title,
-        provider: session.provider,
-        status: session.status,
-        nextAction: session.nextAction,
-      }));
-  } finally {
-    store.close();
-  }
-  const date = localDate();
-  const file = oceanPath(DAILY_DIR, `${date}.md`);
-  const content = `${[
-    `# Daily brief — ${date}`,
-    "",
-    "## Brief",
-    "",
-    tasks.length
-      ? tasks
-          .map((task) => `- ${task.id}: ${task.title} — ${task.goal}`)
-          .join("\n")
-      : "- No active tasks.",
-    "",
-    "## Check-in",
-    "",
-    sessions.length
-      ? sessions
-          .map(
-            (session) =>
-              `- ${session.sessionId}: ${session.title || session.provider} — ${session.status}${session.nextAction ? `; next: ${session.nextAction}` : ""}`,
-          )
-          .join("\n")
-      : "- No recent sessions.",
-    "",
-    "## News",
-    "",
-    news ||
-      "- No news supplied. The active AI client may research only the requested topics and pass a bounded summary with `--news`.",
-  ]
-    .join("\n")
-    .slice(0, 12_000)}\n`;
-  if (apply) {
-    await mkdir(path.dirname(file), { recursive: true });
-    // Same lock as the session-closeout writers: a closeout landing between the check and
-    // the write would otherwise be overwritten (T-257).
-    await withFileLock(file, async () => {
-      const existing = await readFile(file, "utf8").catch(() => "");
-      if (existing.trim())
-        throw new Error(`Daily file already has content: ${file}`);
-      await writeFile(file, content, "utf8");
-    });
-  }
-  console.log(
-    JSON.stringify(
-      {
-        apply,
-        date,
-        file,
-        bytes: Buffer.byteLength(content),
-        tasks: tasks.length,
-        sessions: sessions.length,
-        news: Boolean(news),
-        content,
-      },
-      null,
-      2,
-    ),
-  );
+  // The morning half of the daily note (T-314): focus, coming up, open loops, hours, what
+  // waits on you, and the brief — between markers, so a rerun replaces only that block.
+  const plan = await prepareDay({ date: localDate(), apply, news });
+  console.log(JSON.stringify({ apply, ...plan }, null, 2));
+  if (!apply) console.error("Dry run: pass --apply to write it.");
 }

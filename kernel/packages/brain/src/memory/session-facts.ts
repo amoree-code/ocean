@@ -94,7 +94,7 @@ export function selectTurns(
     .map(({ role, text }) => ({ role, text }));
 }
 
-// A short account of the conversation for the day's log (T-316), asked for in the same call as
+// A short account of the conversation for the day's log (T-314), asked for in the same call as
 // the facts so a chat summary costs a few output tokens, never a second model call.
 export type SessionDigest = {
   title: string;

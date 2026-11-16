@@ -69,15 +69,11 @@ test("finalizes a session with a bounded human summary, metadata, and handoff", 
   const summary = await readFile(path.join(root, result.summaryPath), "utf8");
   const saved = store.get(sessionId);
 
+  // The day's note is the harvest's to write (T-316): closeout adds no lines of its own there.
   const today = localDate();
-  const daily = await readFile(
-    path.join(root, DAILY_DIR, `${today}.md`),
-    "utf8",
+  await assert.rejects(
+    readFile(path.join(root, DAILY_DIR, `${today}.md`), "utf8"),
   );
-  assert.match(daily, /^# Daily/);
-  assert.match(daily, /## Work log/);
-  assert.match(daily, /Review the session closeout behavior/);
-  assert.doesNotMatch(daily, new RegExp(providerSecret));
 
   assert.match(summary, /# Session Summary/);
   assert.match(summary, /Review the session closeout behavior/);
@@ -111,18 +107,13 @@ test("finalizes a session with a bounded human summary, metadata, and handoff", 
   );
   assert.equal(store.listHandoffs().length, 1);
 
-  // A second closeout for an already-closed-out session must not append a
-  // duplicate "Work log" line to the daily narrative (the bug this guards
-  // against: a caller's success path closes out, then a later step in the
-  // same caller throws and its catch block calls finalizeSession again).
-  const dailyAfterSecond = await readFile(
-    path.join(root, DAILY_DIR, `${today}.md`),
-    "utf8",
-  );
-  assert.equal(
-    dailyAfterSecond.split("\n").filter((line) => line.startsWith("- ")).length,
-    1,
-  );
+  // A second closeout for an already-closed-out session writes no second record.
+  const base = path.join(root, DAILY_DIR, "sessions");
+  const months = await readdir(base);
+  const records = (
+    await Promise.all(months.map((month) => readdir(path.join(base, month))))
+  ).flat();
+  assert.equal(records.length, 1);
 
   store.close();
   delete process.env.OCEAN_ROOT;
@@ -201,13 +192,6 @@ test("still logs a generic-title session and its brain-dump when it has a real g
   store.updateStatus(sessionId, "completed");
 
   await finalizeSession(store, sessionId, { exitCode: 0 });
-
-  const today = localDate();
-  const daily = await readFile(
-    path.join(root, DAILY_DIR, `${today}.md`),
-    "utf8",
-  );
-  assert.match(daily, /## Work log\n- .*claude session — completed/);
 
   const brainDump = await readBrainDump(root);
   assert.match(brainDump, /^# project$/m);

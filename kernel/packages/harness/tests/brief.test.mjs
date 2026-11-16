@@ -173,3 +173,27 @@ test("a day with no new items still writes its Resurface line", async () => {
     else process.env.OCEAN_ROOT = previous;
   }
 });
+
+test("a releases feed drops pre-releases; a stable release stays", async () => {
+  const { buildBrief } = await import("@ocean/services/brief/brief.js");
+  const { mkdtemp, mkdir: mk, writeFile: wf } = await import("node:fs/promises");
+  const os = await import("node:os");
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-brief-pre-"));
+  const previous = process.env.OCEAN_ROOT;
+  process.env.OCEAN_ROOT = root;
+  try {
+    await mk(path.join(root, "02-personal/interests"), { recursive: true });
+    await wf(
+      path.join(root, "02-personal/interests/orm.md"),
+      "---\ntype: interest\npriority: high\nsources: [github:prisma/prisma]\n---\n\n# Prisma\n",
+    );
+    const entry = (title) =>
+      `<entry><title>${title}</title><link href="https://github.com/prisma/prisma/releases/${title}"/><updated>2026-11-15T00:00:00Z</updated></entry>`;
+    const feed = `<feed>${["8.1.0-dev.12", "v8.0.0-rc.23", "7.4.0-canary.1", "7.3.0"].map(entry).join("")}</feed>`;
+    const result = await buildBrief({ date: "2026-11-16", dryRun: true, fetchText: async () => feed });
+    assert.deepEqual(result.items.map((item) => item.title), ["7.3.0"]);
+  } finally {
+    if (previous === undefined) delete process.env.OCEAN_ROOT;
+    else process.env.OCEAN_ROOT = previous;
+  }
+});

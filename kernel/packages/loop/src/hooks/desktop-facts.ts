@@ -117,7 +117,7 @@ export type DesktopConversationRun = {
   status: "done" | "failed" | "no-user-text" | "no-provider";
   from: string;
   to: string;
-  // The session record written from the conversation's digest (T-316).
+  // The session record written from the conversation's digest (T-314).
   record?: string;
   candidates?: string[];
   rejected?: number;

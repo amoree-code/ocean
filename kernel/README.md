@@ -150,10 +150,11 @@ prints its usage and never runs it. To hand `--help` to a wrapped client, put it
 | `ocean interests` | propose interests from your projects or recurring session topics (as candidates), decay, keep/skip | Writes |
 | `ocean distill` | `--week`: a weekly digest, decisions and lessons as candidates; `--month`: last month against your goals | Writes |
 | `ocean harvest` | a day's sessions from every client into its summary; decisions, fixes and lessons filed into knowledge (undo per day); archive after 30 days | Writes |
+| `ocean rhythm` | the day's rhythm, once per period and with no model: morning note, harvest, archive, last week's digest, last month's review (the service runs it) | Writes |
 | `ocean telemetry` | recurring session errors and failing providers, as proposed backlog lines | Writes |
 | `ocean express` | draft a CV section, LinkedIn post or scholarship paragraph from milestones | Writes |
 | `ocean handoff` | hand work from one session or client to another | Reads; `create` writes |
-| `ocean daily` | prepare today's note | Reads; `--apply` writes |
+| `ocean daily` | the morning half of today's note: focus, coming up, open loops, your hours, what waits on you, the brief | Reads; `--apply` writes |
 | `ocean skill` | sync, add, review and learn skills | Reads; `add`, `review`, `learn`, `sync` write |
 | `ocean catalog` | the AI clients Ocean can install | Reads |
 | `ocean obsidian` | connect, sync and write to an Obsidian vault | Writes; vault writes need `--read-write` and `--apply` |

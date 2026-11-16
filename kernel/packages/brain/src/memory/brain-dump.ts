@@ -266,7 +266,7 @@ export async function migrateBrainDumps(options: { apply: boolean }): Promise<{
   return { moved, skipped };
 }
 
-// A chat with no session in the store (Claude Desktop, an export: T-316) gets the same record, from
+// A chat with no session in the store (Claude Desktop, an export: T-314) gets the same record, from
 // the digest its fact extraction returned — no model call of its own. One record per captured
 // stretch of the conversation, dated by its newest message.
 export async function writeDigestRecord(input: {

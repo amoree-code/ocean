@@ -13,7 +13,7 @@ const commandGroups = [
   ],
   [
     "Knowledge",
-    "memory, pull, desktop, observe, capture, note, brief, interests, distill, harvest, telemetry, express, handoff, idea, daily, skill, catalog",
+    "memory, pull, desktop, observe, capture, note, brief, interests, distill, harvest, rhythm, telemetry, express, handoff, idea, daily, skill, catalog",
   ],
   ["Integrations", "obsidian, hook, migrate, layout, env"],
 ] as const;
@@ -170,6 +170,10 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
     "Harvest a day's sessions from every AI client: the day's summary, decisions, fixes and lessons filed into 05-knowledge (undo per day), archive after 30 days.",
     "ocean harvest [--date YYYY-MM-DD | --pending] [--yes] | archive [--days N] [--yes] | undo <YYYY-MM-DD>",
   ],
+  rhythm: [
+    "Run the day's rhythm once per period, no model: morning note, harvest, archive, last week's digest, last month's review.",
+    "ocean rhythm [--yes]",
+  ],
   telemetry: [
     "Find recurring errors and failing providers in recent sessions; propose them as backlog lines.",
     "ocean telemetry [--days N] [--yes]",
@@ -191,7 +195,7 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
     "ocean idea save <title> <content> [--session <id>]|list [status]|classify <id> <target>|discard <id>",
   ],
   daily: [
-    "Prepare today's daily note; --apply writes it.",
+    "Write the morning half of today's note (focus, coming up, open loops, hours, waiting on you, brief); --apply writes it.",
     "ocean daily start [--apply] [--news <bounded-news-summary>]",
   ],
   skill: [

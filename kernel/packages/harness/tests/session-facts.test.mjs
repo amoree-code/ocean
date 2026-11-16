@@ -552,3 +552,54 @@ test("ocean memory session-facts on|off sets the answer and shows it", async () 
   assert.deepEqual(run("on"), { sessionFacts: "on", effective: "on" });
   assert.deepEqual(run("off"), { sessionFacts: "off", effective: "off" });
 });
+
+test("with digest, a stretch of a long session becomes a session record from the same call", async () => {
+  await inWorkspace("digest", async (root) => {
+    const transcript = path.join(root, "t.jsonl");
+    await writeFile(
+      transcript,
+      `${userLine("Let's split the daily note into a morning and a night block.")}\n${assistantLine("Done.")}\n`,
+    );
+    const prompts = [];
+    const completer = () => async (prompt) => {
+      prompts.push(prompt);
+      return JSON.stringify({
+        facts: [],
+        digest: {
+          title: "Daily note blocks",
+          goal: "Split the daily note.",
+          outcome: "Morning and night blocks exist.",
+          decisions: [
+            "The harvest owns the night block; closeout writes no lines.",
+          ],
+          fixes: [],
+          learned: [],
+          next: [],
+        },
+      });
+    };
+    const run = await runSessionFacts(
+      {
+        session_id: "long-1",
+        transcript_path: transcript,
+        cwd: path.join(root, "ocean"),
+      },
+      defaultSessionStoreFactory,
+      "claude",
+      completer,
+      { enabled: async () => true, digest: true },
+    );
+    assert.equal(prompts.length, 1);
+    assert.match(
+      run.record,
+      /^01-daily\/sessions\/\d{4}-\d{2}\/.*daily-note-blocks\.md$/,
+    );
+    const record = await readFile(path.join(root, run.record), "utf8");
+    assert.match(record, /^provider: "claude"$/m);
+    assert.match(record, /^project: "ocean"$/m);
+    assert.match(
+      record,
+      /^## Decisions\n\n- The harvest owns the night block/m,
+    );
+  });
+});

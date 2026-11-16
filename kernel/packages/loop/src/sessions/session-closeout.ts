@@ -1,8 +1,5 @@
 import { writeBrainDump } from "@ocean/brain/memory/brain-dump.js";
-import {
-  appendDailyNarrative,
-  appendObservations,
-} from "@ocean/brain/memory/daily-narrative.js";
+import {} from "@ocean/brain/memory/daily-narrative.js";
 import {
   type LearnedSignal,
   learnFromSession,
@@ -155,7 +152,6 @@ export async function finalizeSession(
             errors: learning.errors,
           }),
         );
-      await appendObservations(session, observations);
     } catch (error) {
       store.appendEvent(
         sessionId,
@@ -170,13 +166,8 @@ export async function finalizeSession(
         changedFiles: files,
         nextAction: input.nextAction,
       });
-      await appendDailyNarrative({
-        session,
-        events,
-        exitCode,
-        nextAction: input.nextAction,
-        narrative,
-      });
+      // The daily note is written by the harvest from the session record below (T-314); the
+      // closeout no longer adds its own lines there, so the day is told once.
       await writeBrainDump({
         session,
         events,

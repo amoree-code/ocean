@@ -162,6 +162,19 @@ days back, else your least recently touched note in `07-notes/`. `ocean telemetr
 [--yes]` finds errors that recur across sessions and providers whose sessions keep failing, and
 proposes each as a backlog line for review.
 
+The daily note (`01-daily/<date>.md`) has one shape. Under the title, Ocean's morning block:
+`## Today` — Focus (open tasks), Coming up (dated lines in your records within 30 days), Open
+loops (every unticked Next from the last two weeks, carried until you tick it), Your hours (from
+`02-personal/schedule/`), Waiting on you — and `## Brief` (the top items from the interests you
+follow, with today's full brief). Then the day's account written by the harvest: `## Day summary`,
+`## Open loops`, `## Corrections`, `## Time`. Last, `## Notes`: yours, never written by Ocean. Both
+blocks sit between markers and are rewritten in place; a tick you make in them is kept. Session
+closeout no longer adds its own lines to the note — the day is told once, by the harvest.
+`ocean daily start --apply` writes the morning block; `ocean rhythm --yes` runs the morning
+block, the harvest of every pending day and of today so far, the archive, last week's digest and
+last month's review, each once per period — the service runs it at session start and end and
+hourly, with no model.
+
 `ocean harvest [--date YYYY-MM-DD | --pending] [--yes]` is the daily harvest. Every session of a
 day, from every AI client, becomes one summary block in `01-daily/<date>.md` (sessions per client,
 decisions, problems → fixes, lessons, open next, the corrections you made, time per project); the
