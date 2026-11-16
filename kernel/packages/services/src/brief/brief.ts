@@ -1,9 +1,11 @@
 import { createHash } from "node:crypto";
-import { mkdir, readdir, readFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { atomicWrite, parseFrontmatter } from "@ocean/core/shared/fs-utils.js";
 import {
   DAILY_DIR,
+  KNOWLEDGE_DIR,
+  NOTES_DIR,
   oceanPath,
   PERSONAL_DIR,
   SYSTEM_DIR,
@@ -153,7 +155,40 @@ export type BriefResult = {
   file: string | null;
   items: BriefItem[];
   failedSources: string[];
+  resurface?: string | null;
 };
+
+const REEVALUATE_DAYS = 90;
+
+// One thing from the past per daily brief (T-314): the decision verified longest ago, once that is
+// more than 90 days back (it needs re-evaluation), else the owner's least recently touched note.
+export async function pickResurface(date: string): Promise<string | null> {
+  const cutoff = Date.parse(date) - REEVALUATE_DAYS * 24 * 60 * 60 * 1000;
+  const decisions = oceanPath(KNOWLEDGE_DIR, "decisions");
+  let oldest: { file: string; at: number } | null = null;
+  for (const name of await readdir(decisions).catch(() => [] as string[])) {
+    if (!name.endsWith(".md")) continue;
+    const fields = parseFrontmatter(
+      await readFile(path.join(decisions, name), "utf8"),
+    );
+    if (fields.status === "retired" || fields.status === "superseded") continue;
+    const at = Date.parse(fields.last_verified ?? fields.updated ?? "");
+    if (Number.isNaN(at) || at >= cutoff) continue;
+    if (!oldest || at < oldest.at) oldest = { file: name, at };
+  }
+  if (oldest)
+    return `${KNOWLEDGE_DIR}/decisions/${oldest.file} — needs re-evaluation (last verified ${new Date(oldest.at).toISOString().slice(0, 10)})`;
+  const notes = oceanPath(NOTES_DIR);
+  let quiet: { file: string; at: number } | null = null;
+  for (const name of await readdir(notes).catch(() => [] as string[])) {
+    if (!name.endsWith(".md")) continue;
+    const at = (await stat(path.join(notes, name))).mtimeMs;
+    if (!quiet || at < quiet.at) quiet = { file: name, at };
+  }
+  return quiet
+    ? `${NOTES_DIR}/${quiet.file} — one of your notes, worth a second look`
+    : null;
+}
 
 export async function buildBrief(options: {
   date: string;
@@ -203,8 +238,10 @@ export async function buildBrief(options: {
     .sort((a, b) => a.rank - b.rank || b.date.localeCompare(a.date))
     .slice(0, limit)
     .map(({ rank: _rank, ...item }) => item);
-  if (options.dryRun || !items.length)
-    return { file: null, items, failedSources };
+  const resurface = options.weekly ? null : await pickResurface(options.date);
+  // A day with nothing new still gets its Resurface line.
+  if (options.dryRun || (!items.length && !resurface))
+    return { file: null, items, failedSources, resurface };
   const relative = `${BRIEFS_DIR}/${options.date}${options.weekly ? "-weekly" : ""}.md`;
   const lines = items.map(
     (item) =>
@@ -219,10 +256,10 @@ export async function buildBrief(options: {
   await mkdir(path.dirname(file), { recursive: true });
   await atomicWrite(
     file,
-    `---\ntype: brief\ndate: ${options.date}\ncadence: ${options.weekly ? "weekly" : "daily"}\nitems: ${all.length}\n---\n\n# Brief — ${options.date}\n\n${all.join("\n")}\n`,
+    `---\ntype: brief\ndate: ${options.date}\ncadence: ${options.weekly ? "weekly" : "daily"}\nitems: ${all.length}\n---\n\n# Brief — ${options.date}\n\n${all.join("\n")}\n${resurface ? `\n## Resurface\n\n- ${resurface}\n` : ""}`,
   );
   for (const item of items) seen[itemKey(item)] = options.date;
   await mkdir(path.dirname(seenFile()), { recursive: true });
   await atomicWrite(seenFile(), `${JSON.stringify(seen, null, 2)}\n`, 0o600);
-  return { file: relative, items, failedSources };
+  return { file: relative, items, failedSources, resurface };
 }

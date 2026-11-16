@@ -1,0 +1,14 @@
+filters:
+  and:
+    - type == "milestone"
+views:
+  - type: table
+    name: Timeline
+    order:
+      - file.name
+      - date
+      - kind
+      - status
+    sort:
+      - property: date
+        direction: DESC

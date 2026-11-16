@@ -196,6 +196,7 @@ import {
 } from "./session-facts-command.js";
 import { parseSetupArgs, SETUP_USAGE, setup } from "./setup-command.js";
 import { runTasksCommand } from "./tasks-command.js";
+import { runTelemetryCommand } from "./telemetry-command.js";
 
 export type CommandHandler = () => Promise<void> | void;
 
@@ -1599,6 +1600,7 @@ export const commandRegistry: Record<string, CommandHandler> = {
   brief: () => runBriefCommand(process.argv.slice(3)),
   interests: () => runInterestsCommand(process.argv.slice(3)),
   distill: () => runDistillCommand(process.argv.slice(3)),
+  telemetry: () => runTelemetryCommand(process.argv.slice(3)),
   daily: commandDaily,
   schedule: commandSchedule,
   loop: commandLoop,

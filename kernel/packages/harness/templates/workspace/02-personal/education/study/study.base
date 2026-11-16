@@ -1,0 +1,15 @@
+filters:
+  and:
+    - type == "study"
+views:
+  - type: table
+    name: Study
+    order:
+      - file.name
+      - goal
+      - status
+      - started
+      - target_date
+    sort:
+      - property: target_date
+        direction: ASC

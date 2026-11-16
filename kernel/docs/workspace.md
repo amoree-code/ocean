@@ -152,6 +152,13 @@ skill walks you from there to inbox zero. Search covers session records and brie
 with `status: retired` stays on disk but out of search, and `ocean memory archive-retired
 [--yes]` moves retired lessons into `05-knowledge/lessons/archive/`.
 
+Your journey: milestones (`type: milestone`, `02-personal/milestones/`, `milestones.base`
+timeline) and study plans (`type: study`, `02-personal/education/study/`, `study.base`). Each daily
+brief adds one **Resurface** line: the decision verified longest ago once that is more than 90
+days back, else your least recently touched note in `07-notes/`. `ocean telemetry [--days N]
+[--yes]` finds errors that recur across sessions and providers whose sessions keep failing, and
+proposes each as a backlog line for review.
+
 ## Task completion and archive
 
 
