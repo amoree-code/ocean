@@ -69,7 +69,10 @@ test("the plist runs `ocean desktop capture` on store writes and on an interval"
   }
 });
 
-test("the plist PATH is the same from every shell: claude's real folder, not per-shell ones", async () => {
+// The watcher is a macOS LaunchAgent; Windows symlinks and real paths do not apply to it.
+test("the plist PATH is the same from every shell: claude's real folder, not per-shell ones", {
+  skip: process.platform === "win32" && "macOS LaunchAgent; POSIX paths",
+}, async () => {
   const { env, home, restore } = await setup();
   try {
     const real = path.join(home, "node", "bin");
