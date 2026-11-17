@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.10.1
+
+- fix(T-315): the Desktop chat watcher's PATH is now only the folder holding `claude` (resolved through symlinks) plus `/usr/bin:/bin`, not the whole shell PATH, so the plist is the same from every shell and `ocean doctor` stops reporting `DESKTOP_WATCHER_MISSING` for a watcher that is running (#299)
+
 ## 1.10.0
 
 - feat(T-314): `ocean obsidian templates --yes` also gives QuickAdd one "Ocean: New <type>" choice per routed type with a template (from routing.json, like Templater's folder templates); types only Ocean writes and captures get none, choices the owner made are kept, and nothing is written when QuickAdd is not installed
