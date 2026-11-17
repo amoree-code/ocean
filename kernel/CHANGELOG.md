@@ -7,7 +7,7 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
-- fix(T-315): the Desktop chat watcher's PATH is now only the folder holding `claude` (resolved through symlinks) plus `/usr/bin:/bin`, not the whole shell PATH, so the plist is the same from every shell and `ocean doctor` stops reporting `DESKTOP_WATCHER_MISSING` for a watcher that is running
+- fix(T-315): the Desktop chat watcher's PATH is now only the folder holding `claude` (resolved through symlinks) plus `/usr/bin:/bin`, not the whole shell PATH, so the plist is the same from every shell and `ocean doctor` stops reporting `DESKTOP_WATCHER_MISSING` for a watcher that is running (#299)
 
 ## 1.10.0 (2026-11-16)
 
