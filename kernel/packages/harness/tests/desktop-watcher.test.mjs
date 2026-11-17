@@ -1,5 +1,13 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, unlink, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  symlink,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -54,7 +62,35 @@ test("the plist runs `ocean desktop capture` on store writes and on an interval"
     );
     assert.match(plist, /<key>StartInterval<\/key><integer>900<\/integer>/);
     assert.match(plist, /<key>ThrottleInterval<\/key><integer>300<\/integer>/);
-    assert.match(plist, /<string>\/opt\/bin:\/usr\/bin:\/bin<\/string>/);
+    // No `claude` on PATH: system folders only, nothing copied from the shell.
+    assert.match(plist, /<key>PATH<\/key><string>\/usr\/bin:\/bin<\/string>/);
+  } finally {
+    restore();
+  }
+});
+
+test("the plist PATH is the same from every shell: claude's real folder, not per-shell ones", async () => {
+  const { env, home, restore } = await setup();
+  try {
+    const real = path.join(home, "node", "bin");
+    await mkdir(real, { recursive: true });
+    await writeFile(path.join(real, "claude"), "#!/bin/sh\n", { mode: 0o755 });
+    const shells = path.join(home, "fnm_multishells");
+    await mkdir(shells);
+    const shellA = path.join(shells, "111_a");
+    const shellB = path.join(shells, "222_b");
+    await symlink(real, shellA);
+    await symlink(real, shellB);
+    const a = desktopWatcherPlist({
+      ...env,
+      pathDirs: ["/opt/editor-shim", shellA, "/opt/bin"],
+    });
+    const b = desktopWatcherPlist({ ...env, pathDirs: [shellB, "/opt/bin"] });
+    assert.equal(a, b);
+    assert.ok(
+      a.includes(`<string>${await realpath(real)}:/usr/bin:/bin</string>`),
+    );
+    assert.ok(!a.includes("fnm_multishells") && !a.includes("editor-shim"));
   } finally {
     restore();
   }
