@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
+import { accessSync, constants, realpathSync } from "node:fs";
 import { readFile, unlink } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -53,14 +54,26 @@ export function desktopStoreDir(home: string): string {
   );
 }
 
+// Only the folder that holds `claude`, resolved through symlinks: the shell's PATH carries
+// per-shell folders (fnm_multishells/<pid>, editor extension shims) that differ in every
+// shell, so copying it whole made the plist never match and doctor report it missing.
+function claudeDirs(pathDirs: string[]): string[] {
+  for (const dir of pathDirs)
+    try {
+      accessSync(path.join(dir, "claude"), constants.X_OK);
+      return [realpathSync(dir)];
+    } catch {}
+  return [];
+}
+
 export function desktopWatcherPlist(env: ClientEnv): string {
   const args = [...oceanInvocation(env), "desktop", "capture"];
   const strings = (items: string[]) =>
     items.map((item) => `<string>${xml(item)}</string>`).join("");
   // launchd starts jobs with a bare PATH; the capture's model call needs the client's CLI.
-  const pathValue = [...new Set([...env.pathDirs, "/usr/bin", "/bin"])].join(
-    ":",
-  );
+  const pathValue = [
+    ...new Set([...claudeDirs(env.pathDirs), "/usr/bin", "/bin"]),
+  ].join(":");
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!-- Written by \`ocean clients apply\`; \`ocean clients restore\` removes it. -->
