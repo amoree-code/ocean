@@ -7,22 +7,16 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+## 2.0.0 (2026-11-18)
+
 - feat(projects): `ocean project status [--json] [--write]` — one row per project, derived every time: activity from its last commit (active ≤ 60 days, warm ≤ a year, dormant), branch, uncommitted files, last session, open tasks and the active task's next action. `--write` keeps a generated block in `04-projects/registry.md` current and leaves the hand-kept text around it alone (T-317, #303)
-
 - test: the per-test timeout is 60 s (was 30 s): `agent-run`, `task-claim` and `task-renumber` tests went over 30 s on a loaded machine and on the Windows gate, then passed on rerun (T-317, #303)
-
 - perf(market): an npm capability pinned to an exact version starts with `npx -y --prefer-offline`, so a cached package skips the registry round-trip on every server start (measured 0.3–0.5 s each); `dev.ocean/chrome-devtools` sets `CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS=1`, so upstream no longer spawns an npm child and fetches the registry at start (T-316, T-317, #303)
-
 - feat(browser): `dev.ocean/chrome-devtools` attaches to any Chromium browser, not only Chrome: `ocean browser use <chrome|brave|edge|arc|vivaldi|opera|chromium|chrome-beta|chrome-canary|/profile/path>` stores the choice on this machine and every client's launch passes it as `--userDataDir`; `ocean browser attach` shows the selected browser and every one listening now; `ocean doctor` names whichever is listening. Unset stays Chrome. Firefox and Safari have no CDP and stay out (T-317, #303)
-
 - fix(sessions): session records, the harvest and the weekly digest no longer take a client's raw first turn as a title (`<browser_instruction># Claude in Chrome …`, `<system-reminder>…`): the harness's tags and their words are dropped, also when the turn was cut before the tag closed, and the project name is the fallback. One `cleanTitle` in core serves all three (T-317, #303)
-
 - docs: the 1.8.0 `ocean harvest` entry credited T-316, the browser MCP cost task; it now credits the harvest PR (#295) alone (T-317, #303)
-
 - fix(harvest): the undo copies and ledger `ocean harvest` writes under `bridge/state/harvest/` are created owner-only, so `ocean doctor` stops warning PRIVATE_PERMISSIONS after every harvest (T-317, #303)
-
 - fix(tasks)!: `ocean tasks verify|complete` runs only a `verify:` field or the lines of a fenced block under `## Verification`; a command named inline in prose is never run (on T-308 a prose span ran `npm publish`). Publishing, signing in (`login`, `adduser`, `token`, `owner`, `dist-tag`) and global installs (`-g`, `--global`) are refused from every source. A task that named its checks only inline now falls back to its project's `verify` (T-317, #303)
-
 - fix(brain): a natural question finds the record it is about: the any-word fallback drops English question words ("what did I … where my …"), matches long Latin words by stem ("decide" also finds "decision"), and a word in a record's title outweighs the same word in its body. "What did I decide about where my memory lives?" went from no hit to the memory-home decision in the top five (T-317, #303)
 
 ## 1.12.0 (2026-11-18)
