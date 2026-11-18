@@ -17,6 +17,10 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
+        # The suite runs one file at a time (tests share HOME and the service label), so it is
+        # split across runners instead: each shard is its own machine (~5 min → ~2 on Windows).
+        shard: [1, 2, 3]
+    name: gate (${{ matrix.os }}, ${{ matrix.shard }}/3)
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -28,20 +32,27 @@ jobs:
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
       - run: pnpm check:changelog
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest' && matrix.shard == 1
       - run: pnpm check:skills
+        if: matrix.shard == 1
       - run: pnpm check:privacy
+        if: matrix.shard == 1
       - run: pnpm check:template
+        if: matrix.shard == 1
       - run: pnpm check:tasks
+        if: matrix.shard == 1
       - run: pnpm check:deps
+        if: matrix.shard == 1
       - run: pnpm build
       - run: pnpm check:package
-      - name: Run full test suite
-        run: pnpm test
+        if: matrix.shard == 1
+      - name: Run test shard ${{ matrix.shard }}/3
+        working-directory: kernel/packages/harness
+        run: pnpm run test:files --test-shard=${{ matrix.shard }}/3 "tests/*.test.mjs"
 
   linux-install:
     # T-308: the packed tarball on a clean Linux at the minimum Node, with no compiler toolchain.
-    needs: gate
+    # Runs beside the gate, not after it: it builds its own tree and needs nothing from it.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -55,7 +66,6 @@ jobs:
       - run: sh scripts/linux-install-smoke.sh release/*.tgz
 
   docker:
-    needs: gate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
