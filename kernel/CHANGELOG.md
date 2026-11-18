@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+- test: the per-test timeout is 60 s (was 30 s): `agent-run`, `task-claim` and `task-renumber` tests went over 30 s on a loaded machine and on the Windows gate, then passed on rerun (T-317)
+
 - perf(market): an npm capability pinned to an exact version starts with `npx -y --prefer-offline`, so a cached package skips the registry round-trip on every server start (measured 0.3–0.5 s each); `dev.ocean/chrome-devtools` sets `CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS=1`, so upstream no longer spawns an npm child and fetches the registry at start (T-316, T-317)
 
 - feat(browser): `dev.ocean/chrome-devtools` attaches to any Chromium browser, not only Chrome: `ocean browser use <chrome|brave|edge|arc|vivaldi|opera|chromium|chrome-beta|chrome-canary|/profile/path>` stores the choice on this machine and every client's launch passes it as `--userDataDir`; `ocean browser attach` shows the selected browser and every one listening now; `ocean doctor` names whichever is listening. Unset stays Chrome. Firefox and Safari have no CDP and stay out (T-317)
