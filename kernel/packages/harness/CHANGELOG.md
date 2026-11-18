@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.0
+
+- feat(uninstall): `ocean uninstall` puts a machine back the way it was before Ocean — every `clients apply` undone (MCP entries, hooks, native-memory switches, the OpenCode plugin), any Ocean MCP entry or hook the journal missed removed, the skills and rules Ocean copied into clients taken out, the login service and Desktop watcher unloaded, the shell profile block and shims removed, and the VS Code wrapper setting cleared. Only what Ocean wrote goes; the owner's own entries stay. It previews until `--yes`; the workspace is kept unless `--purge` (typed confirmation, refused for a git checkout) (#300)
+
 ## 1.10.1
 
 - fix(T-315): the Desktop chat watcher's PATH is now only the folder holding `claude` (resolved through symlinks) plus `/usr/bin:/bin`, not the whole shell PATH, so the plist is the same from every shell and `ocean doctor` stops reporting `DESKTOP_WATCHER_MISSING` for a watcher that is running (#299)
