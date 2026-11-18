@@ -34,6 +34,9 @@ export type McpLaunch =
 export type RemoteTransport = "streamable-http" | "sse";
 const remoteTransports: readonly string[] = ["streamable-http", "sse"];
 
+const EXACT_VERSION =
+  /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+
 // Where each runner takes its own (runtime) arguments: before the package for npx and uvx,
 // after `run` for docker, so container flags such as `-e` or `-v` reach `docker run`.
 const runners: Record<
@@ -44,9 +47,16 @@ const runners: Record<
     runtime: string[],
   ) => { command: string; args: string[] }
 > = {
+  // An exact version never changes once published, so npx uses its cache when it holds it
+  // instead of asking the registry on every server start (~0.3–0.5 s each, T-316).
   npm: (identifier, version, runtime) => ({
     command: "npx",
-    args: [...runtime, "-y", version ? `${identifier}@${version}` : identifier],
+    args: [
+      ...runtime,
+      "-y",
+      ...(version && EXACT_VERSION.test(version) ? ["--prefer-offline"] : []),
+      version ? `${identifier}@${version}` : identifier,
+    ],
   }),
   pypi: (identifier, version, runtime) => ({
     command: "uvx",

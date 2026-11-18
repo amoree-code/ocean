@@ -240,6 +240,7 @@
           "127.0.0.1"
         ],
         "env": [
+          "CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS",
           "OCEAN_BROWSER_USER_DATA_DIR"
         ],
         "exec": [
@@ -255,7 +256,7 @@
         "path": "market/mcp/chrome-devtools"
       },
       "integrity": {
-        "sha256": "db5680cb97ea49804a16351e77b81f81dce7bfa6508010c6d9b9bb32a6a6ed1d"
+        "sha256": "313b05fa4a835eac5597d2080c7cef1e080bd10cfa5138745e8df68410299fa6"
       },
       "spec": {
         "name": "dev.ocean/chrome-devtools",
@@ -275,6 +276,14 @@
                 "value": "{OCEAN_BROWSER_USER_DATA_DIR}",
                 "isRequired": false,
                 "description": "Profile root of the Chromium browser to attach to; unset attaches to Chrome. Set with `ocean browser use <name|path>`."
+              }
+            ],
+            "environmentVariables": [
+              {
+                "name": "CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS",
+                "default": "1",
+                "isRequired": false,
+                "description": "Skips upstream's update check (an npm child process and a registry fetch) on every start; the version is pinned."
               }
             ]
           }

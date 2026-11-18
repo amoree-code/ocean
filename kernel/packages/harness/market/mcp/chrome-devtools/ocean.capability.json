@@ -15,7 +15,10 @@
       ]
     },
     "network": ["registry.npmjs.org", "localhost", "127.0.0.1"],
-    "env": ["OCEAN_BROWSER_USER_DATA_DIR"],
+    "env": [
+      "CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS",
+      "OCEAN_BROWSER_USER_DATA_DIR"
+    ],
     "exec": ["npx"]
   },
   "server": {
@@ -36,6 +39,14 @@
             "value": "{OCEAN_BROWSER_USER_DATA_DIR}",
             "isRequired": false,
             "description": "Profile root of the Chromium browser to attach to; unset attaches to Chrome. Set with `ocean browser use <name|path>`."
+          }
+        ],
+        "environmentVariables": [
+          {
+            "name": "CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS",
+            "default": "1",
+            "isRequired": false,
+            "description": "Skips upstream's update check (an npm child process and a registry fetch) on every start; the version is pinned."
           }
         ]
       }
