@@ -92,7 +92,12 @@ export async function coreSkillReports(
   );
 }
 
-export async function syncCoreSkills(home = os.homedir()) {
+// `keepNewer` (the session-start sync): a client copy changed after the engine's version is the
+// owner's edit and stays; a missing skill or one the engine has moved past is copied.
+export async function syncCoreSkills(
+  home = os.homedir(),
+  options: { keepNewer?: boolean } = {},
+) {
   const names = await coreSkillNames();
   const results: Array<{
     client: SkillClient;
@@ -129,6 +134,13 @@ export async function syncCoreSkills(home = os.homedir()) {
       } catch {
         /* new client skill */
       }
+      if (
+        current &&
+        !same(sourceBytes, current) &&
+        options.keepNewer &&
+        (await stat(target)).mtimeMs > (await stat(source)).mtimeMs
+      )
+        continue;
       if (!current || !same(sourceBytes, current)) {
         await cp(source, target);
         copied.push(name);

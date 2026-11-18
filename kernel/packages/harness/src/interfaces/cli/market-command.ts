@@ -18,6 +18,11 @@ import {
   searchRegistry,
 } from "@ocean/market/registry/official-registry.js";
 import { keychainStore } from "@ocean/market/security/secrets.js";
+import {
+  hubSkillHashes,
+  pruneClientSkills,
+} from "@ocean/market/skills/skill-hub.js";
+import { autoSyncSkills } from "../../application/integrations/skill-auto-sync.js";
 import { oceanVersion } from "../../version.js";
 
 const usage =
@@ -219,17 +224,31 @@ export async function runMarketCommand(
   }
   if (!name || !["install", "update", "uninstall"].includes(action))
     throw new Error(usage);
+  // A skill installed, updated or removed reaches every client now, not at the next session.
   if (action === "install") {
     const result = await marketplace.install(
       name,
       flagValues(args, "--version")[0],
     );
-    console.log(JSON.stringify(result, null, 2));
+    console.log(
+      JSON.stringify({ ...result, skills: await autoSyncSkills() }, null, 2),
+    );
     printVisibility(result.name);
-  } else if (action === "update")
-    console.log(JSON.stringify(await marketplace.update(name), null, 2));
-  else {
+  } else if (action === "update") {
+    const result = await marketplace.update(name);
+    console.log(
+      JSON.stringify({ ...result, skills: await autoSyncSkills() }, null, 2),
+    );
+  } else {
+    const before = await hubSkillHashes();
     await marketplace.uninstall(name);
-    console.log(JSON.stringify({ name, status: "uninstalled" }, null, 2));
+    const removed = await pruneClientSkills(before);
+    console.log(
+      JSON.stringify(
+        { name, status: "uninstalled", skills: { removed } },
+        null,
+        2,
+      ),
+    );
   }
 }

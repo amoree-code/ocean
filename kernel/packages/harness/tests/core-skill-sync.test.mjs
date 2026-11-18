@@ -86,3 +86,35 @@ test("core skill sync replaces a dangling skill link instead of throwing ENOENT"
     await rm(home, { recursive: true, force: true });
   }
 });
+
+test("keepNewer copies missing core skills but keeps a client copy edited after the engine's", async () => {
+  const { utimes } = await import("node:fs/promises");
+  const home = await mkdtemp(path.join(os.tmpdir(), "ocean-skills-"));
+  try {
+    await mkdir(path.join(home, ".claude", "skills"), { recursive: true });
+    await syncCoreSkills(home);
+    const edited = path.join(home, ".claude", "skills", "catch-up", "SKILL.md");
+    const stale = path.join(
+      home,
+      ".claude",
+      "skills",
+      "verification",
+      "SKILL.md",
+    );
+    await writeFile(edited, "my own catch-up");
+    await writeFile(stale, "an old engine version");
+    const future = Date.now() / 1000 + 3600;
+    await utimes(edited, future, future);
+    await utimes(stale, 1_000, 1_000);
+    await rm(path.join(home, ".claude", "skills", "loop"), { recursive: true });
+
+    const [claude] = (await syncCoreSkills(home, { keepNewer: true })).filter(
+      (item) => item.client === "claude",
+    );
+    assert.deepEqual(claude.copied.sort(), ["loop", "verification"]);
+    assert.equal(await readFile(edited, "utf8"), "my own catch-up");
+    assert.notEqual(await readFile(stale, "utf8"), "an old engine version");
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});

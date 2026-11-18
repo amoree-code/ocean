@@ -125,6 +125,7 @@ import {
 import { syncCharterCopies } from "../../application/integrations/charter-copies.js";
 import { configureClaudeCodeWrapper } from "../../application/integrations/claude-vscode.js";
 import { repairEngineEntries } from "../../application/integrations/engine-entry-repair.js";
+import { autoSyncSkills } from "../../application/integrations/skill-auto-sync.js";
 import { syncSkillFilter } from "../../application/integrations/skill-filter.js";
 import { selectProfileForTask } from "../../application/profiles/profile-suggestion.js";
 import {
@@ -317,6 +318,8 @@ async function commandClient(): Promise<void> {
     // to core.md reaches the clients that carry a copy without a manual step.
     const charter = await syncCharterCopies();
     const skillFilter = await syncSkillFilter();
+    // A skill made or installed reaches every client at the next session start.
+    const skills = await autoSyncSkills();
     const engineEntries = await repairEngineEntries();
     // T-305: a repointed service start file only takes effect once the service restarts.
     const service = engineEntries.some(
@@ -336,6 +339,7 @@ async function commandClient(): Promise<void> {
           providers: result.providers,
           charter,
           skillFilter,
+          skills,
           engineEntries,
           service,
           clients,

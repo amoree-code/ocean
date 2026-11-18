@@ -12,7 +12,11 @@ import {
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { copyClientSkills } from "@ocean/market/skills/skill-hub.js";
+import {
+  copyClientSkills,
+  hubSkillHashes,
+  pruneClientSkills,
+} from "@ocean/market/skills/skill-hub.js";
 
 async function skill(root, name, files) {
   for (const [file, body] of Object.entries(files)) {
@@ -238,6 +242,99 @@ test("a skill containing a symlink fails alone; the rest still copy", async () =
       (await readdir(path.join(home, ".claude", "skills"))).sort(),
       ["beta"],
     );
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+// Sets every file and folder under `dir` to `when` (seconds), so the newer-edit rule is tested
+// without waiting on the clock.
+async function touchTree(dir, when) {
+  const { utimes } = await import("node:fs/promises");
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) await touchTree(full, when);
+    await utimes(full, when, when);
+  }
+  await utimes(dir, when, when);
+}
+
+test("auto copies new and hub-updated skills but keeps a newer edit made in a client", async () => {
+  const { base, hub, home, archive } = await fixture();
+  try {
+    await copyClientSkills({ hub, home, archive, apply: true, auto: true });
+    const claudeAlpha = path.join(home, ".claude", "skills", "alpha");
+    const claudeBeta = path.join(home, ".claude", "skills", "beta");
+    // The owner edits alpha inside Claude (newer); the hub updates beta (newer than the copy).
+    await writeFile(path.join(claudeAlpha, "SKILL.md"), "alpha, my edit");
+    await touchTree(path.join(hub, "alpha"), 1_000);
+    await touchTree(claudeAlpha, 2_000);
+    await writeFile(path.join(hub, "beta", "SKILL.md"), "beta v2");
+    await touchTree(claudeBeta, 1_000);
+    await touchTree(path.join(hub, "beta"), 2_000);
+    // A skill made in the hub after the first sync.
+    await skill(hub, "gamma", { "SKILL.md": "gamma" });
+
+    const { actions, backup } = await copyClientSkills({
+      hub,
+      home,
+      archive,
+      apply: true,
+      auto: true,
+      clients: ["claude"],
+    });
+    const by = Object.fromEntries(actions.map((a) => [a.skill, a.action]));
+    assert.deepEqual(by, { alpha: "kept", beta: "replace", gamma: "create" });
+    assert.equal(
+      await readFile(path.join(claudeAlpha, "SKILL.md"), "utf8"),
+      "alpha, my edit",
+    );
+    assert.equal(
+      await readFile(path.join(claudeBeta, "SKILL.md"), "utf8"),
+      "beta v2",
+    );
+    assert.ok(backup, "the replaced copy is backed up");
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("auto with no hub copies nothing and does not throw", async () => {
+  const { base, home, archive } = await fixture();
+  try {
+    const result = await copyClientSkills({
+      hub: path.join(base, "missing"),
+      home,
+      archive,
+      apply: true,
+      auto: true,
+    });
+    assert.deepEqual(result, { actions: [], backup: null });
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("pruneClientSkills removes copies of a skill that left the hub, unless edited", async () => {
+  const { base, hub, home, archive } = await fixture();
+  try {
+    await copyClientSkills({ hub, home, archive, apply: true });
+    const before = await hubSkillHashes(hub);
+    await writeFile(
+      path.join(home, ".codex", "skills", "alpha", "SKILL.md"),
+      "alpha, my edit",
+    );
+    await rm(path.join(hub, "alpha"), { recursive: true });
+    const removed = await pruneClientSkills(before, { hub, home });
+    assert.deepEqual(removed, ["claude:alpha"]);
+    assert.equal(
+      await readFile(
+        path.join(home, ".codex", "skills", "alpha", "SKILL.md"),
+        "utf8",
+      ),
+      "alpha, my edit",
+    );
+    assert.ok(await lstat(path.join(home, ".claude", "skills", "beta")));
   } finally {
     await rm(base, { recursive: true, force: true });
   }
