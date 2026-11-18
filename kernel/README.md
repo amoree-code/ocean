@@ -132,7 +132,7 @@ prints its usage and never runs it. To hand `--help` to a wrapped client, put it
 | `ocean uninstall` | undo `setup` and `clients apply` outside the workspace; `--purge` also deletes the workspace | Reads; `--yes` writes (also outside: client configs, shell profile, login service) |
 | `ocean onboard` | run the pending first-run steps | Writes; `--status` reads |
 | `ocean context` | the workspace context for this folder; `cost` measures each client's always-on context | Reads |
-| `ocean project` | resolve, bind, register, rename, move and index projects | Reads; `bind`, `register`, `rename`, `unbind`, `--write` write |
+| `ocean project` | resolve, bind, register, rename, move and index projects; `status`: each one's git state, open tasks, last session and next action | Reads; `bind`, `register`, `rename`, `unbind`, `--write` write |
 | `ocean tasks` | list, create, claim, checkpoint, verify and complete tasks | Reads; `new`, `claim`, `checkpoint`, `complete`, `archive --apply` write |
 | `ocean loop` | repeated agent runs on one task | Runs; `start` needs `--approve` |
 | `ocean policy` | list the charter's policies or print one | Reads |

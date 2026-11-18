@@ -13,6 +13,7 @@ import type {
   Session,
   SessionEvent,
 } from "@ocean/core/domain/sessions/session.js";
+import { cleanTitle } from "@ocean/core/shared/clean-title.js";
 import {
   atomicWrite,
   parseFrontmatter,
@@ -96,21 +97,6 @@ async function markdownIn(dir: string, skipArchive = true): Promise<string[]> {
     else if (entry.name.endsWith(".md")) files.push(file);
   }
   return files.sort();
-}
-
-// A title made from a client's raw first turn carries its tags (`<command-message>…`,
-// `<ide_opened_file>…`); what is left after them, or the project, is the title.
-export function cleanTitle(raw: string, fallback: string): string {
-  const text = raw
-    .replace(/<([\w-]+)>[\s\S]*?<\/\1>/g, (whole, tag: string) =>
-      /^(command-name|command-args)$/.test(tag)
-        ? whole.replace(/<[^>]+>/g, " ")
-        : " ",
-    )
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  return (text || fallback).slice(0, 120);
 }
 
 export async function daySessions(date: string): Promise<DaySession[]> {
@@ -312,7 +298,7 @@ async function fileItem(
     if (current.includes(link))
       return { file: relativeOf(match), action: "same" };
     const copy = stateDir("versions", ledger.date, relativeOf(match));
-    await mkdir(path.dirname(copy), { recursive: true });
+    await mkdir(path.dirname(copy), { recursive: true, mode: 0o700 });
     await copyFile(match, copy);
     ledger.updated.push({ file: relativeOf(match), copy: relativeOf(copy) });
     let next = setField(current, "last_verified", item.session.date);
@@ -511,7 +497,7 @@ export async function harvestDay(options: {
     if (action === "created") result.created.push(file);
     if (action === "strengthened") result.strengthened.push(file);
   }
-  await mkdir(path.dirname(ledgerFile(date)), { recursive: true });
+  await mkdir(path.dirname(ledgerFile(date)), { recursive: true, mode: 0o700 });
   await atomicWrite(ledgerFile(date), `${JSON.stringify(previous, null, 2)}\n`);
   const file = noteFile(date);
   await mkdir(path.dirname(file), { recursive: true });

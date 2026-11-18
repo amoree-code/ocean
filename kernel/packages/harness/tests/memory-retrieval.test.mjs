@@ -265,6 +265,26 @@ test("synthetic eval: recall@5 is at least 0.9", async () => {
   assert.equal(result.total, CASES.length);
 });
 
+test("a natural question finds a decision by its title, not by question words (T-317)", async () => {
+  const root = await workspace();
+  await writeFile(
+    path.join(root, "05-knowledge/decisions/memory-home.md"),
+    "# Memory home\n\nDecision: one folder is the only store; each client reads it.\n",
+  );
+  // Full of the question's function words, and nothing about memory.
+  await writeFile(
+    path.join(root, "05-knowledge/lessons/what-did-i.md"),
+    "# Notes\n\nWhat did I do about where my things went? I did what I could about it.\n",
+  );
+  await reindexBrain({ root, indexPort, embedder: null });
+  const found = await brainSearch({
+    root,
+    indexPort,
+    query: "What did I decide about where my memory lives?",
+  });
+  assert.equal(found.results[0]?.path, "knowledge/decisions/memory-home.md");
+});
+
 test("review approves into a new or existing record and rejects to trash", async () => {
   const root = await workspace();
   await withRoot(root, async () => {

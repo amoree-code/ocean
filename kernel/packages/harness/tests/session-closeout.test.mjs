@@ -69,7 +69,7 @@ test("finalizes a session with a bounded human summary, metadata, and handoff", 
   const summary = await readFile(path.join(root, result.summaryPath), "utf8");
   const saved = store.get(sessionId);
 
-  // The day's note is the harvest's to write (T-316): closeout adds no lines of its own there.
+  // The day's note is the harvest's to write (#295): closeout adds no lines of its own there.
   const today = localDate();
   await assert.rejects(
     readFile(path.join(root, DAILY_DIR, `${today}.md`), "utf8"),

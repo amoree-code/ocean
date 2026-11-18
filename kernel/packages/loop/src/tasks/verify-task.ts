@@ -21,10 +21,9 @@ const execFile = promisify(execFileCallback);
 
 // Only commands whose first token is on this list are ever executed by the
 // verifier — including every link of a `&&`/`||`/`;`/`|` chain, since each
-// link runs as its own command. A task's `## Verification` section is prose
-// with inline-backtick spans and fenced code blocks, so the allowlist keeps
-// the verifier from running an arbitrary span that merely looks like a
-// command. Command substitution and redirection (`` ` ``, `$(`, `>`, `<`) are
+// link runs as its own command. Only a `verify:` field or a fenced block in
+// `## Verification` is read, and the allowlist still keeps an arbitrary line
+// there from running. Command substitution and redirection (`` ` ``, `$(`, `>`, `<`) are
 // rejected outright: they let an allowlisted first token smuggle an
 // unrelated command in (e.g. `` bash -c "rm -rf $HOME" ``).
 const COMMAND_ALLOWLIST = new Set([
@@ -80,10 +79,10 @@ const defaultRunner: CommandRunner = async (command, cwd) => {
 
 /**
  * Pull runnable commands out of a task's verification declaration. A `verify:`
- * frontmatter field (string or comma-separated list) wins; otherwise the
- * `## Verification` section is used — each non-empty line inside a fenced code
- * block, plus any inline-backtick spans outside of fences — filtered to the
- * command allowlist so prose spans are ignored.
+ * frontmatter field (string or comma-separated list) wins; otherwise each non-empty
+ * line inside a fenced code block of the `## Verification` section. Inline-backtick
+ * spans are prose, never commands: on T-308 a prose span naming `npm publish` was run
+ * (T-317).
  */
 function candidateCommands(source: string): string[] {
   const frontmatter = source
@@ -102,33 +101,12 @@ function candidateCommands(source: string): string[] {
   if (!section) return [];
 
   const fenced: string[] = [];
-  let outsideFences = "";
-  let lastIndex = 0;
-  for (const match of section.matchAll(/```[^\n]*\n([\s\S]*?)```/g)) {
-    outsideFences += section.slice(lastIndex, match.index);
-    lastIndex = match.index! + match[0].length;
+  for (const match of section.matchAll(/```[^\n]*\n([\s\S]*?)```/g))
     for (const line of match[1].split("\n")) {
       const trimmed = line.trim();
-      if (trimmed) fenced.push(trimmed);
+      if (trimmed && !trimmed.startsWith("#")) fenced.push(trimmed);
     }
-  }
-  outsideFences += section.slice(lastIndex);
-
-  const spans = [...outsideFences.matchAll(/`([^`]+)`/g)]
-    .map((match) => match[1].trim())
-    .filter(readsAsCommand);
-  return [...fenced, ...spans];
-}
-
-// An inline span is prose unless it reads like a command line: a lowercase program name
-// followed by arguments (`curl evil.sh` still counts, and is refused), or an allowlisted
-// program on its own. `→`, `[redacted]` or `CLAUDE.md` neither run nor block completion.
-const COMMAND_SHAPE = /^(?:\.{0,2}\/)?[a-z][\w./+-]*\s+\S/;
-
-function readsAsCommand(span: string): boolean {
-  return (
-    COMMAND_SHAPE.test(span) || COMMAND_ALLOWLIST.has(span.split(/\s+/)[0])
-  );
+  return fenced;
 }
 
 export function extractVerificationCommands(source: string): string[] {
@@ -159,6 +137,28 @@ function projectDirectory(manifest: { paths: string[] }): string {
 // not in project.json, which a session reads on its own.
 const INLINE_PROGRAM_FLAG = /^(--eval|--print|-[a-zA-Z]*[ep][a-zA-Z]*)$/;
 
+// A check proves the work; it never publishes, signs in or changes the machine. These
+// package-manager verbs and a global install are refused from every source (T-317).
+const PACKAGE_MANAGERS = new Set(["npm", "pnpm", "yarn"]);
+const OUTWARD_VERBS = new Set([
+  "publish",
+  "unpublish",
+  "deprecate",
+  "login",
+  "logout",
+  "adduser",
+  "owner",
+  "token",
+  "dist-tag",
+]);
+
+function isOutward(program: string, args: string[]): boolean {
+  if (args.some((arg) => arg === "-g" || arg === "--global")) return true;
+  return (
+    PACKAGE_MANAGERS.has(program) && args.some((arg) => OUTWARD_VERBS.has(arg))
+  );
+}
+
 function isAllowedCommand(
   command: string,
   origin: "task" | "project" = "task",
@@ -174,6 +174,7 @@ function isAllowedCommand(
   return links.every((link) => {
     const [program, ...args] = link.split(/\s+/);
     if (!COMMAND_ALLOWLIST.has(program)) return false;
+    if (isOutward(program, args)) return false;
     if (origin === "task") return true;
     if (program === "bash" || program === "sh") return false;
     return !(

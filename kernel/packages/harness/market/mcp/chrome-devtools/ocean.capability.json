@@ -1,17 +1,29 @@
 {
   "kind": "mcp",
   "name": "dev.ocean/chrome-devtools",
-  "description": "Control the owner's real, signed-in Chrome through the ocean-browser-mcp package (pinned Chrome DevTools MCP): tabs, navigation, clicks, forms, uploads, screenshots, console and network errors. Reads every open tab and acts inside any signed-in session of the attached Chrome, for every client wired to it. Chrome asks to allow each new connection. The filesystem permission is declared for consent but not enforced at runtime, and the npm package is pinned by version, not by digest.",
+  "description": "Control the owner's real, signed-in Chromium browser (Chrome by default; Brave, Edge, Arc, Vivaldi, Opera or Chromium through `ocean browser use`) through the ocean-browser-mcp package (pinned Chrome DevTools MCP): tabs, navigation, clicks, forms, uploads, screenshots, console and network errors. Reads every open tab and acts inside any signed-in session of the attached browser, for every client wired to it. The browser asks to allow each new connection. The filesystem permission is declared for consent but not enforced at runtime, and the npm package is pinned by version, not by digest.",
   "permissions": {
     "filesystem": {
-      "read": ["~/Library/Application Support/Google/Chrome"]
+      "read": [
+        "~/Library/Application Support/Google",
+        "~/Library/Application Support/Chromium",
+        "~/Library/Application Support/BraveSoftware",
+        "~/Library/Application Support/Microsoft Edge",
+        "~/Library/Application Support/Vivaldi",
+        "~/Library/Application Support/com.operasoftware.Opera",
+        "~/Library/Application Support/Arc"
+      ]
     },
     "network": ["registry.npmjs.org", "localhost", "127.0.0.1"],
+    "env": [
+      "CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS",
+      "OCEAN_BROWSER_USER_DATA_DIR"
+    ],
     "exec": ["npx"]
   },
   "server": {
     "name": "dev.ocean/chrome-devtools",
-    "description": "ocean-browser-mcp runs Chrome DevTools MCP 1.12.0 attached to the owner's running Chrome, with usage statistics and CrUX lookups off, so page URLs stay on this machine.",
+    "description": "ocean-browser-mcp runs Chrome DevTools MCP 1.12.0 attached to the owner's running Chromium browser, with usage statistics and CrUX lookups off, so page URLs stay on this machine.",
     "packages": [
       {
         "registryType": "npm",
@@ -19,7 +31,24 @@
         "version": "0.1.0",
         "transport": {
           "type": "stdio"
-        }
+        },
+        "packageArguments": [
+          {
+            "type": "named",
+            "name": "--userDataDir",
+            "value": "{OCEAN_BROWSER_USER_DATA_DIR}",
+            "isRequired": false,
+            "description": "Profile root of the Chromium browser to attach to; unset attaches to Chrome. Set with `ocean browser use <name|path>`."
+          }
+        ],
+        "environmentVariables": [
+          {
+            "name": "CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS",
+            "default": "1",
+            "isRequired": false,
+            "description": "Skips upstream's update check (an npm child process and a registry fetch) on every start; the version is pinned."
+          }
+        ]
       }
     ],
     "_meta": {

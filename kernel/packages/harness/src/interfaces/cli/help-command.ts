@@ -45,8 +45,8 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
     "ocean context [--json] | cost [--json] [--budget <bytes>] [--project <dir>]",
   ],
   project: [
-    "Resolve, bind, register, rename and index projects.",
-    "ocean project resolve [path]|bind <name> <path> [--add]|register [path]|unbind <path>|rename <id> <new-id>|list|migrate [--write]|index [--write]",
+    "Resolve, bind, register, rename, index projects, and show each one's live status.",
+    "ocean project resolve [path]|bind <name> <path> [--add]|register [path]|unbind <path>|rename <id> <new-id>|list|status [--json] [--write]|migrate [--write]|index [--write]",
   ],
   tasks: [
     "List, create, claim, checkpoint, verify and complete tasks.",
@@ -136,7 +136,7 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
   ],
   browser: [
     "Drive a browser session; uploads and submits need --approve.",
-    "ocean browser detect|open|show|events|close|approve|navigate|read|observe|extract|click|type|replace-text|select|scroll|wait|upload|download|submit|run",
+    "ocean browser use|attach|detect|open|show|events|close|approve|navigate|read|observe|extract|click|type|replace-text|select|scroll|wait|upload|download|submit|run",
   ],
   memory: [
     "Search, read, review and maintain memory records and the brain index.",

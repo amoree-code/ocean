@@ -108,6 +108,11 @@ import {
 } from "@ocean/services/obsidian/vault-sync.js";
 import { writeObsidianNote } from "@ocean/services/obsidian/vault-writer.js";
 import {
+  overviewTable,
+  projectsOverview,
+  writeRegistryBlock,
+} from "@ocean/services/projects/projects-overview.js";
+import {
   clientFindings,
   repairClients,
 } from "../../application/clients/clients.js";
@@ -821,13 +826,21 @@ async function commandProject(): Promise<void> {
       process.argv.includes("--write"),
     );
     console.log(JSON.stringify(result, null, 2));
+  } else if (action === "status") {
+    // Every project's git state, open tasks, last session and next action, derived now (T-317).
+    const rows = await projectsOverview();
+    if (process.argv.includes("--write"))
+      console.log(`updated ${await writeRegistryBlock(rows)}`);
+    else if (process.argv.includes("--json"))
+      console.log(JSON.stringify(rows, null, 2));
+    else console.log(overviewTable(rows));
   } else if (action === "index") {
     if (process.argv.includes("--write"))
       console.log(JSON.stringify(await writeProjectIndex(), null, 2));
     else console.log(await renderProjectIndex());
   } else {
     console.error(
-      "Usage: ocean project resolve [path]|bind <name> <path> [--add]|register [path]|unbind <path>|rename <id> <new-id>|move <id> <category> [--write]|list [--category <name>]|migrate [--write]|index [--write]",
+      "Usage: ocean project resolve [path]|bind <name> <path> [--add]|register [path]|unbind <path>|rename <id> <new-id>|move <id> <category> [--write]|list [--category <name>]|status [--json] [--write]|migrate [--write]|index [--write]",
     );
     process.exitCode = 1;
   }
