@@ -7,10 +7,6 @@ import { atomicWrite } from "@ocean/core/shared/fs-utils.js";
 import { liveEngineEntry, oceanRoot } from "@ocean/core/shared/paths.js";
 import { removeCoreSkills } from "@ocean/market/skills/core-skill-sync.js";
 import {
-  shimDirectory,
-  stripInterceptionBlocks,
-} from "../../infrastructure/wrappers/wrapper-manager.js";
-import {
   type ClientEnv,
   defaultClientEnv,
   type JournalEntry,
@@ -45,7 +41,10 @@ export type UninstallOptions = {
   platform?: NodeJS.Platform;
   run?: Run;
   root?: string;
-  shimDir?: string;
+  // Wired by the CLI (application code does not reach infrastructure): the shim folder and the
+  // function that strips Ocean's block from a shell profile.
+  shimDir: string;
+  stripProfile: (text: string) => string;
   vscodeSettings?: string;
   purge?: boolean;
 };
@@ -84,7 +83,7 @@ function context(options: UninstallOptions) {
     platform,
     run: options.run ?? runCommand,
     root: options.root ?? oceanRoot(),
-    shimDir: options.shimDir ?? shimDirectory(),
+    shimDir: options.shimDir,
     domain: `gui/${process.getuid?.() ?? ""}`,
     launchAgent: (label: string) =>
       path.join(home, "Library", "LaunchAgents", `${label}.plist`),
@@ -166,7 +165,7 @@ export function purgeRefusal(root: string, home: string): string | null {
 
 // What `ocean uninstall` would change, read-only.
 export async function planUninstall(
-  options: UninstallOptions = {},
+  options: UninstallOptions,
 ): Promise<{ items: UninstallItem[]; purge: string | null; refusal?: string }> {
   const ctx = context(options);
   const items: UninstallItem[] = [];
@@ -230,7 +229,7 @@ async function stopServices(
 }
 
 export async function runUninstall(
-  options: UninstallOptions = {},
+  options: UninstallOptions,
 ): Promise<UninstallReport> {
   const ctx = context(options);
   const report: UninstallReport = {
@@ -303,7 +302,7 @@ export async function runUninstall(
   // 4. Shell profile blocks and the shims they put on PATH.
   for (const file of await profileFiles(ctx.home)) {
     const text = await readFile(file, "utf8");
-    const next = stripInterceptionBlocks(text);
+    const next = options.stripProfile(text);
     if (next === text) continue;
     await atomicWrite(file, next);
     removed("shell", [file]);

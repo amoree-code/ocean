@@ -16,6 +16,7 @@ import {
   purgeRefusal,
   runUninstall,
 } from "../dist/application/uninstall/uninstall.js";
+import { stripInterceptionBlocks } from "../dist/infrastructure/wrappers/wrapper-manager.js";
 
 // Synthetic home and workspace only; every path and value is fake.
 const ENTRY = {
@@ -128,6 +129,7 @@ test("uninstall puts client configs, hooks, services, profile and shims back", a
       env: box.env,
       platform: "darwin",
       shimDir: box.shimDir,
+      stripProfile: stripInterceptionBlocks,
       root: box.root,
     });
     assert.ok(plan.items.some((item) => item.area === "shell"));
@@ -139,6 +141,7 @@ test("uninstall puts client configs, hooks, services, profile and shims back", a
       run: box.run,
       root: box.root,
       shimDir: box.shimDir,
+      stripProfile: stripInterceptionBlocks,
       vscodeSettings: box.vscode,
     });
 
@@ -231,6 +234,7 @@ test("uninstall removes Ocean entries the journal never recorded, and keeps the 
       run: box.run,
       root: box.root,
       shimDir: box.shimDir,
+      stripProfile: stripInterceptionBlocks,
       vscodeSettings: box.vscode,
     });
   });
@@ -263,6 +267,7 @@ test("--purge deletes a plain workspace but refuses a checkout or the home folde
       run: box.run,
       root: box.root,
       shimDir: box.shimDir,
+      stripProfile: stripInterceptionBlocks,
       vscodeSettings: box.vscode,
       purge: true,
     });

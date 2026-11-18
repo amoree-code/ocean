@@ -5,6 +5,10 @@ import {
   runUninstall,
   type UninstallReport,
 } from "../../application/uninstall/uninstall.js";
+import {
+  shimDirectory,
+  stripInterceptionBlocks,
+} from "../../infrastructure/wrappers/wrapper-manager.js";
 
 export const UNINSTALL_USAGE =
   "Usage: ocean uninstall [--yes] [--purge] [--json]";
@@ -28,6 +32,11 @@ async function confirmPurge(root: string): Promise<boolean> {
   }
 }
 
+const wiring = () => ({
+  shimDir: shimDirectory(),
+  stripProfile: stripInterceptionBlocks,
+});
+
 function printReport(report: UninstallReport): void {
   for (const item of report.removed)
     console.log(`removed  ${item.area.padEnd(9)} ${item.target}`);
@@ -48,7 +57,7 @@ export async function runUninstallCommand(args: string[]): Promise<void> {
   }
   const json = args.includes("--json");
   let purge = args.includes("--purge");
-  const plan = await planUninstall({ purge });
+  const plan = await planUninstall({ ...wiring(), purge });
   if (!args.includes("--yes")) {
     if (json) console.log(JSON.stringify({ dryRun: true, ...plan }, null, 2));
     else {
@@ -68,7 +77,7 @@ export async function runUninstallCommand(args: string[]): Promise<void> {
     );
     purge = false;
   }
-  const report = await runUninstall({ purge });
+  const report = await runUninstall({ ...wiring(), purge });
   if (json) console.log(JSON.stringify(report, null, 2));
   else printReport(report);
   if (report.left.length) process.exitCode = 1;
