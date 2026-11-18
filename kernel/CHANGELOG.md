@@ -25,6 +25,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 - fix(brain): a natural question finds the record it is about: the any-word fallback drops English question words ("what did I … where my …"), matches long Latin words by stem ("decide" also finds "decision"), and a word in a record's title outweighs the same word in its body. "What did I decide about where my memory lives?" went from no hit to the memory-home decision in the top five (T-317)
 
+- fix(clients): Codex was reported as needing a hand edit ("the server table cannot be read") on every machine where `ocean client sync` had written its skill-filter block: the TOML reader did not treat a `[[skills.config]]` header as a new section, so the block was read as part of the last server. `[[…]]` headers now end a section. `ocean doctor` also stops reporting broken links inside the memory and harvest version snapshots, which are copies stored away from the folder their links point from
+
 - feat(skills): skills reach every client with no command run: each session start copies new or updated core skills and skill-hub skills (made by hand or installed from the market) into Claude, Codex, Gemini and Hermes; `ocean market install|update` copies at once and `ocean market uninstall` removes the copies it made. A copy edited inside a client after Ocean's version is kept, never overwritten. Core skills have one source, the engine: the skill hub no longer gets a copy of them, and the stale copies older hubs hold move into `bridge/archive/` at the next session start (#301)
 
 ## 1.11.0 (2026-11-18)

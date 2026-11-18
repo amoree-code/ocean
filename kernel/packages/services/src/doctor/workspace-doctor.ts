@@ -135,11 +135,15 @@ async function checkStructure(): Promise<Finding[]> {
 // Session summaries are machine-written records that quote links from past chats, and
 // bridge/skills holds installed third-party skill docs whose links are relative to their upstream
 // repo. Neither is authored here, so their links are not ours to fix.
-// Soft-deleted memory in state/memory/trash keeps the links it had when it was deleted.
+// Soft-deleted memory in state/memory/trash keeps the links it had when it was deleted, and the
+// version snapshots (memory edits, harvest undo) are copies of records stored away from the
+// folder their relative links point from.
 const UNCHECKED_LINK_DIRS = [
   "sessions",
   "skills",
   path.join("state", "memory", "trash"),
+  path.join("state", "memory", "versions"),
+  path.join("state", "harvest", "versions"),
 ];
 
 async function checkLinks(): Promise<Finding[]> {

@@ -118,7 +118,9 @@ const quote = (value: unknown) => JSON.stringify(value);
 // --- TOML: one `[<table>.<key>]` section per server -------------------------------------------
 
 export function tomlEditor(table: string): Editor {
-  const header = /^\s*\[([^\]]+)\]\s*$/;
+  // `[table]` and `[[array-of-tables]]` both start a section: a `[[skills.config]]` block after
+  // the last server (Ocean's own skill filter writes one) must end that server, not join it.
+  const header = /^\s*\[\[?([^\]]+)\]\]?\s*$/;
   type Section = { name: string; start: number; end: number };
   const sections = (lines: string[]): Section[] => {
     const found: Section[] = [];
