@@ -256,7 +256,7 @@
         "path": "market/mcp/chrome-devtools"
       },
       "integrity": {
-        "sha256": "313b05fa4a835eac5597d2080c7cef1e080bd10cfa5138745e8df68410299fa6"
+        "sha256": "135cae4e9d1b2e6792670826f346d685251509fb9ac8c1ea5c83f2a9c972d064"
       },
       "spec": {
         "name": "dev.ocean/chrome-devtools",
@@ -265,7 +265,7 @@
           {
             "registryType": "npm",
             "identifier": "ocean-browser-mcp",
-            "version": "0.1.0",
+            "version": "0.2.0",
             "transport": {
               "type": "stdio"
             },

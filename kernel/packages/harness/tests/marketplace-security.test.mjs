@@ -208,7 +208,6 @@ test("an MCP launch passes only declared variables", () => {
   assert.equal(launch.command, "npx");
   assert.deepEqual(launch.args, [
     "-y",
-    "--prefer-offline",
     "@example/files-mcp@1.2.3",
     "--root",
     "/data",
