@@ -135,3 +135,40 @@ export async function configureClaudeCodeWrapper(
   }
   return { settingsPath, wrapper, apply, changed, backup };
 }
+
+// `ocean uninstall`: takes out the wrapper setting when it still points into Ocean's shims —
+// with the shims gone, VS Code's Claude would otherwise fail to start. A wrapper of the owner's
+// own stays. A JSONC file keeps its comments: only the key's own text is cut.
+export async function removeClaudeCodeWrapper(
+  shimDir: string,
+  settingsPath = defaultClaudeCodeSettingsPath(),
+): Promise<string | null> {
+  let source: string;
+  try {
+    source = await readFile(settingsPath, "utf8");
+  } catch {
+    return null;
+  }
+  let parsed: ReturnType<typeof parseSettings>;
+  try {
+    parsed = parseSettings(source);
+  } catch {
+    return null;
+  }
+  const value = parsed.settings[WRAPPER_KEY];
+  const relative =
+    typeof value === "string" ? path.relative(shimDir, value) : "..";
+  if (relative.startsWith("..") || path.isAbsolute(relative)) return null;
+  let updated: string;
+  if (parsed.strict) {
+    const { [WRAPPER_KEY]: _removed, ...rest } = parsed.settings;
+    updated = `${JSON.stringify(rest, null, 2)}\n`;
+  } else {
+    const entry = new RegExp(
+      `\\s*"${WRAPPER_KEY.replace(".", "\\.")}"\\s*:\\s*"(?:[^"\\\\]|\\\\.)*"\\s*,?`,
+    );
+    updated = source.replace(entry, "");
+  }
+  await writeFile(settingsPath, updated, "utf8");
+  return settingsPath;
+}

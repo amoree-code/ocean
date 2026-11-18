@@ -92,3 +92,30 @@ export async function syncCharterCopies(
   }
   return results;
 }
+
+// `ocean uninstall`: empties the generated copy between the markers. The markers and everything
+// outside them are the owner's and stay.
+export async function removeCharterCopies(
+  home = os.homedir(),
+): Promise<string[]> {
+  const removed: string[] = [];
+  for (const copy of CHARTER_COPIES) {
+    const file = path.join(home, copy.file);
+    let text: string;
+    try {
+      text = await readFile(file, "utf8");
+    } catch {
+      continue;
+    }
+    const start = text.indexOf(BEGIN);
+    const end = text.indexOf(END, start);
+    if (start === -1 || end === -1 || end === start + BEGIN.length + 1)
+      continue;
+    await atomicWrite(
+      file,
+      `${text.slice(0, start)}${BEGIN}\n${text.slice(end)}`,
+    );
+    removed.push(`~/${copy.file}`);
+  }
+  return removed;
+}

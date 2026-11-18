@@ -446,3 +446,84 @@ export async function restoreHooks(options: {
   }
   return { restored, conflicts };
 }
+
+// `ocean uninstall`: removes every Ocean hook still in a client's settings, journaled or not —
+// once the `ocean` command is gone, one left behind fails at every session start. Only Ocean's
+// own hook entries go; a group that also runs the owner's hooks keeps them. An event list left
+// empty is removed, and `hooks` with it once nothing else is in it.
+export async function removeOceanHooks(
+  options: { env?: ClientEnv } = {},
+): Promise<{ removed: string[]; left: string[] }> {
+  const env = options.env ?? defaultClientEnv();
+  const removed: string[] = [];
+  const left: string[] = [];
+  const undo = newBatch();
+  for (const adapter of HOOK_ADAPTERS) {
+    const file = path.join(env.home, adapter.file);
+    if (!(await readText(file)).trim()) continue;
+    const outcome: { found: string[]; problem: string | null } = {
+      found: [],
+      problem: null,
+    };
+    await edit(
+      file,
+      (text) => {
+        outcome.found = [];
+        outcome.problem = null;
+        const found = outcome.found;
+        let document: ReturnType<typeof canonicalJson>;
+        try {
+          document = canonicalJson(text);
+        } catch (error) {
+          // Reported only when the file holds an Ocean hook it cannot be rewritten to remove.
+          if (hasAnyOceanHook(adapter, text))
+            outcome.problem =
+              error instanceof Error ? error.message : String(error);
+          return null;
+        }
+        const { parsed, render } = document;
+        const hooks = parsed.hooks;
+        if (!hooks || typeof hooks !== "object" || Array.isArray(hooks))
+          return null;
+        const table = hooks as Record<string, unknown>;
+        for (const event of adapter.events) {
+          const key = eventKey(adapter, event);
+          const groups = table[key];
+          if (!Array.isArray(groups) || !hasOceanHook(groups, event)) continue;
+          const kept = groups.flatMap((group) => {
+            const inner = (group as { hooks?: unknown } | null)?.hooks;
+            if (!Array.isArray(inner))
+              return isOceanCommand(group, event) ? [] : [group];
+            const rest = inner.filter((hook) => !isOceanCommand(hook, event));
+            if (rest.length === inner.length) return [group];
+            return rest.length ? [{ ...(group as object), hooks: rest }] : [];
+          });
+          if (kept.length) table[key] = kept;
+          else delete table[key];
+          found.push(`${adapter.client}:${event}`);
+        }
+        if (!found.length) return null;
+        if (!Object.keys(table).length) delete parsed.hooks;
+        return { next: render(parsed), entries: [] };
+      },
+      undo,
+    );
+    removed.push(...outcome.found);
+    if (outcome.problem)
+      left.push(`${adapter.client}: ${outcome.problem} (~/${adapter.file})`);
+  }
+  return { removed, left };
+}
+
+function hasAnyOceanHook(adapter: HookAdapter, text: string): boolean {
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return /\bocean\b/.test(text);
+  }
+  return adapter.events.some((event) => {
+    const groups = sessionGroups(parsed, eventKey(adapter, event));
+    return Boolean(groups && hasOceanHook(groups, event));
+  });
+}

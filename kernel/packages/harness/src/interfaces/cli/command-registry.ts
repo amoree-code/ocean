@@ -204,6 +204,7 @@ import {
 import { parseSetupArgs, SETUP_USAGE, setup } from "./setup-command.js";
 import { runTasksCommand } from "./tasks-command.js";
 import { runTelemetryCommand } from "./telemetry-command.js";
+import { runUninstallCommand } from "./uninstall-command.js";
 
 export type CommandHandler = () => Promise<void> | void;
 
@@ -1582,6 +1583,7 @@ async function commandSession(): Promise<void> {
 
 export const commandRegistry: Record<string, CommandHandler> = {
   setup: commandSetup,
+  uninstall: () => runUninstallCommand(process.argv.slice(3)),
   onboard: () => runOnboardCommand(process.argv.slice(3)),
   service: commandService,
   intercept: commandIntercept,

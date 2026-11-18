@@ -104,6 +104,20 @@ A connected client opened in that folder starts with a bounded Ocean context lin
 and read your records over MCP, and proposes facts worth keeping. `ocean memory review`
 approves or rejects them; `ocean clients restore` undoes the last `clients apply`.
 
+## Uninstall
+
+```bash
+ocean uninstall                 # shows what it would remove; changes nothing
+ocean uninstall --yes           # puts every client config, hook, service and shell line back
+npm uninstall --global @amoree-code/ocean
+```
+
+It removes only what Ocean wrote: the MCP entries, hooks and native-memory switches from
+`clients apply`, the skills and rules Ocean copied into clients, the login service and Desktop
+watcher, the shell profile block and the shims. Your workspace is kept, and running
+`ocean setup` again reconnects it. `--purge` deletes the workspace too, after you type its
+folder name; it refuses a workspace that is a git checkout or holds the running engine.
+
 ## Commands
 
 `ocean --help` lists every command; `ocean <command> --help` (or `-h`, anywhere before `--`)
@@ -115,6 +129,7 @@ prints its usage and never runs it. To hand `--help` to a wrapped client, put it
 | Command | What it does | Kind |
 | --- | --- | --- |
 | `ocean setup` | create the workspace, shims, shell line and login service | Writes (also outside: shell profile, login service) |
+| `ocean uninstall` | undo `setup` and `clients apply` outside the workspace; `--purge` also deletes the workspace | Reads; `--yes` writes (also outside: client configs, shell profile, login service) |
 | `ocean onboard` | run the pending first-run steps | Writes; `--status` reads |
 | `ocean context` | the workspace context for this folder; `cost` measures each client's always-on context | Reads |
 | `ocean project` | resolve, bind, register, rename, move and index projects | Reads; `bind`, `register`, `rename`, `unbind`, `--write` write |

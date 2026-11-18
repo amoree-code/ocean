@@ -942,6 +942,65 @@ export async function restoreClients(
   return { batch, restored, conflicts };
 }
 
+// `ocean uninstall`: removes every Ocean-managed MCP entry still in a client config, journaled or
+// not — the `ocean` brain server (not a legacy Obsidian one, which is the owner's server under
+// Ocean's old name), entries that start marketplace servers or the gateway, and dead atlas
+// entries. Each removal is journaled like an apply, so `ocean clients restore` can put it back.
+export async function removeOceanEntries(
+  options: { env?: ClientEnv; batch?: string } = {},
+): Promise<{ removed: string[]; left: string[] }> {
+  const env = options.env ?? defaultClientEnv();
+  const batch = options.batch ?? newBatch();
+  const removed: string[] = [];
+  const left: string[] = [];
+  for (const adapter of CLIENT_ADAPTERS) {
+    const config = adapter.config;
+    if (!config) continue;
+    const file = path.join(env.home, config.file);
+    if (!existsSync(file)) continue;
+    let keys: string[] = [];
+    try {
+      await edit(
+        file,
+        (text) => {
+          const servers = config.editor.servers(text);
+          keys = servers
+            ? [...servers]
+                .filter(
+                  ([key, value]) =>
+                    (key === "ocean" &&
+                      isOceanShaped(value) &&
+                      !runsObsidian(value)) ||
+                    isMarketExec(value) ||
+                    (staleAtlas(key, value) && isOceanShaped(value)),
+                )
+                .map(([key]) => key)
+            : [];
+          if (!servers || !keys.length) return null;
+          const ops: Op[] = keys.map((key) => ({ kind: "remove", key }));
+          return {
+            next: config.editor.apply(text, ops),
+            entries: keys.map((key) => ({
+              client: adapter.id,
+              file: config.file,
+              op: "remove" as const,
+              key,
+              ...journalValue(servers.get(key)),
+              after: null,
+            })),
+          };
+        },
+        batch,
+      );
+      removed.push(...keys.map((key) => `${adapter.id}:${key}`));
+    } catch (error) {
+      if (!(error instanceof ManualEdit)) throw error;
+      left.push(`${adapter.id}: ${error.message}`);
+    }
+  }
+  return { removed, left };
+}
+
 // Starts the client's configured `ocean` command and checks it answers as the brain server.
 // This proves the entry launches; it does not prove the client app connects to it.
 export async function verifyClient(
