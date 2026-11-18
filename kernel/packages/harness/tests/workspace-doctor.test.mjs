@@ -99,6 +99,11 @@ test("doctor skips links in generated session summaries and installed skill docs
   await put(path.join(SYSTEM_DIR, "docs", "mine.md"));
   // Soft-deleted memory keeps the links it had (T-313).
   await put(path.join(SYSTEM_DIR, "state", "memory", "trash", "x", "old.md"));
+  // Version snapshots are copies stored away from where their links point from.
+  await put(path.join(SYSTEM_DIR, "state", "memory", "versions", "v1", "r.md"));
+  await put(
+    path.join(SYSTEM_DIR, "state", "harvest", "versions", "2026-11-17", "k.md"),
+  );
   // A candidate quotes another tool's memory, links relative to where it came from.
   await put(path.join(INBOX_DIR, "candidates", "2026-11-06", "c.md"));
   const result = spawnSync(

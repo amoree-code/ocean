@@ -963,3 +963,44 @@ test("the gateway can be the default, with per-client exceptions, and starts so 
     assert.equal(gatewayDefault(wired), "per-server");
   });
 });
+
+test("a [[array-of-tables]] block after the last server ends that server's section", async () => {
+  const { tomlEditor } = await import("../dist/application/clients/editors.js");
+  const editor = tomlEditor("mcp_servers");
+  const text = [
+    "[mcp_servers.ocean]",
+    'command = "/opt/test/node"',
+    'args = ["/e/main.js", "mcp", "serve"]',
+    "",
+    "# ocean:skill-filter:begin — generated",
+    "[[skills.config]]",
+    'path = "/fixture/skills/a/SKILL.md"',
+    "enabled = false",
+    "",
+    "[[skills.config]]",
+    'path = "/fixture/skills/b/SKILL.md"',
+    "enabled = false",
+    "# ocean:skill-filter:end",
+    "",
+  ].join("\n");
+  const servers = editor.servers(text);
+  assert.ok(servers, "the file is readable");
+  assert.deepEqual([...servers.keys()], ["ocean"]);
+  assert.deepEqual(servers.get("ocean"), {
+    command: "/opt/test/node",
+    args: ["/e/main.js", "mcp", "serve"],
+  });
+  const next = editor.apply(text, [
+    {
+      kind: "set",
+      key: "ocean",
+      value: { command: "/new/node", args: ["mcp", "serve"] },
+    },
+  ]);
+  assert.match(next, /\[mcp_servers\.ocean\]\ncommand = "\/new\/node"/);
+  assert.equal(
+    next.match(/\[\[skills\.config\]\]/g)?.length,
+    2,
+    "the skill block is untouched",
+  );
+});
