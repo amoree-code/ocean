@@ -149,14 +149,12 @@ function main() {
   console.log(`pre-push tests: ${plan.files.length} file(s)`);
   const build = run("pnpm", ["build"], KERNEL);
   if (build !== 0) return build;
+  // The same flags as the full suite: one `test:files` script in packages/harness/package.json.
   return run(
-    process.execPath,
+    "pnpm",
     [
-      "--import",
-      "./tests/clear-ocean-env.mjs",
-      "--test",
-      "--test-concurrency=1",
-      "--test-timeout=60000",
+      "run",
+      "test:files",
       ...plan.files.map((file) =>
         path.relative(HARNESS, path.join(KERNEL, file)),
       ),
