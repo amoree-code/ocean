@@ -1,9 +1,18 @@
 import { existsSync } from "node:fs";
+import path from "node:path";
 import { mcpServerFile } from "@ocean/market/adapters/mcp-adapter.js";
 import { marketplacePaths } from "@ocean/market/install/default-marketplace.js";
-import { chromeDebuggingListening } from "@ocean/market/mcp/chrome-debugging.js";
+import {
+  BROWSER_CAPABILITY,
+  BROWSER_PROFILE_VARIABLE,
+  browserLabel,
+  chromeDebuggingListening,
+  listeningBrowsers,
+  selectedBrowserProfile,
+} from "@ocean/market/mcp/chrome-debugging.js";
+import { keychainStore } from "@ocean/market/security/secrets.js";
 
-// Marketplace capabilities that attach to the owner's running Chrome (T-298).
+// Marketplace capabilities that attach to the owner's running browser (T-298).
 export const BROWSER_CAPABILITIES = [
   "dev.ocean/chrome-devtools",
   "dev.ocean/browser",
@@ -16,10 +25,15 @@ export type BrowserFinding = {
   fixable: false;
 };
 
-// `ocean doctor`: once a browser capability is installed, whether Chrome is there to attach to.
-// Nothing installed is nothing to report.
+// `ocean doctor`: once a browser capability is installed, whether the chosen browser is there
+// to attach to — and, when it is not, whether another Chromium browser is. Nothing installed is
+// nothing to report.
 export async function browserFindings(
-  options: { serversRoot?: string; listening?: () => Promise<boolean> } = {},
+  options: {
+    serversRoot?: string;
+    profileRoot?: string;
+    listening?: (portFile: string) => Promise<boolean>;
+  } = {},
 ): Promise<BrowserFinding[]> {
   const serversRoot = options.serversRoot ?? marketplacePaths().mcpServers;
   const installed = BROWSER_CAPABILITIES.filter((name) =>
@@ -29,13 +43,29 @@ export async function browserFindings(
   const finding = (severity: BrowserFinding["severity"], message: string) => [
     { code: "BROWSER" as const, severity, message, fixable: false as const },
   ];
-  return (await (options.listening ?? chromeDebuggingListening)())
+  const probe = options.listening ?? chromeDebuggingListening;
+  const root =
+    options.profileRoot ??
+    selectedBrowserProfile({
+      stored: () =>
+        keychainStore().get(BROWSER_CAPABILITY, BROWSER_PROFILE_VARIABLE),
+    });
+  const label = browserLabel(root);
+  if (await probe(path.join(root, "DevToolsActivePort")))
+    return finding(
+      "OK",
+      `${installed.join(", ")} installed and ${label} debugging is listening`,
+    );
+  const other = (await listeningBrowsers({ listening: probe })).find(
+    (each) => each.root !== root,
+  );
+  return other
     ? finding(
-        "OK",
-        `${installed.join(", ")} installed and Chrome debugging is listening`,
+        "WARN",
+        `${installed.join(", ")} attaches to ${label}, but only ${other.label} has debugging on: run \`ocean browser use ${other.id}\``,
       )
     : finding(
         "WARN",
-        `${installed.join(", ")} installed, but Chrome is closed or chrome://inspect/#remote-debugging is off (a sandboxed shell that blocks loopback also sees this)`,
+        `${installed.join(", ")} installed, but ${label} is closed or its inspect page's remote-debugging is off (a sandboxed shell that blocks loopback also sees this)`,
       );
 }

@@ -1,5 +1,16 @@
 import { openSessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
 import {
+  BROWSER_CAPABILITY,
+  BROWSER_PROFILE_VARIABLE,
+  browserLabel,
+  browserProfileRoot,
+  CHROMIUM_BROWSERS,
+  listeningBrowsers,
+  resolveBrowserChoice,
+  selectedBrowserProfile,
+} from "@ocean/market/mcp/chrome-debugging.js";
+import { keychainStore } from "@ocean/market/security/secrets.js";
+import {
   BrowserService,
   type ClickExpectation,
 } from "@ocean/services/browser/browser-service.js";
@@ -10,10 +21,43 @@ import {
 import { BrowserTaskRunner } from "@ocean/services/browser/browser-task-runner.js";
 import { PlaywrightBrowserProvider } from "../../infrastructure/providers/playwright-browser-provider.js";
 
+// `ocean browser use <name|path>`: which Chromium browser `dev.ocean/chrome-devtools` attaches
+// to, stored on this machine (macOS keychain) and read by every client's launch. `use chrome`
+// clears it back to the default. `ocean browser attach` lists what can be attached right now.
+async function runBrowserChoice(action: string, args: string[]) {
+  const store = keychainStore();
+  const read = () => store.get(BROWSER_CAPABILITY, BROWSER_PROFILE_VARIABLE);
+  if (action === "attach") {
+    const selected = selectedBrowserProfile({ stored: read });
+    return print({
+      selected: { browser: browserLabel(selected), profile: selected },
+      listening: await listeningBrowsers(),
+      known: CHROMIUM_BROWSERS.map((each) => each.id),
+    });
+  }
+  const choice = args[0];
+  if (!choice)
+    throw new Error(
+      `Usage: ocean browser use <${CHROMIUM_BROWSERS.map((each) => each.id).join("|")}|/absolute/profile/path>`,
+    );
+  const root = resolveBrowserChoice(choice);
+  if (root === browserProfileRoot("chrome"))
+    store.remove(BROWSER_CAPABILITY, BROWSER_PROFILE_VARIABLE);
+  else store.set(BROWSER_CAPABILITY, BROWSER_PROFILE_VARIABLE, root);
+  return print({
+    browser: browserLabel(root),
+    profile: root,
+    in: store.name,
+    next: "turn on remote debugging in that browser's inspect page (e.g. brave://inspect/#remote-debugging), then restart open clients",
+  });
+}
+
 export async function runBrowserCommand(
   action: string,
   args: string[],
 ): Promise<void> {
+  if (action === "use" || action === "attach")
+    return runBrowserChoice(action, args);
   const store = await openSessionStore();
   const manager = new BrowserSessionManager(
     store,
@@ -209,6 +253,6 @@ function print(value: unknown): void {
 
 function usage(): void {
   console.error(
-    "Usage: ocean browser detect|open|show|events|close|approve|navigate|read|observe|extract|click|type|replace-text|select|scroll|wait|upload|download|submit|run",
+    "Usage: ocean browser use|attach|detect|open|show|events|close|approve|navigate|read|observe|extract|click|type|replace-text|select|scroll|wait|upload|download|submit|run",
   );
 }

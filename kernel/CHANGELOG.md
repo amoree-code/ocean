@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+- feat(browser): `dev.ocean/chrome-devtools` attaches to any Chromium browser, not only Chrome: `ocean browser use <chrome|brave|edge|arc|vivaldi|opera|chromium|chrome-beta|chrome-canary|/profile/path>` stores the choice on this machine and every client's launch passes it as `--userDataDir`; `ocean browser attach` shows the selected browser and every one listening now; `ocean doctor` names whichever is listening. Unset stays Chrome. Firefox and Safari have no CDP and stay out (T-317)
+
 - fix(sessions): session records, the harvest and the weekly digest no longer take a client's raw first turn as a title (`<browser_instruction># Claude in Chrome …`, `<system-reminder>…`): the harness's tags and their words are dropped, also when the turn was cut before the tag closed, and the project name is the fallback. One `cleanTitle` in core serves all three (T-317)
 
 - docs: the 1.8.0 `ocean harvest` entry credited T-316, the browser MCP cost task; it now credits the harvest PR (#295) alone (T-317)
