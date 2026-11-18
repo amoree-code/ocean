@@ -78,7 +78,9 @@ export function posixPathWarnings(diff) {
       line.startsWith("+") &&
       file.endsWith(".test.mjs") &&
       POSIX_EXPECTED.test(line) &&
-      !/path\.posix|process\.platform|win32/.test(line)
+      !/path\.posix|process\.platform|win32/.test(line) &&
+      // A line that is itself a string (a fixture quoting an assertion) is data, not a check.
+      !/^\s*["'`]/.test(line.slice(1))
     )
       warnings.push(`${file}: ${line.slice(1).trim()}`);
   }
