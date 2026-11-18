@@ -1,7 +1,12 @@
 import { syncCoreSkills } from "@ocean/market/skills/core-skill-sync.js";
-import { copyClientSkills } from "@ocean/market/skills/skill-hub.js";
+import {
+  copyClientSkills,
+  retireCoreFromHub,
+} from "@ocean/market/skills/skill-hub.js";
 
 export type SkillSyncSummary = {
+  // Stale core-skill copies moved out of the hub into the archive (older hubs only).
+  retired: string[];
   copied: string[];
   kept: string[];
   failed: string[];
@@ -12,7 +17,19 @@ export type SkillSyncSummary = {
 // first, then the engine's core skills, so the engine's version of a core skill wins. A copy the
 // owner changed inside a client after Ocean's version is kept, never overwritten.
 export async function autoSyncSkills(home?: string): Promise<SkillSyncSummary> {
-  const summary: SkillSyncSummary = { copied: [], kept: [], failed: [] };
+  const summary: SkillSyncSummary = {
+    retired: [],
+    copied: [],
+    kept: [],
+    failed: [],
+  };
+  try {
+    summary.retired = await retireCoreFromHub();
+  } catch (error) {
+    summary.failed.push(
+      `retire: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
   try {
     const hub = await copyClientSkills({ apply: true, auto: true, home });
     for (const action of hub.actions) {

@@ -37,7 +37,8 @@ export const clientSkillRoots: Record<SkillClient, (home: string) => string> = {
   antigravity: (home) => path.join(home, ".config", "antigravity", "skills"),
 };
 
-async function coreSkillNames(): Promise<string[]> {
+// The engine's core skills, by folder name.
+export async function coreSkillNames(): Promise<string[]> {
   const core = path.join(enginePath("skills"), "core");
   return (await readdir(core, { withFileTypes: true }))
     .filter((entry) => entry.isDirectory())

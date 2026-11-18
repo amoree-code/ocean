@@ -13,8 +13,12 @@ import {
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { enginePath, oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
-import { clientSkillRoots, type SkillClient } from "./core-skill-sync.js";
+import { oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
+import {
+  clientSkillRoots,
+  coreSkillNames,
+  type SkillClient,
+} from "./core-skill-sync.js";
 
 // The hub is the one place skills live inside Ocean. Clients hold symlinks into it, so
 // there is a single copy to edit and nothing drifts per client.
@@ -39,8 +43,9 @@ async function skillDirectories(root: string): Promise<string[]> {
   return names.sort();
 }
 
-// Additive: copies the engine's core skills and any extra source folders into the hub.
-// An existing hub skill is never overwritten.
+// Additive: copies skill folders from the given sources into the hub. An existing hub skill is
+// never overwritten. The engine's core skills are not put here: they have one source, the
+// engine, and reach the clients through `syncCoreSkills`.
 export async function populateSkillHub(
   extraSources: string[] = [],
 ): Promise<{ added: string[]; kept: string[] }> {
@@ -48,7 +53,7 @@ export async function populateSkillHub(
   await mkdir(hub, { recursive: true });
   const added: string[] = [];
   const kept: string[] = [];
-  for (const source of [enginePath("skills", "core"), ...extraSources]) {
+  for (const source of extraSources) {
     for (const name of await skillDirectories(source)) {
       const target = path.join(hub, name);
       try {
@@ -331,4 +336,31 @@ export async function pruneClientSkills(
     }
   }
   return removed;
+}
+
+// Hubs set up before core skills left the hub hold a copy of each, made once and never updated,
+// so it drifts behind the engine. Each one moves into the bridge archive (kept, not deleted);
+// a skill the marketplace installed under the same name carries its marker and stays.
+export async function retireCoreFromHub(
+  options: { hub?: string; archive?: string } = {},
+): Promise<string[]> {
+  const hub = options.hub ?? skillHubRoot();
+  const archive = path.join(
+    options.archive ?? oceanPath(SYSTEM_DIR, "archive"),
+    `hub-core-skills-${new Date().toISOString().replace(/[:.]/g, "-")}`,
+  );
+  const moved: string[] = [];
+  for (const name of await coreSkillNames()) {
+    const target = path.join(hub, name);
+    const info = await lstat(target).catch(() => null);
+    if (!info?.isDirectory()) continue;
+    if (
+      await lstat(path.join(target, ".ocean-capability.json")).catch(() => null)
+    )
+      continue;
+    await mkdir(archive, { recursive: true });
+    await rename(target, path.join(archive, name));
+    moved.push(name);
+  }
+  return moved;
 }

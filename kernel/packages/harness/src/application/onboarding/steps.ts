@@ -1,10 +1,8 @@
 import { writeFile } from "node:fs/promises";
 import type { ProviderRecord } from "@ocean/core/domain/providers/provider.js";
 import { oceanPath, PERSONAL_DIR } from "@ocean/core/shared/paths.js";
-import {
-  copyClientSkills,
-  populateSkillHub,
-} from "@ocean/market/skills/skill-hub.js";
+import { syncCoreSkills } from "@ocean/market/skills/core-skill-sync.js";
+import { copyClientSkills } from "@ocean/market/skills/skill-hub.js";
 import { connectObsidianVault } from "@ocean/services/obsidian/vault-discovery.js";
 import {
   ONBOARDING_QUESTIONS,
@@ -280,9 +278,9 @@ export function buildSteps(deps: StepDependencies): OnboardingStep[] {
       title: "Skills (one store in Ocean, clients hold copies)",
       optional: false,
       async run(io) {
-        const hub = await populateSkillHub();
+        const core = await syncCoreSkills(undefined, { keepNewer: true });
         io.say(
-          `  Hub: ${hub.added.length} added, ${hub.kept.length} already there.`,
+          `  Core skills: ${core.flatMap((item) => item.copied).length} copied to clients.`,
         );
         const plan = await copyClientSkills({});
         const pending = plan.actions.filter((a) => a.action !== "synchronized");
