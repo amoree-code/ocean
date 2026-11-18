@@ -28,6 +28,8 @@ pre-push:
     privacy:
       root: kernel/
       run: pnpm check:privacy
+    # Only the tests this push touches; CI runs the full suite on three systems
+    # (`OCEAN_FULL_TESTS=1 git push` forces it here too).
     test:
       root: kernel/
-      run: pnpm test
+      run: node scripts/pre-push-tests.mjs
