@@ -20,6 +20,26 @@ import * as sqliteVec from "sqlite-vec";
 // disposable, rebuildable cache: nothing here is the source of truth, and nothing outside
 // `reindex` (application/brain/brain-reindex.ts) ever writes to it.
 
+// bm25 column weights for chunks_fts (title, heading, body): a word in a record's title says
+// far more about what the record is than the same word somewhere in its body.
+const BM25_WEIGHTS = [8, 3, 1] as const;
+
+// English question and function words, dropped only from the any-word fallback.
+const STOPWORDS = new Set(
+  (
+    "a an and are as at be by can could did do does for from had has have how i if in is it " +
+    "its me my of on or our should so that the their them then there these they this to was " +
+    "we were what when where which who why will with would you your about"
+  ).split(" "),
+);
+
+// A crude Latin-script stem: long words lose their last two letters so inflections share a
+// prefix ("decide"/"decision" → "deci"). Other scripts are left alone — their prefixes already
+// match inflected forms.
+function stem(word: string): string {
+  return /^[a-z]{6,}$/.test(word) ? word.slice(0, -2) : word;
+}
+
 export type {
   BuildIndexOptions,
   EmbedderPort,
@@ -294,7 +314,8 @@ export class BrainIndexReader implements BrainIndexReaderPort {
       try {
         return this.db
           .prepare(`
-            SELECT c.chunk_id AS chunkId, c.doc_id AS docId, bm25(chunks_fts) AS rank
+            SELECT c.chunk_id AS chunkId, c.doc_id AS docId,
+              bm25(chunks_fts, ${BM25_WEIGHTS.join(", ")}) AS rank
             FROM chunks_fts JOIN chunks c ON c.chunk_id = chunks_fts.rowid
             WHERE chunks_fts MATCH ?${scopeFilter}
             ORDER BY rank LIMIT ?
@@ -309,7 +330,16 @@ export class BrainIndexReader implements BrainIndexReaderPort {
     // A question rarely shares every word with its answer (T-296 eval: natural questions found
     // nothing). Fill up with any-word matches, bm25-ranked so rarer shared words weigh more;
     // one-letter prefixes would match everything and are left out.
-    const anyWord = words.filter((word) => word.length > 1);
+    // Question words ("what did I … where my …") match nearly every record and would rank
+    // noise first, so they are dropped here, and a long Latin word matches by its stem
+    // ("decide" → "deci"*, which also finds "decision").
+    const anyWord = [
+      ...new Set(
+        words
+          .filter((word) => word.length > 1 && !STOPWORDS.has(word))
+          .map(stem),
+      ),
+    ];
     if (anyWord.length < 2) return all;
     const seen = new Set(all.map((hit) => hit.chunkId));
     return [
