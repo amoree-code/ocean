@@ -7,7 +7,7 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
-- feat(uninstall): `ocean uninstall` puts a machine back the way it was before Ocean — every `clients apply` undone (MCP entries, hooks, native-memory switches, the OpenCode plugin), any Ocean MCP entry or hook the journal missed removed, the skills and rules Ocean copied into clients taken out, the login service and Desktop watcher unloaded, the shell profile block and shims removed, and the VS Code wrapper setting cleared. Only what Ocean wrote goes; the owner's own entries stay. It previews until `--yes`; the workspace is kept unless `--purge` (typed confirmation, refused for a git checkout)
+- feat(uninstall): `ocean uninstall` puts a machine back the way it was before Ocean — every `clients apply` undone (MCP entries, hooks, native-memory switches, the OpenCode plugin), any Ocean MCP entry or hook the journal missed removed, the skills and rules Ocean copied into clients taken out, the login service and Desktop watcher unloaded, the shell profile block and shims removed, and the VS Code wrapper setting cleared. Only what Ocean wrote goes; the owner's own entries stay. It previews until `--yes`; the workspace is kept unless `--purge` (typed confirmation, refused for a git checkout) (#300)
 
 ## 1.10.1 (2026-11-17)
 
