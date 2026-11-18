@@ -11,7 +11,7 @@ D=$(date +%Y-%m-%d)
 FILE="$BRAIN/01-daily/$D.md"
 
 if [ ! -f "$FILE" ]; then
-  # Ocean fills its blocks (Today, Day summary) above "## Notes"; the notes are yours (T-316).
+  # Ocean fills its blocks (Today, Day summary) above "## Notes"; the notes are yours (#295).
   cat > "$FILE" <<EOF
 ---
 type: daily

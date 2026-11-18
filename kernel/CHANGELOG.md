@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+- docs: the 1.8.0 `ocean harvest` entry credited T-316, the browser MCP cost task; it now credits the harvest PR (#295) alone (T-317)
+
 - fix(harvest): the undo copies and ledger `ocean harvest` writes under `bridge/state/harvest/` are created owner-only, so `ocean doctor` stops warning PRIVATE_PERMISSIONS after every harvest (T-317)
 
 - fix(tasks)!: `ocean tasks verify|complete` runs only a `verify:` field or the lines of a fenced block under `## Verification`; a command named inline in prose is never run (on T-308 a prose span ran `npm publish`). Publishing, signing in (`login`, `adduser`, `token`, `owner`, `dist-tag`) and global installs (`-g`, `--global`) are refused from every source. A task that named its checks only inline now falls back to its project's `verify` (T-317)
@@ -39,7 +41,7 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 ## 1.8.0 (2026-11-16)
 
 - feat(skills): `memory-review` core skill: review pending memory candidates one at a time with the owner — group duplicates, compare each with the record it would change, recommend, and merge an approved fact into that record as one current statement instead of an appended paragraph (#295)
-- feat(T-316): `ocean harvest`: each day's sessions from every AI client become one summary in that day's note (decisions, fixes, lessons, open next, the owner's corrections, time per project), and their decisions, fixes and lessons are filed into `05-knowledge/` with no review step — strengthening a record that already says it, undoable per day with `ocean harvest undo <date>`. The background service runs it daily and archives harvested days after 30 days. The `daily-harvest` skill does the judgement work: imports and candidates filed by topic, legacy records, corrections into rules (#295)
+- feat(harvest): `ocean harvest`: each day's sessions from every AI client become one summary in that day's note (decisions, fixes, lessons, open next, the owner's corrections, time per project), and their decisions, fixes and lessons are filed into `05-knowledge/` with no review step — strengthening a record that already says it, undoable per day with `ocean harvest undo <date>`. The background service runs it daily and archives harvested days after 30 days. The `daily-harvest` skill does the judgement work: imports and candidates filed by topic, legacy records, corrections into rules (#295)
 
 ## 1.7.0 (2026-11-16)
 
