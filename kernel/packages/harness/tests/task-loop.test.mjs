@@ -66,7 +66,7 @@ test("a task loop remembers its project and works a task outside the workspace p
     const file = path.join(shop, "tasks", "T-101", "task.md");
     await writeFile(
       file,
-      "---\nid: T-101\ntitle: x\nstate: done\nproject: shop\n---\n\n## Next action\n\nx\n\n## Verification\n\n`pnpm test`\n\n## Log\n\n",
+      "---\nid: T-101\ntitle: x\nstate: done\nproject: shop\n---\n\n## Next action\n\nx\n\n## Verification\n\n```\npnpm test\n```\n\n## Log\n\n",
     );
     const loop = await startTaskLoop({
       taskId: "T-101",
