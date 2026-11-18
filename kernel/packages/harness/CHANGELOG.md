@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.1
+
+- ci: the release gate splits the test suite across three runners per system (`node --test-shard`), runs the one-off checks on the first only, and starts `docker` and `linux-install` beside the gate instead of after it — a PR's checks took ~9 minutes (5 of them Windows tests, then 3 more for the jobs that waited); one `test:files` script now holds the test flags for the suite, the shards and the pre-push hook (#304)
+- ci(hooks): `git push` runs only the tests the push touches — the test files it changed and those that name a changed source file — instead of the whole suite (~10 minutes, which CI then ran again on three systems); a change to the build, the lockfile or the test setup still runs everything, and `OCEAN_FULL_TESTS=1 git push` forces it. The hook also warns when an added assertion expects a hard-coded POSIX path (`"/p/custom"`), the shape that kept failing the Windows gate (#304)
+
 ## 2.0.0
 
 - feat(projects): `ocean project status [--json] [--write]` — one row per project, derived every time: activity from its last commit (active ≤ 60 days, warm ≤ a year, dormant), branch, uncommitted files, last session, open tasks and the active task's next action. `--write` keeps a generated block in `04-projects/registry.md` current and leaves the hand-kept text around it alone (T-317, #303)
