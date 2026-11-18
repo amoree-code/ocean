@@ -312,7 +312,7 @@ async function fileItem(
     if (current.includes(link))
       return { file: relativeOf(match), action: "same" };
     const copy = stateDir("versions", ledger.date, relativeOf(match));
-    await mkdir(path.dirname(copy), { recursive: true });
+    await mkdir(path.dirname(copy), { recursive: true, mode: 0o700 });
     await copyFile(match, copy);
     ledger.updated.push({ file: relativeOf(match), copy: relativeOf(copy) });
     let next = setField(current, "last_verified", item.session.date);
@@ -511,7 +511,7 @@ export async function harvestDay(options: {
     if (action === "created") result.created.push(file);
     if (action === "strengthened") result.strengthened.push(file);
   }
-  await mkdir(path.dirname(ledgerFile(date)), { recursive: true });
+  await mkdir(path.dirname(ledgerFile(date)), { recursive: true, mode: 0o700 });
   await atomicWrite(ledgerFile(date), `${JSON.stringify(previous, null, 2)}\n`);
   const file = noteFile(date);
   await mkdir(path.dirname(file), { recursive: true });

@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+- fix(harvest): the undo copies and ledger `ocean harvest` writes under `bridge/state/harvest/` are created owner-only, so `ocean doctor` stops warning PRIVATE_PERMISSIONS after every harvest (T-317)
+
 - fix(tasks)!: `ocean tasks verify|complete` runs only a `verify:` field or the lines of a fenced block under `## Verification`; a command named inline in prose is never run (on T-308 a prose span ran `npm publish`). Publishing, signing in (`login`, `adduser`, `token`, `owner`, `dist-tag`) and global installs (`-g`, `--global`) are refused from every source. A task that named its checks only inline now falls back to its project's `verify` (T-317)
 
 - fix(brain): a natural question finds the record it is about: the any-word fallback drops English question words ("what did I … where my …"), matches long Latin words by stem ("decide" also finds "decision"), and a word in a record's title outweighs the same word in its body. "What did I decide about where my memory lives?" went from no hit to the memory-home decision in the top five (T-317)

@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -140,6 +147,11 @@ test("a day becomes one summary block and filed knowledge; a rerun changes nothi
       "05-knowledge/decisions/cart-state.md",
     ]);
     assert.equal(result.created.length, 2);
+    // Undo copies hold private records: their folders are owner-only, like every system dir.
+    if (process.platform !== "win32") {
+      const versions = path.join(root, "bridge/state/harvest/versions/2026-11-16");
+      assert.equal((await stat(versions)).mode & 0o077, 0);
+    }
     const note = await readFile(
       path.join(root, "01-daily/2026-11-16.md"),
       "utf8",
