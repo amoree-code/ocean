@@ -215,6 +215,13 @@ See [skills/index.json](packages/harness/skills/index.json) for the current cata
 `ocean skill learn <completed-session-id>` extracts a candidate skill from a finished
 session, and `ocean skill review <candidate-id> promoted` activates it.
 
+Skills reach every client by themselves. At each session start Ocean copies any new or updated
+skill — the engine's core skills, and the ones in the skill hub (`bridge/skills/`, where
+`ocean market install` puts a skill and where you can make your own) — into Claude, Codex,
+Gemini and Hermes. `ocean market install|update` copies at once, and `ocean market uninstall`
+removes the copies it made. A copy you edited inside a client after Ocean's version is left as
+you wrote it. `ocean skill sync` still does the core skills by hand.
+
 ## Public engine, private workspace, machine state
 
 ```text

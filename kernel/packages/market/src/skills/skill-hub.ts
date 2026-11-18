@@ -13,8 +13,12 @@ import {
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { enginePath, oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
-import { clientSkillRoots, type SkillClient } from "./core-skill-sync.js";
+import { oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
+import {
+  clientSkillRoots,
+  coreSkillNames,
+  type SkillClient,
+} from "./core-skill-sync.js";
 
 // The hub is the one place skills live inside Ocean. Clients hold symlinks into it, so
 // there is a single copy to edit and nothing drifts per client.
@@ -39,8 +43,9 @@ async function skillDirectories(root: string): Promise<string[]> {
   return names.sort();
 }
 
-// Additive: copies the engine's core skills and any extra source folders into the hub.
-// An existing hub skill is never overwritten.
+// Additive: copies skill folders from the given sources into the hub. An existing hub skill is
+// never overwritten. The engine's core skills are not put here: they have one source, the
+// engine, and reach the clients through `syncCoreSkills`.
 export async function populateSkillHub(
   extraSources: string[] = [],
 ): Promise<{ added: string[]; kept: string[] }> {
@@ -48,7 +53,7 @@ export async function populateSkillHub(
   await mkdir(hub, { recursive: true });
   const added: string[] = [];
   const kept: string[] = [];
-  for (const source of [enginePath("skills", "core"), ...extraSources]) {
+  for (const source of extraSources) {
     for (const name of await skillDirectories(source)) {
       const target = path.join(hub, name);
       try {
@@ -132,7 +137,7 @@ export async function linkClientSkills(options: {
 export type CopyAction = {
   client: SkillClient;
   skill: string;
-  action: "synchronized" | "create" | "replace" | "unlink" | "failed";
+  action: "synchronized" | "create" | "replace" | "unlink" | "kept" | "failed";
   error?: string;
 };
 
@@ -169,12 +174,33 @@ async function directoryHash(directory: string): Promise<string> {
   return hash.digest("hex");
 }
 
+// The latest change anywhere in a skill directory, so the automatic sync can tell a copy the
+// owner edited in a client (newer than the hub's) from one the hub has moved past.
+async function newestChange(directory: string): Promise<number> {
+  let newest = (await lstat(directory)).mtimeMs;
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const full = path.join(directory, entry.name);
+    newest = Math.max(
+      newest,
+      entry.isDirectory()
+        ? await newestChange(full)
+        : (await lstat(full)).mtimeMs,
+    );
+  }
+  return newest;
+}
+
 // Gives every client a real copy of every hub skill, replacing the symlink farm. Dry run
 // unless `apply`. A symlink is only unlinked (its target is untouched); a real directory
 // that differs from the hub is moved into a timestamped backup, never deleted. Anything in a
 // client that the hub does not name is left alone.
+//
+// `auto` (the session-start sync and `ocean market`): never touches what the owner made in a
+// client. A copy changed there after the hub's version, or a link pointing outside the hub, is
+// `kept` and left as it is; a missing hub is nothing to copy.
 export async function copyClientSkills(options: {
   apply?: boolean;
+  auto?: boolean;
   clients?: SkillClient[];
   home?: string;
   hub?: string;
@@ -188,7 +214,13 @@ export async function copyClientSkills(options: {
   );
   const actions: CopyAction[] = [];
   let backedUp = false;
-  const names = await skillDirectories(hub);
+  let names: string[];
+  try {
+    names = await skillDirectories(hub);
+  } catch (error) {
+    if (options.auto) return { actions, backup: null };
+    throw error;
+  }
   for (const client of options.clients ?? COPY_CLIENTS) {
     const root = clientSkillRoots[client](home);
     try {
@@ -222,8 +254,16 @@ export async function copyClientSkills(options: {
               ? "synchronized"
               : "replace";
         }
+        if (
+          options.auto &&
+          ((action === "unlink" && !ours) ||
+            (action === "replace" &&
+              (await newestChange(target)) > (await newestChange(source))))
+        )
+          action = "kept";
         actions.push({ client, skill, action });
-        if (!options.apply || action === "synchronized") continue;
+        if (!options.apply || action === "synchronized" || action === "kept")
+          continue;
         if (action === "replace" || (action === "unlink" && !ours)) {
           const saved = path.join(backup, client);
           await mkdir(saved, { recursive: true });
@@ -252,4 +292,75 @@ export async function copyClientSkills(options: {
     }
   }
   return { actions, backup: backedUp ? backup : null };
+}
+
+// The hash of every skill in the hub, by name: taken before `ocean market uninstall` so the
+// copies of a removed skill can be found in the clients afterwards.
+export async function hubSkillHashes(
+  hub = skillHubRoot(),
+): Promise<Map<string, string>> {
+  const hashes = new Map<string, string>();
+  let names: string[] = [];
+  try {
+    names = await skillDirectories(hub);
+  } catch {
+    return hashes;
+  }
+  for (const name of names)
+    try {
+      hashes.set(name, await directoryHash(path.join(hub, name)));
+    } catch {
+      /* a skill with a symlink was never copied */
+    }
+  return hashes;
+}
+
+// Removes from every client the copies of skills that left the hub since `before` was taken.
+// Only a copy still identical to the hub's version goes; one the owner changed stays.
+export async function pruneClientSkills(
+  before: Map<string, string>,
+  options: { home?: string; hub?: string; clients?: SkillClient[] } = {},
+): Promise<string[]> {
+  const home = options.home ?? os.homedir();
+  const now = await hubSkillHashes(options.hub);
+  const removed: string[] = [];
+  for (const [skill, hash] of before) {
+    if (now.has(skill)) continue;
+    for (const client of options.clients ?? COPY_CLIENTS) {
+      const target = path.join(clientSkillRoots[client](home), skill);
+      const info = await lstat(target).catch(() => null);
+      if (!info?.isDirectory()) continue;
+      if ((await directoryHash(target).catch(() => null)) !== hash) continue;
+      await rm(target, { recursive: true, force: true });
+      removed.push(`${client}:${skill}`);
+    }
+  }
+  return removed;
+}
+
+// Hubs set up before core skills left the hub hold a copy of each, made once and never updated,
+// so it drifts behind the engine. Each one moves into the bridge archive (kept, not deleted);
+// a skill the marketplace installed under the same name carries its marker and stays.
+export async function retireCoreFromHub(
+  options: { hub?: string; archive?: string } = {},
+): Promise<string[]> {
+  const hub = options.hub ?? skillHubRoot();
+  const archive = path.join(
+    options.archive ?? oceanPath(SYSTEM_DIR, "archive"),
+    `hub-core-skills-${new Date().toISOString().replace(/[:.]/g, "-")}`,
+  );
+  const moved: string[] = [];
+  for (const name of await coreSkillNames()) {
+    const target = path.join(hub, name);
+    const info = await lstat(target).catch(() => null);
+    if (!info?.isDirectory()) continue;
+    if (
+      await lstat(path.join(target, ".ocean-capability.json")).catch(() => null)
+    )
+      continue;
+    await mkdir(archive, { recursive: true });
+    await rename(target, path.join(archive, name));
+    moved.push(name);
+  }
+  return moved;
 }
