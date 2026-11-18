@@ -149,7 +149,10 @@ test("a day becomes one summary block and filed knowledge; a rerun changes nothi
     assert.equal(result.created.length, 2);
     // Undo copies hold private records: their folders are owner-only, like every system dir.
     if (process.platform !== "win32") {
-      const versions = path.join(root, "bridge/state/harvest/versions/2026-11-16");
+      const versions = path.join(
+        root,
+        "bridge/state/harvest/versions/2026-11-16",
+      );
       assert.equal((await stat(versions)).mode & 0o077, 0);
     }
     const note = await readFile(

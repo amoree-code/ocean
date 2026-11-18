@@ -5,6 +5,7 @@ import type {
   Session,
   SessionEvent,
 } from "@ocean/core/domain/sessions/session.js";
+import { cleanTitle } from "@ocean/core/shared/clean-title.js";
 import {
   localDate,
   localMoment,
@@ -141,7 +142,9 @@ export async function writeBrainDump(input: {
     session.status === "completed" && (input.exitCode ?? 0) === 0
       ? "completed"
       : "failed";
-  const title = isGenericContent(workLog) ? project : workLog;
+  const title = isGenericContent(workLog)
+    ? project
+    : cleanTitle(workLog, project);
 
   // A session record (T-314): flat frontmatter Obsidian can read, then fixed sections. The
   // narrative comes from one model call when there was one; otherwise from the events.
@@ -280,7 +283,10 @@ export async function writeDigestRecord(input: {
   const { digest } = input;
   const date = localDate(localMoment(input.endedAt));
   const time = localTime(localMoment(input.startedAt));
-  const title = safeText(digest.title || digest.goal, 120) || "Conversation";
+  const title = cleanTitle(
+    safeText(digest.title || digest.goal, 400),
+    input.project || "Conversation",
+  );
   const quote = (value: string) => JSON.stringify(value);
   const list = (heading: string, items: string[]) =>
     items.length

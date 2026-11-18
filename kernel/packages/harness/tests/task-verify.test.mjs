@@ -511,7 +511,9 @@ test("a check never publishes, signs in or installs globally, from any source (T
       `---\nid: T-1\nverify: ${command}\n---\n`,
     );
     assert.ok(
-      kept.every((c) => !/publish|login|adduser|dist-tag|-g\b|--global/.test(c)),
+      kept.every(
+        (c) => !/publish|login|adduser|dist-tag|-g\b|--global/.test(c),
+      ),
       `${command} → ${kept}`,
     );
   }

@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+- fix(sessions): session records, the harvest and the weekly digest no longer take a client's raw first turn as a title (`<browser_instruction># Claude in Chrome …`, `<system-reminder>…`): the harness's tags and their words are dropped, also when the turn was cut before the tag closed, and the project name is the fallback. One `cleanTitle` in core serves all three (T-317)
+
 - docs: the 1.8.0 `ocean harvest` entry credited T-316, the browser MCP cost task; it now credits the harvest PR (#295) alone (T-317)
 
 - fix(harvest): the undo copies and ledger `ocean harvest` writes under `bridge/state/harvest/` are created owner-only, so `ocean doctor` stops warning PRIVATE_PERMISSIONS after every harvest (T-317)

@@ -2,6 +2,7 @@ import { mkdir, readdir, readFile, rename } from "node:fs/promises";
 import path from "node:path";
 import { proposeMemory } from "@ocean/brain/memory/memory-write.js";
 import { MemoryContractError } from "@ocean/core/domain/mcp/memory-contract.js";
+import { cleanTitle } from "@ocean/core/shared/clean-title.js";
 import { atomicWrite, parseFrontmatter } from "@ocean/core/shared/fs-utils.js";
 import {
   DAILY_DIR,
@@ -100,8 +101,10 @@ export async function distillWeek(options: {
     const fields = parseFrontmatter(text);
     if (fields.type !== "session" || fields.distilled === "true") continue;
     if (!inWeek(fields.date)) continue;
-    const title =
-      /^# (.+)$/m.exec(text)?.[1]?.trim() ?? path.basename(file, ".md");
+    const title = cleanTitle(
+      /^# (.+)$/m.exec(text)?.[1] ?? "",
+      fields.project || path.basename(file, ".md"),
+    );
     sessions.push({ file, text, title, status: fields.status ?? "" });
   }
   const briefs = (await markdownIn(oceanPath(DAILY_DIR, "briefs"))).filter(
