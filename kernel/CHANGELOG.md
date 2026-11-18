@@ -7,7 +7,7 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
-- ci(hooks): `git push` runs only the tests the push touches — the test files it changed and those that name a changed source file — instead of the whole suite (~10 minutes, which CI then ran again on three systems); a change to the build, the lockfile or the test setup still runs everything, and `OCEAN_FULL_TESTS=1 git push` forces it. The hook also warns when an added assertion expects a hard-coded POSIX path (`"/p/custom"`), the shape that kept failing the Windows gate
+- ci(hooks): `git push` runs only the tests the push touches — the test files it changed and those that name a changed source file — instead of the whole suite (~10 minutes, which CI then ran again on three systems); a change to the build, the lockfile or the test setup still runs everything, and `OCEAN_FULL_TESTS=1 git push` forces it. The hook also warns when an added assertion expects a hard-coded POSIX path (`"/p/custom"`), the shape that kept failing the Windows gate (#304)
 
 - feat(projects): `ocean project status [--json] [--write]` — one row per project, derived every time: activity from its last commit (active ≤ 60 days, warm ≤ a year, dormant), branch, uncommitted files, last session, open tasks and the active task's next action. `--write` keeps a generated block in `04-projects/registry.md` current and leaves the hand-kept text around it alone (T-317, #303)
 
