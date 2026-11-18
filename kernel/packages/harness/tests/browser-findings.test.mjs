@@ -138,7 +138,11 @@ test("a browser choice is a known name or an absolute profile path", () => {
     resolveBrowserChoice("Brave", "/h", "linux"),
     path.join("/h", ".config", "BraveSoftware", "Brave-Browser"),
   );
-  assert.equal(resolveBrowserChoice("/p/custom", "/h", "linux"), "/p/custom");
+  // An absolute path is kept as the host resolves it (on Windows, "/p/custom" gains a drive).
+  assert.equal(
+    resolveBrowserChoice("/p/custom", "/h", "linux"),
+    path.resolve("/p/custom"),
+  );
   assert.throws(
     () => resolveBrowserChoice("firefox", "/h", "linux"),
     /unknown browser/,
