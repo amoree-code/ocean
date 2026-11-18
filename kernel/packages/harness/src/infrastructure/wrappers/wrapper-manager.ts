@@ -313,7 +313,7 @@ function withoutEol(line: string): string {
 // all other lines keep their exact bytes and line endings. Only the single blank separator the
 // installer puts above its block goes with it. A begin marker without a matching end marker is
 // left alone rather than guessed at.
-function stripInterceptionBlocks(text: string): string {
+export function stripInterceptionBlocks(text: string): string {
   const lines = text.split(/(?<=\n)/);
   const kept: string[] = [];
   // Once a name has no end marker after some position it has none after any later one, so

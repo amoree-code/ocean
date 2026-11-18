@@ -1,7 +1,7 @@
 const commandGroups = [
   [
     "Workspace",
-    "setup, onboard, context, project, tasks, loop, policy, lifecycle, doctor, repair",
+    "setup, uninstall, onboard, context, project, tasks, loop, policy, lifecycle, doctor, repair",
   ],
   [
     "Execution",
@@ -31,6 +31,10 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
   setup: [
     "Create the private workspace, the AI CLI shims, the shell profile entry and the login service.",
     "ocean setup [--obsidian <vault-path>] [--read-write]",
+  ],
+  uninstall: [
+    "Undo setup and clients apply outside the workspace; shows the plan until --yes, --purge also deletes the workspace.",
+    "ocean uninstall [--yes] [--purge] [--json]",
   ],
   onboard: [
     "Run the pending first-run steps; --status only shows them.",

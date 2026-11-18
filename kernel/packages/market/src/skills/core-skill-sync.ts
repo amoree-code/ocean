@@ -150,3 +150,42 @@ function same(left: Buffer, right: Buffer): boolean {
     createHash("sha256").update(right).digest("hex")
   );
 }
+
+// `ocean uninstall`: removes the copies `syncCoreSkills` made. A copy that differs from Ocean's
+// (the owner edited it) is the owner's now and stays; a skill folder left empty goes too.
+export async function removeCoreSkills(
+  home = os.homedir(),
+): Promise<{ removed: string[]; kept: string[] }> {
+  const removed: string[] = [];
+  const kept: string[] = [];
+  let names: string[];
+  try {
+    names = await coreSkillNames();
+  } catch {
+    return { removed, kept };
+  }
+  for (const client of Object.keys(clientSkillRoots) as SkillClient[]) {
+    const root = clientSkillRoots[client](home);
+    for (const name of names) {
+      const target = path.join(root, name, "SKILL.md");
+      let current: Buffer;
+      try {
+        current = await readFile(target);
+      } catch {
+        continue;
+      }
+      const source = await readFile(
+        path.join(enginePath("skills"), "core", name, "SKILL.md"),
+      );
+      if (!same(source, current)) {
+        kept.push(`${client}:${name}`);
+        continue;
+      }
+      await rm(target);
+      const left = await readdir(path.dirname(target)).catch(() => ["?"]);
+      if (!left.length) await rm(path.dirname(target), { recursive: true });
+      removed.push(`${client}:${name}`);
+    }
+  }
+  return { removed, kept };
+}

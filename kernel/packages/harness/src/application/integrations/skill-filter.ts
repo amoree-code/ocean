@@ -229,10 +229,13 @@ async function syncGemini(
   };
 }
 
+// `hidden` empty (`ocean uninstall`) re-enables every skill Ocean disabled: the Codex block goes
+// and the names Ocean added to the Gemini and Hermes lists come out; the owner's own stay.
 export async function syncSkillFilter(
   home = os.homedir(),
+  hidden?: Set<string>,
 ): Promise<SkillFilterResult[]> {
-  const hidden = await claudeHiddenSkills(home);
+  hidden ??= await claudeHiddenSkills(home);
   return [
     await syncCodex(home, hidden),
     await syncGemini(home, hidden),

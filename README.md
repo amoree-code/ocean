@@ -64,6 +64,22 @@ ocean tasks new "Add login"      # open a task any client can continue
 ocean doctor                     # check that everything is wired
 ```
 
+## Uninstall
+
+Changed your mind? One command puts the machine back the way it was before Ocean:
+
+```bash
+ocean uninstall                  # shows what it would remove; changes nothing
+ocean uninstall --yes            # removes it
+npm uninstall --global @amoree-code/ocean
+```
+
+It removes only what Ocean added: its MCP entries and hooks in every AI client, the skills and
+rules it copied into them, the background service, the shell profile line and the shims. Your
+own settings and servers stay as they are. Your workspace (memory, tasks, sessions) is kept, so
+`ocean setup` reconnects it later; `ocean uninstall --yes --purge` deletes it too, after you type
+its folder name.
+
 ## This repository
 
 The repository mirrors `~/ocean/`. The engine in [`kernel/`](kernel/) is public and complete.
