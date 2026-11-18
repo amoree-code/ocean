@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.12.0
+
+- fix(clients): Codex was reported as needing a hand edit ("the server table cannot be read") on every machine where `ocean client sync` had written its skill-filter block: the TOML reader did not treat a `[[skills.config]]` header as a new section, so the block was read as part of the last server. `[[…]]` headers now end a section. `ocean doctor` also stops reporting broken links inside the memory and harvest version snapshots, which are copies stored away from the folder their links point from
+- feat(skills): skills reach every client with no command run: each session start copies new or updated core skills and skill-hub skills (made by hand or installed from the market) into Claude, Codex, Gemini and Hermes; `ocean market install|update` copies at once and `ocean market uninstall` removes the copies it made. A copy edited inside a client after Ocean's version is kept, never overwritten. Core skills have one source, the engine: the skill hub no longer gets a copy of them, and the stale copies older hubs hold move into `bridge/archive/` at the next session start (#301)
+
 ## 1.11.0
 
 - feat(uninstall): `ocean uninstall` puts a machine back the way it was before Ocean — every `clients apply` undone (MCP entries, hooks, native-memory switches, the OpenCode plugin), any Ocean MCP entry or hook the journal missed removed, the skills and rules Ocean copied into clients taken out, the login service and Desktop watcher unloaded, the shell profile block and shims removed, and the VS Code wrapper setting cleared. Only what Ocean wrote goes; the owner's own entries stay. It previews until `--yes`; the workspace is kept unless `--purge` (typed confirmation, refused for a git checkout) (#300)
