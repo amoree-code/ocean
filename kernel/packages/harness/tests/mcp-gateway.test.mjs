@@ -355,7 +355,11 @@ test("gateway members are the engine's first-party servers plus installed ones, 
   assert.equal(ocean.inheritEnv, true);
   const files = members[2];
   assert.equal(files.command, "npx");
-  assert.deepEqual(files.args, ["-y", "--prefer-offline", "@example/files-mcp@1.0.0"]);
+  assert.deepEqual(files.args, [
+    "-y",
+    "--prefer-offline",
+    "@example/files-mcp@1.0.0",
+  ]);
   assert.equal(files.inheritEnv, false);
   assert.deepEqual(Object.keys(files.env).sort(), [
     "FILES_TOKEN",

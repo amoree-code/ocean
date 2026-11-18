@@ -200,5 +200,9 @@ test("the browser capability launches the pinned ocean-browser-mcp package", asy
   assert.equal(launch.command, "npx");
   // The package carries the attach and privacy flags (--autoConnect, no usage statistics, no CrUX)
   // and pins Chrome DevTools MCP exactly; the entry pins the package.
-  assert.deepEqual(launch.args, ["-y", "--prefer-offline", "ocean-browser-mcp@0.1.0"]);
+  assert.deepEqual(launch.args, [
+    "-y",
+    "--prefer-offline",
+    "ocean-browser-mcp@0.1.0",
+  ]);
 });

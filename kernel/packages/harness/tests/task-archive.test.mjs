@@ -11,7 +11,7 @@ import {
 } from "@ocean/loop/tasks/archive-tasks.js";
 
 const task = (id, state = "done", checklist = "[x]") =>
-  `---\nid: ${id}\nproject: ocean\nstate: ${state}\n---\n\n## Definition of done\n\n- ${checklist} acceptance criterion\n\n## Verification\n\n- \`pnpm test\`\n\n## Blockers\n\nNone.\n`;
+  `---\nid: ${id}\nproject: ocean\nstate: ${state}\n---\n\n## Definition of done\n\n- ${checklist} acceptance criterion\n\n## Verification\n\n\`\`\`\npnpm test\n\`\`\`\n\n## Blockers\n\nNone.\n`;
 const passingCheck = async () => ({ exitCode: 0 });
 
 test("archives verified done tasks and leaves other states live", async () => {

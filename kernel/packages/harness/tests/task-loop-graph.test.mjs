@@ -50,7 +50,7 @@ async function workspace() {
   );
   await writeFile(
     path.join(shop, "tasks", "T-101", "task.md"),
-    "---\nid: T-101\ntitle: x\nstate: done\nproject: shop\n---\n\n## Next action\n\nx\n\n## Verification\n\n`pnpm test`\n\n## Log\n\n",
+    "---\nid: T-101\ntitle: x\nstate: done\nproject: shop\n---\n\n## Next action\n\nx\n\n## Verification\n\n```\npnpm test\n```\n\n## Log\n\n",
   );
   return { root, repo, marker: path.join(root, "provider-runs") };
 }
