@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+- feat(projects): `ocean project status [--json] [--write]` — one row per project, derived every time: activity from its last commit (active ≤ 60 days, warm ≤ a year, dormant), branch, uncommitted files, last session, open tasks and the active task's next action. `--write` keeps a generated block in `04-projects/registry.md` current and leaves the hand-kept text around it alone (T-317)
+
 - test: the per-test timeout is 60 s (was 30 s): `agent-run`, `task-claim` and `task-renumber` tests went over 30 s on a loaded machine and on the Windows gate, then passed on rerun (T-317)
 
 - perf(market): an npm capability pinned to an exact version starts with `npx -y --prefer-offline`, so a cached package skips the registry round-trip on every server start (measured 0.3–0.5 s each); `dev.ocean/chrome-devtools` sets `CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS=1`, so upstream no longer spawns an npm child and fetches the registry at start (T-316, T-317)

@@ -45,8 +45,8 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
     "ocean context [--json] | cost [--json] [--budget <bytes>] [--project <dir>]",
   ],
   project: [
-    "Resolve, bind, register, rename and index projects.",
-    "ocean project resolve [path]|bind <name> <path> [--add]|register [path]|unbind <path>|rename <id> <new-id>|list|migrate [--write]|index [--write]",
+    "Resolve, bind, register, rename, index projects, and show each one's live status.",
+    "ocean project resolve [path]|bind <name> <path> [--add]|register [path]|unbind <path>|rename <id> <new-id>|list|status [--json] [--write]|migrate [--write]|index [--write]",
   ],
   tasks: [
     "List, create, claim, checkpoint, verify and complete tasks.",
