@@ -88,8 +88,11 @@ test("<command> --help prints that command's usage and runs nothing", async () =
   const home = await mkdtemp(path.join(os.tmpdir(), "ocean-help-home-"));
   const root = await mkdtemp(path.join(os.tmpdir(), "ocean-help-root-"));
   const run = promisify(execFile);
-  await Promise.all(
-    Object.keys(commandRegistry).map(async (command) => {
+  // A few at a time: one node process per command all at once overran the timeout on the
+  // three-core macOS runner.
+  const commands = Object.keys(commandRegistry);
+  const worker = async () => {
+    for (let command = commands.shift(); command; command = commands.shift()) {
       const { stdout, stderr } = await run(
         process.execPath,
         [cli, command, "--help"],
@@ -97,8 +100,9 @@ test("<command> --help prints that command's usage and runs nothing", async () =
       );
       assert.match(stdout, new RegExp(`^Usage: ocean ${command}\\b`), command);
       assert.doesNotMatch(stderr, /ExperimentalWarning/, command);
-    }),
-  );
+    }
+  };
+  await Promise.all(Array.from({ length: 6 }, worker));
   assert.deepEqual(await readdir(home), []);
   assert.deepEqual(await readdir(root), []);
 });

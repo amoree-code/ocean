@@ -287,7 +287,7 @@ test("removeClaudeCodeWrapper keeps a wrapper that is not Ocean's", async () => 
   // JSONC keeps its comments.
   await writeFile(
     box.vscode,
-    `{\n  // mine\n  "a": 1,\n  "claudeCode.claudeProcessWrapper": "${path.join(box.shimDir, "claude-vscode")}",\n}\n`,
+    `{\n  // mine\n  "a": 1,\n  "claudeCode.claudeProcessWrapper": ${JSON.stringify(path.join(box.shimDir, "claude-vscode"))},\n}\n`,
   );
   assert.equal(
     await removeClaudeCodeWrapper(box.shimDir, box.vscode),
