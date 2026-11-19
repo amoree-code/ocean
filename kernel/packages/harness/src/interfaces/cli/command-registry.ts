@@ -84,6 +84,7 @@ import {
   repairWorkspace,
   workspaceReport,
 } from "@ocean/services/doctor/workspace-doctor.js";
+import { createMcpSessionRecorder } from "@ocean/services/infrastructure/mcp/mcp-session.js";
 import { runObsidianMcpServer } from "@ocean/services/infrastructure/mcp/obsidian-server.js";
 import { runOceanMcpServer } from "@ocean/services/infrastructure/mcp/ocean-server.js";
 import {
@@ -119,6 +120,10 @@ import {
 } from "../../application/clients/clients.js";
 import { desktopWatcherFindings } from "../../application/clients/desktop-watcher.js";
 import { nativeFindings } from "../../application/clients/native.js";
+import {
+  MCP_ONLY_CLIENTS,
+  mcpClientOf,
+} from "../../application/clients/registry.js";
 import { createWebhookGateway } from "../../application/gateway/webhook-gateway.js";
 import {
   findInstallSpec,
@@ -527,6 +532,13 @@ async function commandMcp(): Promise<void> {
       sessionStoreFactory: defaultSessionStoreFactory,
       wrapperManager: defaultWrapperManager,
       embedder: mcpEmbedder(),
+      mcpSessions: createMcpSessionRecorder({
+        openStore: defaultSessionStoreFactory,
+        providerOf: (name) => {
+          const id = mcpClientOf(name)?.id;
+          return id && MCP_ONLY_CLIENTS.has(id) ? id : null;
+        },
+      }),
     });
   else if (action === "gateway")
     await runMcpGatewayCommand(process.argv.slice(4));

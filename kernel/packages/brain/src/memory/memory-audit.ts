@@ -25,6 +25,8 @@ export type AuditEntry = {
   action: MemoryAction;
   path: string;
   source: string;
+  // The session the change was made in, when the client exposes one (T-319).
+  session?: string;
   origin?: "explicit" | "inferred" | "imported";
   // The review candidate an approved record came from.
   candidate?: string;
@@ -85,11 +87,23 @@ export async function writeDurable(
   }
 }
 
+// The session this process runs in: OCEAN_SESSION_ID (any client, or Ocean itself), else the
+// id Claude Code gives its tools and MCP servers, which is also Ocean's id for that session.
+// Anything that is not a plain id is ignored rather than written to the log.
+export function currentSession(
+  env: NodeJS.ProcessEnv = process.env,
+): string | undefined {
+  const id = oceanEnv("SESSION_ID", env) || env.CLAUDE_CODE_SESSION_ID;
+  return id && /^[\w.:-]{1,128}$/.test(id) ? id : undefined;
+}
+
 export async function appendAudit(
   entry: Omit<AuditEntry, "id" | "ts"> & { id?: string },
 ): Promise<AuditEntry> {
+  const session = entry.session ?? currentSession();
   const full: AuditEntry = {
     ...entry,
+    ...(session ? { session } : {}),
     id: entry.id ?? newId(),
     ts: new Date().toISOString(),
   };
@@ -113,6 +127,55 @@ export async function readAudit(): Promise<AuditEntry[]> {
     .split("\n")
     .filter(Boolean)
     .map((line) => JSON.parse(line) as AuditEntry);
+}
+
+// Who wrote, changed or deleted what (T-319): the client is the source up to its first colon
+// (`session:<id>` is the session-facts capture), counted per action, newest entries first.
+export type AuditSummary = {
+  since: string | null;
+  total: number;
+  unknown: number;
+  clients: { client: string; total: number; actions: Record<string, number> }[];
+  entries: AuditEntry[];
+};
+
+export function auditClient(entry: AuditEntry): string {
+  return entry.source.split(":")[0] || "unknown";
+}
+
+export async function auditSummary(
+  options: { client?: string; days?: number; limit?: number; now?: Date } = {},
+): Promise<AuditSummary> {
+  const now = options.now ?? new Date();
+  const since =
+    options.days === undefined
+      ? null
+      : new Date(now.getTime() - options.days * 86_400_000);
+  const entries = (await readAudit()).filter(
+    (entry) =>
+      (!since || new Date(entry.ts) >= since) &&
+      (!options.client ||
+        auditClient(entry) === options.client ||
+        entry.source === options.client),
+  );
+  const clients = new Map<string, AuditSummary["clients"][number]>();
+  for (const entry of entries) {
+    const name = auditClient(entry);
+    const row = clients.get(name) ?? { client: name, total: 0, actions: {} };
+    row.total += 1;
+    row.actions[entry.action] = (row.actions[entry.action] ?? 0) + 1;
+    clients.set(name, row);
+  }
+  const limit = Math.max(0, options.limit ?? 20);
+  return {
+    since: since?.toISOString() ?? null,
+    total: entries.length,
+    unknown: entries.filter((entry) => auditClient(entry) === "unknown").length,
+    clients: [...clients.values()].sort(
+      (a, b) => b.total - a.total || a.client.localeCompare(b.client),
+    ),
+    entries: limit ? entries.slice(-limit).reverse() : [],
+  };
 }
 
 // bridge/config/memory.json — optional; without it MCP writes are on, copies are kept 90 days and
