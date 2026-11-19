@@ -1,4 +1,12 @@
-import { chmod, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import {
+  access,
+  chmod,
+  mkdir,
+  readdir,
+  readFile,
+  rename,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { registryFile } from "@ocean/core/shared/fs-utils.js";
@@ -6,6 +14,7 @@ import {
   DAILY_DIR,
   INBOX_DIR,
   KNOWLEDGE_DIR,
+  LEGACY_NOTES_DIR,
   liveEngineEntry,
   NOTES_DIR,
   oceanPath,
@@ -153,7 +162,26 @@ export type SetupOptions = {
   obsidianMode?: "read-only" | "read-write";
 };
 
+// The notes moved from 07-notes into 02-personal/notes. An older workspace's folder moves once,
+// whole; when both exist nothing is touched (the doctor names the leftover for the owner).
+export async function moveLegacyNotes(): Promise<"moved" | "kept" | "none"> {
+  const present = (file: string) =>
+    access(file).then(
+      () => true,
+      () => false,
+    );
+  const from = oceanPath(LEGACY_NOTES_DIR);
+  const to = oceanPath(NOTES_DIR);
+  if (!(await present(from))) return "none";
+  if (await present(to)) return "kept";
+  await mkdir(path.dirname(to), { recursive: true });
+  await rename(from, to);
+  return "moved";
+}
+
 export async function setup(options: SetupOptions = {}): Promise<void> {
+  if ((await moveLegacyNotes()) === "moved")
+    console.log(`Moved your notes: ${LEGACY_NOTES_DIR}/ → ${NOTES_DIR}/`);
   await Promise.all(
     [...personalDirectories, `${projectDir(WORKSPACE_PROJECT_ID)}/tasks`].map(
       (directory) => mkdir(oceanPath(directory), { recursive: true }),

@@ -15,7 +15,7 @@ Standardized templates for common document types used across Ocean workflows.
 | **task.md** | Task record template — scope, goal, constraints, artifacts, verification |
 | **capture.md** | Quick capture into `00-inbox/captures/` |
 | **daily.md** | Daily note in `01-daily/` |
-| **note.md** | Your own note in `07-notes/` (agents never write there) |
+| **note.md** | Your own note in `02-personal/notes/` (agents never write there) |
 | **lesson.md** · **solution.md** · **failure.md** | Knowledge records in `05-knowledge/` |
 | **person.md** | One person in `02-personal/people/` (aliases in English and Arabic) |
 | **interest.md** | One interest in `02-personal/interests/` (priority, keywords, sources) |

@@ -22,6 +22,7 @@ import {
 import {
   bindProject,
   canonicalPath,
+  createProject,
   expandHome,
   listProjectBindings,
   listProjectManifests,
@@ -787,5 +788,38 @@ test("project move drops the category written for the flat layout", async () => 
     const file = path.join(projects(root), "company", "old", "project.json");
     assert.equal(JSON.parse(await readFile(file, "utf8")).category, undefined);
     assert.equal(projectCategory(await readProjectManifest("old")), "company");
+  });
+});
+
+test("project new registers a project with no code yet; bind adds its first path", async () => {
+  await withRoot(async (root) => {
+    const made = await createProject("study-app", "personal", "Study app");
+    assert.equal(made.created, true);
+    assert.equal(made.dir, `${PROJECTS_DIR}/personal/study-app`);
+    const manifest = await manifestOf(root, "study-app");
+    assert.deepEqual(manifest.paths, []);
+    assert.equal(manifest.name, "Study app");
+    assert.equal(typeof manifest.prefix, "string");
+    for (const entry of ["tasks", "memory", "docs", "MEMORY.md"])
+      await stat(path.join(folderOf(root, "study-app"), entry));
+    assert.ok(
+      (await listProjectManifests()).some((item) => item.id === "study-app"),
+    );
+
+    // Asked again, it is returned as it is, never rewritten.
+    assert.equal((await createProject("study-app", "company")).created, false);
+    assert.equal(projectDir("study-app", root), made.dir);
+
+    const repo = await mkdtemp(path.join(os.tmpdir(), "ocean-study-app-"));
+    const bound = await bindProject("study-app", repo);
+    assert.equal(bound.created, true);
+    assert.equal(bound.conflict, undefined);
+    assert.equal((await manifestOf(root, "study-app")).paths.length, 1);
+
+    await assert.rejects(
+      createProject("Bad Id", "personal"),
+      /Invalid project id/,
+    );
+    await assert.rejects(createProject("ok-id", "nowhere"), /Unknown category/);
   });
 });

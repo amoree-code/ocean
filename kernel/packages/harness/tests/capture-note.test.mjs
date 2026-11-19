@@ -74,7 +74,7 @@ test("obsidian templates maps each routed folder to its template and keeps the o
         command_timeout: 5,
         folder_templates: [
           { folder: "05-knowledge", template: "06-templates/knowledge.md" },
-          { folder: "07-notes", template: "06-templates/old.md" },
+          { folder: "02-personal/notes", template: "06-templates/old.md" },
         ],
       }),
     );
@@ -83,7 +83,7 @@ test("obsidian templates maps each routed folder to its template and keeps the o
     assert.deepEqual(dry.entries, [
       { folder: "05-knowledge", template: "06-templates/knowledge.md" },
       { folder: "01-daily", template: "06-templates/daily.md" },
-      { folder: "07-notes", template: "06-templates/note.md" },
+      { folder: "02-personal/notes", template: "06-templates/note.md" },
       {
         folder: "05-knowledge/decisions",
         template: "06-templates/decision.md",

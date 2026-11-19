@@ -10,6 +10,7 @@ import type {
 import type { EmbedderPort } from "@ocean/core/domain/ports/embedder-port.js";
 import {
   INDEX_DIR,
+  isUnderNotes,
   KNOWLEDGE_DIR,
   listProjectDirs,
   oceanRoot,
@@ -63,12 +64,15 @@ type CorpusFile = { prefix: string; storePath: string; file: string };
 async function corpusFiles(root: string): Promise<CorpusFile[]> {
   const found: CorpusFile[] = [];
   const add = async (prefix: string, storeRoot: string) => {
-    for (const file of await walk(storeRoot))
+    for (const file of await walk(storeRoot)) {
+      // The notes sit inside 02-personal: they are indexed once, as "notes/", the owner's own.
+      if (prefix === "memory" && isUnderNotes(file, root)) continue;
       found.push({
         prefix,
         storePath: `${prefix}/${path.relative(storeRoot, file).split(path.sep).join("/")}`,
         file,
       });
+    }
   };
   for (const store of STORES)
     await add(store, resolveWithin(root, STORE_DIR[store]));

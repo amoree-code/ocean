@@ -108,11 +108,14 @@ test("telemetry findings become todo candidates that land in the backlog only on
 test("resurface picks the decision verified longest ago past 90 days, else the quietest note", async () => {
   await withRoot(async (root) => {
     assert.equal(await pickResurface("2026-11-16"), null);
-    await write(root, "07-notes/a.md", "a\n");
-    await write(root, "07-notes/b.md", "b\n");
+    await write(root, "02-personal/notes/a.md", "a\n");
+    await write(root, "02-personal/notes/b.md", "b\n");
     const old = new Date("2026-01-01");
-    await utimes(path.join(root, "07-notes/b.md"), old, old);
-    assert.match(await pickResurface("2026-11-16"), /^07-notes\/b\.md — /);
+    await utimes(path.join(root, "02-personal/notes/b.md"), old, old);
+    assert.match(
+      await pickResurface("2026-11-16"),
+      /^02-personal\/notes\/b\.md — /,
+    );
     await write(
       root,
       "05-knowledge/decisions/fresh.md",

@@ -44,7 +44,6 @@ const FLAT = {
     "03-professional",
     "05-knowledge",
     "06-templates",
-    "07-notes",
   ],
   system: "bridge",
   registry: "bridge/registry",

@@ -3,7 +3,7 @@ import path from "node:path";
 import { atomicWrite } from "@ocean/core/shared/fs-utils.js";
 import {
   BRAIN_RECORD_DIRS,
-  NOTES_DIR,
+  isUnderNotes,
   oceanPath,
   PROJECTS_DIR,
   SYSTEM_DIR,
@@ -71,12 +71,12 @@ export async function flattenWorkspace(options: {
   apply: boolean;
   now?: Date;
 }): Promise<FlattenResult> {
-  const roots = [...BRAIN_RECORD_DIRS, PROJECTS_DIR].filter(
-    (root) => root !== NOTES_DIR,
-  );
+  const roots = [...BRAIN_RECORD_DIRS, PROJECTS_DIR];
   const changed: { relative: string; file: string; text: string }[] = [];
   for (const root of new Set(roots))
     for (const file of await markdownFiles(oceanPath(root))) {
+      // The notes sit inside 02-personal: his to shape, never rewritten.
+      if (isUnderNotes(file)) continue;
       const text = flattenFrontmatter(await readFile(file, "utf8"));
       if (text === null) continue;
       changed.push({

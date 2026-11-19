@@ -5,6 +5,7 @@ import { containsKnownSecret } from "@ocean/core/domain/redaction/redaction.js";
 import { atomicWrite, withFileLock } from "@ocean/core/shared/fs-utils.js";
 import { localDate } from "@ocean/core/shared/local-date.js";
 import {
+  isUnderNotes,
   listProjectDirs,
   NOTES_DIR,
   oceanPath,
@@ -113,9 +114,11 @@ async function similarRecords(
   for (const root of roots)
     for (const existing of await markdownFiles(root)) {
       // The target itself is not "similar": an exact existing path is EXISTS.
+      // The owner's notes are not records: a fact may share a note's name.
       if (
         existing === file ||
-        path.basename(existing).toLowerCase() === "memory.md"
+        path.basename(existing).toLowerCase() === "memory.md" ||
+        isUnderNotes(existing)
       )
         continue;
       const sameName = normalize(path.basename(existing)) === name;
@@ -268,7 +271,7 @@ export async function proposeMemory(options: {
   reason?: string;
   source?: string;
   meta?: CandidateMeta;
-  // A note in 07-notes this fact disagrees with: the owner's note wins until he decides.
+  // A note in the owner's notes this fact disagrees with: the owner's note wins until he decides.
   contradicts?: string;
 }): Promise<{ candidate: string; auditId: string; conflict?: string }> {
   checkContent(options.content);
@@ -315,7 +318,7 @@ export async function proposeMemory(options: {
   return { candidate, auditId: id, conflict: `${PERSONAL_DIR}/CONFLICTS.md` };
 }
 
-// 07-notes is the owner's: an agent never edits it, and a fact that disagrees with one of his
+// The notes (02-personal/notes) are the owner's: an agent never edits it, and a fact that disagrees with one of his
 // notes is not reconciled by the agent. It waits in CONFLICTS.md, beside the candidate.
 async function humanNote(relative: string): Promise<string> {
   const clean = path.posix.normalize(relative.replace(/\\/g, "/"));

@@ -14,16 +14,19 @@ the engine still reads that layout, see below.)
 Every path to a project goes through `projectDir` / `listProjectDirs` in
 `packages/core/src/shared/paths.ts`, which also read a project still flat at `04-projects/<id>/`;
 `ocean project move <id> <category> --write` files one and rewrites the workspace paths that
-named its old folder (T-311).
+named its old folder (T-311). `ocean project new <id> <category> [name]` registers a project
+that has no code yet (one grown from a note): a manifest with no paths, filed in its category
+folder; `ocean project bind <id> <path>` adds its first repo later.
 
 ```text
 <workspace root>/           default: the parent directory of kernel/ (e.g. ~/ocean)
 ├── 00-inbox/ … 06-templates/   user-owned private data (PARA)
+│   ├── 02-personal/notes/   your own notes: agents read and index them (ranked above what
+│   │                        agents wrote), never write there (PROTECTED). Older workspaces had
+│   │                        07-notes/ instead; `ocean setup` moves it.
 │   └── 04-projects/         project data: registry, backlog, and each project in its
 │                            category folder, <category>/<id>/ (company, personal,
 │                            freelance, former-company, vendor; new ones in uncategorized/)
-├── 07-notes/                your own notes: agents read and index them (ranked above what
-│                            agents wrote), never write there (PROTECTED)
 ├── charter/                 private governance: core.md, policies/
 ├── kernel/                  this repository
 └── bridge/                  machine-local state, no git
@@ -66,7 +69,7 @@ isolated workspaces from one engine checkout.
 the same three constants, so they track any future layout change):
 
 - Creates `02-personal`, `05-knowledge`, `01-daily`, `00-inbox`,
-  `06-templates`, `07-notes`, and the workspace project's `04-projects/personal/ocean/tasks`
+  `06-templates`, `02-personal/notes`, and the workspace project's `04-projects/personal/ocean/tasks`
   under the workspace root.
 - Creates `bridge/config/startup`, `bridge/profiles`, `bridge/sessions`, `bridge/registry`,
   `bridge/integrations`, `bridge/archive` and `bridge/runtime/{shims,temporary}` under the
@@ -160,7 +163,7 @@ with `status: retired` stays on disk but out of search, and `ocean memory archiv
 Your journey: milestones (`type: milestone`, `02-personal/milestones/`, `milestones.base`
 timeline) and study plans (`type: study`, `02-personal/education/study/`, `study.base`). Each daily
 brief adds one **Resurface** line: the decision verified longest ago once that is more than 90
-days back, else your least recently touched note in `07-notes/`. `ocean telemetry [--days N]
+days back, else your least recently touched note in `02-personal/notes/`. `ocean telemetry [--days N]
 [--yes]` finds errors that recur across sessions and providers whose sessions keep failing, and
 proposes each as a backlog line for review.
 
@@ -194,8 +197,8 @@ candidates filed by topic, legacy records, corrections turned into rules, the sy
 answer, the milestones finished that month, its weekly digests and its session count. It is
 written once; a rerun never overwrites your answers.
 
-Your notes in `07-notes/` are never edited by an agent. When an agent's fact disagrees with one,
-it proposes the fact with `contradicts: 07-notes/<note>.md`; the disagreement is added to
+Your notes in `02-personal/notes/` are never edited by an agent. When an agent's fact disagrees with one,
+it proposes the fact with `contradicts: 02-personal/notes/<note>.md`; the disagreement is added to
 `02-personal/CONFLICTS.md` beside the waiting candidate, and you decide.
 
 `ocean express cv|linkedin|scholarship [--dry-run]` turns your done milestones into a draft in

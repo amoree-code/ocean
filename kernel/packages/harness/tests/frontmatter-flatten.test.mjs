@@ -52,7 +52,7 @@ test("flattenFrontmatter lifts metadata keys, keeps top-level values, moves list
     assert.equal(normalizeRecord("memory/x.md", text).record.type, "decision");
 });
 
-test("flatten is a dry run until --yes, skips 07-notes, backs up and keeps permissions", async () => {
+test("flatten is a dry run until --yes, skips 02-personal/notes, backs up and keeps permissions", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ocean-flatten-"));
   const previous = process.env.OCEAN_ROOT;
   process.env.OCEAN_ROOT = root;
@@ -61,7 +61,7 @@ test("flatten is a dry run until --yes, skips 07-notes, backs up and keeps permi
     for (const file of [
       "02-personal/work/a.md",
       "05-knowledge/decisions/b.md",
-      "07-notes/mine.md",
+      "02-personal/notes/mine.md",
     ]) {
       await mkdir(path.dirname(path.join(root, file)), { recursive: true });
       await writeFile(path.join(root, file), nested, { mode: 0o600 });
@@ -99,7 +99,7 @@ test("flatten is a dry run until --yes, skips 07-notes, backs up and keeps permi
       nested,
     );
     assert.equal(
-      await readFile(path.join(root, "07-notes/mine.md"), "utf8"),
+      await readFile(path.join(root, "02-personal/notes/mine.md"), "utf8"),
       nested,
     );
     assert.deepEqual((await flattenWorkspace({ apply: false })).changed, []);

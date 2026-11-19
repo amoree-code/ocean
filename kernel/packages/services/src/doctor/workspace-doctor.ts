@@ -23,6 +23,7 @@ import {
   CHARTER_DIR,
   enginePath,
   INBOX_DIR,
+  LEGACY_NOTES_DIR,
   NOTES_DIR,
   oceanEnv,
   oceanPath,
@@ -51,7 +52,8 @@ export type Finding = {
   fixable: boolean;
 };
 
-const roots = [...BRAIN_RECORD_DIRS, PROJECTS_DIR, SYSTEM_DIR];
+// The notes root is inside 02-personal (not a record dir of its own) but still checked here.
+const roots = [...BRAIN_RECORD_DIRS, NOTES_DIR, PROJECTS_DIR, SYSTEM_DIR];
 
 async function exists(file: string): Promise<boolean> {
   try {
@@ -111,7 +113,7 @@ async function checkStructure(): Promise<Finding[]> {
             message: `${root} root exists`,
             fixable: false,
           }
-        : // 07-notes arrived in a later version (T-314): a workspace made before it is not broken.
+        : // The notes root arrived in a later version (T-314): a workspace made before it is not broken.
           root === NOTES_DIR
           ? {
               code: "ROOT_MISSING",
@@ -129,6 +131,17 @@ async function checkStructure(): Promise<Finding[]> {
             },
     );
   }
+  // The notes moved from 07-notes into 02-personal/notes; setup moves a folder still there.
+  if (await exists(oceanPath(LEGACY_NOTES_DIR)))
+    findings.push({
+      code: "LEGACY_NOTES_ROOT",
+      severity: "WARN",
+      path: LEGACY_NOTES_DIR,
+      message: (await exists(oceanPath(NOTES_DIR)))
+        ? `${LEGACY_NOTES_DIR}/ and ${NOTES_DIR}/ both exist; move what is left in ${LEGACY_NOTES_DIR}/ by hand`
+        : `your notes moved to ${NOTES_DIR}/; \`ocean setup\` moves ${LEGACY_NOTES_DIR}/ there`,
+      fixable: false,
+    });
   return findings;
 }
 
@@ -500,7 +513,7 @@ const INDEX_FILE = /^[A-Z][A-Z0-9_-]*\.md$/;
 const NOT_RECORDS = [
   /^00-inbox\/(?:candidates|native|brain-dump)\//,
   /^06-templates\//,
-  /^07-notes\//,
+  /^02-personal\/notes\//,
   /^04-projects\/(?:.+\/)?tasks\//,
   // Indexes Ocean generates or appends to, not records: frontmatter there would be rewritten away.
   /^04-projects\/(?:backlog|registry)\.md$/,

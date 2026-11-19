@@ -67,8 +67,8 @@
   },
   {
     "name": "weekly-review",
-    "description": "Walk the owner through the week to inbox zero - the weekly digest, pending memory candidates, and inbox captures - deciding each item with him.",
-    "version": "1.0.0",
+    "description": "Walk the owner through the week to inbox zero - the weekly digest, pending memory candidates, inbox captures and unsorted notes - deciding each item with him.",
+    "version": "1.1.0",
     "category": "core"
   }
 ]

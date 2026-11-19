@@ -23,6 +23,7 @@ import {
 import {
   autoRegisterProject,
   bindProject,
+  createProject,
   findGitRoot,
   knownTaskPrefixes,
   listProjectBindings,
@@ -821,6 +822,23 @@ async function commandProject(): Promise<void> {
         process.exitCode = 2;
       }
     }
+  } else if (action === "new") {
+    // A project with no code yet (one grown from a note); `bind` adds a path later.
+    const [id, category, ...name] = process.argv.slice(4);
+    if (!id || !category) {
+      console.error(
+        `Usage: ocean project new <id> <${PROJECT_CATEGORIES.join("|")}> [display name]`,
+      );
+      process.exitCode = 1;
+    } else {
+      try {
+        const result = await createProject(id, category, name.join(" ") || id);
+        console.log(JSON.stringify(result, null, 2));
+      } catch (error) {
+        console.error(error instanceof Error ? error.message : String(error));
+        process.exitCode = 2;
+      }
+    }
   } else if (action === "migrate") {
     const result = await migrateProjectBindings(
       process.argv.includes("--write"),
@@ -840,7 +858,7 @@ async function commandProject(): Promise<void> {
     else console.log(await renderProjectIndex());
   } else {
     console.error(
-      "Usage: ocean project resolve [path]|bind <name> <path> [--add]|register [path]|unbind <path>|rename <id> <new-id>|move <id> <category> [--write]|list [--category <name>]|status [--json] [--write]|migrate [--write]|index [--write]",
+      "Usage: ocean project resolve [path]|bind <name> <path> [--add]|register [path]|unbind <path>|rename <id> <new-id>|new <id> <category> [name]|move <id> <category> [--write]|list [--category <name>]|status [--json] [--write]|migrate [--write]|index [--write]",
     );
     process.exitCode = 1;
   }
