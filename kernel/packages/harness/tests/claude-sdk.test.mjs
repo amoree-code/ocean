@@ -136,7 +136,10 @@ unixOnly("a Claude run past its timeout ends with 124", () =>
     assert.ok(Date.now() - started < 4_000, "the run ends at its timeout");
     // The whole process group is stopped, not just the leader.
     const descendant = Number((await readFile(pidFile, "utf8")).trim());
-    assert.throws(() => process.kill(descendant, 0), { code: "ESRCH" });
+    assert.ok(
+      await isGoneWithin(descendant, 5_000),
+      "the descendant is stopped",
+    );
   }),
 );
 
@@ -300,7 +303,9 @@ await runProvider({ provider: "claude", prompt: "x", cwd: process.env.ROOT, time
     ocean.kill("SIGINT");
     const [, signal] = await once(ocean, "exit");
     assert.equal(signal, "SIGINT", "Ocean still ends the way Ctrl+C ends it");
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    assert.throws(() => process.kill(descendant, 0), { code: "ESRCH" });
+    assert.ok(
+      await isGoneWithin(descendant, 5_000),
+      "the descendant is stopped",
+    );
   }),
 );

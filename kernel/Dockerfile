@@ -19,7 +19,9 @@ COPY scripts/prepare-hooks.mjs ./scripts/
 RUN corepack enable && pnpm install --frozen-lockfile
 
 COPY . .
-RUN pnpm test
+# The suite runs at `docker run` (CMD), not at build: CI already runs it in the gate, and running
+# it here made the image build the slowest CI job (~3.5 min).
+RUN pnpm build
 
 RUN useradd --create-home --shell /usr/sbin/nologin ocean \
   && chown -R ocean:ocean /app

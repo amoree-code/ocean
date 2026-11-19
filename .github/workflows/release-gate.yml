@@ -12,16 +12,30 @@ defaults:
   run:
     working-directory: kernel
 jobs:
-  gate:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        # The suite runs one file at a time (tests share HOME and the service label), so it is
-        # split across runners instead: each shard is its own machine (~5 min → ~2 on Windows).
-        shard: [1, 2, 3]
-    name: gate (${{ matrix.os }}, ${{ matrix.shard }}/3)
-    runs-on: ${{ matrix.os }}
+  # Decides what this change needs: .github/scripts/ci-scope.sh (code, os, docker).
+  changes:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    outputs:
+      code: ${{ steps.scope.outputs.code }}
+      os: ${{ steps.scope.outputs.os }}
+      docker: ${{ steps.scope.outputs.docker }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          FULL: ${{ contains(github.event.pull_request.labels.*.name, 'full-ci') }}
+        run: sh .github/scripts/ci-scope.sh | tee -a "$GITHUB_OUTPUT"
+
+  # The one-off checks, once, on every change: they take seconds and need no test run.
+  checks:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -32,20 +46,34 @@ jobs:
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
       - run: pnpm check:changelog
-        if: matrix.os == 'ubuntu-latest' && matrix.shard == 1
       - run: pnpm check:skills
-        if: matrix.shard == 1
       - run: pnpm check:privacy
-        if: matrix.shard == 1
       - run: pnpm check:template
-        if: matrix.shard == 1
       - run: pnpm check:tasks
-        if: matrix.shard == 1
       - run: pnpm check:deps
-        if: matrix.shard == 1
       - run: pnpm build
       - run: pnpm check:package
-        if: matrix.shard == 1
+
+  gate:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(needs.changes.outputs.os) }}
+        # The suite runs one file at a time (tests share HOME and the service label), so it is
+        # split across runners instead: each shard is its own machine.
+        shard: [1, 2, 3]
+    name: gate (${{ matrix.os }}, ${{ matrix.shard }}/3)
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
       - name: Run test shard ${{ matrix.shard }}/3
         working-directory: kernel/packages/harness
         run: pnpm run test:files --test-shard=${{ matrix.shard }}/3 "tests/*.test.mjs"
@@ -53,6 +81,8 @@ jobs:
   linux-install:
     # T-308: the packed tarball on a clean Linux at the minimum Node, with no compiler toolchain.
     # Runs beside the gate, not after it: it builds its own tree and needs nothing from it.
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -65,7 +95,10 @@ jobs:
       - run: node scripts/pack-release.mjs --out release
       - run: sh scripts/linux-install-smoke.sh release/*.tgz
 
+  # Only that the image builds; the suite itself already ran in the gate.
   docker:
+    needs: changes
+    if: needs.changes.outputs.docker == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
