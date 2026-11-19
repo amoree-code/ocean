@@ -8,6 +8,7 @@ import type {
 import type { Session } from "@ocean/core/domain/sessions/session.js";
 import { finalizeSession } from "../sessions/session-closeout.js";
 import { sessionProjectId } from "../sessions/session-projects.js";
+import { resolveSessionTask } from "../tasks/session-task.js";
 
 // The documented Claude Code SessionEnd hook contract (same family as the
 // SessionStart payload in session-start-hook.ts): a small JSON payload on
@@ -191,8 +192,10 @@ export async function ensureHookSession(
 ): Promise<Session | null> {
   const existing = store.get(sessionId);
   if (existing) return existing;
+  const projectId = await sessionProjectId(cwd);
   store.create({
     sessionId,
+    taskId: await resolveSessionTask(cwd, projectId),
     provider: client,
     providerSessionId: sessionId,
     parentSessionId: null,
@@ -200,7 +203,7 @@ export async function ensureHookSession(
     profileIdentity: "",
     workingDirectory: cwd,
     resumeData: null,
-    projectId: await sessionProjectId(cwd),
+    projectId,
   });
   store.updateStatus(sessionId, "running");
   return store.get(sessionId);
