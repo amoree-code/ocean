@@ -9,6 +9,10 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 - feat(sessions): a session that names no task gets one when the answer is unambiguous — started inside a task's own folder, on a git branch that names a task (`feat/t318-scorecard` → T-318; not inside workspace areas with no code, such as `02-personal`, since the Ocean workspace is one repository), or inside exactly one live claim's `claimed_paths`. Applies to intercepted runs, headless runs and hook-recorded client sessions; never a guess, so the scorecard's "sessions with a task" row can start to move (#314)
 
+## 2.2.3 (2026-11-19)
+
+- fix(tasks): `ocean tasks claim` moves a `todo` or `paused` task to `active`, so a task a session is working on shows as active in the task index and the Home view instead of staying `todo`; `blocked` keeps its state and `release` leaves the state alone (#315)
+
 ## 2.2.2 (2026-11-19)
 
 - fix(scorecard): the memory-writes row counts only real clients — a client id or MCP client name, or a `session:<id>` the session store traces to a provider — and shows the owner's reviews and Ocean's own jobs (distill, telemetry, instruction harvest) apart instead of as clients; the search row reports the mode a client's `brain_search` actually runs in (a probe search with the local embedder, as over MCP) and why it is not hybrid, instead of only whether the index holds vectors (#313)

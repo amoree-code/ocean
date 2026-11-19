@@ -48,14 +48,24 @@ export function isStale(claim: Claim, now = new Date()): boolean {
   return Number.isNaN(claimedAt) || now.getTime() - claimedAt > CLAIM_TTL_MS;
 }
 
+// A claim means a session is working on the task, so a waiting task becomes active.
+const STARTS_ON_CLAIM = new Set(["todo", "paused"]);
+
 // Replace the claim lines in the frontmatter (and bump `updated`), keeping every other line.
+// Claiming also moves a `todo`/`paused` task to `active`; releasing leaves the state alone.
 function withClaim(source: string, claim: Claim | null, today: string): string {
   const end = source.indexOf("\n---", 4);
   const kept = source
     .slice(4, end)
     .split("\n")
     .filter((line) => !/^claimed_(by|at|paths):/.test(line))
-    .map((line) => (/^updated:/.test(line) ? `updated: ${today}` : line));
+    .map((line) => (/^updated:/.test(line) ? `updated: ${today}` : line))
+    .map((line) => {
+      const state = line.match(/^state:\s*(.*)$/)?.[1];
+      return claim && state && STARTS_ON_CLAIM.has(unquote(state.trim()))
+        ? "state: active"
+        : line;
+    });
   if (claim) {
     kept.push(`claimed_by: ${claim.by}`, `claimed_at: ${claim.at}`);
     if (claim.paths.length)
