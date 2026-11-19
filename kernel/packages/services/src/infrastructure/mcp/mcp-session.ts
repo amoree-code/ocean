@@ -9,6 +9,9 @@ import type { SessionStoreFactory } from "@ocean/core/domain/ports/session-store
 // connection ends. Recording never fails a tool call.
 
 export type McpSessionRecorder = {
+  // Opens the connection's session before its first tool runs, so a memory change that call
+  // makes is stamped with it (OCEAN_SESSION_ID, which the memory audit reads).
+  open(clientName: string): Promise<void>;
   toolCall(clientName: string, tool: string, ok: boolean): Promise<void>;
   close(): Promise<void>;
 };
@@ -18,7 +21,10 @@ export function createMcpSessionRecorder(options: {
   // The client id to record a session under, or null for a client recorded some other way.
   providerOf: (clientName: string) => string | null;
   cwd?: string;
+  // Where the session id is published for the memory audit; the server process's own env.
+  env?: NodeJS.ProcessEnv;
 }): McpSessionRecorder {
+  const env = options.env ?? process.env;
   let sessionId: string | null = null;
 
   async function withStore(
@@ -36,34 +42,50 @@ export function createMcpSessionRecorder(options: {
     }
   }
 
+  // Creates the connection's session once.
+  function ensure(
+    store: Awaited<ReturnType<SessionStoreFactory>>,
+    clientName: string,
+    provider: string,
+  ): void {
+    if (!sessionId) {
+      const id = randomUUID();
+      store.create({
+        sessionId: id,
+        title: `${provider} over MCP`,
+        provider,
+        providerSessionId: null,
+        parentSessionId: null,
+        profile: `mcp:${provider}`,
+        profileIdentity: "",
+        workingDirectory: options.cwd ?? process.cwd(),
+        resumeData: null,
+      });
+      store.updateStatus(id, "running");
+      store.appendEvent(
+        id,
+        "mcp_connection",
+        JSON.stringify({ client: clientName }),
+      );
+      sessionId = id;
+      // A session id the client itself set is kept.
+      if (!env.OCEAN_SESSION_ID) env.OCEAN_SESSION_ID = id;
+    }
+  }
+
   return {
+    async open(clientName) {
+      const provider = options.providerOf(clientName);
+      if (!provider || sessionId) return;
+      await withStore((store) => ensure(store, clientName, provider));
+    },
     async toolCall(clientName, tool, ok) {
       const provider = options.providerOf(clientName);
       if (!provider) return;
       await withStore((store) => {
-        if (!sessionId) {
-          const id = randomUUID();
-          store.create({
-            sessionId: id,
-            title: `${provider} over MCP`,
-            provider,
-            providerSessionId: null,
-            parentSessionId: null,
-            profile: `mcp:${provider}`,
-            profileIdentity: "",
-            workingDirectory: options.cwd ?? process.cwd(),
-            resumeData: null,
-          });
-          store.updateStatus(id, "running");
-          store.appendEvent(
-            id,
-            "mcp_connection",
-            JSON.stringify({ client: clientName }),
-          );
-          sessionId = id;
-        }
+        ensure(store, clientName, provider);
         store.appendEvent(
-          sessionId,
+          sessionId as string,
           "mcp_tool_call",
           JSON.stringify({ tool, ok }),
         );

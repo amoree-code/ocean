@@ -7,7 +7,7 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
-- feat(mcp): Claude Desktop, which Ocean sees only over MCP, gets a light session per connection — opened on its first tool call (an app that never asks Ocean anything leaves no record), one `mcp_tool_call` event per call with the tool name and outcome only (never arguments or results), completed when the connection ends. `ocean mcp serve` now answers every request already sent before it closes the session. Clients recorded by hooks or interception (Claude Code, Codex…) are not recorded twice (#316)
+- feat(mcp): Claude Desktop, which Ocean sees only over MCP, gets a light session per connection — opened on its first tool call (an app that never asks Ocean anything leaves no record), one `mcp_tool_call` event per call with the tool name and outcome only (never arguments or results), completed when the connection ends. `ocean mcp serve` now answers every request already sent before it closes the session. Clients recorded by hooks or interception (Claude Code, Codex…) are not recorded twice (#316) The session opens before that first call runs and its id is set as `OCEAN_SESSION_ID`, so a memory change the call makes names it (T-319).
 
 ## 2.2.3 (2026-11-19)
 

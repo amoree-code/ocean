@@ -66,6 +66,7 @@ test("one session per connection, opened on the first call, tool names only, com
       openStore: defaultSessionStoreFactory,
       providerOf,
       cwd: "/",
+      env: {},
     });
     // Nothing is recorded before a tool call, or for a client recorded elsewhere.
     await recorder.close();
@@ -94,6 +95,35 @@ test("one session per connection, opened on the first call, tool names only, com
   });
 });
 
+test("the session opens before the first tool runs and is published for the memory audit", async () => {
+  await withRoot(async () => {
+    const env = {};
+    const recorder = createMcpSessionRecorder({
+      openStore: defaultSessionStoreFactory,
+      providerOf,
+      env,
+    });
+    await recorder.open("claude-code");
+    assert.equal(env.OCEAN_SESSION_ID, undefined);
+    await recorder.open("claude-ai");
+    const [{ session }] = await sessions();
+    assert.equal(env.OCEAN_SESSION_ID, session.sessionId);
+    // The first call lands in the session open() made, not a second one.
+    await recorder.toolCall("claude-ai", "memory_write", true);
+    await recorder.open("claude-ai");
+    assert.equal((await sessions()).length, 1);
+
+    // A session id the client set itself is kept.
+    const own = { OCEAN_SESSION_ID: "client-set" };
+    await createMcpSessionRecorder({
+      openStore: defaultSessionStoreFactory,
+      providerOf,
+      env: own,
+    }).open("claude-ai");
+    assert.equal(own.OCEAN_SESSION_ID, "client-set");
+  });
+});
+
 test("a store that cannot open never fails the tool call", async () => {
   const recorder = createMcpSessionRecorder({
     openStore: async () => {
@@ -109,9 +139,11 @@ test("a store that cannot open never fails the tool call", async () => {
 
 test("over MCP: a Claude Desktop connection's calls land in one session, arguments never", async () => {
   await withRoot(async () => {
+    const env = {};
     const mcpSessions = createMcpSessionRecorder({
       openStore: defaultSessionStoreFactory,
       providerOf,
+      env,
     });
     const handle = (request) =>
       handleOceanMcpRequest(request, {

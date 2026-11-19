@@ -1001,6 +1001,7 @@ export async function handleOceanMcpRequest(
       error: { code: -32602, message: "Unknown MCP tool" },
     };
   }
+  await ports.mcpSessions?.open(clientName);
   try {
     const result = textResult(
       await callTool(
