@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+- feat(mcp): Claude Desktop, which Ocean sees only over MCP, gets a light session per connection — opened on its first tool call (an app that never asks Ocean anything leaves no record), one `mcp_tool_call` event per call with the tool name and outcome only (never arguments or results), completed when the connection ends. `ocean mcp serve` now answers every request already sent before it closes the session. Clients recorded by hooks or interception (Claude Code, Codex…) are not recorded twice
+
 ## 2.2.2 (2026-11-19)
 
 - fix(scorecard): the memory-writes row counts only real clients — a client id or MCP client name, or a `session:<id>` the session store traces to a provider — and shows the owner's reviews and Ocean's own jobs (distill, telemetry, instruction harvest) apart instead of as clients; the search row reports the mode a client's `brain_search` actually runs in (a probe search with the local embedder, as over MCP) and why it is not hybrid, instead of only whether the index holds vectors (#313)

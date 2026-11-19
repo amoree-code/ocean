@@ -253,6 +253,12 @@ export const CLIENT_ADAPTERS: ClientAdapter[] = [
   },
 ];
 
+// Clients whose only trace in Ocean is their MCP connection: no CLI to intercept and no session
+// hook. The MCP server records a light session per connection for these (T-319).
+export const MCP_ONLY_CLIENTS: ReadonlySet<string> = new Set([
+  "claude-desktop",
+]);
+
 // Which client, and which of its modes, a call-ledger name belongs to; undefined when unknown.
 export function mcpClientOf(
   name: string,
