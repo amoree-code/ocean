@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+## 2.2.3 (2026-11-19)
+
 - fix(tasks): `ocean tasks claim` moves a `todo` or `paused` task to `active`, so a task a session is working on shows as active in the task index and the Home view instead of staying `todo`; `blocked` keeps its state and `release` leaves the state alone (#315)
 
 ## 2.2.2 (2026-11-19)
