@@ -19,6 +19,7 @@ import { boundProjectManifest } from "@ocean/loop/hooks/session-start-hook.js";
 import { openSessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
 import { authorizeRun } from "@ocean/loop/runs/run-authorization.js";
 import { finalizeSession } from "@ocean/loop/sessions/session-closeout.js";
+import { resolveSessionTask } from "@ocean/loop/tasks/session-task.js";
 import {
   authAdapter,
   authLogin,
@@ -112,7 +113,14 @@ export async function intercept(
   store.create({
     sessionId,
     title: options.title ?? `${provider.id} session`,
-    taskId: options.taskId ?? null,
+    taskId:
+      options.taskId ??
+      (await resolveSessionTask(
+        workingDirectory,
+        projectResolution.status === "bound"
+          ? projectResolution.projectId
+          : null,
+      )),
     handoffId: options.handoffId ?? null,
     provider: provider.id,
     providerSessionId: null,

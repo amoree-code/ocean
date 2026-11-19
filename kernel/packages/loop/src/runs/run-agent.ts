@@ -38,6 +38,7 @@ import { getHandoff } from "../handoff/handoff-service.js";
 import { emitHook } from "../hooks/lifecycle-hooks.js";
 import { finalizeSession } from "../sessions/session-closeout.js";
 import { sessionProjectId } from "../sessions/session-projects.js";
+import { resolveSessionTask } from "../tasks/session-task.js";
 import {
   assemblePrompt,
   formatActiveLessons,
@@ -78,9 +79,11 @@ export async function runAgent(
   const handoff = request.handoffId
     ? await getHandoff(request.handoffId, deps.openStore)
     : null;
+  const projectId = await sessionProjectId(request.cwd);
   const effectiveTaskId =
     request.taskId ??
-    (typeof handoff?.taskId === "string" ? handoff.taskId : null);
+    (typeof handoff?.taskId === "string" ? handoff.taskId : null) ??
+    (await resolveSessionTask(request.cwd, projectId));
   const clientHome = deps.resolveClientHome(profile);
   executionPolicy(profile, request.cwd);
   // A completion client returns text and touches nothing, so it is read-only by construction.
@@ -121,7 +124,7 @@ export async function runAgent(
     profileIdentity: profileIdentity(profile),
     workingDirectory: request.cwd,
     resumeData: null,
-    projectId: await sessionProjectId(request.cwd),
+    projectId,
   });
 
   if (request.runContract) {
