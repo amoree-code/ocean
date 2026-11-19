@@ -63,7 +63,10 @@ test("`ocean skill doctor` reports core and surface, and fails on a gap", async 
       spawnSync(
         process.execPath,
         [path.resolve("dist/main.js"), "skill", "doctor"],
-        { encoding: "utf8", env: { ...process.env, HOME: home } },
+        {
+          encoding: "utf8", // os.homedir() reads USERPROFILE on Windows, HOME elsewhere.
+          env: { ...process.env, HOME: home, USERPROFILE: home },
+        },
       );
     const gap = run();
     assert.equal(gap.status, 1);
