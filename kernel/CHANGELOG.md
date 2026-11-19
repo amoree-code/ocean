@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+## 2.6.0 (2026-11-19)
+
 - feat(mcp): CONTEXT-ACK — the Ocean start line ends with `ack=<hash>` (a hash of the line), and every Ocean tool takes an optional `contextAck`; a connection's first tool call records one `context_ack` row in the MCP call ledger, ok only when it echoes a hash Ocean actually handed out, so "did this client load Ocean?" has a recorded answer per connection (`ocean clients` lists it per client). The handoff sentence leaves the server instructions (its tool description already says it) to keep them under 1 KB (T-319) (#318)
 
 ## 2.5.0 (2026-11-19)
