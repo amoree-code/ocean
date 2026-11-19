@@ -494,6 +494,23 @@ test("the workspace project's own commands still run in the engine repo root", a
   });
 });
 
+test("typst runs only as compile or query, never update", () => {
+  for (const command of [
+    "typst compile --root . resumes/full-stack.typ",
+    "typst query --root . resumes/full-stack.typ heading",
+  ])
+    assert.deepEqual(
+      extractVerificationCommands(`---\nid: T-1\nverify: ${command}\n---\n`),
+      [command],
+    );
+  for (const command of ["typst update", "typst", "typst fonts"])
+    assert.deepEqual(
+      extractVerificationCommands(`---\nid: T-1\nverify: ${command}\n---\n`),
+      [],
+      command,
+    );
+});
+
 test("a check never publishes, signs in or installs globally, from any source (T-317)", async () => {
   const outward = [
     "npm publish",

@@ -41,6 +41,7 @@ const COMMAND_ALLOWLIST = new Set([
   "jest",
   "vitest",
   "biome",
+  "typst",
 ]);
 
 type VerificationCheck = {
@@ -152,8 +153,12 @@ const OUTWARD_VERBS = new Set([
   "dist-tag",
 ]);
 
+// typst only builds or reads a document in a check; `typst update` replaces the binary.
+const TYPST_CHECK_VERBS = new Set(["compile", "c", "query"]);
+
 function isOutward(program: string, args: string[]): boolean {
   if (args.some((arg) => arg === "-g" || arg === "--global")) return true;
+  if (program === "typst") return !TYPST_CHECK_VERBS.has(args[0] ?? "");
   return (
     PACKAGE_MANAGERS.has(program) && args.some((arg) => OUTWARD_VERBS.has(arg))
   );
