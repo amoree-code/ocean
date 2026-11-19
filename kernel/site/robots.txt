@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://amoree-code.github.io/ocean/sitemap.xml

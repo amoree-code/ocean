@@ -9,7 +9,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/amoree-code/ocean.git",
-    "directory": "packages/harness"
+    "directory": "kernel/packages/harness"
   },
   "bugs": {
     "url": "https://github.com/amoree-code/ocean/issues"
@@ -23,7 +23,15 @@
     "claude",
     "codex",
     "gemini",
-    "local-first"
+    "local-first",
+    "claude-code",
+    "gemini-cli",
+    "cursor",
+    "opencode",
+    "ai-memory",
+    "ai-agents",
+    "mcp-server",
+    "developer-tools"
   ],
   "type": "module",
   "engines": {
