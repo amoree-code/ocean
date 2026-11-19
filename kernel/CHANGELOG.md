@@ -7,7 +7,20 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
-- feat(skills): `ocean skill doctor` also checks the skill surface (borrowed from COG's validate-agent-surface): every installed client must hold the engine's core skills, plus the hub's skills in the clients that get copies; a client with no skills folder is listed, not judged, and its own extra skills are shown, not faulted. Output is now `{core, surface}`, and a gap prints `NOT CONSISTENT: <client> lacks …` and exits 1 (T-319)
+- feat(skills): `ocean skill doctor` also checks the skill surface (borrowed from COG's validate-agent-surface): every installed client must hold the engine's core skills, plus the hub's skills in the clients that get copies; a client with no skills folder is listed, not judged, and its own extra skills are shown, not faulted. Output is now `{core, surface}`, and a gap prints `NOT CONSISTENT: <client> lacks …` and exits 1 (T-319) (#319)
+- feat(mcp): CONTEXT-ACK — the Ocean start line ends with `ack=<hash>` (a hash of the line), and every Ocean tool takes an optional `contextAck`; a connection's first tool call records one `context_ack` row in the MCP call ledger, ok only when it echoes a hash Ocean actually handed out, so "did this client load Ocean?" has a recorded answer per connection (`ocean clients` lists it per client). The handoff sentence leaves the server instructions (its tool description already says it) to keep them under 1 KB (T-319) (#318)
+
+## 2.5.0 (2026-11-19)
+
+- feat(memory): `ocean memory audit [--client <name>] [--days N] [--limit N] [--json]` answers who wrote, changed or deleted what — changes per client and action, the latest entries, and how many name no client; each audit entry now also records the session it was made in (`OCEAN_SESSION_ID`, else the id Claude Code passes to its tools and MCP servers, which is Ocean's id for that session) (T-319) (#317)
+
+## 2.4.0 (2026-11-19)
+
+- feat(mcp): Claude Desktop, which Ocean sees only over MCP, gets a light session per connection — opened on its first tool call (an app that never asks Ocean anything leaves no record), one `mcp_tool_call` event per call with the tool name and outcome only (never arguments or results), completed when the connection ends. `ocean mcp serve` now answers every request already sent before it closes the session. Clients recorded by hooks or interception (Claude Code, Codex…) are not recorded twice (#316) The session opens before that first call runs and its id is set as `OCEAN_SESSION_ID`, so a memory change the call makes names it (T-319).
+
+## 2.3.0 (2026-11-19)
+
+- feat(sessions): a session that names no task gets one when the answer is unambiguous — started inside a task's own folder, on a git branch that names a task (`feat/t318-scorecard` → T-318; not inside workspace areas with no code, such as `02-personal`, since the Ocean workspace is one repository), or inside exactly one live claim's `claimed_paths`. Applies to intercepted runs, headless runs and hook-recorded client sessions; never a guess, so the scorecard's "sessions with a task" row can start to move (#314)
 
 ## 2.2.3 (2026-11-19)
 

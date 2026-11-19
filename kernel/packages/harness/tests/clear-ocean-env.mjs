@@ -15,6 +15,9 @@ for (const name of Object.keys(process.env)) {
   if (keep.has(name)) continue;
   if (name.startsWith("OCEAN_")) delete process.env[name];
 }
+// The suite run from inside a Claude Code session would stamp that session on every audit entry
+// a test writes (T-319).
+delete process.env.CLAUDE_CODE_SESSION_ID;
 
 // Git hooks (lefthook's pre-push runs this suite) export the repo-location variables below.
 // A test that spawns git in a temp dir would inherit them and act on the real repository

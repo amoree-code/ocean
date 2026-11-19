@@ -1,3 +1,4 @@
+import { contextAck } from "@ocean/core/shared/context-ack.js";
 import { oceanEnvPair } from "@ocean/core/shared/paths.js";
 import type { ProjectResolution } from "@ocean/core/shared/project-resolution.js";
 
@@ -10,6 +11,8 @@ export const OCEAN_BOOTSTRAP_MAX_BYTES = 256;
 
 export type OceanBootstrap = {
   content: string;
+  // The hash a client echoes as `contextAck` to show it loaded this line (T-319).
+  ack: string;
   manifest: { bytes: number; source: "ocean"; transport: "bootstrap-env" };
 };
 
@@ -27,7 +30,9 @@ export function buildOceanBootstrap(
   extra: { rules?: number } = {},
 ): OceanBootstrap {
   const rules = extra.rules && extra.rules > 0 ? ` rules=${extra.rules}` : "";
-  const content = `ocean=1 project=${projectTag(project)} confidence=${project.confidence}${rules} ops=${SUPPORTED_OPERATIONS}`;
+  const line = `ocean=1 project=${projectTag(project)} confidence=${project.confidence}${rules} ops=${SUPPORTED_OPERATIONS}`;
+  const ack = contextAck(line);
+  const content = `${line} ack=${ack}`;
   const bytes = Buffer.byteLength(content, "utf8");
   if (bytes > OCEAN_BOOTSTRAP_MAX_BYTES) {
     throw new Error(
@@ -36,6 +41,7 @@ export function buildOceanBootstrap(
   }
   return {
     content,
+    ack,
     manifest: { bytes, source: "ocean", transport: "bootstrap-env" },
   };
 }
