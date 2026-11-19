@@ -227,8 +227,8 @@ you wrote it. `ocean skill sync` still does the core skills by hand.
 ```text
 ~/ocean/                        private workspace (OCEAN_ROOT) — local only, never published
 ├── 00-inbox/ … 06-templates/   your records: inbox, daily, personal, professional,
-│                               projects, knowledge, templates
-├── 07-notes/                   your own notes: agents read them, never write them
+│                               projects, knowledge, templates; your own notes in
+│                               02-personal/notes/ — agents read them, never write them
 ├── charter/                    your rules and the policies they route to
 └── bridge/                     machine state: sessions, config, client integrations, shims
 

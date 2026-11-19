@@ -94,7 +94,7 @@ test("doctor reports records without frontmatter and records outside their type'
   await write("01-daily/2026-11-01.md", "# day\n");
   await write("02-personal/choice.md", "---\ntype: decision\n---\n\nx\n");
   await write("02-personal/work/style.md", "---\ntype: feedback\n---\n\nx\n");
-  await write("07-notes/raw.md", "no frontmatter, mine\n");
+  await write("02-personal/notes/raw.md", "no frontmatter, mine\n");
   // Indexes Ocean generates or appends to are not records.
   await write("04-projects/backlog.md", "# Tasks\n");
   await write("04-projects/registry.md", "# Project registry\n");

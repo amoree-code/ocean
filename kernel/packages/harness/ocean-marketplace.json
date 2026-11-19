@@ -68,7 +68,7 @@
         "path": "skills/core/daily-harvest"
       },
       "integrity": {
-        "sha256": "4314c029393052b95bb675ead75a9ecbfb5138457c7367fd761d6efa8f2580ba"
+        "sha256": "23c7018021bda0bdf8eebe03e78c74ff42e14fe85c15b413b82b648505af2c08"
       },
       "spec": {
         "directory": "daily-harvest"
@@ -212,7 +212,7 @@
         "path": "skills/core/weekly-review"
       },
       "integrity": {
-        "sha256": "b7cb9dc2e0e425648cbbf7081c4445fb3ebdb1cdaa333265f2ca9163e01974ea"
+        "sha256": "346d7a276b8fccbd693ec766fe726c4f2d1887fae4d82fa728e619441fe7ef97"
       },
       "spec": {
         "directory": "weekly-review"

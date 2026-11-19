@@ -20,7 +20,6 @@
 !/04-projects/
 !/05-knowledge/
 !/06-templates/
-!/07-notes/
 !/charter/
 !/bridge/
 !/.index/
@@ -32,7 +31,6 @@
 /04-projects/**
 /05-knowledge/**
 /06-templates/**
-/07-notes/**
 /charter/**
 /bridge/**
 /.index/**
@@ -44,7 +42,6 @@
 !/04-projects/**/
 !/05-knowledge/**/
 !/06-templates/**/
-!/07-notes/**/
 !/charter/**/
 !/bridge/**/
 !/.index/**/
@@ -56,7 +53,6 @@
 !/04-projects/**/.gitkeep
 !/05-knowledge/**/.gitkeep
 !/06-templates/**/.gitkeep
-!/07-notes/**/.gitkeep
 !/charter/**/.gitkeep
 !/bridge/**/.gitkeep
 !/.index/**/.gitkeep

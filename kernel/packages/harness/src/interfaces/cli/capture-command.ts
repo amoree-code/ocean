@@ -6,7 +6,9 @@ import { syncMemoryIndexes } from "@ocean/brain/memory/index-sync.js";
 import { validateSessionEntryContract } from "@ocean/core/domain/sessions/entry-contract.js";
 import { localDate } from "@ocean/core/shared/local-date.js";
 import {
+  isUnderNotes,
   KNOWLEDGE_DIR,
+  NOTES_DIR,
   oceanPath,
   oceanRoot,
   PERSONAL_DIR,
@@ -125,6 +127,10 @@ async function promote(
     const memoryRoot = path.resolve(oceanPath(PERSONAL_DIR)) + path.sep;
     if (!file.startsWith(memoryRoot))
       throw new Error(`Memory target must stay inside ${PERSONAL_DIR}.`);
+    if (isUnderNotes(file))
+      throw new Error(
+        `${NOTES_DIR}/ is the owner's own notes; a capture is never appended there.`,
+      );
     const header = `\n\n## Captured note — ${localDate()}\n\n${item.content.trim()}\n\n_Source: session-capture-${item.captureId}; review status: unverified._\n`;
     await appendFile(file, header);
     await syncMemoryIndexes(true);

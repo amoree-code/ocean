@@ -1,7 +1,11 @@
 import { readFileSync } from "node:fs";
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { oceanPath, STORE_DIR } from "@ocean/core/shared/paths.js";
+import {
+  isUnderNotes,
+  oceanPath,
+  STORE_DIR,
+} from "@ocean/core/shared/paths.js";
 import { conflictsFile, lessonsDir } from "./lessons.js";
 
 type Store = "memory" | "knowledge";
@@ -81,7 +85,11 @@ async function syncStore(store: Store, apply: boolean) {
   const index = path.join(root, indexName);
   const current = await readFile(index, "utf8");
   const recordFiles = (await markdownFiles(root)).filter(
-    (file) => path.basename(file) !== indexName && !isLessonRecord(store, file),
+    (file) =>
+      path.basename(file) !== indexName &&
+      !isLessonRecord(store, file) &&
+      // The owner's notes sit inside 02-personal but are his, not records MEMORY.md lists.
+      !isUnderNotes(file),
   );
   const known = links(current);
   const missing = recordFiles.filter(

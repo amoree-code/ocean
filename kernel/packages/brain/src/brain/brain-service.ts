@@ -66,7 +66,7 @@ export type BrainSearchHit = {
   snippet: string;
   score: number;
   matchedBy: "fts" | "vector" | "both";
-  // Who wrote the record: the owner's own notes (07-notes) are "human", everything else "agent".
+  // Who wrote the record: the owner's own notes (02-personal/notes) are "human", everything else "agent".
   origin: "human" | "agent";
 };
 
@@ -431,7 +431,11 @@ export async function ensureIndexBuilt(root = oceanRoot()): Promise<boolean> {
 
 export { reindexBrain };
 export function relativeStorePath(file: string, root = oceanRoot()): string {
-  for (const [store, dir] of Object.entries(STORE_DIR)) {
+  // Deepest store first: the notes sit inside 02-personal and must resolve to "notes/".
+  const stores = Object.entries(STORE_DIR).sort(
+    ([, a], [, b]) => b.length - a.length,
+  );
+  for (const [store, dir] of stores) {
     const relative = path.relative(resolveWithin(root, dir), file);
     if (!relative.startsWith("..") && !path.isAbsolute(relative))
       return `${store}/${relative.split(path.sep).join("/")}`;

@@ -61,7 +61,7 @@ strengthen the record that holds it (merge into one current statement, fresh `up
 7. **The owner's journey**: a study session (IELTS, Letspeak) adds to his study log; finished,
    notable work becomes a milestone (`status: done`); a project's state goes to its `memory/`.
 
-**Stop and do not write** when a fact contradicts a record or one of his notes in `07-notes/`:
+**Stop and do not write** when a fact contradicts a record or one of his notes in `02-personal/notes/`:
 propose it with `contradicts` so it waits in `02-personal/CONFLICTS.md`. Never write a secret;
 about other people, only what the work needs; never invent a detail.
 

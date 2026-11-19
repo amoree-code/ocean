@@ -1317,6 +1317,51 @@ export async function rewriteProjectReferences(
   return changed.sort();
 }
 
+// A project with no code yet, e.g. one grown from a note: a manifest with no paths, filed in its
+// category folder with the usual tasks/, memory/ and docs/. `bind` adds its first path later.
+// An id already registered is returned as it is, never overwritten.
+export async function createProject(
+  id: string,
+  category: string,
+  name: string = id,
+): Promise<{ id: string; dir: string; created: boolean }> {
+  if (!isValidProjectId(id))
+    throw new Error(
+      `Invalid project id '${id}': use lowercase letters, digits, dot, underscore or hyphen`,
+    );
+  if (!isProjectCategory(category))
+    throw new Error(
+      `Unknown category '${category}': use ${PROJECT_CATEGORIES.join(", ")}`,
+    );
+  const created = await withProjectsLock(async () => {
+    const manifests = await listProjectManifests();
+    if (manifests.some((manifest) => manifest.id === id)) return false;
+    if (existsSync(oceanPath(projectDir(id))))
+      throw new ProjectFolderTaken(
+        `${projectDir(id)} already exists; bind it explicitly`,
+      );
+    const manifest = await newManifest(
+      id,
+      {
+        name,
+        paths: [],
+        created: new Date().toISOString(),
+        autoRegistered: false,
+      },
+      manifests,
+    );
+    // The folder first, so projectDir resolves to the category folder the manifest goes into.
+    await mkdir(oceanPath(PROJECTS_DIR, category, id), { recursive: true });
+    await writeManifest(manifest);
+    await saveProjectBindings(
+      cacheBindings(manifests.concat(manifest), await listLegacyBindings()),
+    );
+    return true;
+  });
+  if (created) await ensureProjectLayout(id);
+  return { id, dir: projectDir(id), created };
+}
+
 // Files a project under a category folder (T-311) and rewrites the workspace paths that name
 // its old folder. A dry run unless `write`: it reports the move and the files that would change.
 export async function moveProject(
