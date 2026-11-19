@@ -54,6 +54,7 @@ import { openSessionStoreReadOnly } from "@ocean/loop/infrastructure/persistence
 import { listTasksForFolder } from "@ocean/loop/tasks/list-tasks.js";
 import { hasFailures, workspaceReport } from "../../doctor/workspace-doctor.js";
 import { recordMcpCall } from "./call-ledger.js";
+import type { McpSessionRecorder } from "./mcp-session.js";
 import { installedVersion, serverVersion } from "./server-version.js";
 import { McpToolRegistry } from "./tool-registry.js";
 
@@ -478,6 +479,8 @@ export type OceanMcpPorts = {
   wrapperManager: WrapperManagerPort;
   // The query embedder for brain_search; null (or absent) searches by full text only.
   embedder?: () => Promise<EmbedderPort | null>;
+  // A light session per connection for clients with no other session record (T-319).
+  mcpSessions?: McpSessionRecorder;
 };
 
 function textResult(value: unknown): {
@@ -998,6 +1001,7 @@ export async function handleOceanMcpRequest(
       error: { code: -32602, message: "Unknown MCP tool" },
     };
   }
+  await ports.mcpSessions?.open(clientName);
   try {
     const result = textResult(
       await callTool(
@@ -1007,9 +1011,11 @@ export async function handleOceanMcpRequest(
       ),
     );
     await recordMcpCall(clientName, name, true);
+    await ports.mcpSessions?.toolCall(clientName, name, true);
     return { jsonrpc: "2.0", id: request.id, result };
   } catch (error) {
     await recordMcpCall(clientName, name, false);
+    await ports.mcpSessions?.toolCall(clientName, name, false);
     return {
       jsonrpc: "2.0",
       id: request.id,
@@ -1026,8 +1032,15 @@ export async function handleOceanMcpRequest(
 
 export async function runOceanMcpServer(ports: OceanMcpPorts): Promise<void> {
   let buffer = "";
+  // Requests still being answered when stdin ends: the connection's session closes after them.
+  const inFlight = new Set<Promise<void>>();
   process.stdin.setEncoding("utf8");
-  process.stdin.on("data", async (chunk: string) => {
+  process.stdin.on("data", (chunk: string) => {
+    const work = handleChunk(chunk);
+    inFlight.add(work);
+    work.finally(() => inFlight.delete(work)).catch(() => {});
+  });
+  async function handleChunk(chunk: string): Promise<void> {
     buffer += chunk;
     while (true) {
       const newline = buffer.indexOf("\n");
@@ -1040,6 +1053,8 @@ export async function runOceanMcpServer(ports: OceanMcpPorts): Promise<void> {
       if (!response) continue;
       process.stdout.write(`${JSON.stringify(response)}\n`);
     }
-  });
+  }
   await new Promise<void>((resolve) => process.stdin.once("end", resolve));
+  await Promise.allSettled([...inFlight]);
+  await ports.mcpSessions?.close();
 }
