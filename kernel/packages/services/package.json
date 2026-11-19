@@ -1,6 +1,6 @@
 {
   "name": "@ocean/services",
-  "version": "2.2.3",
+  "version": "2.3.0",
   "private": false,
   "type": "module",
   "files": [
