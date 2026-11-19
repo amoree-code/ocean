@@ -14,7 +14,8 @@ export const MEMORY_INSTRUCTIONS = [
   "Facts you infer yourself, and anything imported from another tool's memory, go to memory_propose for the user's review, never to memory_write.",
   "Never store secrets, credentials or temporary state. If a new fact contradicts a record, tell the user instead of overwriting it.",
   "memory_delete is a soft delete; memory_history and memory_restore undo changes.",
-  "Without a session-start hook, call ocean_context once. Use ocean_handoff_create only when the user asks for a handoff.",
+  // The handoff rule lives in ocean_handoff_create's own description; the ack line is T-319.
+  "Without a session-start hook, call ocean_context once. Pass the start line's ack=<hash> as contextAck on your first Ocean call.",
 ].join(" ");
 
 export const MEMORY_ERROR_CODES = [

@@ -116,6 +116,8 @@ test("the call ledger records only {ts, client, tool, ok, version} — never que
     assert.deepEqual(
       calls.map(({ client, tool, ok }) => [client, tool, ok]),
       [
+        // The connection's first call sent no contextAck (T-319 CONTEXT-ACK).
+        ["ledger-test-client", "context_ack", false],
         ["ledger-test-client", "ocean_ping", true],
         // No index in the empty workspace, so the search fails; its error stays out too.
         ["ledger-test-client", "brain_search", false],
@@ -133,7 +135,7 @@ test("the call ledger records only {ts, client, tool, ok, version} — never que
         tool: "ocean_ping",
         calls: 1,
         ok: 1,
-        last: calls[0].ts,
+        last: calls[1].ts,
       },
     );
   });
@@ -240,7 +242,12 @@ test("Claude Desktop's chat and agent mode stay two identities of one client", a
         params: { name: "ocean_ping", arguments: {} },
       });
     }
-    const rows = attributeLedger(summarizeCallLedger(await readCallLedger()));
+    // Each connection's context_ack line (T-319) is left out: this is about the tool calls.
+    const rows = attributeLedger(
+      summarizeCallLedger(
+        (await readCallLedger()).filter((call) => call.tool !== "context_ack"),
+      ),
+    );
     const row = (client) => rows.find((item) => item.client === client);
     // The ledger keeps the name the client sent; attribution only adds to it.
     assert.deepEqual(

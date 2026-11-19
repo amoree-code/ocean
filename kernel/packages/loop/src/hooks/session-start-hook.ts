@@ -2,6 +2,7 @@ import { readFile, realpath } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { buildOceanBootstrap } from "@ocean/context/context/resource-injection.js";
+import { recordIssuedAck } from "@ocean/core/shared/context-ack.js";
 import { truncateUtf8 } from "@ocean/core/shared/fs-utils.js";
 import { oceanRoot, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import {
@@ -168,6 +169,7 @@ export async function claudeSessionStartHook(
       rulesProblem = error instanceof Error ? error.message : String(error);
     }
   const bootstrap = buildOceanBootstrap(project, { rules: rules.length });
+  await recordIssuedAck(bootstrap.ack);
   const parts = [bootstrap.content];
   if (project.status === "bound" && rules.length)
     parts.push(projectRulesBlock(project.projectId, rules));
@@ -200,7 +202,9 @@ export async function oceanContext(cwd: string): Promise<string> {
       confidence: "none",
     }),
   );
-  return buildOceanBootstrap(project).content;
+  const bootstrap = buildOceanBootstrap(project);
+  await recordIssuedAck(bootstrap.ack);
+  return bootstrap.content;
 }
 
 // Clients that take the bootstrap through their own hooks instead of a same-name shim (T-266).
