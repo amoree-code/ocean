@@ -75,18 +75,25 @@ const notYet = (
   pendingTask,
 });
 
-// The engine-location warning is about the machine, not a client.
+// Installed clients Ocean can wire. The engine-location warning is about the machine, and an
+// unsupported client (no MCP) can never count as working, so neither is in the total.
+const NOT_A_CLIENT = new Set(["CLIENT_ENGINE_TEMPORARY", "CLIENT_UNSUPPORTED"]);
+
 export function clientsRow(clients: ScorecardInput["clients"]): ScorecardRow {
   const installed = clients.filter(
-    (finding) => finding.code !== "CLIENT_ENGINE_TEMPORARY",
+    (finding) => !NOT_A_CLIENT.has(finding.code),
   );
   const working = installed.filter(
     (finding) => finding.code === "CLIENT_WIRED",
   ).length;
+  // From a temporary build every plan points at that build, so no client reads as wired.
+  const temporary = clients.some(
+    (finding) => finding.code === "CLIENT_ENGINE_TEMPORARY",
+  );
   return {
     id: "clients",
     label: "Clients confirmed working",
-    value: `${working} of ${installed.length}`,
+    value: `${working} of ${installed.length}${temporary ? " (temporary engine: run the installed ocean)" : ""}`,
     n: working,
     of: installed.length,
     source: "ocean doctor (client findings)",
