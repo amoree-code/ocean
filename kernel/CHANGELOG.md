@@ -7,7 +7,7 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
-- feat(scorecard): `ocean scorecard [--json] [--write]` prints Ocean's health from real data — clients confirmed working, sessions verified and linked to a task, memory writes that name their writer, tasks with verify evidence, search mode, scheduled jobs, lessons, tokens per session — and `--write` saves `01-daily/scorecard/YYYY-MM-DD.md`. Read-only; a row with no data source yet prints `n/a` and the task that will add it, never a made-up zero. It is the baseline the improvement tasks T-319–T-323 must move
+- feat(scorecard): `ocean scorecard [--json] [--write]` prints Ocean's health from real data — clients confirmed working, sessions verified and linked to a task, memory writes that name their writer, tasks with verify evidence, search mode, scheduled jobs, lessons, tokens per session — and `--write` saves `01-daily/scorecard/YYYY-MM-DD.md`. Read-only; a row with no data source yet prints `n/a` and the task that will add it, never a made-up zero. It is the baseline the improvement tasks T-319–T-323 must move (#312)
 
 ## 2.2.0 (2026-11-19)
 
