@@ -29,9 +29,14 @@ export type ScorecardInput = {
   clients: Array<{ code: string }>;
   sessions: Array<{ verificationStatus: string; taskId: string | null }>;
   memoryAudit: Array<{ action: string; source: string }>;
+  writers: WriterLookup;
   // Frontmatter of every live task.
   tasks: Array<Record<string, string>>;
-  search: { built: boolean; hasVectors: boolean; stale: boolean };
+  // What a client's brain_search gets: the mode a probe search ran in, as the MCP server runs it
+  // (vectors only when the index has them and the local embedder answers), and why not hybrid.
+  search:
+    | { built: false }
+    | { built: true; mode: "hybrid" | "fts"; stale: boolean; vector: string };
   // The last `ocean brain eval` result; none exists until T-321.
   searchEval: { hitAt5: number; at: string } | null;
   schedules: Array<{ enabled: boolean }>;
@@ -129,20 +134,62 @@ const WRITE_ACTIONS = new Set([
   "propose",
 ]);
 
+// Who a write's audit `source` names. A client is an MCP client name or client id the collector
+// knows (`clients`), or a `session:<id>` the session store can trace to a provider
+// (`session:desktop:<id>` is Claude Desktop's chat). The owner and Ocean's own jobs — review,
+// the CLI, distill, telemetry, the harvest of hand-written instruction files — are not clients
+// and are left out of the percentage. Anything else (`unknown`, a test name, an untraceable
+// session) is a write with no known client.
+export type WriterLookup = {
+  clients: ReadonlySet<string>;
+  sessionProvider: (sessionId: string) => string | null;
+};
+
+const OWNER_OR_OCEAN = new Set([
+  "owner-review",
+  "cli",
+  "instructions",
+  "session-telemetry",
+]);
+
+export function writerOf(
+  source: string | undefined,
+  lookup: WriterLookup,
+): "client" | "owner-or-ocean" | "unknown" {
+  const name = source?.trim() ?? "";
+  if (!name || name === "unknown") return "unknown";
+  if (OWNER_OR_OCEAN.has(name) || name.startsWith("distill:"))
+    return "owner-or-ocean";
+  if (lookup.clients.has(name)) return "client";
+  if (name.startsWith("session:desktop:")) return "client";
+  if (name.startsWith("session:"))
+    return lookup.sessionProvider(name.slice("session:".length))
+      ? "client"
+      : "unknown";
+  return "unknown";
+}
+
 export function memoryWritesRow(
   audit: ScorecardInput["memoryAudit"],
+  lookup: WriterLookup,
 ): ScorecardRow {
   const writes = audit.filter((entry) => WRITE_ACTIONS.has(entry.action));
-  const known = writes.filter(
-    (entry) => entry.source?.trim() && entry.source !== "unknown",
-  ).length;
-  return ratio(
+  const kinds = writes.map((entry) => writerOf(entry.source, lookup));
+  const known = kinds.filter((kind) => kind === "client").length;
+  const own = kinds.filter((kind) => kind === "owner-or-ocean").length;
+  const row = ratio(
     "memory-writes",
-    "Memory writes naming their writer",
+    "Memory writes with a known client",
     known,
-    writes.length,
+    writes.length - own,
     "memory audit log source",
   );
+  return own
+    ? {
+        ...row,
+        value: `${row.value}; ${own} more by the owner or Ocean's own jobs`,
+      }
+    : row;
 }
 
 // T-320 adds `verify:` / `verified:` to task frontmatter; until then every task counts as none.
@@ -161,13 +208,19 @@ export function searchRows(
 ): ScorecardRow[] {
   const mode = !search.built
     ? "no index"
-    : `${search.hasVectors ? "hybrid" : "fts"}${search.stale ? " (stale)" : ""}`;
+    : [
+        search.mode,
+        search.stale ? "index stale" : "",
+        search.mode === "fts" ? `vectors ${search.vector}` : "",
+      ]
+        .filter(Boolean)
+        .join("; ");
   return [
     {
       id: "search-mode",
       label: "Search mode",
       value: mode,
-      source: "brain index",
+      source: "probe brain_search, as over MCP",
     },
     searchEval
       ? {
@@ -265,7 +318,7 @@ export function scorecardRows(input: ScorecardInput): ScorecardRow[] {
     clientsRow(input.clients),
     sessionsVerifiedRow(input.sessions),
     sessionsWithTaskRow(input.sessions),
-    memoryWritesRow(input.memoryAudit),
+    memoryWritesRow(input.memoryAudit, input.writers),
     tasksVerifiedRow(input.tasks),
     ...searchRows(input.search, input.searchEval),
     schedulesRow(input.schedules),
