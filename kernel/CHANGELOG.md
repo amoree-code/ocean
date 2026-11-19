@@ -7,7 +7,15 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
-- feat(memory): `ocean memory audit [--client <name>] [--days N] [--limit N] [--json]` answers who wrote, changed or deleted what — changes per client and action, the latest entries, and how many name no client; each audit entry now also records the session it was made in (`OCEAN_SESSION_ID`, else the id Claude Code passes to its tools and MCP servers, which is Ocean's id for that session) (T-319)
+- feat(memory): `ocean memory audit [--client <name>] [--days N] [--limit N] [--json]` answers who wrote, changed or deleted what — changes per client and action, the latest entries, and how many name no client; each audit entry now also records the session it was made in (`OCEAN_SESSION_ID`, else the id Claude Code passes to its tools and MCP servers, which is Ocean's id for that session) (T-319) (#317)
+
+## 2.4.0 (2026-11-19)
+
+- feat(mcp): Claude Desktop, which Ocean sees only over MCP, gets a light session per connection — opened on its first tool call (an app that never asks Ocean anything leaves no record), one `mcp_tool_call` event per call with the tool name and outcome only (never arguments or results), completed when the connection ends. `ocean mcp serve` now answers every request already sent before it closes the session. Clients recorded by hooks or interception (Claude Code, Codex…) are not recorded twice (#316) The session opens before that first call runs and its id is set as `OCEAN_SESSION_ID`, so a memory change the call makes names it (T-319).
+
+## 2.3.0 (2026-11-19)
+
+- feat(sessions): a session that names no task gets one when the answer is unambiguous — started inside a task's own folder, on a git branch that names a task (`feat/t318-scorecard` → T-318; not inside workspace areas with no code, such as `02-personal`, since the Ocean workspace is one repository), or inside exactly one live claim's `claimed_paths`. Applies to intercepted runs, headless runs and hook-recorded client sessions; never a guess, so the scorecard's "sessions with a task" row can start to move (#314)
 
 ## 2.2.3 (2026-11-19)
 
