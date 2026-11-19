@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.2
+
+- fix(market): npm capabilities start with plain `npx -y` again; `--prefer-offline` (2.0.0) made npx answer from a cached package list and refuse any version published after it (ETARGET, measured for 10 minutes with no recovery), so a capability bump would never start on a machine that ran the old one (T-316)
+- perf(browser): `dev.ocean/chrome-devtools` runs `ocean-browser-mcp` 0.2.0: page tools (`new_page`, `navigate_page`, `select_page`, …) answer with the selected tab and a count of the others instead of every open tab (25 tabs: 1942 → 139 characters a call, and private tabs stay out of the agent's view; `list_pages` still lists all), and navigation waits 30 s instead of 10 s by default (T-316)
+
 ## 2.0.1
 
 - ci: the release gate splits the test suite across three runners per system (`node --test-shard`), runs the one-off checks on the first only, and starts `docker` and `linux-install` beside the gate instead of after it — a PR's checks took ~9 minutes (5 of them Windows tests, then 3 more for the jobs that waited); one `test:files` script now holds the test flags for the suite, the shards and the pre-push hook (#304)
