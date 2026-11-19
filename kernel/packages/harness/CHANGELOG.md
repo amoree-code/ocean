@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.2.1
+
+- ci: the release gate runs only what a change needs (`.github/scripts/ci-scope.sh`): a PR runs the tests on Ubuntu, and on macOS and Windows too only when a changed line touches OS-specific code (processes, paths, file modes, the service), dependencies, scripts or CI, or the PR carries the `full-ci` label; a site-only PR runs no tests; after a merge, macOS and Windows run once more. The one-off checks run once, on Ubuntu. The Docker image no longer runs the whole suite while it builds (that made it the slowest job, ~3.5 min of every PR) and builds only when its Dockerfile or dependency manifests change; `docker run` still runs the suite (#311)
+- test: the two Claude process-group tests wait up to 5 s for the stopped descendant instead of checking at once or after a fixed 200 ms, which failed the v2.x release run on a busy runner (`a Ctrl+C to Ocean ends the Claude run's whole process group`) (#311)
+
 ## 2.2.0
 
 - feat(notes): your own notes move from `07-notes/` to `02-personal/notes/`, beside the rest of what is personal. `ocean setup` moves an existing `07-notes/` once (never over a folder already there) and `ocean doctor` warns (`LEGACY_NOTES_ROOT`) while it remains. They stay yours: agents index them once as `notes/…`, ranked as human, and never write them. The brain index, the `MEMORY.md` index, `ocean memory flatten`, the similar-record check and capture promotion all skip the subfolder, so a note is never treated as agent memory. The note template starts at `status: todo` (notes use the task states: todo, active, paused, blocked, done, cancelled), and `/weekly-review` suggests a folder, a status or a project for each note still `todo` after a week (#309)
