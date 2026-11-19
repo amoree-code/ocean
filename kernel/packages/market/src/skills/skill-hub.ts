@@ -364,3 +364,58 @@ export async function retireCoreFromHub(
   }
   return moved;
 }
+
+// One check that every installed client holds the skills Ocean keeps for it (T-319 C5,
+// borrowed from COG's validate-agent-surface): the engine's core skills everywhere, plus the
+// hub's skills in the clients that get copies. A client with no skills folder is not installed
+// and is listed, not judged. `extra` is what a client holds on its own; it is shown, not a fault.
+export type SkillSurfaceReport = {
+  consistent: boolean;
+  clients: {
+    client: SkillClient;
+    root: string;
+    installed: boolean;
+    expected: number;
+    missing: string[];
+    extra: string[];
+  }[];
+};
+
+export async function skillSurfaceReport(
+  options: { home?: string; hub?: string } = {},
+): Promise<SkillSurfaceReport> {
+  const home = options.home ?? os.homedir();
+  const core = await coreSkillNames();
+  const hub = await skillDirectories(options.hub ?? skillHubRoot()).catch(
+    () => [] as string[],
+  );
+  const clients = await Promise.all(
+    (Object.keys(clientSkillRoots) as SkillClient[]).map(async (client) => {
+      const root = clientSkillRoots[client](home);
+      const expected = new Set(
+        COPY_CLIENTS.includes(client) ? [...core, ...hub] : core,
+      );
+      let held: string[] | null;
+      try {
+        held = await skillDirectories(root);
+      } catch {
+        held = null;
+      }
+      const present = new Set(held ?? []);
+      return {
+        client,
+        root,
+        installed: held !== null,
+        expected: expected.size,
+        missing: held
+          ? [...expected].filter((name) => !present.has(name)).sort()
+          : [],
+        extra: (held ?? []).filter((name) => !expected.has(name)),
+      };
+    }),
+  );
+  return {
+    consistent: clients.every((row) => !row.installed || !row.missing.length),
+    clients,
+  };
+}

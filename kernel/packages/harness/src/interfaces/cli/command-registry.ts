@@ -78,6 +78,7 @@ import {
   copyClientSkills,
   linkClientSkills,
   populateSkillHub,
+  skillSurfaceReport,
 } from "@ocean/market/skills/skill-hub.js";
 import {
   hasFailures,
@@ -1195,9 +1196,22 @@ async function commandSkill(): Promise<void> {
         2,
       ),
     );
-  } else if (action === "doctor")
-    console.log(JSON.stringify(await coreSkillReports(), null, 2));
-  else if (action === "list") {
+  } else if (action === "doctor") {
+    // Core skills per client, then the surface check: every installed client holds the
+    // skills Ocean keeps for it (T-319 C5). A gap fails the command.
+    const surface = await skillSurfaceReport();
+    console.log(
+      JSON.stringify({ core: await coreSkillReports(), surface }, null, 2),
+    );
+    if (!surface.consistent) {
+      for (const row of surface.clients)
+        if (row.missing.length)
+          console.error(
+            `NOT CONSISTENT: ${row.client} lacks ${row.missing.join(", ")} (${row.root})`,
+          );
+      process.exitCode = 1;
+    }
+  } else if (action === "list") {
     // [status] filters; any other argument is a lesson id (what a truncated lesson points at).
     const filter = process.argv[4];
     const isStatus =
