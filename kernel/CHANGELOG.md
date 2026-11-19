@@ -7,7 +7,7 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
-- fix(scorecard): the memory-writes row counts only real clients — a client id or MCP client name, or a `session:<id>` the session store traces to a provider — and shows the owner's reviews and Ocean's own jobs (distill, telemetry, instruction harvest) apart instead of as clients; the search row reports the mode a client's `brain_search` actually runs in (a probe search with the local embedder, as over MCP) and why it is not hybrid, instead of only whether the index holds vectors
+- fix(scorecard): the memory-writes row counts only real clients — a client id or MCP client name, or a `session:<id>` the session store traces to a provider — and shows the owner's reviews and Ocean's own jobs (distill, telemetry, instruction harvest) apart instead of as clients; the search row reports the mode a client's `brain_search` actually runs in (a probe search with the local embedder, as over MCP) and why it is not hybrid, instead of only whether the index holds vectors (#313)
 
 ## 2.2.1 (2026-11-19)
 
