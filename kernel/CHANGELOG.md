@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+## 2.1.1 (2026-11-19)
+
 - docs(site): a GitHub Pages landing page (`kernel/site`, deployed by `.github/workflows/pages.yml`) with search metadata, so a search for Ocean finds the project; the npm package's `repository.directory` points at `kernel/packages/harness`, where it now lives, and its keywords name every supported client
 
 ## 2.1.0 (2026-11-19)
