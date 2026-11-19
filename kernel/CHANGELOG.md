@@ -9,6 +9,7 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 - feat(notes): your own notes move from `07-notes/` to `02-personal/notes/`, beside the rest of what is personal. `ocean setup` moves an existing `07-notes/` once (never over a folder already there) and `ocean doctor` warns (`LEGACY_NOTES_ROOT`) while it remains. They stay yours: agents index them once as `notes/…`, ranked as human, and never write them. The brain index, the `MEMORY.md` index, `ocean memory flatten`, the similar-record check and capture promotion all skip the subfolder, so a note is never treated as agent memory. The note template starts at `status: todo` (notes use the task states: todo, active, paused, blocked, done, cancelled), and `/weekly-review` suggests a folder, a status or a project for each note still `todo` after a week
 - feat(projects): `ocean project new <id> <category> [name]` registers a project with no code yet, e.g. one grown from a note: a manifest with no paths in its category folder, with `tasks/`, `memory/` and `docs/`; `ocean project bind <id> <path>` adds its first repo later
+- chore(template): the workspace no longer ships an empty `02-personal/preferences/`; preferences are filed in `02-personal/work/` (routing.json), so the folder only collected strays
 
 ## 2.1.0 (2026-11-19)
 
