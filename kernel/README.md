@@ -167,6 +167,7 @@ prints its usage and never runs it. To hand `--help` to a wrapped client, put it
 | `ocean harvest` | a day's sessions from every client into its summary; decisions, fixes and lessons filed into knowledge (undo per day); archive after 30 days | Writes |
 | `ocean rhythm` | the day's rhythm, once per period and with no model: morning note, harvest, archive, last week's digest, last month's review (the service runs it) | Writes |
 | `ocean telemetry` | recurring session errors and failing providers, as proposed backlog lines | Writes |
+| `ocean scorecard` | Ocean's health numbers from real data: clients working, sessions verified and linked to tasks, attributed memory writes, search mode, schedules, lessons | Reads; `--write` saves `01-daily/scorecard/` |
 | `ocean express` | draft a CV section, LinkedIn post or scholarship paragraph from milestones | Writes |
 | `ocean handoff` | hand work from one session or client to another | Reads; `create` writes |
 | `ocean daily` | the morning half of today's note: focus, coming up, open loops, your hours, what waits on you, the brief | Reads; `--apply` writes |

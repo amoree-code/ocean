@@ -203,6 +203,7 @@ import { runProfilesCommand } from "./profiles-command.js";
 import { runPullCommand } from "./pull-command.js";
 import { runRhythmCommand } from "./rhythm-command.js";
 import { runningServerFindings } from "./running-server-findings.js";
+import { runScorecardCommand } from "./scorecard-command.js";
 import {
   insideFactsCall,
   runSessionFactsCommand,
@@ -1653,6 +1654,7 @@ export const commandRegistry: Record<string, CommandHandler> = {
   harvest: () => runHarvestCommand(process.argv.slice(3)),
   rhythm: () => runRhythmCommand(process.argv.slice(3)),
   telemetry: () => runTelemetryCommand(process.argv.slice(3)),
+  scorecard: () => runScorecardCommand(process.argv.slice(3)),
   express: () => runExpressCommand(process.argv.slice(3)),
   daily: commandDaily,
   schedule: commandSchedule,

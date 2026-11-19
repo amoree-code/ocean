@@ -11,6 +11,7 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 - ci: the release gate runs only what a change needs (`.github/scripts/ci-scope.sh`): a PR runs the tests on Ubuntu, and on macOS and Windows too only when a changed line touches OS-specific code (processes, paths, file modes, the service), dependencies, scripts or CI, or the PR carries the `full-ci` label; a site-only PR runs no tests; after a merge, macOS and Windows run once more. The one-off checks run once, on Ubuntu. The Docker image no longer runs the whole suite while it builds (that made it the slowest job, ~3.5 min of every PR) and builds only when its Dockerfile or dependency manifests change; `docker run` still runs the suite (#311)
 - test: the two Claude process-group tests wait up to 5 s for the stopped descendant instead of checking at once or after a fixed 200 ms, which failed the v2.x release run on a busy runner (`a Ctrl+C to Ocean ends the Claude run's whole process group`) (#311)
+- feat(scorecard): `ocean scorecard [--json] [--write]` prints Ocean's health from real data — clients confirmed working, sessions verified and linked to a task, memory writes that name their writer, tasks with verify evidence, search mode, scheduled jobs, lessons, tokens per session — and `--write` saves `01-daily/scorecard/YYYY-MM-DD.md`. Read-only; a row with no data source yet prints `n/a` and the task that will add it, never a made-up zero. It is the baseline the improvement tasks T-319–T-323 must move (#312)
 
 ## 2.2.0 (2026-11-19)
 
