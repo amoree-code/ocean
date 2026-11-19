@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ocean — shared memory and tasks for every AI coding agent</title>
+<meta name="description" content="Ocean is a local-first workspace that gives Claude Code, Codex, Gemini CLI, Cursor, OpenCode and other AI coding agents the same projects, tasks, memory and knowledge. Open source, MCP-native, no hosted service.">
+<meta name="keywords" content="ocean, AI agents, Claude Code, Codex, Gemini CLI, Cursor, OpenCode, MCP, AI memory, local-first, developer tools">
+<link rel="canonical" href="https://amoree-code.github.io/ocean/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Ocean — one workspace for every AI agent you use">
+<meta property="og:description" content="Local-first shared memory, tasks and context for Claude Code, Codex, Gemini CLI, Cursor and OpenCode.">
+<meta property="og:url" content="https://amoree-code.github.io/ocean/">
+<meta property="og:image" content="https://opengraph.githubassets.com/1/amoree-code/ocean">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Ocean",
+  "alternateName": "amoree-code/ocean",
+  "description": "Local-first shared memory, tasks and context for every AI coding agent: Claude Code, Codex, Gemini CLI, Cursor, OpenCode.",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "macOS, Linux, Windows",
+  "url": "https://amoree-code.github.io/ocean/",
+  "downloadUrl": "https://www.npmjs.com/package/@amoree-code/ocean",
+  "codeRepository": "https://github.com/amoree-code/ocean",
+  "license": "https://github.com/amoree-code/ocean/blob/main/kernel/LICENSE",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "author": { "@type": "Person", "name": "Ameer Abdulkareem Jabbar Lami", "url": "https://github.com/amoree-code" },
+  "sameAs": ["https://github.com/amoree-code/ocean", "https://www.npmjs.com/package/@amoree-code/ocean"]
+}
+</script>
+<style>
+:root { --bg:#f7f9fb; --fg:#0f1b2a; --muted:#4a5a6e; --accent:#0b6bcb; --card:#fff; --border:#dde4ec; --code:#eef2f7; }
+@media (prefers-color-scheme: dark) { :root { --bg:#0b1320; --fg:#e6edf5; --muted:#9fb0c4; --accent:#5aa9f5; --card:#111c2d; --border:#1f2e44; --code:#16243a; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif; }
+main { max-width:760px; margin:0 auto; padding:48px 16px 64px; }
+h1 { font-size:2.4rem; margin:0 0 8px; }
+.lede { font-size:1.2rem; color:var(--muted); margin:0 0 28px; }
+h2 { margin-top:40px; font-size:1.3rem; }
+a { color:var(--accent); }
+.btns { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
+.btn { display:inline-block; padding:10px 18px; border-radius:8px; border:1px solid var(--border); background:var(--card); text-decoration:none; font-weight:600; }
+.btn.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+pre { background:var(--code); border:1px solid var(--border); border-radius:8px; padding:14px 16px; overflow-x:auto; }
+ul { padding-left:20px; }
+li { margin:6px 0; }
+footer { margin-top:48px; color:var(--muted); font-size:.9rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Ocean</h1>
+  <p class="lede">One workspace for every AI agent you use. Ocean gives Claude Code, Codex, Gemini CLI, Qwen, Cursor, OpenCode and other AI clients the same projects, tasks, memory and knowledge, on your machine, without a hosted service.</p>
+  <div class="btns">
+    <a class="btn primary" href="https://github.com/amoree-code/ocean">View on GitHub</a>
+    <a class="btn" href="https://www.npmjs.com/package/@amoree-code/ocean">npm package</a>
+  </div>
+
+  <h2>Why Ocean</h2>
+  <p>Every AI client keeps its own memory, its own history and its own idea of what you were doing. Switch clients and the context is gone. Ocean moves that state out of the clients and into one place you own: projects, tasks, decisions and sessions live as plain files on your disk. A task started in Claude Code can be continued in Codex, reviewed in Gemini and closed from the terminal, with nothing explained twice.</p>
+
+  <h2>Install</h2>
+<pre><code>npm install --global @amoree-code/ocean
+ocean setup
+ocean clients apply --yes   # connect Ocean's MCP server to your AI clients
+ocean doctor</code></pre>
+  <p>Requires Node.js 22.16 or newer. macOS and Linux; Windows runs the engine and its tests.</p>
+
+  <h2>Principles</h2>
+  <ul>
+    <li><strong>Local-first.</strong> Your records are files on your machine. No account, no server, no sync service.</li>
+    <li><strong>Provider-neutral.</strong> Claude, Codex, Gemini and others are entry points; the workspace outlives any of them.</li>
+    <li><strong>Storage is not context.</strong> Agents get a small, bounded packet of what the work needs, not the whole workspace.</li>
+    <li><strong>MCP-native.</strong> One MCP server exposes memory, tasks and sessions to every connected client.</li>
+    <li><strong>Verified, not claimed.</strong> Completion is an independent check passing, not an agent saying "done".</li>
+    <li><strong>Explicit authority.</strong> Reads are free; writes, installs and promotions need an explicit flag.</li>
+  </ul>
+
+  <footer>Ocean is open source · <a href="https://github.com/amoree-code/ocean">github.com/amoree-code/ocean</a> · by <a href="https://github.com/amoree-code">Ameer Abdulkareem Jabbar Lami</a></footer>
+</main>
+</body>
+</html>

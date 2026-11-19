@@ -11,6 +11,10 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 - feat(projects): `ocean project new <id> <category> [name]` registers a project with no code yet, e.g. one grown from a note: a manifest with no paths in its category folder, with `tasks/`, `memory/` and `docs/`; `ocean project bind <id> <path>` adds its first repo later (#309)
 - chore(template): the workspace no longer ships an empty `02-personal/preferences/`; preferences are filed in `02-personal/work/` (routing.json), so the folder only collected strays (#309)
 
+## 2.1.1 (2026-11-19)
+
+- docs(site): a GitHub Pages landing page (`kernel/site`, deployed by `.github/workflows/pages.yml`) with search metadata, so a search for Ocean finds the project; the npm package's `repository.directory` points at `kernel/packages/harness`, where it now lives, and its keywords name every supported client
+
 ## 2.1.0 (2026-11-19)
 
 - feat(tasks): a task's verification may run `typst compile` or `typst query`, so a Typst project (the resume) can prove its build and be completed; `typst update` and every other typst verb stay refused, since a check never changes the machine (#306)

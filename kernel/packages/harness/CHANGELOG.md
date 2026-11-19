@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.1.1
+
+- docs(site): a GitHub Pages landing page (`kernel/site`, deployed by `.github/workflows/pages.yml`) with search metadata, so a search for Ocean finds the project; the npm package's `repository.directory` points at `kernel/packages/harness`, where it now lives, and its keywords name every supported client
+
 ## 2.1.0
 
 - feat(tasks): a task's verification may run `typst compile` or `typst query`, so a Typst project (the resume) can prove its build and be completed; `typst update` and every other typst verb stay refused, since a check never changes the machine (#306)
