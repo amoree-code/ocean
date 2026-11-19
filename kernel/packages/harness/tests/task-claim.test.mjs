@@ -53,6 +53,26 @@ test("claim writes the fields, bumps updated and keeps the rest of the file", as
   }
 });
 
+test("claim moves a todo or paused task to active; blocked stays; release keeps the state", async () => {
+  const ws = await workspace({
+    "T-1": task("T-1", "todo"),
+    "T-2": task("T-2", "paused"),
+    "T-3": task("T-3", "blocked"),
+  });
+  try {
+    const now = at("2026-10-16T10:00:00.000Z");
+    for (const id of ["T-1", "T-2", "T-3"])
+      await claimTask(id, ws.tasksRoot, { by: "sess-a", now });
+    assert.match(await ws.read("T-1"), /\nstate: active\n/);
+    assert.match(await ws.read("T-2"), /\nstate: active\n/);
+    assert.match(await ws.read("T-3"), /\nstate: blocked\n/);
+    await releaseTask("T-1", ws.tasksRoot, { by: "sess-a", now });
+    assert.match(await ws.read("T-1"), /\nstate: active\n/);
+  } finally {
+    await ws.done();
+  }
+});
+
 test("another owner is refused while the claim is live, and named", async () => {
   const ws = await workspace();
   try {
