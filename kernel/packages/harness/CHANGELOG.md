@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.1.0
+
+- feat(tasks): a task's verification may run `typst compile` or `typst query`, so a Typst project (the resume) can prove its build and be completed; `typst update` and every other typst verb stay refused, since a check never changes the machine (#306)
+
 ## 2.0.2
 
 - fix(market): npm capabilities start with plain `npx -y` again; `--prefer-offline` (2.0.0) made npx answer from a cached package list and refuse any version published after it (ETARGET, measured for 10 minutes with no recovery), so a capability bump would never start on a machine that ran the old one (T-316)

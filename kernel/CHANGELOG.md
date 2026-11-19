@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+## 2.1.0 (2026-11-19)
+
 - feat(tasks): a task's verification may run `typst compile` or `typst query`, so a Typst project (the resume) can prove its build and be completed; `typst update` and every other typst verb stay refused, since a check never changes the machine (#306)
 
 ## 2.0.2 (2026-11-18)
