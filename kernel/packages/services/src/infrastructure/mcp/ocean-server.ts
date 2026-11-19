@@ -23,6 +23,7 @@ import {
 import { lookupPerson } from "@ocean/brain/memory/people.js";
 import { promoteSessionToKnowledge } from "@ocean/brain/memory/session-promotion.js";
 import { isValidProjectId } from "@ocean/core/domain/context/project-id.js";
+import type { McpTool } from "@ocean/core/domain/mcp/mcp-contract.js";
 import {
   actionFingerprint,
   mcpApprovalSchema,
@@ -37,6 +38,7 @@ import type { EmbedderPort } from "@ocean/core/domain/ports/embedder-port.js";
 import type { WrapperManagerPort } from "@ocean/core/domain/ports/platform-ports.js";
 import type { SessionStoreFactory } from "@ocean/core/domain/ports/session-store-port.js";
 import { redactSecrets } from "@ocean/core/domain/redaction/redaction.js";
+import { ackIssued } from "@ocean/core/shared/context-ack.js";
 import { oceanPath, oceanRoot, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import {
   findProject,
@@ -71,363 +73,393 @@ type Response = {
   error?: { code: number; message: string; data?: Record<string, unknown> };
 };
 
-const tools = new McpToolRegistry([
-  {
-    name: "ocean_status",
-    description: "Return the Ocean runtime and workspace status.",
-    annotations: { readOnlyHint: true },
-    inputSchema: {
-      type: "object",
-      properties: {},
-      additionalProperties: false,
-    },
-  },
-  {
-    name: "ocean_doctor",
-    description: "Run the read-only Ocean workspace health checks.",
-    annotations: { readOnlyHint: true },
-    inputSchema: {
-      type: "object",
-      properties: {},
-      additionalProperties: false,
-    },
-  },
-  {
-    name: "ocean_profiles_list",
-    description: "List available Ocean profiles.",
-    annotations: { readOnlyHint: true },
-    inputSchema: {
-      type: "object",
-      properties: {},
-      additionalProperties: false,
-    },
-  },
-  {
-    name: "ocean_tasks_list",
-    description:
-      "List Ocean tasks for the folder being worked in: that project's tasks, or every project's (labelled) when it has none or the folder is no project. Optionally filtered by state.",
-    annotations: { readOnlyHint: true },
-    inputSchema: {
-      type: "object",
-      properties: {
-        state: { type: "string" },
-        project: { type: "string" },
-        cwd: {
-          type: "string",
-          description:
-            "The folder the user is working in; defaults to the server's working directory.",
+// Every tool takes an optional contextAck: the ack=<hash> from the Ocean start line, echoed on a
+// client's first Ocean call (T-319 CONTEXT-ACK). The server takes it off before the tool runs.
+function withContextAck(list: McpTool[]): McpTool[] {
+  return list.map((tool) => {
+    const schema = tool.inputSchema as
+      | { properties?: Record<string, unknown> }
+      | undefined;
+    return {
+      ...tool,
+      inputSchema: {
+        ...schema,
+        properties: {
+          ...schema?.properties,
+          contextAck: {
+            type: "string",
+            description:
+              "The ack=<hash> value from the Ocean start line; pass it on your first Ocean call.",
+          },
         },
       },
-      additionalProperties: false,
-    },
-  },
-  {
-    name: "ocean_task_get",
-    description: "Read one bounded Ocean task record.",
-    annotations: { readOnlyHint: true },
-    inputSchema: {
-      type: "object",
-      properties: {
-        taskId: { type: "string" },
-        project: { type: "string" },
-        cwd: { type: "string" },
+    };
+  });
+}
+
+const tools = new McpToolRegistry(
+  withContextAck([
+    {
+      name: "ocean_status",
+      description: "Return the Ocean runtime and workspace status.",
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: "object",
+        properties: {},
+        additionalProperties: false,
       },
-      required: ["taskId"],
-      additionalProperties: false,
     },
-  },
-  {
-    name: "ocean_handoffs_list",
-    description: "List compact cross-client session handoffs.",
-    annotations: { readOnlyHint: true },
-    inputSchema: {
-      type: "object",
-      properties: { taskId: { type: "string" }, project: { type: "string" } },
-      additionalProperties: false,
-    },
-  },
-  {
-    name: "ocean_handoff_get",
-    description: "Read one bounded cross-client session handoff.",
-    annotations: { readOnlyHint: true },
-    inputSchema: {
-      type: "object",
-      properties: {
-        handoffId: { type: "string" },
-        maxBytes: { type: "number" },
+    {
+      name: "ocean_doctor",
+      description: "Run the read-only Ocean workspace health checks.",
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: "object",
+        properties: {},
+        additionalProperties: false,
       },
-      required: ["handoffId"],
-      additionalProperties: false,
     },
-  },
-  {
-    name: "ocean_session_get",
-    description: "Read one session metadata record without its transcript.",
-    annotations: { readOnlyHint: true },
-    inputSchema: {
-      type: "object",
-      properties: { sessionId: { type: "string" } },
-      required: ["sessionId"],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: "ocean_session_summary",
-    description: "Read one bounded human-readable session summary.",
-    annotations: { readOnlyHint: true },
-    inputSchema: {
-      type: "object",
-      properties: {
-        sessionId: { type: "string" },
-        maxBytes: { type: "number" },
+    {
+      name: "ocean_profiles_list",
+      description: "List available Ocean profiles.",
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: "object",
+        properties: {},
+        additionalProperties: false,
       },
-      required: ["sessionId"],
-      additionalProperties: false,
     },
-  },
-  {
-    name: "ocean_session_events",
-    description:
-      "Read one bounded session event log explicitly requested by id.",
-    annotations: { readOnlyHint: true },
-    inputSchema: {
-      type: "object",
-      properties: {
-        sessionId: { type: "string" },
-        maxEvents: { type: "number" },
+    {
+      name: "ocean_tasks_list",
+      description:
+        "List Ocean tasks for the folder being worked in: that project's tasks, or every project's (labelled) when it has none or the folder is no project. Optionally filtered by state.",
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: "object",
+        properties: {
+          state: { type: "string" },
+          project: { type: "string" },
+          cwd: {
+            type: "string",
+            description:
+              "The folder the user is working in; defaults to the server's working directory.",
+          },
+        },
+        additionalProperties: false,
       },
-      required: ["sessionId"],
-      additionalProperties: false,
     },
-  },
-  {
-    name: "ocean_session_promote",
-    description:
-      "Promote a completed session result into reviewed Ocean knowledge.",
-    annotations: { readOnlyHint: false },
-    inputSchema: {
-      type: "object",
-      properties: {
-        sessionId: { type: "string" },
-        target: { type: "string" },
-        approval: { type: "object" },
+    {
+      name: "ocean_task_get",
+      description: "Read one bounded Ocean task record.",
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: "object",
+        properties: {
+          taskId: { type: "string" },
+          project: { type: "string" },
+          cwd: { type: "string" },
+        },
+        required: ["taskId"],
+        additionalProperties: false,
       },
-      required: ["sessionId", "approval"],
-      additionalProperties: false,
     },
-  },
-  {
-    name: "brain_search",
-    description:
-      "Call this first, before answering anything about the user, their projects, preferences or past decisions: Ocean is their memory. Searches the markdown memory/knowledge index (hybrid FTS + vector when available); read only the results you need with brain_read and cite their paths. In a conversation about one project, pass its name or id as project: the search then covers that project and global records only. Otherwise the project bound to `cwd`; unbound sessions see global only.",
-    annotations: { readOnlyHint: true },
-    inputSchema: {
-      type: "object",
-      properties: {
-        query: { type: "string" },
-        limit: { type: "number" },
-        types: { type: "array", items: { type: "string" } },
-        project: { type: "string" },
-        cwd: { type: "string" },
+    {
+      name: "ocean_handoffs_list",
+      description: "List compact cross-client session handoffs.",
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: "object",
+        properties: { taskId: { type: "string" }, project: { type: "string" } },
+        additionalProperties: false,
       },
-      required: ["query"],
-      additionalProperties: false,
     },
-  },
-  {
-    name: "brain_read",
-    description: "Read one markdown memory/knowledge record by id or path.",
-    annotations: { readOnlyHint: true },
-    inputSchema: {
-      type: "object",
-      properties: {
-        id: { type: "string" },
-        path: { type: "string" },
-        maxBytes: { type: "number" },
+    {
+      name: "ocean_handoff_get",
+      description: "Read one bounded cross-client session handoff.",
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: "object",
+        properties: {
+          handoffId: { type: "string" },
+          maxBytes: { type: "number" },
+        },
+        required: ["handoffId"],
+        additionalProperties: false,
       },
-      additionalProperties: false,
     },
-  },
-  {
-    name: "brain_neighbors",
-    description: "Walk the wikilink graph around one memory/knowledge record.",
-    annotations: { readOnlyHint: true },
-    inputSchema: {
-      type: "object",
-      properties: {
-        id: { type: "string" },
-        depth: { type: "number" },
-        direction: { type: "string", enum: ["out", "in", "both"] },
-        limit: { type: "number" },
-        project: { type: "string" },
-        cwd: { type: "string" },
+    {
+      name: "ocean_session_get",
+      description: "Read one session metadata record without its transcript.",
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: "object",
+        properties: { sessionId: { type: "string" } },
+        required: ["sessionId"],
+        additionalProperties: false,
       },
-      required: ["id"],
-      additionalProperties: false,
     },
-  },
-  {
-    name: "ocean_ping",
-    description: "Cheap health check: answers when the server is up.",
-    annotations: { readOnlyHint: true },
-    inputSchema: {
-      type: "object",
-      properties: {},
-      additionalProperties: false,
-    },
-  },
-  {
-    name: "ocean_capabilities",
-    description:
-      "The memory contract version, the tool names and whether memory writes are enabled.",
-    annotations: { readOnlyHint: true },
-    inputSchema: {
-      type: "object",
-      properties: {},
-      additionalProperties: false,
-    },
-  },
-  {
-    name: "memory_read",
-    description:
-      "Read one memory record (02-personal/... or 04-projects/<project>/memory/...) with its sha256, which memory_write update, memory_delete and memory_restore need as expectedHash.",
-    annotations: { readOnlyHint: true },
-    inputSchema: {
-      type: "object",
-      properties: { path: { type: "string" } },
-      required: ["path"],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: "memory_history",
-    description:
-      "Audit entries (newest first) for one record path, or for all records; ids feed memory_restore.",
-    annotations: { readOnlyHint: true },
-    inputSchema: {
-      type: "object",
-      properties: { path: { type: "string" }, limit: { type: "number" } },
-      additionalProperties: false,
-    },
-  },
-  {
-    name: "memory_write",
-    description:
-      "Save a fact the user explicitly asked to remember or change. Search first (brain_search): if a record covers it, memory_read it and write the merged record back with mode `update` and its sha256 as expectedHash; otherwise mode `create` in `02-personal/<section>/<name>.md` or `04-projects/<project>/memory/<name>.md`. Inferred or imported facts go to memory_propose instead. Never secrets or temporary state.",
-    annotations: { readOnlyHint: false, destructiveHint: true },
-    inputSchema: {
-      type: "object",
-      properties: {
-        path: { type: "string" },
-        content: { type: "string" },
-        mode: { type: "string", enum: ["create", "update"] },
-        expectedHash: { type: "string" },
-        allowSimilar: { type: "boolean" },
+    {
+      name: "ocean_session_summary",
+      description: "Read one bounded human-readable session summary.",
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: "object",
+        properties: {
+          sessionId: { type: "string" },
+          maxBytes: { type: "number" },
+        },
+        required: ["sessionId"],
+        additionalProperties: false,
       },
-      required: ["path", "content", "mode"],
-      additionalProperties: false,
     },
-  },
-  {
-    name: "memory_propose",
-    description:
-      "Call this when the user states something worth keeping across sessions (a decision, preference or project fact) without asking you to remember it, for a fact you inferred, or for one imported from another tool's memory: it queues it for the user's review. It is not memory until approved. In a conversation about one project, pass its name (as the user's Claude project is called) or Ocean id as project, and kind instead of target: `fact` (a decision, preference or detail) or `doc` (a spec, brief or longer notes), each with a kebab-case name, is filed in that project's memory/ or docs/ — written at once when the user allows it; `todo` (work to do) waits for review as a backlog line. Optionally say why (reason). If the fact disagrees with one of the user's own notes in 02-personal/notes, pass that note's path as contradicts: the note is never edited, and the disagreement waits in 02-personal/CONFLICTS.md for the user.",
-    annotations: { readOnlyHint: false, destructiveHint: false },
-    inputSchema: {
-      type: "object",
-      properties: {
-        content: { type: "string" },
-        origin: { type: "string", enum: ["inferred", "imported"] },
-        target: { type: "string" },
-        project: { type: "string" },
-        kind: { type: "string", enum: ["fact", "doc", "todo"] },
-        name: { type: "string" },
-        reason: { type: "string" },
-        contradicts: { type: "string" },
+    {
+      name: "ocean_session_events",
+      description:
+        "Read one bounded session event log explicitly requested by id.",
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: "object",
+        properties: {
+          sessionId: { type: "string" },
+          maxEvents: { type: "number" },
+        },
+        required: ["sessionId"],
+        additionalProperties: false,
       },
-      required: ["content", "origin"],
-      additionalProperties: false,
     },
-  },
-  {
-    name: "memory_delete",
-    description:
-      "Soft-delete one record the user asked to remove: it moves to Ocean's trash and memory_restore brings it back. Needs the record's sha256 from memory_read as expectedHash.",
-    annotations: { readOnlyHint: false, destructiveHint: true },
-    inputSchema: {
-      type: "object",
-      properties: {
-        path: { type: "string" },
-        expectedHash: { type: "string" },
+    {
+      name: "ocean_session_promote",
+      description:
+        "Promote a completed session result into reviewed Ocean knowledge.",
+      annotations: { readOnlyHint: false },
+      inputSchema: {
+        type: "object",
+        properties: {
+          sessionId: { type: "string" },
+          target: { type: "string" },
+          approval: { type: "object" },
+        },
+        required: ["sessionId", "approval"],
+        additionalProperties: false,
       },
-      required: ["path", "expectedHash"],
-      additionalProperties: false,
     },
-  },
-  {
-    name: "memory_restore",
-    description:
-      "Put back the content a memory_history entry preserved (a deleted record, or the version an update or restore replaced). When the record exists, pass its current sha256 as expectedHash.",
-    annotations: { readOnlyHint: false, destructiveHint: true },
-    inputSchema: {
-      type: "object",
-      properties: { id: { type: "string" }, expectedHash: { type: "string" } },
-      required: ["id"],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: "ocean_context",
-    description:
-      "Call this once at the start of a conversation when no Ocean start line is already in your context (clients without a session-start hook). Returns the bounded Ocean start line (256 bytes or less: the project bound to cwd and the operations available). Holds no records; search for those.",
-    annotations: { readOnlyHint: true },
-    inputSchema: {
-      type: "object",
-      properties: { cwd: { type: "string" } },
-      additionalProperties: false,
-    },
-  },
-  {
-    name: "ocean_projects_list",
-    description: "List the user's Ocean projects (id and name only).",
-    annotations: { readOnlyHint: true },
-    inputSchema: {
-      type: "object",
-      properties: {},
-      additionalProperties: false,
-    },
-  },
-  {
-    name: "ocean_handoff_create",
-    description:
-      "Create a cross-client session handoff, only when the user explicitly asks for one: a short summary and the next action (4 KB at most in total; secrets are redacted). It always creates a new handoff and never changes an existing one; another client reads it with ocean_handoffs_list and ocean_handoff_get.",
-    annotations: { readOnlyHint: false, destructiveHint: false },
-    inputSchema: {
-      type: "object",
-      properties: {
-        summary: { type: "string" },
-        nextAction: { type: "string" },
-        title: { type: "string" },
-        taskId: { type: "string" },
-        project: { type: "string" },
+    {
+      name: "brain_search",
+      description:
+        "Call this first, before answering anything about the user, their projects, preferences or past decisions: Ocean is their memory. Searches the markdown memory/knowledge index (hybrid FTS + vector when available); read only the results you need with brain_read and cite their paths. In a conversation about one project, pass its name or id as project: the search then covers that project and global records only. Otherwise the project bound to `cwd`; unbound sessions see global only.",
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: "object",
+        properties: {
+          query: { type: "string" },
+          limit: { type: "number" },
+          types: { type: "array", items: { type: "string" } },
+          project: { type: "string" },
+          cwd: { type: "string" },
+        },
+        required: ["query"],
+        additionalProperties: false,
       },
-      required: ["summary", "nextAction"],
-      additionalProperties: false,
     },
-  },
-  {
-    name: "people_lookup",
-    description:
-      "Find a person the user knows by name, in English or Arabic: matches a file name, title or alias in 02-personal/people/ exactly (case and spacing ignored), never a part of a name. Returns each match's file, name, aliases, role, org, relation and last_seen; read the file with memory_read for the history.",
-    annotations: { readOnlyHint: true },
-    inputSchema: {
-      type: "object",
-      properties: { name: { type: "string" } },
-      required: ["name"],
-      additionalProperties: false,
+    {
+      name: "brain_read",
+      description: "Read one markdown memory/knowledge record by id or path.",
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          path: { type: "string" },
+          maxBytes: { type: "number" },
+        },
+        additionalProperties: false,
+      },
     },
-  },
-]);
+    {
+      name: "brain_neighbors",
+      description:
+        "Walk the wikilink graph around one memory/knowledge record.",
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          depth: { type: "number" },
+          direction: { type: "string", enum: ["out", "in", "both"] },
+          limit: { type: "number" },
+          project: { type: "string" },
+          cwd: { type: "string" },
+        },
+        required: ["id"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "ocean_ping",
+      description: "Cheap health check: answers when the server is up.",
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: "object",
+        properties: {},
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "ocean_capabilities",
+      description:
+        "The memory contract version, the tool names and whether memory writes are enabled.",
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: "object",
+        properties: {},
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "memory_read",
+      description:
+        "Read one memory record (02-personal/... or 04-projects/<project>/memory/...) with its sha256, which memory_write update, memory_delete and memory_restore need as expectedHash.",
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: "object",
+        properties: { path: { type: "string" } },
+        required: ["path"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "memory_history",
+      description:
+        "Audit entries (newest first) for one record path, or for all records; ids feed memory_restore.",
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: "object",
+        properties: { path: { type: "string" }, limit: { type: "number" } },
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "memory_write",
+      description:
+        "Save a fact the user explicitly asked to remember or change. Search first (brain_search): if a record covers it, memory_read it and write the merged record back with mode `update` and its sha256 as expectedHash; otherwise mode `create` in `02-personal/<section>/<name>.md` or `04-projects/<project>/memory/<name>.md`. Inferred or imported facts go to memory_propose instead. Never secrets or temporary state.",
+      annotations: { readOnlyHint: false, destructiveHint: true },
+      inputSchema: {
+        type: "object",
+        properties: {
+          path: { type: "string" },
+          content: { type: "string" },
+          mode: { type: "string", enum: ["create", "update"] },
+          expectedHash: { type: "string" },
+          allowSimilar: { type: "boolean" },
+        },
+        required: ["path", "content", "mode"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "memory_propose",
+      description:
+        "Call this when the user states something worth keeping across sessions (a decision, preference or project fact) without asking you to remember it, for a fact you inferred, or for one imported from another tool's memory: it queues it for the user's review. It is not memory until approved. In a conversation about one project, pass its name (as the user's Claude project is called) or Ocean id as project, and kind instead of target: `fact` (a decision, preference or detail) or `doc` (a spec, brief or longer notes), each with a kebab-case name, is filed in that project's memory/ or docs/ — written at once when the user allows it; `todo` (work to do) waits for review as a backlog line. Optionally say why (reason). If the fact disagrees with one of the user's own notes in 02-personal/notes, pass that note's path as contradicts: the note is never edited, and the disagreement waits in 02-personal/CONFLICTS.md for the user.",
+      annotations: { readOnlyHint: false, destructiveHint: false },
+      inputSchema: {
+        type: "object",
+        properties: {
+          content: { type: "string" },
+          origin: { type: "string", enum: ["inferred", "imported"] },
+          target: { type: "string" },
+          project: { type: "string" },
+          kind: { type: "string", enum: ["fact", "doc", "todo"] },
+          name: { type: "string" },
+          reason: { type: "string" },
+          contradicts: { type: "string" },
+        },
+        required: ["content", "origin"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "memory_delete",
+      description:
+        "Soft-delete one record the user asked to remove: it moves to Ocean's trash and memory_restore brings it back. Needs the record's sha256 from memory_read as expectedHash.",
+      annotations: { readOnlyHint: false, destructiveHint: true },
+      inputSchema: {
+        type: "object",
+        properties: {
+          path: { type: "string" },
+          expectedHash: { type: "string" },
+        },
+        required: ["path", "expectedHash"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "memory_restore",
+      description:
+        "Put back the content a memory_history entry preserved (a deleted record, or the version an update or restore replaced). When the record exists, pass its current sha256 as expectedHash.",
+      annotations: { readOnlyHint: false, destructiveHint: true },
+      inputSchema: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          expectedHash: { type: "string" },
+        },
+        required: ["id"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "ocean_context",
+      description:
+        "Call this once at the start of a conversation when no Ocean start line is already in your context (clients without a session-start hook). Returns the bounded Ocean start line (256 bytes or less: the project bound to cwd and the operations available). Holds no records; search for those.",
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: "object",
+        properties: { cwd: { type: "string" } },
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "ocean_projects_list",
+      description: "List the user's Ocean projects (id and name only).",
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: "object",
+        properties: {},
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "ocean_handoff_create",
+      description:
+        "Create a cross-client session handoff, only when the user explicitly asks for one: a short summary and the next action (4 KB at most in total; secrets are redacted). It always creates a new handoff and never changes an existing one; another client reads it with ocean_handoffs_list and ocean_handoff_get.",
+      annotations: { readOnlyHint: false, destructiveHint: false },
+      inputSchema: {
+        type: "object",
+        properties: {
+          summary: { type: "string" },
+          nextAction: { type: "string" },
+          title: { type: "string" },
+          taskId: { type: "string" },
+          project: { type: "string" },
+        },
+        required: ["summary", "nextAction"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "people_lookup",
+      description:
+        "Find a person the user knows by name, in English or Arabic: matches a file name, title or alias in 02-personal/people/ exactly (case and spacing ignored), never a part of a name. Returns each match's file, name, aliases, role, org, relation and last_seen; read the file with memory_read for the history.",
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: "object",
+        properties: { name: { type: "string" } },
+        required: ["name"],
+        additionalProperties: false,
+      },
+    },
+  ]),
+);
 
 // What one MCP handoff may hold, summed over its texts (T-307).
 export const HANDOFF_MAX_BYTES = 4096;
@@ -523,6 +555,10 @@ const MUTATING_TOOLS = new Set([
 // The connected client's name from `initialize` (one stdio server per client), recorded as the
 // source of every memory change it makes.
 let clientName = "unknown";
+// Whether this connection's first tool call (ocean_context aside) has been checked for the
+// start line's hash: one `context_ack` ledger line per connection, ok when it echoed a hash
+// Ocean handed out.
+let contextAckChecked = false;
 
 async function callTool(
   name: string,
@@ -926,6 +962,7 @@ export async function handleOceanMcpRequest(
     const info = request.params?.clientInfo as { name?: unknown } | undefined;
     if (typeof info?.name === "string" && /^[\w .@/-]{1,64}$/.test(info.name))
       clientName = info.name;
+    contextAckChecked = false;
     return {
       jsonrpc: "2.0",
       id: request.id,
@@ -1001,15 +1038,17 @@ export async function handleOceanMcpRequest(
       error: { code: -32602, message: "Unknown MCP tool" },
     };
   }
+  const { contextAck, ...args } = (request.params?.arguments ?? {}) as Record<
+    string,
+    unknown
+  >;
+  if (!contextAckChecked && name !== "ocean_context") {
+    contextAckChecked = true;
+    await recordMcpCall(clientName, "context_ack", await ackIssued(contextAck));
+  }
   await ports.mcpSessions?.open(clientName);
   try {
-    const result = textResult(
-      await callTool(
-        name,
-        (request.params?.arguments ?? {}) as Record<string, unknown>,
-        ports,
-      ),
-    );
+    const result = textResult(await callTool(name, args, ports));
     await recordMcpCall(clientName, name, true);
     await ports.mcpSessions?.toolCall(clientName, name, true);
     return { jsonrpc: "2.0", id: request.id, result };
