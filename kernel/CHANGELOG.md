@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+- fix(scorecard): the memory-writes row counts only real clients — a client id or MCP client name, or a `session:<id>` the session store traces to a provider — and shows the owner's reviews and Ocean's own jobs (distill, telemetry, instruction harvest) apart instead of as clients; the search row reports the mode a client's `brain_search` actually runs in (a probe search with the local embedder, as over MCP) and why it is not hybrid, instead of only whether the index holds vectors
+
 ## 2.2.1 (2026-11-19)
 
 - ci: the release gate runs only what a change needs (`.github/scripts/ci-scope.sh`): a PR runs the tests on Ubuntu, and on macOS and Windows too only when a changed line touches OS-specific code (processes, paths, file modes, the service), dependencies, scripts or CI, or the PR carries the `full-ci` label; a site-only PR runs no tests; after a merge, macOS and Windows run once more. The one-off checks run once, on Ubuntu. The Docker image no longer runs the whole suite while it builds (that made it the slowest job, ~3.5 min of every PR) and builds only when its Dockerfile or dependency manifests change; `docker run` still runs the suite (#311)

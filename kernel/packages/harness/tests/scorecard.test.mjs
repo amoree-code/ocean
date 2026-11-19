@@ -20,6 +20,7 @@ import {
   sessionTokens,
   tasksVerifiedRow,
   tokensRow,
+  writerOf,
   writeScorecard,
 } from "@ocean/services/scorecard/scorecard.js";
 
@@ -77,16 +78,60 @@ test("sessions: verified means proven; a task id must be non-empty", () => {
   assert.equal(sessionsVerifiedRow([]).value, "0 of 0 (n/a)");
 });
 
-test("memory writes: unknown or empty source is unattributed; reviews are not writes", () => {
-  const row = memoryWritesRow([
-    { action: "create", source: "claude-code" },
-    { action: "propose", source: "codex" },
-    { action: "delete", source: "unknown" },
-    { action: "update", source: "" },
-    { action: "approve", source: "owner-review" },
-    { action: "reject", source: "owner-review" },
-  ]);
-  assert.equal(row.value, "2 of 4 (50%)");
+const writers = {
+  clients: new Set([
+    "claude-code",
+    "codex",
+    "local-agent-mode-ocean",
+    "claude.ai",
+  ]),
+  sessionProvider: (id) => (id === "s-1" ? "claude" : null),
+};
+
+test("memory writes: a client, a traced session or nothing; the owner and Ocean's jobs are apart", () => {
+  for (const [source, kind] of [
+    ["claude-code", "client"],
+    ["local-agent-mode-ocean", "client"],
+    ["claude.ai", "client"],
+    ["session:s-1", "client"],
+    ["session:desktop:abc", "client"],
+    ["session:gone", "unknown"],
+    ["t307-ledger-smoke", "unknown"],
+    ["unknown", "unknown"],
+    ["", "unknown"],
+    [undefined, "unknown"],
+    ["owner-review", "owner-or-ocean"],
+    ["cli", "owner-or-ocean"],
+    ["instructions", "owner-or-ocean"],
+    ["session-telemetry", "owner-or-ocean"],
+    ["distill:2026-W47", "owner-or-ocean"],
+  ])
+    assert.equal(writerOf(source, writers), kind, String(source));
+  const row = memoryWritesRow(
+    [
+      { action: "create", source: "claude-code" },
+      { action: "propose", source: "session:s-1" },
+      { action: "delete", source: "unknown" },
+      { action: "update", source: "session:gone" },
+      { action: "create", source: "owner-review" },
+      { action: "propose", source: "distill:2026-W47" },
+      // Reviews are not writes.
+      { action: "approve", source: "owner-review" },
+      { action: "reject", source: "owner-review" },
+    ],
+    writers,
+  );
+  assert.equal(
+    row.value,
+    "2 of 4 (50%); 2 more by the owner or Ocean's own jobs",
+  );
+  assert.deepEqual([row.n, row.of], [2, 4]);
+  // Nothing but the owner's own writes: no client percentage to show.
+  assert.equal(
+    memoryWritesRow([{ action: "create", source: "owner-review" }], writers)
+      .value,
+    "0 of 0 (n/a); 1 more by the owner or Ocean's own jobs",
+  );
 });
 
 test("tasks: a verify or verified field is evidence; anything else is not", () => {
@@ -98,25 +143,33 @@ test("tasks: a verify or verified field is evidence; anything else is not", () =
   assert.equal(row.value, "2 of 3 (66.7%)");
 });
 
-test("search: mode from the index; hit@5 is n/a until an eval exists", () => {
+test("search: the mode a probe search ran in, why it is not hybrid; hit@5 n/a until an eval", () => {
   const [mode, missing] = searchRows(
-    { built: true, hasVectors: false, stale: false },
+    {
+      built: true,
+      mode: "fts",
+      stale: false,
+      vector: "unavailable: index built without an embedder",
+    },
     null,
   );
-  assert.equal(mode.value, "fts");
+  assert.equal(
+    mode.value,
+    "fts; vectors unavailable: index built without an embedder",
+  );
   assert.equal(missing.pendingTask, "T-321");
   assert.match(missing.value, /^n\/a/);
   assert.equal(
-    searchRows({ built: true, hasVectors: true, stale: true }, null)[0].value,
-    "hybrid (stale)",
+    searchRows(
+      { built: true, mode: "hybrid", stale: true, vector: "ok" },
+      null,
+    )[0].value,
+    "hybrid; index stale",
   );
-  assert.equal(
-    searchRows({ built: false, hasVectors: false, stale: true }, null)[0].value,
-    "no index",
-  );
+  assert.equal(searchRows({ built: false }, null)[0].value, "no index");
   assert.equal(
     searchRows(
-      { built: true, hasVectors: true, stale: false },
+      { built: true, mode: "hybrid", stale: false, vector: "ok" },
       { hitAt5: 0.85, at: "2026-11-20T01:00:00.000Z" },
     )[1].value,
     "85% on 2026-11-20",
@@ -189,8 +242,14 @@ test("the 2026-11-18 baseline shape reproduces, then renders as table and markdo
     ],
     sessions: Array(3284).fill({ verificationStatus: "unknown", taskId: null }),
     memoryAudit: [{ action: "create", source: "unknown" }],
+    writers,
     tasks: Array(20).fill({ state: "todo" }),
-    search: { built: true, hasVectors: false, stale: false },
+    search: {
+      built: true,
+      mode: "fts",
+      stale: false,
+      vector: "unavailable: index built without an embedder",
+    },
     searchEval: null,
     schedules: [],
     lessons: Array(5).fill({ status: "active" }),
@@ -202,7 +261,7 @@ test("the 2026-11-18 baseline shape reproduces, then renders as table and markdo
   assert.equal(value("sessions-task"), "0 of 3284 (0%)");
   assert.equal(value("memory-writes"), "0 of 1 (0%)");
   assert.equal(value("tasks-verify"), "0 of 20 (0%)");
-  assert.equal(value("search-mode"), "fts");
+  assert.match(value("search-mode"), /^fts; /);
   assert.equal(value("schedules"), "0 of 0");
   // Every n/a row names what it is waiting for.
   for (const row of rows.filter((r) => r.value.startsWith("n/a")))
