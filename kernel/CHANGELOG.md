@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+- feat(skills): `ocean skill doctor` also checks the skill surface (borrowed from COG's validate-agent-surface): every installed client must hold the engine's core skills, plus the hub's skills in the clients that get copies; a client with no skills folder is listed, not judged, and its own extra skills are shown, not faulted. Output is now `{core, surface}`, and a gap prints `NOT CONSISTENT: <client> lacks …` and exits 1 (T-319)
+
 ## 2.2.3 (2026-11-19)
 
 - fix(tasks): `ocean tasks claim` moves a `todo` or `paused` task to `active`, so a task a session is working on shows as active in the task index and the Home view instead of staying `todo`; `blocked` keeps its state and `release` leaves the state alone (#315)
