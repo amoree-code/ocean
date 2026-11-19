@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+- feat(memory): `ocean memory audit [--client <name>] [--days N] [--limit N] [--json]` answers who wrote, changed or deleted what — changes per client and action, the latest entries, and how many name no client; each audit entry now also records the session it was made in (`OCEAN_SESSION_ID`, else the id Claude Code passes to its tools and MCP servers, which is Ocean's id for that session) (T-319)
+
 ## 2.2.3 (2026-11-19)
 
 - fix(tasks): `ocean tasks claim` moves a `todo` or `paused` task to `active`, so a task a session is working on shows as active in the task index and the Home view instead of staying `todo`; `blocked` keeps its state and `release` leaves the state alone (#315)

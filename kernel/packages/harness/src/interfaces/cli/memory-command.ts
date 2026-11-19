@@ -21,6 +21,7 @@ import {
 } from "@ocean/brain/memory/index-sync.js";
 import { archiveRetiredLessons } from "@ocean/brain/memory/lessons.js";
 import {
+  auditSummary,
   memorySettings,
   sessionFactsEnabled,
   setSessionFacts,
@@ -266,6 +267,52 @@ async function runRecordCommand(
   console.log(JSON.stringify(result, null, 2));
 }
 
+// Who wrote, changed or deleted what (T-319), from the memory audit log.
+async function runAudit(args: string[]): Promise<void> {
+  const usage =
+    "Usage: ocean memory audit [--client <name>] [--days N] [--limit N] [--json]";
+  const number = (flag: string) => {
+    const value = flagValue(args, flag);
+    if (value === undefined) return undefined;
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < 0) throw new Error(usage);
+    return parsed;
+  };
+  const client = flagValue(args, "--client");
+  if (args.includes("--client") && (!client || client.startsWith("--")))
+    throw new Error(usage);
+  const summary = await auditSummary({
+    client,
+    days: number("--days"),
+    limit: number("--limit"),
+  });
+  if (args.includes("--json")) {
+    console.log(JSON.stringify(summary, null, 2));
+    return;
+  }
+  const window = summary.since
+    ? `since ${summary.since.slice(0, 16).replace("T", " ")}`
+    : "all time";
+  console.log(
+    `Memory changes, ${window}${client ? `, client ${client}` : ""}: ${summary.total} (${summary.unknown} unknown)`,
+  );
+  const width = Math.max(6, ...summary.clients.map((row) => row.client.length));
+  for (const row of summary.clients) {
+    const actions = Object.entries(row.actions)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([action, count]) => `${action} ${count}`)
+      .join("  ");
+    console.log(
+      `  ${row.client.padEnd(width)}  ${String(row.total).padStart(4)}  ${actions}`,
+    );
+  }
+  if (summary.entries.length) console.log("\nLatest:");
+  for (const entry of summary.entries)
+    console.log(
+      `  ${entry.ts.slice(0, 16).replace("T", " ")}  ${entry.action.padEnd(7)}  ${entry.source}${entry.session ? ` (session ${entry.session})` : ""}  ${entry.path}`,
+    );
+}
+
 // Candidate review (T-296 P5): list, approve into a record, or reject. Edit = edit the candidate
 // file, then approve it.
 async function runReview(args: string[]): Promise<void> {
@@ -352,6 +399,7 @@ export async function runMemoryCommand(
     action === "purge"
   )
     return runRecordCommand(action, args);
+  if (action === "audit") return runAudit(args);
   if (action === "reindex") return runReindex(args);
   if (action === "review") return runReview(args);
   if (action === "harvest") {
@@ -470,7 +518,7 @@ export async function runMemoryCommand(
     return;
   }
   console.error(
-    "Usage: ocean memory doctor|sync [--apply]|review [list|approve <id> [--to <path>]|reject <id>]|eval <questions.json> [--k N] [--min R]|digest|harvest [--source <id>] [--yes]|import-claude <export-dir> [--yes]|history [path] [--limit N]|restore <id> [--hash <sha256>]|delete <path> --hash <sha256>|purge [--days N] [--yes]|facts <profile> [key] [value]|facts <profile> delete <key>|session-facts [on|off]|reindex [--no-vectors]|search <q> [--project <id>|--all] [--json]|read <id|path>|neighbors <id|path> [--depth N] [--project <id>|--all]",
+    "Usage: ocean memory doctor|sync [--apply]|review [list|approve <id> [--to <path>]|reject <id>]|eval <questions.json> [--k N] [--min R]|digest|harvest [--source <id>] [--yes]|import-claude <export-dir> [--yes]|history [path] [--limit N]|audit [--client <name>] [--days N] [--limit N] [--json]|restore <id> [--hash <sha256>]|delete <path> --hash <sha256>|purge [--days N] [--yes]|facts <profile> [key] [value]|facts <profile> delete <key>|session-facts [on|off]|reindex [--no-vectors]|search <q> [--project <id>|--all] [--json]|read <id|path>|neighbors <id|path> [--depth N] [--project <id>|--all]",
   );
   process.exitCode = 1;
 }
