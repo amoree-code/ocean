@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import {
-  type EvalCase,
   evaluateRecall,
+  parseEvalCases,
 } from "@ocean/brain/brain/brain-eval.js";
 import {
   brainIndexPath,
@@ -76,7 +76,10 @@ async function runReindex(args: string[]): Promise<void> {
 }
 
 const searchUsage =
-  "Usage: ocean memory search <query> [--project <id> | --all] [--json]";
+  "Usage: ocean memory search <query> [--project <id> | --all] [--type <type>]... [--since YYYY-MM-DD] [--as-of YYYY-MM-DD] [--fts] [--json]";
+const SEARCH_VALUE_FLAGS = new Set(["--type", "--since", "--as-of"]);
+const isDay = (value: string | undefined) =>
+  value === undefined || /^\d{4}-\d{2}-\d{2}$/.test(value);
 const neighborsUsage =
   "Usage: ocean memory neighbors <id|path> [--depth N] [--project <id> | --all]";
 
@@ -112,10 +115,20 @@ async function scopeFrom(flags: {
 async function runSearch(args: string[]): Promise<void> {
   const flags = parseScopeFlags(args);
   const json = args.includes("--json");
-  const query = (flags?.rest ?? [])
-    .filter((arg) => !arg.startsWith("--"))
-    .join(" ");
-  if (!flags || !query) {
+  const rest = flags?.rest ?? [];
+  const words: string[] = [];
+  const types: string[] = [];
+  for (let index = 0; index < rest.length; index += 1) {
+    const arg = rest[index];
+    if (SEARCH_VALUE_FLAGS.has(arg)) {
+      if (arg === "--type" && rest[index + 1]) types.push(rest[index + 1]);
+      index += 1;
+    } else if (!arg.startsWith("--")) words.push(arg);
+  }
+  const query = words.join(" ");
+  const since = flagValue(rest, "--since");
+  const asOf = flagValue(rest, "--as-of");
+  if (!flags || !query || !isDay(since) || !isDay(asOf)) {
     console.error(searchUsage);
     process.exitCode = 1;
     return;
@@ -124,7 +137,14 @@ async function runSearch(args: string[]): Promise<void> {
     const result = await brainSearch({
       query,
       scope: await scopeFrom(flags),
+      types: types.length ? types : undefined,
+      since,
+      asOf,
       indexPort: defaultBrainIndexPort,
+      // Hybrid whenever the local embedder answers (T-321); keyword-only otherwise, or with --fts.
+      embedder: rest.includes("--fts")
+        ? null
+        : await createOllamaEmbedder().catch(() => null),
     });
     console.log(
       json ? JSON.stringify(result) : JSON.stringify(result, null, 2),
@@ -359,15 +379,19 @@ async function runEval(args: string[]): Promise<void> {
   );
   if (!file) {
     console.error(
-      "Usage: ocean memory eval <questions.json> [--k N] [--min 0.9] [--vectors]",
+      "Usage: ocean memory eval <questions.json|.jsonl> [--k N] [--min 0.9] [--fts]",
     );
     process.exitCode = 1;
     return;
   }
-  const cases = JSON.parse(await readFile(file, "utf8")) as EvalCase[];
+  const cases = parseEvalCases(await readFile(file, "utf8"));
+  // Same embedder rule as search: vectors when the local model answers, unless --fts pins keyword-only.
+  const embedder = args.includes("--fts")
+    ? null
+    : await createOllamaEmbedder().catch(() => null);
   const result = await evaluateRecall(cases, {
     indexPort: defaultBrainIndexPort,
-    embedder: args.includes("--vectors") ? await createOllamaEmbedder() : null,
+    embedder,
     k: Number(flagValue(args, "--k") ?? 5),
   });
   console.log(JSON.stringify(result, null, 2));
@@ -518,7 +542,7 @@ export async function runMemoryCommand(
     return;
   }
   console.error(
-    "Usage: ocean memory doctor|sync [--apply]|review [list|approve <id> [--to <path>]|reject <id>]|eval <questions.json> [--k N] [--min R]|digest|harvest [--source <id>] [--yes]|import-claude <export-dir> [--yes]|history [path] [--limit N]|audit [--client <name>] [--days N] [--limit N] [--json]|restore <id> [--hash <sha256>]|delete <path> --hash <sha256>|purge [--days N] [--yes]|facts <profile> [key] [value]|facts <profile> delete <key>|session-facts [on|off]|reindex [--no-vectors]|search <q> [--project <id>|--all] [--json]|read <id|path>|neighbors <id|path> [--depth N] [--project <id>|--all]",
+    "Usage: ocean memory doctor|sync [--apply]|review [list|approve <id> [--to <path>]|reject <id>]|eval <questions.json|.jsonl> [--k N] [--min R] [--fts]|digest|harvest [--source <id>] [--yes]|import-claude <export-dir> [--yes]|history [path] [--limit N]|audit [--client <name>] [--days N] [--limit N] [--json]|restore <id> [--hash <sha256>]|delete <path> --hash <sha256>|purge [--days N] [--yes]|facts <profile> [key] [value]|facts <profile> delete <key>|session-facts [on|off]|reindex [--no-vectors]|search <q> [--project <id>|--all] [--type T] [--since D] [--as-of D] [--fts] [--json]|read <id|path>|neighbors <id|path> [--depth N] [--project <id>|--all]",
   );
   process.exitCode = 1;
 }

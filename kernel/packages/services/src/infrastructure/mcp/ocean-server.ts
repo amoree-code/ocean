@@ -254,6 +254,15 @@ const tools = new McpToolRegistry(
           query: { type: "string" },
           limit: { type: "number" },
           types: { type: "array", items: { type: "string" } },
+          since: {
+            type: "string",
+            description: "YYYY-MM-DD: only records dated on or after it",
+          },
+          asOf: {
+            type: "string",
+            description:
+              "YYYY-MM-DD: only facts valid on that day (valid_from / superseded_by)",
+          },
           project: { type: "string" },
           cwd: { type: "string" },
         },
@@ -697,6 +706,8 @@ async function callTool(
       types: Array.isArray(args.types)
         ? args.types.filter((item): item is string => typeof item === "string")
         : undefined,
+      since: isoDay(args.since, "since"),
+      asOf: isoDay(args.asOf, "asOf"),
       indexPort: ports.brainIndex,
       embedder: ports.embedder ? await ports.embedder() : null,
     });
@@ -909,6 +920,14 @@ async function readResource(
     mimeType: "application/json",
     text: JSON.stringify(value, null, 2),
   };
+}
+
+// An optional YYYY-MM-DD argument; anything else is refused rather than silently ignored.
+function isoDay(value: unknown, key: string): string | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value))
+    throw new Error(`${key} must be a YYYY-MM-DD date`);
+  return value;
 }
 
 function requiredArgument(args: Record<string, unknown>, key: string): string {

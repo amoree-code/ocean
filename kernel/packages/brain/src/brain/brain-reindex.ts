@@ -116,6 +116,7 @@ type WalkedDoc = {
   record: ReturnType<typeof normalizeRecord>["record"];
   conformance: BrainConformance;
   rawScope: string | undefined;
+  validity: ReturnType<typeof normalizeRecord>["validity"];
   body: string;
   contentHash: string;
   bytes: number;
@@ -192,7 +193,7 @@ export async function reindexBrain(
       /^status:\s*["']?retired["']?\s*$/m.test(source.split(/\r?\n---/, 1)[0])
     )
       continue;
-    const { record, conformance, body, rawScope } = normalizeRecord(
+    const { record, conformance, body, rawScope, validity } = normalizeRecord(
       relative,
       source,
     );
@@ -207,6 +208,7 @@ export async function reindexBrain(
       record,
       conformance,
       rawScope,
+      validity,
       body,
       contentHash: createHash("sha256").update(source).digest("hex"),
       bytes: Buffer.byteLength(source, "utf8"),
@@ -274,6 +276,8 @@ export async function reindexBrain(
       created: doc.record.created,
       updated: doc.record.updated,
       lastConfirmedAt: doc.record.lastConfirmedAt,
+      validFrom: doc.validity.validFrom,
+      supersededBy: doc.validity.supersededBy,
       contentHash: doc.contentHash,
       bytes: doc.bytes,
       conformance: doc.conformance,

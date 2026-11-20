@@ -71,6 +71,8 @@ function createSchema(
       created TEXT,
       updated TEXT,
       last_confirmed_at TEXT,
+      valid_from TEXT,
+      superseded_by TEXT,
       content_hash TEXT NOT NULL,
       bytes INTEGER NOT NULL,
       conformance_json TEXT NOT NULL
@@ -113,8 +115,8 @@ async function populate(
 ): Promise<void> {
   const insertDoc = db.prepare(`
     INSERT INTO docs (id, path, title, summary, tags_json, type, scope, confidence, created, updated,
-      last_confirmed_at, content_hash, bytes, conformance_json)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      last_confirmed_at, valid_from, superseded_by, content_hash, bytes, conformance_json)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const insertChunk = db.prepare(`
     INSERT INTO chunks (doc_id, ordinal, heading, text) VALUES (?, ?, ?, ?)
@@ -147,6 +149,8 @@ async function populate(
         doc.created,
         doc.updated,
         doc.lastConfirmedAt,
+        doc.validFrom,
+        doc.supersededBy,
         doc.contentHash,
         doc.bytes,
         JSON.stringify(doc.conformance),
