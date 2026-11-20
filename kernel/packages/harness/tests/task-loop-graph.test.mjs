@@ -109,6 +109,13 @@ const startLoop = (ws, extra = {}) =>
     prompt: "work",
     cwd: ws.repo,
     approved: true,
+    guard: {
+      verify: "true",
+      maxRuns: 10,
+      budgetTokens: 1_000_000,
+      noProgressRuns: 3,
+      escalate: "inbox",
+    },
     ...extra,
   });
 const taskFile = (root) =>

@@ -6,7 +6,12 @@ import {
   KNOWLEDGE_DIR,
   listProjectDirs,
   oceanPath,
+  SYSTEM_DIR,
 } from "@ocean/core/shared/paths.js";
+import { sessionTokens } from "@ocean/loop/runs/session-tokens.js";
+
+// Moved to the loop package (T-322) so run guards can count tokens; re-exported for callers.
+export { sessionTokens };
 
 // `ocean scorecard` (T-318): Ocean's health as numbers read from real data, the baseline every
 // improvement task (T-319–T-323) must move. Read-only, except the dated copy `--write` saves.
@@ -44,6 +49,16 @@ export type ScorecardInput = {
   lessons: Array<Record<string, string>>;
   // Sessions whose provider reported token usage, and their tokens.
   tokens: { sessions: number; reporting: number; total: number };
+  // The latest monthly `ocean memory hygiene` counts (T-322).
+  hygiene: {
+    month: string;
+    records: number;
+    verified: number;
+    drifted: number;
+    unverifiable: number;
+  } | null;
+  // The last nightly drift check: records changed with no audited write (T-322, F6).
+  drift: { records: number; unrecorded: number; since: string | null } | null;
 };
 
 const percent = (n: number, of: number) =>
@@ -150,6 +165,8 @@ const OWNER_OR_OCEAN = new Set([
   "cli",
   "instructions",
   "session-telemetry",
+  "hygiene",
+  "curator",
 ]);
 
 export function writerOf(
@@ -227,14 +244,14 @@ export function searchRows(
           id: "search-eval",
           label: "Search hit@5 (last eval)",
           value: `${percent(searchEval.hitAt5, 1)} on ${searchEval.at.slice(0, 10)}`,
-          source: "ocean brain eval",
+          source: "ocean upkeep (memory eval)",
         }
       : notYet(
           "search-eval",
           "Search hit@5 (last eval)",
-          "ocean brain eval",
-          "T-321",
-          "no eval set",
+          "ocean upkeep (memory eval)",
+          "T-322",
+          "no eval run yet",
         ),
   ];
 }
@@ -305,13 +322,41 @@ export function tokensRow(tokens: ScorecardInput["tokens"]): ScorecardRow {
   };
 }
 
-export const hygieneRow = (): ScorecardRow =>
-  notYet(
-    "hygiene",
-    "Records verified / drifted / unverifiable",
-    "ocean memory hygiene",
-    "T-322",
-  );
+export const hygieneRow = (hygiene: ScorecardInput["hygiene"]): ScorecardRow =>
+  hygiene
+    ? {
+        id: "hygiene",
+        label: "Records verified / drifted / unverifiable",
+        value: `${hygiene.verified} / ${hygiene.drifted} / ${hygiene.unverifiable} of ${hygiene.records} with claims (${hygiene.month})`,
+        n: hygiene.verified,
+        of: hygiene.records,
+        source: "ocean memory hygiene",
+      }
+    : notYet(
+        "hygiene",
+        "Records verified / drifted / unverifiable",
+        "ocean memory hygiene",
+        "T-322",
+        "no hygiene run yet",
+      );
+
+export const driftRow = (drift: ScorecardInput["drift"]): ScorecardRow =>
+  drift?.since
+    ? {
+        id: "drift",
+        label: "Records changed with no recorded write",
+        value: `${drift.unrecorded} of ${drift.records} since ${drift.since.slice(0, 10)}`,
+        n: drift.unrecorded,
+        of: drift.records,
+        source: "ocean memory drift (hash vs audit log)",
+      }
+    : notYet(
+        "drift",
+        "Records changed with no recorded write",
+        "ocean memory drift (hash vs audit log)",
+        "T-322",
+        "no snapshot to compare yet",
+      );
 
 export function scorecardRows(input: ScorecardInput): ScorecardRow[] {
   return [
@@ -324,36 +369,9 @@ export function scorecardRows(input: ScorecardInput): ScorecardRow[] {
     schedulesRow(input.schedules),
     ...lessonsRows(input.lessons),
     tokensRow(input.tokens),
-    hygieneRow(),
+    hygieneRow(input.hygiene),
+    driftRow(input.drift),
   ];
-}
-
-// A provider's final `result` line (Claude's stream-json) carries the session's usage; the sum
-// of input, cache and output tokens, or null when no event reports any.
-export function sessionTokens(
-  events: Array<{ type: string; data: string }>,
-): number | null {
-  let total: number | null = null;
-  for (const event of events) {
-    if (event.type !== "json" || !event.data.includes('"usage"')) continue;
-    let parsed: { type?: string; usage?: Record<string, unknown> };
-    try {
-      parsed = JSON.parse(event.data);
-    } catch {
-      continue;
-    }
-    if (parsed.type !== "result" || !parsed.usage) continue;
-    const usage = parsed.usage;
-    const sum = [
-      "input_tokens",
-      "cache_creation_input_tokens",
-      "cache_read_input_tokens",
-      "output_tokens",
-    ].reduce((acc, key) => acc + (Number(usage[key]) || 0), 0);
-    // A zero-usage result (a synthetic or refused turn) is not a report.
-    if (sum > 0) total = (total ?? 0) + sum;
-  }
-  return total;
 }
 
 export function renderTable(rows: ScorecardRow[]): string {
@@ -381,6 +399,21 @@ export function renderMarkdown(rows: ScorecardRow[], date: string): string {
     ),
     "",
   ].join("\n");
+}
+
+// The last nightly search eval (T-322): `ocean upkeep` saves it, the scorecard reads it.
+export const searchEvalFile = () =>
+  oceanPath(SYSTEM_DIR, "state", "search-eval.json");
+
+export async function readSearchEval(): Promise<ScorecardInput["searchEval"]> {
+  try {
+    const saved = JSON.parse(await readFile(searchEvalFile(), "utf8"));
+    return typeof saved.hitAt5 === "number" && typeof saved.at === "string"
+      ? { hitAt5: saved.hitAt5, at: saved.at }
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 export function scorecardFile(date: string): string {

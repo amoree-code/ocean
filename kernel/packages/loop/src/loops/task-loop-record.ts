@@ -1,3 +1,8 @@
+import type {
+  GuardUsage,
+  LoopGuard,
+} from "@ocean/core/domain/runs/loop-guard.js";
+
 export type TaskLoopStatus =
   | "active"
   | "paused"
@@ -26,4 +31,7 @@ export type TaskLoop = {
   lastError: string | null;
   checkpoint: string;
   resultPath: string | null;
+  // T-322 (C2): the guard the loop was started with; a loop without one never runs.
+  guard?: LoopGuard;
+  usage?: GuardUsage;
 };

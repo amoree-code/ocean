@@ -9,6 +9,15 @@ import {
   stopTaskLoop,
 } from "@ocean/loop/loops/task-loop.js";
 
+// T-322 (C2): a loop declares its guard; its run cap is the iteration cap.
+const GUARD = {
+  verify: "true",
+  maxRuns: 10,
+  budgetTokens: 1_000_000,
+  noProgressRuns: 3,
+  escalate: "inbox",
+};
+
 test("task loop persists bounded state and stops explicitly", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ocean-loop-"));
   const previous = process.env.OCEAN_ROOT;
@@ -20,7 +29,7 @@ test("task loop persists bounded state and stops explicitly", async () => {
       prompt: "Work one bounded action",
       cwd: root,
       approved: true,
-      maxIterations: 3,
+      guard: { ...GUARD, maxRuns: 3 },
       intervalMs: 1_000,
       maxAttempts: 2,
     });
@@ -74,6 +83,7 @@ test("a task loop remembers its project and works a task outside the workspace p
       prompt: "work",
       cwd: repo,
       approved: true,
+      guard: GUARD,
     });
     assert.equal(loop.projectId, "shop");
     const runtime = createAgentRuntime({
@@ -102,6 +112,7 @@ test("a loop needs a well-formed task id, prefixed or legacy", async () => {
       prompt: "x",
       cwd: root,
       approved: true,
+      guard: GUARD,
     };
     assert.equal(
       (await startTaskLoop({ ...input, taskId: "OL-001" })).taskId,
@@ -115,6 +126,73 @@ test("a loop needs a well-formed task id, prefixed or legacy", async () => {
       startTaskLoop({ ...input, taskId: "T1" }),
       /valid task id/,
     );
+  } finally {
+    if (previous === undefined) delete process.env.OCEAN_ROOT;
+    else process.env.OCEAN_ROOT = previous;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a loop without a complete guard is refused; a tripped guard fails it and escalates (T-322)", async () => {
+  const { mkdir, readdir, writeFile } = await import("node:fs/promises");
+  const { runTaskLoopsOnce } = await import("@ocean/loop/loops/task-loop.js");
+  const { createAgentRuntime } = await import("../dist/composition/runtime.js");
+  const { PROJECTS_DIR, SYSTEM_DIR } = await import(
+    "@ocean/core/shared/paths.js"
+  );
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-loop-guard-"));
+  const previous = process.env.OCEAN_ROOT;
+  process.env.OCEAN_ROOT = root;
+  try {
+    const input = {
+      taskId: "T-102",
+      profile: "writer",
+      prompt: "work",
+      cwd: root,
+      approved: true,
+    };
+    await assert.rejects(startTaskLoop(input), /Refused: .*verify/);
+    await assert.rejects(
+      startTaskLoop({ ...input, guard: { ...GUARD, escalate: "email" } }),
+      /escalate: human escalation/,
+    );
+    await mkdir(path.join(root, SYSTEM_DIR, "profiles"), { recursive: true });
+    await writeFile(
+      path.join(root, SYSTEM_DIR, "profiles", "writer.json"),
+      JSON.stringify({
+        name: "writer",
+        provider: "claude",
+        role: "writer",
+        writePolicy: "workspace",
+      }),
+    );
+    const dir = path.join(root, PROJECTS_DIR, "ocean", "tasks", "T-102");
+    await mkdir(dir, { recursive: true });
+    await writeFile(
+      path.join(dir, "task.md"),
+      "---\nid: T-102\ntitle: x\nstate: active\nproject: ocean\n---\n\n## Log\n\n",
+    );
+    const loop = await startTaskLoop({
+      ...input,
+      guard: { ...GUARD, verify: "exit 1", noProgressRuns: 1 },
+    });
+    const runtime = createAgentRuntime({
+      executeProvider: async () => ({ exitCode: 0, events: [], stderr: "" }),
+    });
+    await runTaskLoopsOnce(root, runtime, {
+      verifyRun: async () => ({ exitCode: 0 }),
+    });
+    const [after] = await listTaskLoops();
+    assert.equal(after.id, loop.id);
+    assert.equal(after.status, "failed");
+    assert.equal(
+      after.lastError,
+      "guard: no verified progress in 1 runs in a row",
+    );
+    assert.deepEqual(after.usage, { runs: 1, tokens: 0, noProgress: 1 });
+    const notes = await readdir(path.join(root, "00-inbox", "escalations"));
+    assert.equal(notes.length, 1);
+    assert.match(notes[0], new RegExp(`-loop-${loop.id}\\.md$`));
   } finally {
     if (previous === undefined) delete process.env.OCEAN_ROOT;
     else process.env.OCEAN_ROOT = previous;

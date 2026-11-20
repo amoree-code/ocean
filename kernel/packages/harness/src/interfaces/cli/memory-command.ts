@@ -53,6 +53,7 @@ import { isValidProjectId } from "@ocean/core/domain/context/project-id.js";
 import { folderProject } from "@ocean/core/shared/project-resolution.js";
 import { defaultBrainIndexPort } from "../../composition/runtime.js";
 import { createOllamaEmbedder } from "../../infrastructure/providers/ollama-embedder.js";
+import { runDriftCommand, runHygieneCommand } from "./hygiene-command.js";
 
 async function runReindex(args: string[]): Promise<void> {
   const noVectors = args.includes("--no-vectors");
@@ -457,6 +458,8 @@ export async function runMemoryCommand(
     return;
   }
   if (action === "eval") return runEval(args);
+  if (action === "hygiene") return runHygieneCommand(args);
+  if (action === "drift") return runDriftCommand(args);
   if (action === "archive-retired") {
     // T-314: retired lessons out of the index, into lessons/archive/ (kept).
     const moved = await archiveRetiredLessons({
@@ -542,7 +545,7 @@ export async function runMemoryCommand(
     return;
   }
   console.error(
-    "Usage: ocean memory doctor|sync [--apply]|review [list|approve <id> [--to <path>]|reject <id>]|eval <questions.json|.jsonl> [--k N] [--min R] [--fts]|digest|harvest [--source <id>] [--yes]|import-claude <export-dir> [--yes]|history [path] [--limit N]|audit [--client <name>] [--days N] [--limit N] [--json]|restore <id> [--hash <sha256>]|delete <path> --hash <sha256>|purge [--days N] [--yes]|facts <profile> [key] [value]|facts <profile> delete <key>|session-facts [on|off]|reindex [--no-vectors]|search <q> [--project <id>|--all] [--type T] [--since D] [--as-of D] [--fts] [--json]|read <id|path>|neighbors <id|path> [--depth N] [--project <id>|--all]",
+    "Usage: ocean memory doctor|sync [--apply]|review [list|approve <id> [--to <path>]|reject <id>]|eval <questions.json|.jsonl> [--k N] [--min R] [--fts]|hygiene [--yes]|drift [--yes]|digest|harvest [--source <id>] [--yes]|import-claude <export-dir> [--yes]|history [path] [--limit N]|audit [--client <name>] [--days N] [--limit N] [--json]|restore <id> [--hash <sha256>]|delete <path> --hash <sha256>|purge [--days N] [--yes]|facts <profile> [key] [value]|facts <profile> delete <key>|session-facts [on|off]|reindex [--no-vectors]|search <q> [--project <id>|--all] [--type T] [--since D] [--as-of D] [--fts] [--json]|read <id|path>|neighbors <id|path> [--depth N] [--project <id>|--all]",
   );
   process.exitCode = 1;
 }

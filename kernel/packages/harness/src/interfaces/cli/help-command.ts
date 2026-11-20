@@ -13,7 +13,7 @@ const commandGroups = [
   ],
   [
     "Knowledge",
-    "memory, pull, desktop, observe, capture, note, brief, interests, distill, harvest, rhythm, telemetry, scorecard, express, handoff, idea, daily, skill, catalog",
+    "memory, pull, desktop, observe, capture, note, brief, interests, distill, harvest, rhythm, upkeep, curator, telemetry, scorecard, express, handoff, idea, daily, skill, catalog",
   ],
   ["Integrations", "obsidian, hook, migrate, layout, env"],
 ] as const;
@@ -54,7 +54,7 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
   ],
   loop: [
     "Start, inspect and stop task loops (repeated agent runs on one task).",
-    "ocean loop start <task-id> <profile> --prompt <text> --approve [--max-iterations N] [--interval-ms N] [--max-attempts N]|status|stop <loop-id>|worker-once|worker",
+    "ocean loop start <task-id> <profile> --approve --verify <cmd> --max-runs N --budget-tokens N --no-progress N --escalate inbox [--interval-ms N] [--max-attempts N] --prompt <text>|status|stop <loop-id>|worker-once|worker",
   ],
   policy: [
     "List the charter's policies, check them, or print one.",
@@ -106,7 +106,7 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
   ],
   schedule: [
     "Add, list and run scheduled agent runs.",
-    "ocean schedule list|add <id> <profile> <interval-ms> <prompt>|enable|disable|run-due|run-now|worker-once|worker",
+    "ocean schedule list|add <id> <profile> <interval-ms> --verify <cmd> --max-runs N --budget-tokens N --no-progress N --escalate inbox <prompt>|enable|disable|run-due|run-now|worker-once|worker",
   ],
   client: [
     "Inspect, open, register and sync AI clients.",
@@ -140,7 +140,7 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
   ],
   memory: [
     "Search, read, review and maintain memory records and the brain index.",
-    "ocean memory doctor|sync [--apply]|review [list|approve <id> [--to <path>]|reject <id>]|eval <questions.json|.jsonl> [--k N] [--min R] [--fts]|digest|harvest [--source <id>] [--yes]|import-claude <export-dir> [--yes]|history [path] [--limit N]|audit [--client <name>] [--days N] [--limit N] [--json]|restore <id> [--hash <sha256>]|delete <path> --hash <sha256>|purge [--days N] [--yes]|facts <profile> [key] [value]|facts <profile> delete <key>|reindex [--no-vectors]|search <q> [--project <id>|--all] [--type T] [--since D] [--as-of D] [--fts] [--json]|read <id|path>|neighbors <id|path> [--depth N] [--project <id>|--all]",
+    "ocean memory doctor|sync [--apply]|review [list|approve <id> [--to <path>]|reject <id>]|eval <questions.json|.jsonl> [--k N] [--min R] [--fts]|hygiene [--yes]|drift [--yes]|digest|harvest [--source <id>] [--yes]|import-claude <export-dir> [--yes]|history [path] [--limit N]|audit [--client <name>] [--days N] [--limit N] [--json]|restore <id> [--hash <sha256>]|delete <path> --hash <sha256>|purge [--days N] [--yes]|facts <profile> [key] [value]|facts <profile> delete <key>|reindex [--no-vectors]|search <q> [--project <id>|--all] [--type T] [--since D] [--as-of D] [--fts] [--json]|read <id|path>|neighbors <id|path> [--depth N] [--project <id>|--all]",
   ],
   pull: [
     "Pull what AI clients hold into Ocean as review candidates; a dry run until --yes.",
@@ -175,8 +175,16 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
     "ocean harvest [--date YYYY-MM-DD | --pending] [--yes] | archive [--days N] [--yes] | undo <YYYY-MM-DD>",
   ],
   rhythm: [
-    "Run the day's rhythm once per period, no model: morning note, harvest, archive, last week's digest, last month's review.",
+    "Run the day's rhythm once per period, no model: morning note, harvest, archive, last week's digest, last month's review, then the nightly upkeep.",
     "ocean rhythm [--yes]",
+  ],
+  upkeep: [
+    "Run the nightly jobs (doctor, telemetry, reindex, search eval, curator, scorecard), no model, and write the morning digest to 01-daily/digest/.",
+    "ocean upkeep [--yes] [--if-due]",
+  ],
+  curator: [
+    "Mark lessons and skills stale after 30 days unused (or 90 unreviewed), archive after 90; review undoes a mark.",
+    "ocean curator [--yes] | review <lesson:id|skill:name>",
   ],
   telemetry: [
     "Find recurring errors and failing providers in recent sessions; propose them as backlog lines.",

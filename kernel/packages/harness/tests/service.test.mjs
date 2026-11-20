@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdir, mkdtemp, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
@@ -19,12 +19,22 @@ import {
   runSchedulerWorkerOnce as runSchedulerWorkerOnceRaw,
   runSchedulerWorker as runSchedulerWorkerRaw,
   saveSchedule,
+  setScheduleEnabled,
 } from "../dist/application/scheduler/local-scheduler.js";
 import { createAgentRuntime } from "../dist/composition/runtime.js";
 import {
   ensureService,
   restartService,
 } from "../dist/infrastructure/process/service.js";
+
+// T-322 (C2): every schedule declares its guard.
+const GUARD = {
+  verify: "true",
+  maxRuns: 100,
+  budgetTokens: 1_000_000,
+  noProgressRuns: 3,
+  escalate: "inbox",
+};
 
 // Test shims: scheduler/gateway now take an AgentRuntimeDeps bag; wrap a bare
 // provider executor into a runtime so the test bodies keep passing an executor.
@@ -335,6 +345,7 @@ test("persists and runs a due local schedule once", async () => {
     intervalMs: 1000,
     nextRunAt: new Date(0).toISOString(),
     enabled: true,
+    guard: GUARD,
   });
   assert.deepEqual(
     await runDueSchedules(root, async () => ({
@@ -371,6 +382,7 @@ test("run-due uses a cross-process lease for concurrent callers", async () => {
     intervalMs: 1000,
     nextRunAt: new Date(0).toISOString(),
     enabled: true,
+    guard: GUARD,
   });
   let executions = 0;
   const execute = async () => {
@@ -403,6 +415,7 @@ test("scheduler completion merges with concurrent schedule edits", async () => {
       intervalMs: 1000,
       nextRunAt: new Date(0).toISOString(),
       enabled: true,
+      guard: GUARD,
     });
     let release;
     const blocked = new Promise((resolve) => {
@@ -420,6 +433,7 @@ test("scheduler completion merges with concurrent schedule edits", async () => {
       intervalMs: 1000,
       nextRunAt: new Date(Date.now() + 60_000).toISOString(),
       enabled: true,
+      guard: GUARD,
     });
     release();
     await run;
@@ -630,6 +644,7 @@ test("scheduler worker records retry state and releases its lease", async () => 
     intervalMs: 1000,
     nextRunAt: new Date(0).toISOString(),
     enabled: true,
+    guard: GUARD,
   });
   await runSchedulerWorkerOnce(root, async () => {
     throw new Error("provider failed");
@@ -654,6 +669,7 @@ test("scheduler worker retries a provider non-zero exit", async () => {
       intervalMs: 1000,
       nextRunAt: new Date(0).toISOString(),
       enabled: true,
+      guard: GUARD,
     });
     assert.deepEqual(
       await runSchedulerWorkerOnce(root, async () => ({
@@ -688,6 +704,7 @@ test("scheduler worker reclaims a lease owned by a dead process", async () => {
       intervalMs: 1000,
       nextRunAt: new Date(0).toISOString(),
       enabled: true,
+      guard: GUARD,
     });
     await writeFile(
       path.join(root, SYSTEM_DIR, "schedules", "stale.lease"),
@@ -713,4 +730,119 @@ test("scheduler worker stops through AbortSignal", async () => {
     signal: controller.signal,
     pollMs: 1_000,
   });
+});
+
+test("schedule add refuses a job without a complete guard (T-322, C2)", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-schedule-guard-"));
+  process.env.OCEAN_ROOT = root;
+  try {
+    const base = {
+      id: "unguarded",
+      profile: "default",
+      prompt: "x",
+      intervalMs: 1000,
+      nextRunAt: new Date(0).toISOString(),
+      enabled: true,
+    };
+    await assert.rejects(
+      saveSchedule(base),
+      /verify: a verifier command; max-runs: a hard cap; budget-tokens: a token budget; no-progress: a no-progress exit; escalate: human escalation/,
+    );
+    await assert.rejects(
+      saveSchedule({ ...base, guard: { ...GUARD, budgetTokens: 0 } }),
+      /^Error: Refused: .*budget-tokens/,
+    );
+    assert.deepEqual(await listSchedules(), []);
+  } finally {
+    delete process.env.OCEAN_ROOT;
+  }
+});
+
+test("a guard stops a schedule at its hard cap or after runs without progress, and escalates", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-schedule-stop-"));
+  await mkdir(path.join(root, SYSTEM_DIR, "profiles"), { recursive: true });
+  await writeFile(
+    path.join(root, SYSTEM_DIR, "profiles", "default.json"),
+    JSON.stringify({ name: "default", provider: "claude", role: "assistant" }),
+  );
+  process.env.OCEAN_ROOT = root;
+  const ok = async () => ({ exitCode: 0, events: [], stderr: "" });
+  try {
+    await saveSchedule({
+      id: "capped",
+      profile: "default",
+      prompt: "x",
+      intervalMs: 1000,
+      nextRunAt: new Date(0).toISOString(),
+      enabled: true,
+      guard: { ...GUARD, maxRuns: 1 },
+    });
+    await saveSchedule({
+      id: "stuck",
+      profile: "default",
+      prompt: "x",
+      intervalMs: 1000,
+      nextRunAt: new Date(0).toISOString(),
+      enabled: true,
+      guard: { ...GUARD, verify: "exit 1", noProgressRuns: 1 },
+    });
+    assert.deepEqual((await runDueSchedules(root, ok)).sort(), [
+      "capped",
+      "stuck",
+    ]);
+    const byId = Object.fromEntries(
+      (await listSchedules()).map((s) => [s.id, s]),
+    );
+    assert.equal(byId.capped.enabled, false);
+    assert.equal(byId.capped.stoppedReason, "hard cap reached: 1 of 1 runs");
+    assert.deepEqual(byId.capped.usage, { runs: 1, tokens: 0, noProgress: 0 });
+    assert.equal(byId.stuck.enabled, false);
+    assert.equal(
+      byId.stuck.stoppedReason,
+      "no verified progress in 1 runs in a row",
+    );
+    const escalations = (
+      await readdir(path.join(root, "00-inbox", "escalations"))
+    ).sort();
+    assert.equal(escalations.length, 2);
+    assert.match(escalations[0], /-schedule-capped\.md$/);
+    // A stopped schedule is not run again until the owner enables it.
+    assert.deepEqual(await runDueSchedules(root, ok), []);
+    const resumed = await setScheduleEnabled("capped", true);
+    assert.equal(resumed.stoppedReason, undefined);
+    assert.deepEqual(resumed.usage, { runs: 0, tokens: 0, noProgress: 0 });
+  } finally {
+    delete process.env.OCEAN_ROOT;
+  }
+});
+
+test("a schedule saved before guards existed never runs", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-schedule-legacy-"));
+  await mkdir(path.join(root, SYSTEM_DIR), { recursive: true });
+  await writeFile(
+    path.join(root, SYSTEM_DIR, "schedules.json"),
+    JSON.stringify([
+      {
+        id: "legacy",
+        profile: "default",
+        prompt: "x",
+        intervalMs: 1000,
+        nextRunAt: new Date(0).toISOString(),
+        enabled: true,
+      },
+    ]),
+  );
+  process.env.OCEAN_ROOT = root;
+  try {
+    let ran = 0;
+    const run = async () => {
+      ran += 1;
+      return { exitCode: 0, events: [], stderr: "" };
+    };
+    assert.deepEqual(await runDueSchedules(root, run), []);
+    assert.deepEqual(await runSchedulerWorkerOnce(root, run), []);
+    assert.equal(ran, 0);
+  } finally {
+    delete process.env.OCEAN_ROOT;
+  }
 });

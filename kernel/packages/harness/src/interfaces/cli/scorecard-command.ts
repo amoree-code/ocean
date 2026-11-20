@@ -7,7 +7,12 @@ import { readAudit } from "@ocean/brain/memory/memory-audit.js";
 import { localDate } from "@ocean/core/shared/local-date.js";
 import { openSessionStoreReadOnly } from "@ocean/loop/infrastructure/persistence/session-store.js";
 import {
+  readDrift,
+  readHygieneHistory,
+} from "@ocean/services/hygiene/hygiene.js";
+import {
   readLessonFrontmatter,
+  readSearchEval,
   readTaskFrontmatter,
   renderTable,
   type ScorecardInput,
@@ -80,10 +85,20 @@ async function collect(): Promise<ScorecardInput> {
     },
     tasks: await readTaskFrontmatter(),
     search,
-    searchEval: null,
+    searchEval: await readSearchEval(),
     schedules: await listSchedules(),
     lessons: await readLessonFrontmatter(),
     tokens,
+    hygiene: (await readHygieneHistory()).at(-1) ?? null,
+    drift: await readDrift().then((drift) =>
+      drift
+        ? {
+            records: drift.records,
+            unrecorded: drift.unrecorded.length,
+            since: drift.since,
+          }
+        : null,
+    ),
   };
 }
 

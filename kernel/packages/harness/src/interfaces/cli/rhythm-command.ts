@@ -16,10 +16,12 @@ import {
   harvestDay,
   pendingDays,
 } from "@ocean/services/harvest/harvest.js";
+import { runUpkeepCommand } from "./upkeep-command.js";
 
 // `ocean rhythm [--yes]` (T-314): everything the day, week and month need, with no model, each
 // at most once: today's morning note, every day not yet harvested (and today so far), the
-// archive, last week's digest once the week is over, last month's review once the month is over.
+// archive, last week's digest once the week is over, last month's review once the month is over,
+// then the nightly upkeep and its morning digest once a day (T-322).
 // The background service runs it at each session start; a run with nothing due is quick.
 
 const stampFile = () => oceanPath(SYSTEM_DIR, "state", "rhythm.json");
@@ -36,6 +38,12 @@ export async function runRhythmCommand(args: string[]): Promise<void> {
   await mkdir(path.dirname(stampFile()), { recursive: true });
   // One run at a time: a session start and the hourly service tick can land together.
   await withFileLock(stampFile(), () => rhythm(args));
+  // Nightly upkeep (T-322) once a day, outside the rhythm lock: its jobs take minutes. A run that
+  // finds another one holding the upkeep lock leaves it to that one.
+  if (args.includes("--yes"))
+    await runUpkeepCommand(["--yes", "--if-due"]).catch((error) => {
+      if (!/still held/.test(String(error))) throw error;
+    });
 }
 
 async function rhythm(args: string[]): Promise<void> {
