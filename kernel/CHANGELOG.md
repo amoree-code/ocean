@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+## 2.10.0 (2026-11-20)
+
 - feat(autopilot): upkeep runs itself. `ocean rhythm` now runs `ocean upkeep` once a day: doctor, telemetry, reindex, the search eval (its hit@5 now fills the scorecard row), record drift, the curator and `scorecard --write`, each a child process with a timeout and no model, plus `ocean memory hygiene` on the first run of a month; then a morning digest in `01-daily/digest/<date>.md` says what ran, what failed, which scorecard rows moved and every token budget. `ocean curator` marks lessons and skills stale after 30 days unused (or 90 unreviewed) and archives after 90 (lessons into `lessons/archive/`, skills marked in place); `ocean curator review <key>` undoes it — with no use signal recorded yet, an item's clock starts the first night the curator sees it. `ocean memory hygiene` re-checks records' paths, URLs and GitHub repos, stamps `last_verified` and a word `confidence` (never a numeric one), lists drifted records as proposed for archive and writes `01-daily/hygiene/<month>.md` with the trend; `ocean memory drift` lists records changed with no audited write; both fill scorecard rows. Every scheduled job and task loop now declares a guard — `--verify <cmd> --max-runs N --budget-tokens N --no-progress N --escalate inbox` — or `schedule add` / `loop start` refuse it; a tripped guard stops it and leaves a note in `00-inbox/escalations/`. Schedules or loops saved without a guard no longer run; the service runs due schedules hourly. `loop start --max-iterations` is replaced by `--max-runs` (T-322) (#322)
 
 ## 2.9.0 (2026-11-20)
