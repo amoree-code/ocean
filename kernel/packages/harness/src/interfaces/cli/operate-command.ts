@@ -1,6 +1,7 @@
 import { classifyIntent } from "@ocean/context/context/intent-router.js";
 import { oceanRoot } from "@ocean/core/shared/paths.js";
 import { knownTaskPrefixes } from "@ocean/core/shared/project-resolution.js";
+import { openSessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
 import {
   type OperationName,
   operationForIntent,
@@ -54,6 +55,7 @@ export async function runOperateCommand(text: string): Promise<void> {
         query: text,
         approval: approval ?? undefined,
         indexPort: defaultBrainIndexPort,
+        openStore: openSessionStore,
       }),
   );
 

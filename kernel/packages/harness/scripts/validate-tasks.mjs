@@ -41,6 +41,40 @@ function parseClaimPaths(raw) {
 const pathsOverlap = (a, b) =>
   a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`);
 const claims = [];
+// T-320: a task marked done must carry the verdict `ocean tasks verify` recorded. Tasks last
+// updated before this rule shipped only warn (no back-fill); a task touched since must comply.
+const VERIFY_REQUIRED_FROM = "2026-11-21";
+const VERIFIED_VALUES = ["yes", "no", "partial", "unknown"];
+const REVIEW_VALUES = ["agent", "none"];
+const inlineItems = (raw) =>
+  (raw?.match(/^\[(.*)\]$/)?.[1] ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+function checkVerification(file, fields) {
+  const verified = unquote(fields.verified);
+  if (verified && !VERIFIED_VALUES.includes(verified))
+    errors.push(
+      `${file}: verified must be one of ${VERIFIED_VALUES.join(", ")}`,
+    );
+  const review = unquote(fields.review);
+  if (review && !REVIEW_VALUES.includes(review))
+    errors.push(`${file}: review must be one of ${REVIEW_VALUES.join(", ")}`);
+  if (fields.state !== "done") return;
+  const evidence = inlineItems(fields.evidence);
+  const proven = ["yes", "partial"].includes(verified) && evidence.length > 0;
+  if (proven) return;
+  const problem = !verified
+    ? "done without verify evidence"
+    : evidence.length
+      ? `done but verified: ${verified}`
+      : "done with no evidence ids";
+  if ((unquote(fields.updated) ?? "") >= VERIFY_REQUIRED_FROM)
+    errors.push(
+      `${file}: ${problem} (run: ocean tasks verify ${unquote(fields.id)})`,
+    );
+  else console.warn(`${file}: ${problem} (predates T-320; not enforced)`);
+}
 
 const records = [];
 const errors = [];
@@ -128,6 +162,7 @@ async function readTask(file, archived) {
     )
       errors.push(`${file}: invalid state`);
     readClaim(file, fields);
+    checkVerification(file, fields);
     if (legacy) {
       const checklist = source.match(/- "\[[ x]\] .*"/g) ?? [];
       if (!checklist.length) errors.push(`${file}: missing checklist`);

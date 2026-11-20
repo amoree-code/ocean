@@ -75,6 +75,48 @@ session is working on the task right now (T-270). `claimed_at` is an ISO-8601 UT
 removed by `ocean tasks release` — it is not part of the task's lasting description. Rules
 and commands: `ocean policy task`, "Claims".
 
+### Verification fields (T-320)
+
+```yaml
+verify: # the checks · inline `verify: pnpm test, ocean tasks doctor`, or a block list:
+  - AC-1: pnpm build && pnpm test # `AC-n:` names the Definition-of-done item it proves
+  - AC-2: ocean tasks doctor
+review: agent # optional · agent | none — owner opt-in to the model review
+verified: yes # written by `ocean tasks verify` · yes | no | partial | unknown
+verified_at: 2026-11-21T09:00:00.000Z # written · ISO-8601 UTC
+evidence: [AC-1:event:812, AC-2:event:813] # written · one event id per check
+assumed: [independent review not run] # what was not checked; verify appends, never removes
+base_commit: 3f2a… # written by the first `ocean tasks claim`, never changed after
+```
+
+`verify:` is read from the frontmatter only (never a body line); without it, the fenced block
+in `## Verification`, where a line may also start with `AC-n:`. Only allowlisted commands run
+— a check never publishes, signs in or installs globally.
+
+`ocean tasks verify <ID>` runs the checks with no model involved, then decides:
+
+| `verified` | when                                                                                       |
+| ---------- | ------------------------------------------------------------------------------------------ |
+| `yes`      | every check passed, and every `AC-n` in the Definition of done has a passing check          |
+| `partial`  | every check passed, but an `AC-n` has no check of its own, or an opted-in review could not run |
+| `no`       | a check failed, nothing runnable was declared, the claimed paths never changed, or the review failed |
+| `unknown`  | never verified                                                                             |
+
+Each check becomes a `task_verify` evidence event in a `tasks-verify` session linked to the
+task; the same events are copied to every session already linked to it, whose
+`verification_status` becomes `proven` (yes) or `not_proven`. Lesson learning counts only
+`task_verify` and `test` evidence — a provider exiting 0 proves nothing.
+
+**Base commit.** While the task is claimed with `claimed_paths`, verify fails when nothing
+under those paths changed since `base_commit` (committed, staged, unstaged or untracked).
+
+**Lanes.** `class: low | medium` (or `small`) is verify only. `class: high | large` asks for
+verify + review, but the review runs only when the task sets `review: agent` (the owner opts in
+per task — no subagent runs on its own); without it the verdict stands and `assumed:` records
+that no review ran. The review runs after the deterministic checks and never when they failed:
+the cheapest model, read-only, checking only that every claimed item points to evidence, ending
+with one line, `pass` or `fail — <reason>`.
+
 `artifacts` lists what actually exists beside `task.md`, and nothing more. It is a
 manifest, not a plan: a name appears here the moment the file is written and never
 before. An empty list is the normal, healthy value.
@@ -179,7 +221,8 @@ checklist to satisfy.
 
 When a task reaches `done`:
 
-1. The verification in `## Verification` has actually run, and its real output is recorded.
+1. `ocean tasks verify <ID>` has run, and the task carries `verified: yes` (or `partial`)
+   with its `evidence` ids — `ocean tasks doctor` fails a `done` task without them.
 2. Each artifact is resolved once — promoted to `05-knowledge/<kind>/` if reusable,
    left with the task if not. Nothing is copied to both places.
 3. `state: done`, `updated:` bumped, the index line updated.

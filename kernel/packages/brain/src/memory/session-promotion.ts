@@ -4,6 +4,7 @@ import type { SessionStoreFactory } from "@ocean/core/domain/ports/session-store
 import { redactRuntimeText } from "@ocean/core/domain/redaction/redaction.js";
 import { KNOWLEDGE_DIR, oceanPath } from "@ocean/core/shared/paths.js";
 import { syncMemoryIndexes } from "./index-sync.js";
+import { isProvingEvidence } from "./lesson-learning.js";
 
 const kinds = new Set([
   "architecture",
@@ -43,7 +44,7 @@ export async function promoteSessionToKnowledge(
     const evidence = events
       .filter((event) => event.type === "evidence")
       .map((event) => event.data)
-      .some((data) => /"result"\s*:\s*"proven"/.test(data));
+      .some(isProvingEvidence);
     if (!evidence)
       throw new Error(
         "Session lacks independently recorded successful evidence",

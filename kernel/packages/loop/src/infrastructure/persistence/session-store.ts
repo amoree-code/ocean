@@ -681,6 +681,34 @@ export class SessionStore implements SessionStorePort {
     return { integrity, foreignKeys };
   }
 
+  listTaskSessions(taskId: string, projectId?: string | null): Session[] {
+    const rows = (
+      projectId
+        ? this.database
+            .prepare(
+              "SELECT * FROM sessions WHERE task_id = ? AND (project_id = ? OR project_id IS NULL) ORDER BY created_at",
+            )
+            .all(taskId, projectId)
+        : this.database
+            .prepare(
+              "SELECT * FROM sessions WHERE task_id = ? ORDER BY created_at",
+            )
+            .all(taskId)
+    ) as SessionRow[];
+    return rows.map((row) => this.toSession(row));
+  }
+
+  setVerificationStatus(
+    sessionId: string,
+    status: "unknown" | "proven" | "not_proven" | "blocked",
+  ): void {
+    this.database
+      .prepare(
+        "UPDATE sessions SET verification_status = ?, updated_at = ? WHERE session_id = ?",
+      )
+      .run(status, new Date().toISOString(), sessionId);
+  }
+
   appendEvent(sessionId: string, type: string, data: string): SessionEvent {
     const createdAt = new Date().toISOString();
     const result = this.database

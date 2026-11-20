@@ -41,7 +41,7 @@ test("promotes an approved completed session into knowledge and rejects missing 
   store.appendEvent(
     sessionId,
     "evidence",
-    JSON.stringify({ result: "proven" }),
+    JSON.stringify({ type: "test", result: "proven" }),
   );
   store.updateStatus(sessionId, "completed");
   store.close();

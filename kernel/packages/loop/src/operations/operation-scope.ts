@@ -1,4 +1,5 @@
 import type { BrainIndexPort } from "@ocean/core/domain/ports/brain-index-port.js";
+import type { SessionStoreFactory } from "@ocean/core/domain/ports/session-store-port.js";
 import {
   oceanPath,
   projectDir,
@@ -23,6 +24,9 @@ export type OperationOptions = {
   // (T-228) instead of a plain substring match. Optional and additive: every existing
   // caller that omits it keeps today's substring-search behavior unchanged.
   indexPort?: BrainIndexPort;
+  // When supplied, task.complete records its verification on the task and its sessions
+  // (T-320); without it the completion still verifies, but records nothing.
+  openStore?: SessionStoreFactory;
 };
 
 export type ProjectScope =

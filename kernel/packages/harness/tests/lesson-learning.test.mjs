@@ -83,7 +83,11 @@ function session(
   store.updateStatus(id, status);
 }
 
-const proven = ["evidence", { result: "proven", criterion: "build passes" }];
+// Test evidence proves an outcome; a bare provider exit never does (T-320).
+const proven = [
+  "evidence",
+  { type: "test", result: "proven", criterion: "build passes" },
+];
 const repeated = [
   ["provider_output", PROCEDURE],
   ["provider_output", PROCEDURE],
@@ -235,7 +239,11 @@ test("an activated id that is not a lesson is ignored and the rest are still sco
 
 test("repeated hook_response JSON and terminal escape codes are not signals", () => {
   const event = (eventId, type, data) => ({ eventId, type, data });
-  const proven = event(1, "evidence", JSON.stringify({ result: "proven" }));
+  const proven = event(
+    1,
+    "evidence",
+    JSON.stringify({ type: "test", result: "proven" }),
+  );
   const hook = JSON.stringify({
     type: "system",
     subtype: "hook_response",

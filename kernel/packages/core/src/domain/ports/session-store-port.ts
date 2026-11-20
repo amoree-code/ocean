@@ -113,6 +113,12 @@ export interface SessionStorePort {
   listStaleRunning(olderThanMs: number, now?: number): Session[];
   reconcileStaleRunning(olderThanMs: number, now?: number): Session[];
   integrityCheck(): { integrity: string; foreignKeys: unknown[] };
+  // Task verification (T-320): the sessions linked to a task, and their verdict.
+  listTaskSessions(taskId: string, projectId?: string | null): Session[];
+  setVerificationStatus(
+    sessionId: string,
+    status: "unknown" | "proven" | "not_proven" | "blocked",
+  ): void;
   appendEvent(sessionId: string, type: string, data: string): SessionEvent;
   listEvents(sessionId: string): SessionEvent[];
   scanCaptureItems(sessionId?: string): number;
