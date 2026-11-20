@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+## 2.9.0 (2026-11-20)
+
 - feat(search): search is measurably better and hybrid by default. `ocean memory search` now embeds the query with the local Ollama model (as MCP `brain_search` already did) and reports `mode: hybrid`; `--fts` pins keyword-only. New filters: `--type`, `--since YYYY-MM-DD`, `--as-of YYYY-MM-DD` (MCP `since`, `asOf`). Time-aware facts: records may declare `valid_from` and `superseded_by` — a superseded record still shows today but ranks below its replacement, and `as-of` returns only what held on that day. Ranking nudges, tuned on an eval set: decisions ×1.05, raw session logs ×0.6, `confidence: low` ×0.8, `last_verified` older than 180 days ×0.9; hits now carry `validFrom` and `supersededBy`. `ocean memory eval` reads JSON or JSON Lines and reports hit@1, hit@k, MRR@10 and the settings it ran with (hybrid when the embedder answers, `--fts` to pin). Index schema 3: run `ocean memory reindex` (T-321) (#321)
 
 ## 2.8.0 (2026-11-20)
