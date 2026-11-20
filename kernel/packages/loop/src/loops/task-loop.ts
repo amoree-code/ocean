@@ -2,6 +2,11 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { AgentRuntimeDeps } from "@ocean/core/domain/ports/runtime-ports.js";
+import {
+  assertGuard,
+  guardProblems,
+  type LoopGuard,
+} from "@ocean/core/domain/runs/loop-guard.js";
 import { TASK_ID } from "@ocean/core/domain/tasks/task-id.js";
 import {
   oceanPath,
@@ -17,6 +22,7 @@ import {
 import { runAgent } from "../runs/run-agent.js";
 import { checkpointTask } from "../tasks/checkpoint-task.js";
 import { type CommandRunner, verifyTask } from "../tasks/verify-task.js";
+import { afterGuardedRun, writeEscalation } from "./guard-runtime.js";
 import type { IterationSteps } from "./iteration-graph.js";
 import type { TaskLoop } from "./task-loop-record.js";
 
@@ -40,7 +46,8 @@ export async function startTaskLoop(input: {
   prompt: string;
   cwd: string;
   approved: boolean;
-  maxIterations?: number;
+  // The guard is the loop's contract (T-322, C2): its run cap is the iteration cap.
+  guard?: Partial<LoopGuard>;
   intervalMs?: number;
   maxAttempts?: number;
 }): Promise<TaskLoop> {
@@ -48,6 +55,8 @@ export async function startTaskLoop(input: {
     throw new Error("Loop start requires explicit approval.");
   if (!input.taskId || !TASK_ID.test(input.taskId))
     throw new Error("Loop requires a valid task id.");
+  const guard = input.guard;
+  assertGuard(guard);
   const loop: TaskLoop = {
     id: `loop-${randomUUID()}`,
     taskId: input.taskId,
@@ -57,7 +66,7 @@ export async function startTaskLoop(input: {
     cwd: input.cwd,
     status: "active",
     approved: true,
-    maxIterations: bounded(input.maxIterations ?? 10, 1, 100),
+    maxIterations: bounded(guard.maxRuns, 1, 100),
     intervalMs: bounded(input.intervalMs ?? 60_000, 1_000, 86_400_000),
     maxAttempts: bounded(input.maxAttempts ?? 2, 1, 5),
     iterations: 0,
@@ -68,6 +77,7 @@ export async function startTaskLoop(input: {
     checkpoint:
       "Loop created; inspect the task and choose the first bounded action.",
     resultPath: null,
+    guard,
   };
   await saveLoops([...(await listTaskLoops()), loop]);
   return loop;
@@ -119,6 +129,8 @@ export async function runTaskLoopsOnce(
       // An iteration the process died in resumes at its step; a paused loop keeps it for later.
       const interrupted = saved.next.length > 0;
       if (loop.status !== "active") continue;
+      // A loop started before guards existed never runs (T-322, C2).
+      if (guardProblems(loop.guard).length) continue;
       if (!interrupted && Date.parse(loop.nextRunAt) > Date.now()) continue;
       try {
         // "sync": a step's checkpoint is on disk before the next step starts, so a crash in
@@ -214,6 +226,27 @@ function iterationSteps(
       loop.checkpoint = `Iteration ${loop.iterations} completed; inspect task ${loop.taskId} before continuing.`;
       loop.lastError = null;
       loop.nextRunAt = new Date(Date.now() + loop.intervalMs).toISOString();
+      // The guard after each run: token budget, verifier progress, hard cap. A tripped guard
+      // fails the loop and tells the owner; the verify step may still mark the task complete.
+      const guarded = await afterGuardedRun(
+        loop.guard as LoopGuard,
+        loop.usage,
+        sessionId,
+        loop.cwd || cwd,
+        runtime.openStore,
+      );
+      loop.usage = guarded.usage;
+      if (guarded.stop) {
+        loop.status = "failed";
+        loop.lastError = `guard: ${guarded.stop}`;
+        await writeEscalation({
+          kind: "loop",
+          id: loop.id,
+          reason: guarded.stop,
+          usage: guarded.usage,
+          resume: `start a new loop for ${loop.taskId}`,
+        });
+      }
       return { loop, next: "verify" };
     },
     // A task is only complete when it claims done AND an independent verifier agrees. A

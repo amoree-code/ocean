@@ -105,6 +105,22 @@ export function startBackgroundRhythm(): void {
   }
 }
 
+// Scheduled agent runs (T-322): each guarded schedule that is due, at most hourly. Schedules
+// without a guard never run (local-scheduler.ts).
+export function startBackgroundSchedules(): void {
+  if (process.env.OCEAN_NO_PULL_ON_START === "1") return;
+  try {
+    spawn(process.execPath, [process.argv[1], "schedule", "run-due"], {
+      detached: true,
+      stdio: "ignore",
+    })
+      .on("error", () => {})
+      .unref();
+  } catch {
+    // the next tick runs it
+  }
+}
+
 export type ServiceRestart =
   | "restarted"
   | "not-installed"
@@ -296,9 +312,11 @@ export async function runService(shutdownAfterMs?: number): Promise<void> {
   const heartbeat = setInterval(() => undefined, 60_000);
   startBackgroundPull();
   startBackgroundRhythm();
+  startBackgroundSchedules();
   const dailyPull = setInterval(() => {
     startBackgroundPull();
     startBackgroundRhythm();
+    startBackgroundSchedules();
   }, HOUR_MS);
   startAutoReindex();
   const autoReindex = setInterval(startAutoReindex, REINDEX_CHECK_MS);

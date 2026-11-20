@@ -15,6 +15,11 @@ import { classifyIntent } from "@ocean/context/context/intent-router.js";
 import type { EmbedderPort } from "@ocean/core/domain/ports/embedder-port.js";
 import { resolveProfileName } from "@ocean/core/domain/profiles/runtime-config.js";
 import {
+  GUARD_FLAGS,
+  type LoopGuard,
+  parseGuardFlags,
+} from "@ocean/core/domain/runs/loop-guard.js";
+import {
   oceanEnv,
   oceanPath,
   oceanRoot,
@@ -184,6 +189,7 @@ import { runCaptureCommand } from "./capture-command.js";
 import { runClientTestCommand } from "./client-test-command.js";
 import { runClientsCommand } from "./clients-command.js";
 import { runContextCommand, runContextCostCommand } from "./context-command.js";
+import { runCuratorCommand } from "./curator-command.js";
 import { runDailyCommand } from "./daily-command.js";
 import { runDesktopCommand } from "./desktop-command.js";
 import { runDistillCommand } from "./distill-command.js";
@@ -219,6 +225,7 @@ import { parseSetupArgs, SETUP_USAGE, setup } from "./setup-command.js";
 import { runTasksCommand } from "./tasks-command.js";
 import { runTelemetryCommand } from "./telemetry-command.js";
 import { runUninstallCommand } from "./uninstall-command.js";
+import { runUpkeepCommand } from "./upkeep-command.js";
 
 export type CommandHandler = () => Promise<void> | void;
 
@@ -1022,21 +1029,28 @@ async function commandSchedule(): Promise<void> {
   if (action === "list")
     console.log(JSON.stringify(await listSchedules(), null, 2));
   else if (action === "add") {
-    const [id, profile, intervalMs, ...prompt] = process.argv.slice(4);
+    const { guard, rest } = parseGuardFlags(process.argv.slice(4));
+    const [id, profile, intervalMs, ...prompt] = rest;
     if (!id || !profile || !intervalMs || !prompt.length) {
       console.error(
-        "Usage: ocean schedule add <id> <profile> <interval-ms> <prompt>",
+        `Usage: ocean schedule add <id> <profile> <interval-ms> ${GUARD_FLAGS} <prompt>`,
       );
       process.exitCode = 1;
     } else
-      await saveSchedule({
-        id,
-        profile,
-        prompt: prompt.join(" "),
-        intervalMs: Number(intervalMs),
-        nextRunAt: new Date().toISOString(),
-        enabled: true,
-      });
+      try {
+        await saveSchedule({
+          id,
+          profile,
+          prompt: prompt.join(" "),
+          intervalMs: Number(intervalMs),
+          nextRunAt: new Date().toISOString(),
+          enabled: true,
+          guard: guard as LoopGuard,
+        });
+      } catch (error) {
+        console.error(error instanceof Error ? error.message : String(error));
+        process.exitCode = 1;
+      }
   } else if (action === "run-due")
     console.log(
       JSON.stringify(
@@ -1087,37 +1101,49 @@ async function commandLoop(): Promise<void> {
   if (action === "status")
     console.log(JSON.stringify(await listTaskLoops(), null, 2));
   else if (action === "start") {
-    const taskId = process.argv[4];
-    const profile = process.argv[5] ?? "developer";
+    // The prompt is everything after --prompt, so the guard flags come before it.
     const promptIndex = process.argv.indexOf("--prompt");
+    const head =
+      promptIndex >= 0 ? process.argv.slice(0, promptIndex) : process.argv;
+    const { guard, rest } = parseGuardFlags(head.slice(4));
+    const [taskId, profile = "developer"] = rest.filter(
+      (arg, index, all) =>
+        !arg.startsWith("--") &&
+        !["--interval-ms", "--max-attempts"].includes(all[index - 1] ?? ""),
+    );
     const prompt =
       promptIndex >= 0 ? process.argv.slice(promptIndex + 1).join(" ") : "";
-    if (!taskId || !prompt || !process.argv.includes("--approve")) {
+    if (!taskId || !prompt || !head.includes("--approve")) {
       console.error(
-        "Usage: ocean loop start <task-id> <profile> --prompt <text> --approve [--max-iterations N] [--interval-ms N] [--max-attempts N]",
+        `Usage: ocean loop start <task-id> <profile> --approve ${GUARD_FLAGS} [--interval-ms N] [--max-attempts N] --prompt <text>`,
       );
       process.exitCode = 1;
     } else {
       const value = (flag: string, fallback: number) => {
-        const index = process.argv.indexOf(flag);
-        return index >= 0 ? Number(process.argv[index + 1]) : fallback;
+        const index = head.indexOf(flag);
+        return index >= 0 ? Number(head[index + 1]) : fallback;
       };
-      console.log(
-        JSON.stringify(
-          await startTaskLoop({
-            taskId,
-            profile,
-            prompt,
-            cwd: oceanRoot(),
-            approved: true,
-            maxIterations: value("--max-iterations", 10),
-            intervalMs: value("--interval-ms", 60_000),
-            maxAttempts: value("--max-attempts", 2),
-          }),
-          null,
-          2,
-        ),
-      );
+      try {
+        console.log(
+          JSON.stringify(
+            await startTaskLoop({
+              taskId,
+              profile,
+              prompt,
+              cwd: oceanRoot(),
+              approved: true,
+              guard,
+              intervalMs: value("--interval-ms", 60_000),
+              maxAttempts: value("--max-attempts", 2),
+            }),
+            null,
+            2,
+          ),
+        );
+      } catch (error) {
+        console.error(error instanceof Error ? error.message : String(error));
+        process.exitCode = 1;
+      }
     }
   } else if (action === "worker-once") {
     console.log(
@@ -1681,6 +1707,8 @@ export const commandRegistry: Record<string, CommandHandler> = {
   rhythm: () => runRhythmCommand(process.argv.slice(3)),
   telemetry: () => runTelemetryCommand(process.argv.slice(3)),
   scorecard: () => runScorecardCommand(process.argv.slice(3)),
+  upkeep: () => runUpkeepCommand(process.argv.slice(3)),
+  curator: () => runCuratorCommand(process.argv.slice(3)),
   express: () => runExpressCommand(process.argv.slice(3)),
   daily: commandDaily,
   schedule: commandSchedule,

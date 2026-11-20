@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import {
   clientsRow,
+  driftRow,
   hygieneRow,
   lessonsRows,
   memoryWritesRow,
@@ -157,7 +158,7 @@ test("search: the mode a probe search ran in, why it is not hybrid; hit@5 n/a un
     mode.value,
     "fts; vectors unavailable: index built without an embedder",
   );
-  assert.equal(missing.pendingTask, "T-321");
+  assert.equal(missing.pendingTask, "T-322");
   assert.match(missing.value, /^n\/a/);
   assert.equal(
     searchRows(
@@ -231,7 +232,23 @@ test("tokens: summed from a provider's result usage; zero or missing usage is no
     tokensRow({ sessions: 10, reporting: 2, total: 3000 }).value,
     "1,500 avg over 2 of 10 sessions that report usage",
   );
-  assert.equal(hygieneRow().pendingTask, "T-322");
+  assert.equal(hygieneRow(null).pendingTask, "T-322");
+  assert.equal(
+    hygieneRow({
+      month: "2026-11",
+      records: 50,
+      verified: 40,
+      drifted: 3,
+      unverifiable: 7,
+    }).value,
+    "40 / 3 / 7 of 50 with claims (2026-11)",
+  );
+  assert.equal(driftRow(null).pendingTask, "T-322");
+  assert.equal(
+    driftRow({ records: 500, unrecorded: 2, since: "2026-11-19T01:00:00.000Z" })
+      .value,
+    "2 of 500 since 2026-11-19",
+  );
 });
 
 test("the 2026-11-18 baseline shape reproduces, then renders as table and markdown", async () => {
@@ -254,6 +271,8 @@ test("the 2026-11-18 baseline shape reproduces, then renders as table and markdo
     schedules: [],
     lessons: Array(5).fill({ status: "active" }),
     tokens: { sessions: 3284, reporting: 0, total: 0 },
+    hygiene: null,
+    drift: null,
   });
   const value = (id) => rows.find((row) => row.id === id).value;
   assert.equal(value("clients"), "2 of 12");

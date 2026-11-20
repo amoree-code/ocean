@@ -8,7 +8,18 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import type { AgentRuntimeDeps } from "@ocean/core/domain/ports/runtime-ports.js";
+import {
+  assertGuard,
+  type GuardUsage,
+  guardProblems,
+  type LoopGuard,
+} from "@ocean/core/domain/runs/loop-guard.js";
 import { oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
+import {
+  afterGuardedRun,
+  emptyUsage,
+  writeEscalation,
+} from "@ocean/loop/loops/guard-runtime.js";
 import { runAgent } from "@ocean/loop/runs/run-agent.js";
 
 export type Schedule = {
@@ -20,6 +31,12 @@ export type Schedule = {
   enabled: boolean;
   attempts?: number;
   retryAt?: string;
+  // T-322 (C2): every schedule declares its guard; `add` refuses one without it, and a schedule
+  // saved before the guard existed never runs.
+  guard?: LoopGuard;
+  usage?: GuardUsage;
+  // Why a guard stopped it; the owner was told in 00-inbox/escalations/.
+  stoppedReason?: string;
 };
 const file = () => oceanPath(SYSTEM_DIR, "schedules.json");
 const running = new Set<string>();
@@ -36,6 +53,7 @@ export async function listSchedules(): Promise<Schedule[]> {
 export async function saveSchedule(schedule: Schedule): Promise<void> {
   if (!Number.isFinite(schedule.intervalMs) || schedule.intervalMs < 1_000)
     throw new Error("Schedule interval must be at least 1000ms");
+  assertGuard(schedule.guard);
   await mutateSchedules((schedules) => [
     ...schedules.filter((item) => item.id !== schedule.id),
     schedule,
@@ -50,13 +68,60 @@ export async function setScheduleEnabled(
   await mutateSchedules((schedules) =>
     schedules.map((schedule) => {
       if (schedule.id !== id) return schedule;
-      updated = { ...schedule, enabled };
+      // Enabling a schedule a guard stopped is the owner's answer to the escalation: its
+      // counters start over.
+      updated =
+        enabled && schedule.stoppedReason
+          ? {
+              ...schedule,
+              enabled,
+              stoppedReason: undefined,
+              usage: emptyUsage(),
+            }
+          : { ...schedule, enabled };
       return updated;
     }),
   );
   if (!updated) throw new Error(`Schedule not found: ${id}`);
   return updated;
 }
+
+const guarded = (schedule: Schedule) =>
+  guardProblems(schedule.guard).length === 0;
+
+// After a completed run: count it and its tokens, run the verifier, and stop the schedule (and
+// tell the owner) when a guard trips. Mutates `schedule`.
+async function applyGuard(
+  schedule: Schedule,
+  sessionId: string,
+  cwd: string,
+  runtime: AgentRuntimeDeps,
+): Promise<void> {
+  const { usage, stop } = await afterGuardedRun(
+    schedule.guard as LoopGuard,
+    schedule.usage,
+    sessionId,
+    cwd,
+    runtime.openStore,
+  );
+  schedule.usage = usage;
+  if (!stop) return;
+  schedule.enabled = false;
+  schedule.stoppedReason = stop;
+  await writeEscalation({
+    kind: "schedule",
+    id: schedule.id,
+    reason: stop,
+    usage,
+    resume: `\`ocean schedule enable ${schedule.id}\``,
+  });
+}
+
+const guardFields = (schedule: Schedule) => ({
+  usage: schedule.usage,
+  enabled: schedule.enabled,
+  stoppedReason: schedule.stoppedReason,
+});
 
 export async function runSchedule(
   id: string,
@@ -65,9 +130,17 @@ export async function runSchedule(
 ): Promise<void> {
   const schedule = (await listSchedules()).find((item) => item.id === id);
   if (!schedule) throw new Error(`Schedule not found: ${id}`);
-  await runAgent(
+  assertGuard(schedule.guard);
+  const session = await runAgent(
     { profileName: schedule.profile, prompt: schedule.prompt, cwd },
     runtime,
+  );
+  if (session.status !== "completed") return;
+  await applyGuard(schedule, session.sessionId, cwd, runtime);
+  await mutateSchedules((current) =>
+    current.map((item) =>
+      item.id === id ? { ...item, ...guardFields(schedule) } : item,
+    ),
   );
 }
 
@@ -81,6 +154,7 @@ export async function runDueSchedules(
   for (const schedule of schedules) {
     if (
       !schedule.enabled ||
+      !guarded(schedule) ||
       Date.parse(schedule.nextRunAt) > now ||
       (schedule.retryAt && Date.parse(schedule.retryAt) > now) ||
       running.has(schedule.id)
@@ -97,6 +171,7 @@ export async function runDueSchedules(
       if (session.status !== "completed")
         throw new Error(`Scheduled run failed: ${session.sessionId}`);
       schedule.nextRunAt = new Date(now + schedule.intervalMs).toISOString();
+      await applyGuard(schedule, session.sessionId, cwd, runtime);
       ran.push(schedule.id);
     } finally {
       running.delete(schedule.id);
@@ -109,7 +184,13 @@ export async function runDueSchedules(
     if (completed)
       await mutateSchedules((current) =>
         current.map((item) =>
-          item.id === id ? { ...item, nextRunAt: completed.nextRunAt } : item,
+          item.id === id
+            ? {
+                ...item,
+                nextRunAt: completed.nextRunAt,
+                ...guardFields(completed),
+              }
+            : item,
         ),
       );
   }
@@ -123,7 +204,11 @@ export async function runSchedulerWorkerOnce(
   const schedules = await listSchedules();
   const ran: string[] = [];
   for (const schedule of schedules) {
-    if (!schedule.enabled || Date.parse(schedule.nextRunAt) > Date.now())
+    if (
+      !schedule.enabled ||
+      !guarded(schedule) ||
+      Date.parse(schedule.nextRunAt) > Date.now()
+    )
       continue;
     const lease = leaseFile(schedule.id);
     const handle = await acquireLease(schedule.id);
@@ -141,6 +226,7 @@ export async function runSchedulerWorkerOnce(
         ).toISOString();
         schedule.attempts = 0;
         delete schedule.retryAt;
+        await applyGuard(schedule, session.sessionId, cwd, runtime);
         ran.push(schedule.id);
       } catch {
         schedule.attempts = (schedule.attempts ?? 0) + 1;
@@ -170,6 +256,7 @@ export async function runSchedulerWorkerOnce(
           ...item,
           nextRunAt: changed.nextRunAt,
           attempts: changed.attempts,
+          ...(ran.includes(changed.id) ? guardFields(changed) : {}),
         };
         if (changed.retryAt) updated.retryAt = changed.retryAt;
         else delete updated.retryAt;

@@ -134,7 +134,7 @@ prints its usage and never runs it. To hand `--help` to a wrapped client, put it
 | `ocean context` | the workspace context for this folder; `cost` measures each client's always-on context | Reads |
 | `ocean project` | resolve, bind, register, rename, move and index projects; `status`: each one's git state, open tasks, last session and next action | Reads; `bind`, `register`, `rename`, `unbind`, `--write` write |
 | `ocean tasks` | list, create, claim, checkpoint, verify and complete tasks | Reads; `new`, `claim`, `checkpoint`, `complete`, `archive --apply` write |
-| `ocean loop` | repeated agent runs on one task | Runs; `start` needs `--approve` |
+| `ocean loop` | repeated agent runs on one task, each loop with a guard (verifier, run cap, token budget, no-progress exit, escalation) | Runs; `start` needs `--approve` and the guard |
 | `ocean policy` | list the charter's policies or print one | Reads |
 | `ocean lifecycle` | decide whether work should checkpoint now | Reads |
 | `ocean doctor` | health check of workspace, clients and integrations | Reads |
@@ -147,7 +147,7 @@ prints its usage and never runs it. To hand `--help` to a wrapped client, put it
 | `ocean operate` | classify a plain-language request and run the matching operation | Runs |
 | `ocean intent` | classify a plain-language request | Reads |
 | `ocean gateway` | local webhook gateway on 127.0.0.1 (needs `OCEAN_GATEWAY_TOKEN`) | Runs |
-| `ocean schedule` | scheduled agent runs | Writes; `run-now`, `worker` run |
+| `ocean schedule` | scheduled agent runs, each with a guard (verifier, run cap, token budget, no-progress exit, escalation); `add` refuses one without it; the service runs due ones hourly | Writes; `run-now`, `worker` run |
 | `ocean client` | inspect, open, register and sync AI clients | Reads; `open` runs; `sync`, `register`, `enable`, `disable` write |
 | `ocean clients` | connect installed AI clients to Ocean | Reads; `apply` needs `--yes` and writes client config outside the workspace |
 | `ocean install` / `update` / `remove` | install, update or remove an AI client CLI | Runs an installer; needs `--yes` |
@@ -155,7 +155,7 @@ prints its usage and never runs it. To hand `--help` to a wrapped client, put it
 | `ocean mcp` | print MCP client configs, or serve Ocean's MCP server and gateway | Reads; `serve`, `gateway` run; `browser-service uninstall` removes the retired browser bridge's service |
 | `ocean market` | marketplace skills and MCP servers | Reads; `install`, `update`, `uninstall` write; `exec` runs; permissions need `--yes` |
 | `ocean browser` | drive a browser session | Runs; `upload`, `submit` need `--approve` |
-| `ocean memory` | search, read, review and maintain memory | Reads; `approve`, `delete`, `restore`, `reindex`, `sync --apply`, `purge --yes` write |
+| `ocean memory` | search, read, review and maintain memory; `hygiene` re-checks records' paths, URLs and repos, `drift` finds records changed without an audited write | Reads; `approve`, `delete`, `restore`, `reindex`, `sync --apply`, `purge --yes`, `hygiene --yes`, `drift --yes` write |
 | `ocean pull` | pull what AI clients hold into Ocean as review candidates | Reads (dry run); `--yes` writes |
 | `ocean desktop` | capture facts from Claude Desktop's chat, read from the app's local store, as review candidates | Reads (`--dry-run`); a run writes candidates |
 | `ocean observe` | run a command and record its output | Runs |
@@ -165,7 +165,9 @@ prints its usage and never runs it. To hand `--help` to a wrapped client, put it
 | `ocean interests` | propose interests from your projects or recurring session topics (as candidates), decay, keep/skip | Writes |
 | `ocean distill` | `--week`: a weekly digest, decisions and lessons as candidates; `--month`: last month against your goals | Writes |
 | `ocean harvest` | a day's sessions from every client into its summary; decisions, fixes and lessons filed into knowledge (undo per day); archive after 30 days | Writes |
-| `ocean rhythm` | the day's rhythm, once per period and with no model: morning note, harvest, archive, last week's digest, last month's review (the service runs it) | Writes |
+| `ocean rhythm` | the day's rhythm, once per period and with no model: morning note, harvest, archive, last week's digest, last month's review, then the nightly upkeep (the service runs it) | Writes |
+| `ocean upkeep` | the nightly jobs with no model — doctor, telemetry, reindex, search eval, drift, curator, scorecard, and memory hygiene once a month — then the morning digest in `01-daily/digest/` | Writes with `--yes` |
+| `ocean curator` | marks lessons and skills stale after 30 days unused (or 90 unreviewed) and archives them after 90; `review` undoes a mark | Writes with `--yes` |
 | `ocean telemetry` | recurring session errors and failing providers, as proposed backlog lines | Writes |
 | `ocean scorecard` | Ocean's health numbers from real data: clients working, sessions verified and linked to tasks, attributed memory writes, search mode, schedules, lessons | Reads; `--write` saves `01-daily/scorecard/` |
 | `ocean express` | draft a CV section, LinkedIn post or scholarship paragraph from milestones | Writes |
