@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.8.0
+
+- feat(tasks): "verified" now means the outcome was checked. `ocean tasks verify <ID>` (and `tasks complete`) runs the task's checks with no model, then writes `verified: yes|no|partial`, `verified_at` and `evidence` (event ids) into the task, records one `task_verify` evidence event per check in a `tasks-verify` session linked to the task, copies them to the task's sessions and sets their `verification_status`. `verify:` is read from the frontmatter only, also as a block list, and a check may name the Definition-of-done item it proves (`AC-1: pnpm test`); an `AC-n` with no check makes the task `partial`. The first `ocean tasks claim` records a sticky `base_commit`, and verify fails a claimed task whose `claimed_paths` never changed since. `class: high` asks for an independent review that runs only with `review: agent` (owner opt-in; cheapest model, read-only, after the deterministic checks, one `pass`/`fail — reason` line). Lesson learning and session promotion count only `task_verify` or `test` evidence, never `provider_exit`. `ocean tasks doctor` fails a `done` task without verify evidence (tasks last updated from 2026-11-21; older ones warn) (T-320) (#320)
+
 ## 2.7.0
 
 - feat(skills): `ocean skill doctor` also checks the skill surface (borrowed from COG's validate-agent-surface): every installed client must hold the engine's core skills, plus the hub's skills in the clients that get copies; a client with no skills folder is listed, not judged, and its own extra skills are shown, not faulted. Output is now `{core, surface}`, and a gap prints `NOT CONSISTENT: <client> lacks …` and exits 1 (T-319) (#319)
