@@ -5,8 +5,9 @@ import type { BrainConformance } from "../brain/brain-record.js";
 // and is wired in through composition/runtime.js, never imported directly by application
 // code (enforced by tests/architecture.test.mjs).
 
-// 2: docs carry a scope. The index is a disposable cache, so a bump means "reindex", not a migration.
-export const BRAIN_INDEX_SCHEMA_VERSION = "2";
+// 2: docs carry a scope. 3: docs carry valid_from and superseded_by (T-321).
+// The index is a disposable cache, so a bump means "reindex", not a migration.
+export const BRAIN_INDEX_SCHEMA_VERSION = "3";
 
 export type EmbedderPort = {
   model: string;
@@ -34,6 +35,9 @@ export type IndexDocInput = {
   created: string | null;
   updated: string | null;
   lastConfirmedAt: string | null;
+  validFrom: string | null;
+  // The id or store path of the record that replaces this one.
+  supersededBy: string | null;
   contentHash: string;
   bytes: number;
   conformance: BrainConformance;

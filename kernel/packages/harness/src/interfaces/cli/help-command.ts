@@ -140,7 +140,7 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
   ],
   memory: [
     "Search, read, review and maintain memory records and the brain index.",
-    "ocean memory doctor|sync [--apply]|review [list|approve <id> [--to <path>]|reject <id>]|eval <questions.json> [--k N] [--min R]|digest|harvest [--source <id>] [--yes]|import-claude <export-dir> [--yes]|history [path] [--limit N]|audit [--client <name>] [--days N] [--limit N] [--json]|restore <id> [--hash <sha256>]|delete <path> --hash <sha256>|purge [--days N] [--yes]|facts <profile> [key] [value]|facts <profile> delete <key>|reindex [--no-vectors]|search <q> [--project <id>|--all] [--json]|read <id|path>|neighbors <id|path> [--depth N] [--project <id>|--all]",
+    "ocean memory doctor|sync [--apply]|review [list|approve <id> [--to <path>]|reject <id>]|eval <questions.json|.jsonl> [--k N] [--min R] [--fts]|digest|harvest [--source <id>] [--yes]|import-claude <export-dir> [--yes]|history [path] [--limit N]|audit [--client <name>] [--days N] [--limit N] [--json]|restore <id> [--hash <sha256>]|delete <path> --hash <sha256>|purge [--days N] [--yes]|facts <profile> [key] [value]|facts <profile> delete <key>|reindex [--no-vectors]|search <q> [--project <id>|--all] [--type T] [--since D] [--as-of D] [--fts] [--json]|read <id|path>|neighbors <id|path> [--depth N] [--project <id>|--all]",
   ],
   pull: [
     "Pull what AI clients hold into Ocean as review candidates; a dry run until --yes.",

@@ -35,7 +35,7 @@ export class BrainIndexStaleError extends Error {}
 function assertScoped(reader: BrainIndexReaderPort): void {
   if (reader.meta.schemaVersion !== BRAIN_INDEX_SCHEMA_VERSION)
     throw new BrainIndexStaleError(
-      `brain index schema ${reader.meta.schemaVersion} predates record scopes — run \`ocean memory reindex\``,
+      `brain index schema ${reader.meta.schemaVersion} is older than ${BRAIN_INDEX_SCHEMA_VERSION} — run \`ocean memory reindex\``,
     );
 }
 
@@ -46,6 +46,13 @@ export type BrainSearchOptions = {
   root?: string;
   pathPrefix?: string;
   scope?: BrainScopeFilter;
+  // Only records dated (updated, else last confirmed, else created) on or after this YYYY-MM-DD.
+  since?: string;
+  // Answer as of this YYYY-MM-DD: only facts valid then (T-321). Absent = today, where a
+  // superseded record still shows but ranks below its replacement.
+  asOf?: string;
+  // "Today" for the recency and staleness rules; tests pin it.
+  now?: Date;
   embedder?: EmbedderPort | null;
   indexPort: BrainIndexPort;
 };
@@ -62,6 +69,8 @@ export type BrainSearchHit = {
   scope: string;
   confidence: string;
   lastConfirmedAt: string | null;
+  validFrom: string | null;
+  supersededBy: string | null;
   heading: string | null;
   snippet: string;
   score: number;
@@ -81,6 +90,65 @@ const RRF_K = 60;
 // The owner's own notes outrank what agents wrote on the same question (T-314).
 const HUMAN_BOOST = 1.5;
 const isHumanNote = (storePath: string) => storePath.startsWith("notes/");
+
+// Rank adjustments (T-321), multiplied into the fused score. RRF scores sit close together, so
+// these are nudges, not overrides. Tuned on the owner's 40-question eval (hybrid hit@5 0.825 →
+// 0.90): a recency boost was tried and lowered both modes, so recency is the `since` filter only.
+const RANK = {
+  decision: 1.05, // a decision answers "what did we decide" better than the talk around it
+  session: 0.6, // a raw session log loses to the curated record distilled from it
+  lowConfidence: 0.8, // confidence: low (COG memory hygiene, C1)
+  unverified: 0.9, // last confirmed more than STALE_DAYS ago
+  superseded: 0.5, // replaced by a newer record; still findable, never first
+};
+const STALE_DAYS = 180;
+const DAY_MS = 86_400_000;
+
+const text = (value: unknown): string | null =>
+  typeof value === "string" && value ? value : null;
+// Dates in frontmatter are YYYY-MM-DD, possibly with a time; the day is what is compared.
+const dayOf = (value: unknown): string | null =>
+  text(value)?.match(/^\d{4}-\d{2}-\d{2}/)?.[0] ?? null;
+const daysBetween = (from: string, to: Date) =>
+  (to.getTime() - Date.parse(`${from}T00:00:00Z`)) / DAY_MS;
+
+type DocRow = Record<string, unknown>;
+const docDate = (doc: DocRow) =>
+  dayOf(doc.updated) ?? dayOf(doc.last_confirmed_at) ?? dayOf(doc.created);
+
+// When a record starts to hold: its declared valid_from, else when it was written.
+const startOf = (doc: DocRow) =>
+  dayOf(doc.valid_from) ?? dayOf(doc.created) ?? dayOf(doc.updated);
+
+// Whether the fact a record states held on `asOf`: it had started, and whatever replaced it had
+// not. A successor with no date, or one the index cannot resolve, counts as already in force.
+function validOn(
+  doc: DocRow,
+  asOf: string,
+  successor: (ref: string) => DocRow | undefined,
+): boolean {
+  const start = startOf(doc);
+  if (start && start > asOf) return false;
+  const replacedBy = text(doc.superseded_by);
+  if (!replacedBy) return true;
+  const next = successor(replacedBy);
+  const nextStart = next ? startOf(next) : null;
+  return nextStart !== null && nextStart > asOf;
+}
+
+function rankFactor(doc: DocRow, now: Date, asOf?: string): number {
+  let factor = isHumanNote(String(doc.path ?? "")) ? HUMAN_BOOST : 1;
+  if (doc.type === "decision") factor *= RANK.decision;
+  if (doc.type === "session") factor *= RANK.session;
+  if (String(doc.confidence).toLowerCase() === "low")
+    factor *= RANK.lowConfidence;
+  const confirmed = dayOf(doc.last_confirmed_at);
+  if (confirmed && daysBetween(confirmed, now) > STALE_DAYS)
+    factor *= RANK.unverified;
+  // As of a past date the filter has already removed what was not yet replaced then.
+  if (!asOf && text(doc.superseded_by)) factor *= RANK.superseded;
+  return factor;
+}
 
 function snippetOf(text: string, maxLen = 240): string {
   const trimmed = text.trim().replace(/\s+/g, " ");
@@ -176,14 +244,19 @@ export async function brainSearch(
       }
     }
 
+    const now = options.now ?? new Date();
+    const successor = (ref: string) =>
+      reader.getDocByIdOrPath(ref) ??
+      (ref.endsWith(".md") ? undefined : reader.getDocByIdOrPath(`${ref}.md`));
     const ranked = [...byDoc.entries()]
-      .map(([docId, entry]) => ({
-        docId,
-        ...entry,
-        score: isHumanNote(String(reader.getDoc(docId)?.path ?? ""))
-          ? entry.score * HUMAN_BOOST
-          : entry.score,
-      }))
+      .map(([docId, entry]) => {
+        const doc = reader.getDoc(docId);
+        return {
+          docId,
+          ...entry,
+          score: doc ? entry.score * rankFactor(doc, now, options.asOf) : 0,
+        };
+      })
       .sort((a, b) => b.score - a.score || a.docId - b.docId);
 
     const results: BrainSearchHit[] = [];
@@ -197,6 +270,11 @@ export async function brainSearch(
         continue;
       if (options.types?.length && !options.types.includes(String(doc.type)))
         continue;
+      if (options.since) {
+        const dated = docDate(doc);
+        if (!dated || dated < options.since) continue;
+      }
+      if (options.asOf && !validOn(doc, options.asOf, successor)) continue;
       // Backstop for hits the SQL filter never saw (vector hits are not scope-filtered).
       if (
         options.scope &&
@@ -215,6 +293,8 @@ export async function brainSearch(
         scope: String(doc.scope ?? "global"),
         confidence: String(doc.confidence),
         lastConfirmedAt: (doc.last_confirmed_at as string | null) ?? null,
+        validFrom: text(doc.valid_from),
+        supersededBy: text(doc.superseded_by),
         heading: chunk ? ((chunk.heading as string | null) ?? null) : null,
         snippet: chunk ? snippetOf(String(chunk.text)) : "",
         score: Math.round(item.score * 1_000_000) / 1_000_000,

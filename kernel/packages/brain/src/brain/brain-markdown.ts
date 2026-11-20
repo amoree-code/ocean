@@ -58,6 +58,8 @@ export type NormalizedRecord = {
   body: string;
   // The scope as written, so reindex can name what was invalid (record.scope says only "invalid").
   rawScope: string | undefined;
+  // Time-aware facts (T-321): when the fact starts to hold, and the record that replaces it.
+  validity: { validFrom: string | null; supersededBy: string | null };
 };
 
 // relPath is the record's identity of last resort: `<store-relative path, no .md>`.
@@ -157,7 +159,16 @@ export function normalizeRecord(
         : "declared",
   };
 
-  return { record, conformance, body, rawScope: scopeField.value };
+  return {
+    record,
+    conformance,
+    body,
+    rawScope: scopeField.value,
+    validity: {
+      validFrom: fields.valid_from || null,
+      supersededBy: fields.superseded_by || null,
+    },
+  };
 }
 
 export type Wikilink = {

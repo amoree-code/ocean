@@ -234,9 +234,20 @@ would drop the vectors). Full-text search first requires every query word; when 
 hits than asked for, it fills up with any-word matches ranked by bm25, so a natural question still
 finds its record.
 
-- `ocean memory eval <questions.json> [--k 5] [--min 0.9]` — recall@k over
-  `[{question, expect, project?}]`; the owner keeps a private set in the workspace. The kernel
-  tests hold a synthetic set with the same 0.9 gate.
+Search is hybrid (T-321): `ocean memory search` and `brain_search` embed the query with the local
+Ollama model and fuse full-text and vector ranks (RRF); without the embedder they fall back to
+full text and say so in `vector`. `--fts` pins keyword-only. Filters: `--type <type>` (repeatable),
+`--since YYYY-MM-DD` (records dated on or after it), `--as-of YYYY-MM-DD` (MCP `types`, `since`,
+`asOf`). A record may declare `valid_from: YYYY-MM-DD` and `superseded_by: <id or store path>`:
+today a superseded record still shows, ranked below its replacement; `as-of` returns only the
+facts that held on that day. Ranking nudges, tuned on the owner's eval set: decisions ×1.05, raw
+session logs ×0.6, `confidence: low` ×0.8, `last_verified` older than 180 days ×0.9. Each hit
+shows `confidence`, `lastConfirmedAt`, `validFrom` and `supersededBy`.
+
+- `ocean memory eval <questions.json|.jsonl> [--k 5] [--min 0.9] [--fts]` — hit@1, hit@k
+  (`recall`) and MRR@10 over `{question, expect, project?}` cases (a JSON array or one per line),
+  with the settings the run used (`mode`, `embedder`, `k`); the owner keeps a private set in the
+  workspace. The kernel tests hold a synthetic set with the same 0.9 gate.
 - `ocean memory review [list] | approve <id> [--to <record>] | reject <id>` — candidates from
   `memory_propose` and imports. Approve goes through the same validated write path as an explicit
   save; an existing record gets the candidate appended under its current hash. Reviewed candidates
