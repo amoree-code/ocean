@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.7.0
+
+- feat(skills): `ocean skill doctor` also checks the skill surface (borrowed from COG's validate-agent-surface): every installed client must hold the engine's core skills, plus the hub's skills in the clients that get copies; a client with no skills folder is listed, not judged, and its own extra skills are shown, not faulted. Output is now `{core, surface}`, and a gap prints `NOT CONSISTENT: <client> lacks …` and exits 1 (T-319) (#319)
+
 ## 2.6.0
 
 - feat(mcp): CONTEXT-ACK — the Ocean start line ends with `ack=<hash>` (a hash of the line), and every Ocean tool takes an optional `contextAck`; a connection's first tool call records one `context_ack` row in the MCP call ledger, ok only when it echoes a hash Ocean actually handed out, so "did this client load Ocean?" has a recorded answer per connection (`ocean clients` lists it per client). The handoff sentence leaves the server instructions (its tool description already says it) to keep them under 1 KB (T-319) (#318)
