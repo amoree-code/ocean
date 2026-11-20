@@ -18,7 +18,11 @@ import {
   projectArchiveName,
   WORKSPACE_ARCHIVE_NAMESPACE,
 } from "@ocean/core/shared/task-reference.js";
-import { type CommandRunner, verifyTask } from "./verify-task.js";
+import {
+  type CommandRunner,
+  type VerificationOutcome,
+  verifyTask,
+} from "./verify-task.js";
 
 export type ArchiveResult = {
   candidates: string[];
@@ -108,7 +112,13 @@ function completionIssues(source: string): string[] {
 export async function completeTask(
   id: string,
   root = workspaceTasksRoot(),
-  options: { cwd?: string; run?: CommandRunner } = {},
+  options: {
+    cwd?: string;
+    run?: CommandRunner;
+    // The verification to gate on; `ocean tasks complete` passes one that also records the
+    // verdict on the task and its sessions (T-320).
+    verify?: (id: string, root: string) => Promise<VerificationOutcome>;
+  } = {},
 ): Promise<CompletionResult> {
   const taskFile = resolveWithin(root, id, "task.md");
   const source = await readFile(taskFile, "utf8");
@@ -116,23 +126,25 @@ export async function completeTask(
   if (issues.length)
     throw new Error(`Cannot complete ${id}: ${issues.join("; ")}`);
 
-  const outcome = await verifyTask(id, root, {
-    cwd: options.cwd,
-    run: options.run,
-  });
+  const outcome = options.verify
+    ? await options.verify(id, root)
+    : await verifyTask(id, root, { cwd: options.cwd, run: options.run });
   if (!outcome.passed)
     throw new Error(`Cannot complete ${id}: ${outcome.reason}`);
 
-  if (field(source, "state") !== "done")
-    await writeFile(taskFile, setState(source, "done"));
+  // Re-read: a recording verifier has just written the verdict into the file.
+  const verifiedSource = await readFile(taskFile, "utf8");
+  if (field(verifiedSource, "state") !== "done")
+    await writeFile(taskFile, setState(verifiedSource, "done"));
   const archived = await archiveDoneTasks(root, true, {
-    ...options,
+    cwd: options.cwd,
+    run: options.run,
     verified: new Set([id]),
     only: new Set([id]),
   });
   const skipped = archived.skipped.find((entry) => entry.id === id);
   if (skipped) {
-    await writeFile(taskFile, source, "utf8");
+    await writeFile(taskFile, verifiedSource, "utf8");
     throw new Error(`Cannot complete ${id}: ${skipped.reason}`);
   }
   return { id, state: "done", ...archived };

@@ -32,7 +32,26 @@ export type SessionScore = {
   exitCode: number;
 };
 
-// verified = completed, exited 0, at least one proven evidence event, and none unproven.
+// Evidence that checked an outcome (T-320): a task's verify commands, or a test run. A provider
+// exiting 0 says the CLI finished, not that the work is right, so `provider_exit` never proves.
+export const PROVING_EVIDENCE_TYPES: ReadonlySet<string> = new Set([
+  "task_verify",
+  "test",
+]);
+
+// Whether one evidence event's data counts as outcome proof.
+export function isProvingEvidence(data: string): boolean {
+  const parsed = safeJsonParse(data);
+  return (
+    parsed?.result === "proven" &&
+    PROVING_EVIDENCE_TYPES.has(String(parsed?.type ?? ""))
+  );
+}
+
+// verified = completed, exited 0, at least one proving evidence event (task_verify or test),
+// and none unproven. `provider_exit` is ignored here: the exit code is read from process_exit.
+// A task re-verified later supersedes its earlier verdict, so only the latest task_verify per
+// task and acceptance criterion counts.
 export function scoreSession(
   session: Pick<Session, "status">,
   events: SessionEvent[],
@@ -45,11 +64,25 @@ export function scoreSession(
       : 1;
   let provenCount = 0;
   let unprovenCount = 0;
+  const latestTaskVerdict = new Map<string, boolean>();
   for (const event of events) {
     if (event.type !== "evidence") continue;
-    if (safeJsonParse(event.data)?.result === "proven") provenCount += 1;
-    else unprovenCount += 1;
+    const data = safeJsonParse(event.data);
+    const type = String(data?.type ?? "");
+    if (type === "provider_exit") continue;
+    const proven = data?.result === "proven";
+    if (type === "task_verify") {
+      const key = `${data?.taskId ?? ""}:${data?.criterion ?? ""}`;
+      latestTaskVerdict.delete(key);
+      latestTaskVerdict.set(key, proven);
+      continue;
+    }
+    if (!proven) unprovenCount += 1;
+    else if (PROVING_EVIDENCE_TYPES.has(type)) provenCount += 1;
   }
+  for (const proven of latestTaskVerdict.values())
+    if (proven) provenCount += 1;
+    else unprovenCount += 1;
   return {
     verified:
       session.status === "completed" &&

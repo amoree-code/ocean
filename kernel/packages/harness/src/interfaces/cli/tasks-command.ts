@@ -14,6 +14,7 @@ import {
   projectsWithTasks,
 } from "@ocean/core/shared/project-resolution.js";
 import { resolveTaskReference } from "@ocean/core/shared/task-reference.js";
+import { openSessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
 import {
   archiveDoneTasks,
   completeTask,
@@ -27,8 +28,9 @@ import {
 } from "@ocean/loop/tasks/list-tasks.js";
 import { newTask } from "@ocean/loop/tasks/new-task.js";
 import { renumberTasks } from "@ocean/loop/tasks/renumber-tasks.js";
+import { verifyAndRecord } from "@ocean/loop/tasks/task-verification.js";
 import { verificationReadiness } from "@ocean/loop/tasks/verification-readiness.js";
-import { verifyTask } from "@ocean/loop/tasks/verify-task.js";
+import { taskReviewer } from "../../infrastructure/providers/task-reviewer.js";
 
 const execFile = promisify(execFileCallback);
 
@@ -53,6 +55,16 @@ async function liveTask(
     id: location.id,
     root: resolveWithin(oceanPath(projectDir(location.projectId)), "tasks"),
   };
+}
+
+// `tasks verify` and `tasks complete` record their verdict on the task and its sessions (T-320).
+// The model review is built only for a task that opted in, so a plain verify never resolves a
+// provider.
+function recordedVerification(id: string, root: string) {
+  return verifyAndRecord(id, root, {
+    openStore: openSessionStore,
+    reviewer: taskReviewer,
+  });
 }
 
 // `ocean tasks list --pretty`: one aligned row per task, for a person rather than a tool.
@@ -209,8 +221,10 @@ export async function runTasksCommand(
       return;
     }
     const task = await liveTask(id, explicitProject, cwdProject);
-    const outcome = await verifyTask(task.id, task.root);
+    const outcome = await recordedVerification(task.id, task.root);
     console.log(JSON.stringify(outcome, null, 2));
+    if (outcome.recordError)
+      console.error(`warning: evidence not recorded: ${outcome.recordError}`);
     if (!outcome.passed) process.exitCode = 1;
     return;
   }
@@ -229,7 +243,13 @@ export async function runTasksCommand(
     try {
       const task = await liveTask(id, explicitProject, cwdProject);
       console.log(
-        JSON.stringify(await completeTask(task.id, task.root), null, 2),
+        JSON.stringify(
+          await completeTask(task.id, task.root, {
+            verify: recordedVerification,
+          }),
+          null,
+          2,
+        ),
       );
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));

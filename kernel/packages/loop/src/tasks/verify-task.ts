@@ -44,10 +44,12 @@ const COMMAND_ALLOWLIST = new Set([
   "typst",
 ]);
 
-type VerificationCheck = {
+export type VerificationCheck = {
   command: string;
   exitCode: number;
   ok: boolean;
+  // The acceptance criterion (`AC-n`) the check proves, when the task labelled it.
+  ac?: string;
 };
 
 export type VerificationOutcome = {
@@ -78,37 +80,79 @@ const defaultRunner: CommandRunner = async (command, cwd) => {
   }
 };
 
-/**
- * Pull runnable commands out of a task's verification declaration. A `verify:`
- * frontmatter field (string or comma-separated list) wins; otherwise each non-empty
- * line inside a fenced code block of the `## Verification` section. Inline-backtick
- * spans are prose, never commands: on T-308 a prose span naming `npm publish` was run
- * (T-317).
- */
-function candidateCommands(source: string): string[] {
-  const frontmatter = source
-    .match(/^verify:\s*(.+)$/m)?.[1]
-    ?.trim()
+// `AC-3: pnpm test` labels a check with the Definition-of-done item it proves (T-320).
+const AC_LABEL = /^(AC-\d+):\s*/i;
+
+export type DeclaredCommand = { command: string; ac?: string };
+
+function labelled(raw: string): DeclaredCommand {
+  const trimmed = raw.trim();
+  const label = trimmed.match(AC_LABEL);
+  return label
+    ? { ac: label[1].toUpperCase(), command: trimmed.slice(label[0].length) }
+    : { command: trimmed };
+}
+
+// The `verify:` field, read from the frontmatter only (a body line never counts). Inline
+// (`verify: a, b`) splits on `,`, `&&` and `;`; a block list (`verify:` then `  - AC-1: a`)
+// keeps each item whole, so one acceptance criterion may chain its own steps.
+function frontmatterVerify(source: string): DeclaredCommand[] | null {
+  if (!source.startsWith("---\n")) return null;
+  const end = source.indexOf("\n---", 4);
+  if (end < 0) return null;
+  const lines = source.slice(4, end).split("\n");
+  const at = lines.findIndex((line) => /^verify:/.test(line));
+  if (at < 0) return null;
+  const inline = lines[at]
+    .slice("verify:".length)
+    .trim()
     .replace(/^['"]|['"]$/g, "");
-  if (frontmatter)
-    return frontmatter
+  if (inline && inline !== "[]") {
+    const list = inline.match(/^\[(.*)\]$/)?.[1] ?? inline;
+    return list
       .split(/\s*(?:,|&&|;)\s*/)
       .map((part) => part.trim())
-      .filter(Boolean);
+      .filter(Boolean)
+      .map(labelled)
+      .filter((entry) => entry.command);
+  }
+  const items: DeclaredCommand[] = [];
+  for (const line of lines.slice(at + 1)) {
+    const item = line.match(/^\s+-\s+(.+)$/);
+    if (!item) break;
+    const entry = labelled(item[1]);
+    if (entry.command) items.push(entry);
+  }
+  return items.length ? items : null;
+}
+
+/**
+ * Pull runnable commands out of a task's verification declaration. A `verify:`
+ * frontmatter field wins; otherwise each non-empty line inside a fenced code block of
+ * the `## Verification` section. Inline-backtick spans are prose, never commands: on
+ * T-308 a prose span naming `npm publish` was run (T-317). Any command may carry an
+ * `AC-n:` label naming the acceptance criterion it proves.
+ */
+export function declaredCommands(source: string): DeclaredCommand[] {
+  const frontmatter = frontmatterVerify(source);
+  if (frontmatter) return frontmatter;
 
   const section = source
     .match(/\n## Verification\n\n([\s\S]*?)(?=\n## |$)/)?.[1]
     ?.trim();
   if (!section) return [];
 
-  const fenced: string[] = [];
+  const fenced: DeclaredCommand[] = [];
   for (const match of section.matchAll(/```[^\n]*\n([\s\S]*?)```/g))
     for (const line of match[1].split("\n")) {
       const trimmed = line.trim();
-      if (trimmed && !trimmed.startsWith("#")) fenced.push(trimmed);
+      if (trimmed && !trimmed.startsWith("#")) fenced.push(labelled(trimmed));
     }
-  return fenced;
+  return fenced.filter((entry) => entry.command);
 }
+
+const candidateCommands = (source: string): string[] =>
+  declaredCommands(source).map((entry) => entry.command);
 
 export function extractVerificationCommands(source: string): string[] {
   return candidateCommands(source).filter((command) =>
@@ -201,10 +245,12 @@ export async function verifyTask(
 ): Promise<VerificationOutcome> {
   const taskFile = resolveWithin(root, id, "task.md");
   const source = await readFile(taskFile, "utf8");
-  const candidates = candidateCommands(source);
-  const taskCommands = candidates.filter((command) =>
-    isAllowedCommand(command),
+  const declared = declaredCommands(source);
+  const candidates = declared.map((entry) => entry.command);
+  const taskEntries = declared.filter((entry) =>
+    isAllowedCommand(entry.command),
   );
+  const taskCommands = taskEntries.map((entry) => entry.command);
   const fail = (
     reason: string,
     from: VerificationOutcome["source"],
@@ -226,7 +272,7 @@ export async function verifyTask(
       `declared verification commands are not allowed: ${candidates.join(", ")}`,
       "task",
     );
-  let commands = taskCommands;
+  let commands: DeclaredCommand[] = taskEntries;
   let cwd = options.cwd ?? repoRoot();
   let from: VerificationOutcome["source"] = "task";
   const project = projectOfTasksRoot(root);
@@ -280,13 +326,18 @@ export async function verifyTask(
         );
       cwd = dir;
     }
-    commands = verify;
+    commands = verify.map((command) => ({ command }));
   }
   const run = options.run ?? defaultRunner;
   const checks: VerificationCheck[] = [];
-  for (const command of commands) {
+  for (const { command, ac } of commands) {
     const { exitCode } = await run(command, cwd);
-    checks.push({ command, exitCode, ok: exitCode === 0 });
+    checks.push({
+      command,
+      exitCode,
+      ok: exitCode === 0,
+      ...(ac ? { ac } : {}),
+    });
   }
   const passed = checks.every((check) => check.ok);
   return {

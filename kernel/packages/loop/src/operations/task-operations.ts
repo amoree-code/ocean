@@ -21,6 +21,7 @@ import {
 } from "@ocean/core/shared/task-reference.js";
 import { completeTask } from "../tasks/archive-tasks.js";
 import { taskRecord, validTaskTitle } from "../tasks/new-task.js";
+import { verifyAndRecord } from "../tasks/task-verification.js";
 import {
   approvalMatchesTarget,
   type OperationRecord,
@@ -399,6 +400,12 @@ export async function taskCompleteOperation(
     const result = await completeTask(
       resolved.location.id,
       taskRoot(project.projectId),
+      options.openStore
+        ? {
+            verify: (id, root) =>
+              verifyAndRecord(id, root, { openStore: options.openStore }),
+          }
+        : {},
     );
     return {
       operation: "task.complete",

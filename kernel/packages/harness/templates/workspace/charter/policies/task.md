@@ -111,7 +111,11 @@ Most tasks produce `task.md` and nothing else. That is the correct outcome, not 
 
 ## On completion — automatic, not on request
 
-1. **Final verification** — run it, and report the real output.
+1. **Final verification** — `ocean tasks verify <ID>` runs the task's `verify:` commands with
+   no model, and writes `verified`, `verified_at` and `evidence` (event ids) into the task
+   and `verification_status` onto its sessions; report its real output. `tasks complete`
+   runs the same thing. A model's "done" is never evidence. A `done` task with no recorded
+   evidence fails `ocean tasks doctor`. Fields and lanes: the task contract, §2.
 2. **Lifecycle reading** — `ocean lifecycle --task <ID> --complete --verification passed|failed`.
    This is the boundary hook: a task finishing is exactly the `TASK_COMPLETED` trigger, and
    this is the one place it fires, deterministically, on every completion. Act on the

@@ -1,6 +1,7 @@
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { localDate } from "@ocean/core/shared/local-date.js";
-import { resolveWithin } from "@ocean/core/shared/paths.js";
+import { oceanRoot, resolveWithin } from "@ocean/core/shared/paths.js";
+import { headCommit } from "./task-git.js";
 
 // Keep equal to CLAIM_TTL_MS in scripts/validate-tasks.mjs (a test pins the two together).
 export const CLAIM_TTL_MS = 2 * 60 * 60 * 1000;
@@ -9,7 +10,15 @@ const OWNER = /^[\w.@/-]{1,64}$/;
 const CLAIM_PATH = /^(?!\/)(?!.*\.\.)[\w.@/-]+$/;
 
 export type Claim = { by: string; at: string; paths: string[] };
-type ClaimInput = { by: string; paths?: string[]; force?: boolean; now?: Date };
+type ClaimInput = {
+  by: string;
+  paths?: string[];
+  force?: boolean;
+  now?: Date;
+  // The commit work starts from (T-320 F1); defaults to HEAD of the workspace repository,
+  // where `claimed_paths` are rooted.
+  head?: () => Promise<string | null>;
+};
 
 const unquote = (value: string) => value.replace(/^['"]|['"]$/g, "");
 
@@ -53,7 +62,12 @@ const STARTS_ON_CLAIM = new Set(["todo", "paused"]);
 
 // Replace the claim lines in the frontmatter (and bump `updated`), keeping every other line.
 // Claiming also moves a `todo`/`paused` task to `active`; releasing leaves the state alone.
-function withClaim(source: string, claim: Claim | null, today: string): string {
+function withClaim(
+  source: string,
+  claim: Claim | null,
+  today: string,
+  baseCommit: string | null = null,
+): string {
   const end = source.indexOf("\n---", 4);
   const kept = source
     .slice(4, end)
@@ -71,6 +85,10 @@ function withClaim(source: string, claim: Claim | null, today: string): string {
     if (claim.paths.length)
       kept.push(`claimed_paths: [${claim.paths.join(", ")}]`);
   }
+  // Sticky: written by the first claim only, and kept through release and re-claim, so
+  // `tasks verify` can tell whether the claimed paths changed at all since work began.
+  if (baseCommit && !kept.some((line) => /^base_commit:/.test(line)))
+    kept.push(`base_commit: ${baseCommit}`);
   return `---\n${kept.join("\n")}${source.slice(end)}`;
 }
 
@@ -133,7 +151,14 @@ export async function claimTask(
         );
     }
   const claim: Claim = { by: input.by, at: now.toISOString(), paths };
-  await writeFile(taskFile, withClaim(source, claim, localDate(now)), "utf8");
+  const baseCommit = fields.base_commit
+    ? null
+    : await (input.head ?? (() => headCommit(oceanRoot())))();
+  await writeFile(
+    taskFile,
+    withClaim(source, claim, localDate(now), baseCommit),
+    "utf8",
+  );
   // Read-modify-write is not atomic: if a concurrent claim landed between our read and write,
   // the file now names someone else. Re-read so the loser finds out instead of assuming it won.
   const written = parseClaim(
