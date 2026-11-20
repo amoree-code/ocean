@@ -178,10 +178,12 @@ export async function runAgent(
       request.prompt,
       PROMOTED_SKILL_MAX_BYTES,
     );
+    // One `lesson_applied` per injected lesson (T-323; `skill_auto_activated` before), so a
+    // lesson's sessions can be compared with the ones that ran without it.
     for (const skill of autoSkills) {
       sessionStore.appendEvent(
         sessionId,
-        "skill_auto_activated",
+        "lesson_applied",
         JSON.stringify({
           id: skill.id,
           name: skill.title,

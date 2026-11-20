@@ -209,7 +209,7 @@ test("finalizeSession scores the session and records the outcome as an event", a
 test("learning the same session twice counts it once", async () => {
   const { store } = await freshStore();
   await addLesson({ id: "once", title: "t", body: "b" });
-  session(store, "r1", [["skill_auto_activated", { id: "once" }], proven]);
+  session(store, "r1", [["lesson_applied", { id: "once" }], proven]);
   await learnFromSession(store, "r1");
   await learnFromSession(store, "r1");
   assert.equal((await readLesson("once")).hits, 1);

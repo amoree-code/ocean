@@ -194,6 +194,7 @@ import { runDailyCommand } from "./daily-command.js";
 import { runDesktopCommand } from "./desktop-command.js";
 import { runDistillCommand } from "./distill-command.js";
 import { runExpressCommand } from "./express-command.js";
+import { runFailuresCommand } from "./failures-command.js";
 import { gatewayFindings } from "./gateway-findings.js";
 import { runLifecycleCommand, runPolicyCommand } from "./governance-command.js";
 import { runHandoffCommand } from "./handoff-command.js";
@@ -1273,9 +1274,13 @@ async function commandSkill(): Promise<void> {
     } else {
       const store = await defaultSessionStoreFactory();
       try {
-        console.log(
-          JSON.stringify(await learnFromSession(store, sessionId), null, 2),
-        );
+        const learning = await learnFromSession(store, sessionId);
+        console.log(JSON.stringify(learning, null, 2));
+        // Lessons come only from verified sessions (T-323); say so instead of silently learning nothing.
+        if (!learning.score.verified)
+          console.error(
+            `Session ${sessionId} is not verified: no lessons were learned from it.`,
+          );
       } finally {
         store.close();
       }
@@ -1706,6 +1711,7 @@ export const commandRegistry: Record<string, CommandHandler> = {
   harvest: () => runHarvestCommand(process.argv.slice(3)),
   rhythm: () => runRhythmCommand(process.argv.slice(3)),
   telemetry: () => runTelemetryCommand(process.argv.slice(3)),
+  failures: () => runFailuresCommand(process.argv.slice(3)),
   scorecard: () => runScorecardCommand(process.argv.slice(3)),
   upkeep: () => runUpkeepCommand(process.argv.slice(3)),
   curator: () => runCuratorCommand(process.argv.slice(3)),

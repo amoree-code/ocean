@@ -173,7 +173,12 @@ export type SessionLearning = {
 
 function activatedLessonIds(events: SessionEvent[]): string[] {
   const ids = events
-    .filter((event) => event.type === "skill_auto_activated")
+    // `lesson_applied` since T-323; sessions recorded before it carry the old name.
+    .filter(
+      (event) =>
+        event.type === "lesson_applied" ||
+        event.type === "skill_auto_activated",
+    )
     .map((event) => safeJsonParse(event.data)?.id)
     .filter((id): id is string => typeof id === "string");
   return [...new Set(ids)];

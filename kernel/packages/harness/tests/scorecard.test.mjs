@@ -185,18 +185,21 @@ test("schedules count enabled of all", () => {
   );
 });
 
-test("lessons: active by status; used is n/a until a lesson records hits", () => {
+test("lessons: active by status; used counts lessons a lesson_applied event names", () => {
   const [active, used] = lessonsRows([
-    { status: "active" },
-    { status: "active" },
-    { status: "retired" },
+    { id: "a", status: "active" },
+    { id: "b", status: "active" },
+    { id: "c", status: "retired" },
   ]);
   assert.equal(active.value, "2 of 3");
-  assert.equal(used.pendingTask, "T-323");
-  const [, tracked] = lessonsRows([
-    { status: "active", hits: "3" },
-    { status: "active", hits: "0" },
-  ]);
+  assert.equal(used.value, "0 of 3 (0%)");
+  const [, tracked] = lessonsRows(
+    [
+      { id: "a", status: "active" },
+      { id: "b", status: "active" },
+    ],
+    ["a", "gone"],
+  );
   assert.equal(tracked.value, "1 of 2 (50%)");
 });
 
@@ -270,6 +273,8 @@ test("the 2026-11-18 baseline shape reproduces, then renders as table and markdo
     searchEval: null,
     schedules: [],
     lessons: Array(5).fill({ status: "active" }),
+    lessonsApplied: [],
+    failures: [],
     tokens: { sessions: 3284, reporting: 0, total: 0 },
     hygiene: null,
     drift: null,
@@ -282,6 +287,7 @@ test("the 2026-11-18 baseline shape reproduces, then renders as table and markdo
   assert.equal(value("tasks-verify"), "0 of 20 (0%)");
   assert.match(value("search-mode"), /^fts; /);
   assert.equal(value("schedules"), "0 of 0");
+  assert.equal(value("failures-zero"), "0 of 0");
   // Every n/a row names what it is waiting for.
   for (const row of rows.filter((r) => r.value.startsWith("n/a")))
     assert.ok(row.pendingTask || row.id === "tokens", row.id);

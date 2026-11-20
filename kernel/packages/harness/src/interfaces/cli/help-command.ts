@@ -13,7 +13,7 @@ const commandGroups = [
   ],
   [
     "Knowledge",
-    "memory, pull, desktop, observe, capture, note, brief, interests, distill, harvest, rhythm, upkeep, curator, telemetry, scorecard, express, handoff, idea, daily, skill, catalog",
+    "memory, pull, desktop, observe, capture, note, brief, interests, distill, harvest, rhythm, upkeep, curator, telemetry, failures, scorecard, express, handoff, idea, daily, skill, catalog",
   ],
   ["Integrations", "obsidian, hook, migrate, layout, env"],
 ] as const;
@@ -187,8 +187,12 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
     "ocean curator [--yes] | review <lesson:id|skill:name>",
   ],
   telemetry: [
-    "Find recurring errors and failing providers in recent sessions; propose them as backlog lines.",
+    "Find recurring errors (by signature) and failing providers in recent sessions; propose them, guardrail climbs for absorbed failures that came back, and lessons that do not help, as backlog lines.",
     "ocean telemetry [--days N] [--yes]",
+  ],
+  failures: [
+    "Failure records by signature: open -> fix-landing -> absorbed -> superseded-by; climb the guardrail ladder lesson -> doctor -> test.",
+    "ocean failures [list] [--json] | open <id> <signature> --title <t> --mechanism <why> [--lesson <id>] [--rung <r>] | status <id> <status> [--by <mechanism>] | climb <id>",
   ],
   scorecard: [
     "Print Ocean's health numbers from real data; --write saves 01-daily/scorecard/YYYY-MM-DD.md.",

@@ -9,6 +9,10 @@ import {
   SYSTEM_DIR,
 } from "@ocean/core/shared/paths.js";
 import { sessionTokens } from "@ocean/loop/runs/session-tokens.js";
+import {
+  type FailureRecurrence,
+  RECURRENCE_WINDOW_DAYS,
+} from "../journey/failures.js";
 
 // Moved to the loop package (T-322) so run guards can count tokens; re-exported for callers.
 export { sessionTokens };
@@ -47,6 +51,10 @@ export type ScorecardInput = {
   schedules: Array<{ enabled: boolean }>;
   // Frontmatter of every lesson file.
   lessons: Array<Record<string, string>>;
+  // Ids of lessons a `lesson_applied` event names, across all sessions (T-323).
+  lessonsApplied: string[];
+  // Recurrence of every failure record's signature (T-323).
+  failures: FailureRecurrence[];
   // Sessions whose provider reported token usage, and their tokens.
   tokens: { sessions: number; reporting: number; total: number };
   // The latest monthly `ocean memory hygiene` counts (T-322).
@@ -270,12 +278,13 @@ export function schedulesRow(
   };
 }
 
-// "Used" needs a hit count; lessons written before T-323 carry none, so it is not a zero.
+// "Used" counts lessons injected into at least one run (`lesson_applied`, T-323).
 export function lessonsRows(
   lessons: ScorecardInput["lessons"],
+  applied: ScorecardInput["lessonsApplied"] = [],
 ): ScorecardRow[] {
   const active = lessons.filter((fields) => fields.status === "active").length;
-  const tracked = lessons.filter((fields) => fields.hits !== undefined);
+  const used = new Set(applied);
   return [
     {
       id: "lessons-active",
@@ -285,21 +294,42 @@ export function lessonsRows(
       of: lessons.length,
       source: "05-knowledge/lessons status",
     },
-    tracked.length
-      ? ratio(
-          "lessons-used",
-          "Lessons used",
-          tracked.filter((fields) => Number(fields.hits) > 0).length,
-          lessons.length,
-          "lesson hits",
-        )
-      : notYet(
-          "lessons-used",
-          "Lessons used",
-          "lesson_applied events",
-          "T-323",
-          "no lesson records its use",
-        ),
+    ratio(
+      "lessons-used",
+      "Lessons used",
+      lessons.filter((fields) => used.has(fields.id)).length,
+      lessons.length,
+      "lesson_applied events",
+    ),
+  ];
+}
+
+// Recurrence per failure signature (T-323): one summary row, then one row per failure record.
+export function failuresRows(
+  failures: ScorecardInput["failures"],
+): ScorecardRow[] {
+  const zero = failures.filter(
+    (entry) =>
+      entry.status === "absorbed" &&
+      entry.recent === 0 &&
+      (entry.cleanDays ?? 0) >= RECURRENCE_WINDOW_DAYS,
+  ).length;
+  return [
+    {
+      id: "failures-zero",
+      label: `Failures at zero ${RECURRENCE_WINDOW_DAYS}+ days`,
+      value: `${zero} of ${failures.length}`,
+      n: zero,
+      of: failures.length,
+      source: "05-knowledge/failures + session signatures",
+    },
+    ...failures.map((entry) => ({
+      id: `failure:${entry.id}`,
+      label: `  ${entry.id}`,
+      value: `${entry.status}, rung ${entry.rung}: ${entry.recent} sessions in ${RECURRENCE_WINDOW_DAYS} d${entry.cleanDays === null ? "" : `, clean ${entry.cleanDays} d`}`,
+      n: entry.recent,
+      source: `signature ${entry.signature}`,
+    })),
   ];
 }
 
@@ -367,7 +397,8 @@ export function scorecardRows(input: ScorecardInput): ScorecardRow[] {
     tasksVerifiedRow(input.tasks),
     ...searchRows(input.search, input.searchEval),
     schedulesRow(input.schedules),
-    ...lessonsRows(input.lessons),
+    ...lessonsRows(input.lessons, input.lessonsApplied),
+    ...failuresRows(input.failures),
     tokensRow(input.tokens),
     hygieneRow(input.hygiene),
     driftRow(input.drift),
