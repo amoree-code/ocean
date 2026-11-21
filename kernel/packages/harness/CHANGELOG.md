@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.13.0
+
+- feat(tasks): new task state `in-qa` for work that is built with its PR open, waiting on test or review, so it no longer sits as `active`. The validator accepts it, the projects overview and day plan count it as open, and `ocean context` / `context.sh` list it beside active and blocked; the task policy and contract document it (`in-qa` → `done` once the PR merges, → `active` when a fix is needed) (#325)
+- feat(tasks): new task state `in-qa`, for work that is built with its PR open and waiting on test or review. The validator accepts it, the projects overview and day plan count it as open, and `ocean context` / `context.sh` list it beside active and blocked. It moves to `done` once the PR merges and verification passed, or back to `active` when a fix is needed. The task policy and contract document it.
+
 ## 2.12.0
 
 - feat(browser): the signed-in browser costs fewer tokens and asks once. `dev.ocean/chrome-devtools` moves to `ocean-browser-mcp` 0.3.0 (Chrome DevTools MCP 1.13.0): one shared background connection for every session, so the browser asks to allow it once (idle stop after 8 hours); a pointer and a blue "Ocean" frame on the tab the agent drives; snapshots after the first carry only changed lines and oversized ones are cut to interactive elements; WebP screenshots, also saved with a `Preview:` path; cookies and auth headers redacted, `file://` refused. New `ocean browser profile standard|full|lean|slim` (tool sets from ~0.3K to ~8.1K schema tokens), `ocean browser block add|rm|list <url-pattern>`, `ocean browser usage` (tokens and time per tool) and `ocean browser status|stop`. New `dev.ocean/firefox-devtools` (Mozilla's Firefox MCP 0.11.0, separate profile; `ocean browser use firefox`). `ocean doctor` warns when the browser is older than Chromium 144. The `use-browser` skill now prefers the browser MCP tools over the terminal capability (T-324) (#324)
