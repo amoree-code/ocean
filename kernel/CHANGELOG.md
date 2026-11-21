@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+## 2.11.0 (2026-11-21)
+
 - feat(failures): Ocean learns from its own repeated failures. `ocean telemetry` names each recurring error by a signature (`<command>/<error class>/<hash>`, stable across ids, paths and numbers); `ocean failures open|status|climb` keeps one record per signature in `05-knowledge/failures/` stating mechanism, fix and guardrail, with a closed status `open → fix-landing → absorbed → superseded-by <id>` changed only by code (one field per update, one status-log line, the body never rewritten); absorbing names the cheapest mechanism first (doctor → template → code → skill-edit → new-skill) and retires the failure's lesson so it leaves context. When an absorbed signature comes back, telemetry proposes climbing its guardrail one rung (lesson → doctor → test). Injected lessons now record `lesson_applied` (was `skill_auto_activated`, still read), and telemetry compares sessions with and without each lesson on verified rate and the linked failure's recurrence, proposing retirement for one that does no better. The scorecard's "Lessons used" counts `lesson_applied`, and new rows count each failure's sessions over 14 days and the failures at zero that long. `ocean skill learn` says when a session is not verified and so taught nothing (T-323) (#323)
 
 ## 2.10.0 (2026-11-20)
