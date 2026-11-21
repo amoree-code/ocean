@@ -63,7 +63,7 @@ function section(source: string, heading: string): string | undefined {
   );
 }
 
-function completionIssues(source: string): string[] {
+export function completionIssues(source: string): string[] {
   const issues: string[] = [];
   if (/^\s*-\s+"?\[ \] /m.test(source)) issues.push("unchecked work");
   const blockers = section(source, "Blockers");

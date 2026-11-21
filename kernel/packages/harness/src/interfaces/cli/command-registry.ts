@@ -169,6 +169,7 @@ import {
   runService,
   startBackgroundPull,
   startBackgroundRhythm,
+  startBackgroundTaskSync,
 } from "../../infrastructure/process/service.js";
 import { createOllamaEmbedder } from "../../infrastructure/providers/ollama-embedder.js";
 import { loadProviderRegistry } from "../../infrastructure/providers/provider-registry.js";
@@ -926,6 +927,7 @@ async function commandHook(): Promise<void> {
     if (flags.includes("--repair")) startBackgroundSync();
     startBackgroundPull();
     startBackgroundRhythm();
+    startBackgroundTaskSync();
     const inline = flags.find((arg) => arg.startsWith("--client="));
     const clientIndex = flags.indexOf("--client");
     const client = inline

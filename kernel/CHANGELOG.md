@@ -7,6 +7,7 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+- feat(tasks): task state follows its PRs. `ocean tasks sync [--all] [--dry-run]` reads the GitHub PR links in each task with `gh`: an open PR moves it to `in-qa`; once every linked PR is merged it goes through the `ocean tasks complete` gate to `done`, or stays `in-qa` with the reason (unticked work, missing sections, failed verification) — never a `done` without evidence. Session start runs it in the background for every project with tasks (#PR)
 - feat(tasks): new task state `in-qa` for work that is built with its PR open, waiting on test or review, so it no longer sits as `active`. The validator accepts it, the projects overview and day plan count it as open, and `ocean context` / `context.sh` list it beside active and blocked; the task policy and contract document it (`in-qa` → `done` once the PR merges, → `active` when a fix is needed) (#325)
 
 ## 2.12.0 (2026-11-21)
