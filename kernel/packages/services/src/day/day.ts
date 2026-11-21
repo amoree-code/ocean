@@ -30,6 +30,7 @@ const EVENT =
   /\b(exam|deadline|due|interview|meeting|appointment|call|submit|test)\b|موعد|امتحان|مقابلة/i;
 const OPEN_STATES = new Set([
   "active",
+  "in-qa",
   "in_progress",
   "blocked",
   "todo",

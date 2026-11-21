@@ -156,9 +156,15 @@ async function readTask(file, archived) {
       errors.push(`${file}: id does not match directory`);
     if (
       fields.state &&
-      !["todo", "active", "paused", "blocked", "done", "cancelled"].includes(
-        fields.state,
-      )
+      ![
+        "todo",
+        "active",
+        "in-qa",
+        "paused",
+        "blocked",
+        "done",
+        "cancelled",
+      ].includes(fields.state)
     )
       errors.push(`${file}: invalid state`);
     readClaim(file, fields);

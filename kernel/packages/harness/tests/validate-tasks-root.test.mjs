@@ -6,11 +6,11 @@ import path from "node:path";
 import test from "node:test";
 
 const script = path.resolve("scripts/validate-tasks.mjs");
-const task = (id) =>
-  `---\nid: ${id}\ntitle: t\nstate: active\nproject: ocean\nopened: 2026-10-07\nupdated: 2026-10-07\nartifacts: []\n---\n\n## Objective\n\n## Definition of done\n\n## Next action\n\n## Verification\n\n## Blockers\n\n## Log\n`;
+const task = (id, state = "active") =>
+  `---\nid: ${id}\ntitle: t\nstate: ${state}\nproject: ocean\nopened: 2026-10-07\nupdated: 2026-10-07\nartifacts: []\n---\n\n## Objective\n\n## Definition of done\n\n## Next action\n\n## Verification\n\n## Blockers\n\n## Log\n`;
 
 // The script runs from the kernel checkout and finds the workspace tasks one level up.
-function validate(taskDirs) {
+function validate(taskDirs, state) {
   const root = mkdtempSync(path.join(os.tmpdir(), "ocean-validate-tasks-"));
   try {
     const kernel = path.join(root, "kernel");
@@ -18,7 +18,7 @@ function validate(taskDirs) {
     for (const [dir, ids] of Object.entries(taskDirs))
       for (const id of ids) {
         mkdirSync(path.join(root, dir, id), { recursive: true });
-        writeFileSync(path.join(root, dir, id, "task.md"), task(id));
+        writeFileSync(path.join(root, dir, id, "task.md"), task(id, state));
       }
     return execFileSync(process.execPath, [script], {
       cwd: kernel,
@@ -43,5 +43,15 @@ test("validate-tasks prefers the flat layout over brain/ once the records have m
       "brain/04-projects/ocean/tasks": ["T-1"],
     }),
     "Validated 3 live and 0 archived tasks",
+  );
+});
+
+test("validate-tasks accepts the in-qa state and still rejects an unknown one", () => {
+  assert.equal(
+    validate({ "04-projects/ocean/tasks": ["T-1"] }, "in-qa"),
+    "Validated 1 live and 0 archived tasks",
+  );
+  assert.throws(() =>
+    validate({ "04-projects/ocean/tasks": ["T-1"] }, "qa-ish"),
   );
 });

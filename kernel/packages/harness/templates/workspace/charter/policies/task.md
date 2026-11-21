@@ -44,8 +44,9 @@ fails when a view has drifted. Never hand-edit a generated table, and never writ
 task's status into project state, a daily log or a session record as if it were
 authoritative there.
 
-States: `todo` · `active` · `paused` · `blocked` · `done` · `cancelled`. Several being
-`active` is normal. There is no current task and no stored pointer to one — the active
+States: `todo` · `active` · `in-qa` · `paused` · `blocked` · `done` · `cancelled`. Several
+being `active` is normal. `in-qa`: built and its PR is open, waiting on test or review; it
+moves to `done` once the PR merges and verification passed, or back to `active` on a fix. There is no current task and no stored pointer to one — the active
 set is derived from the records. A bare id resolves directly at
 `04-projects/<project>/tasks/<ID>/` (`ocean-paths` was a resolver in an earlier CLI
 generation and was consolidated away — it is not a real command anymore); if two

@@ -28,7 +28,7 @@ ocean session list 2>/dev/null | jq -r '.[0:3][] | "\(.updatedAt)  \(.status)  \
 echo
 echo "=== tasks: $PROJECT ==="
 found=0
-for state in active blocked paused; do
+for state in active in-qa blocked paused; do
   ocean tasks list "$state" --project "$PROJECT" 2>/dev/null \
     | jq -r --arg st "$state" '.[] | "  \(.id)  \($st)  \(.title)"' 2>/dev/null \
     | grep . && found=1

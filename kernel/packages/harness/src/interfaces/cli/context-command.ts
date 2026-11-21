@@ -46,7 +46,10 @@ export async function runContextCommand(json = false): Promise<void> {
   const project = resolution.status === "bound" ? resolution.projectId : null;
   const tasks = project
     ? (await listTasks(undefined, project)).filter(
-        (task) => task.state === "active" || task.state === "blocked",
+        (task) =>
+          task.state === "active" ||
+          task.state === "in-qa" ||
+          task.state === "blocked",
       )
     : [];
   // Unreadable rules are shown as such, never as an empty list.

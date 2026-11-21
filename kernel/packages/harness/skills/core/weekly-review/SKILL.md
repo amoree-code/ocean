@@ -18,7 +18,7 @@ Take the owner from a full inbox to zero, one decision at a time. He decides; yo
 3. Walk `00-inbox/captures/`: for each capture, file it where its type lives (routing.json),
    turn it into a task or backlog line, or mark it `status: processed`.
 4. List his notes in `02-personal/notes/` still `status: todo` and older than 7 days. For each,
-   suggest one of: a folder (`study/`, `work/`, `ideas/`, `archive/`), a status (`active`,
+   suggest one of: a folder (`study/`, `work/`, `ideas/`, `archive/`), a status (`active`, `in-qa`,
    `paused`, `blocked`, `done`, `cancelled`), or "make it a project" (QuickAdd: Project from
    this note). He acts on it in Obsidian; never move, rename or edit a note yourself.
 5. Run `ocean interests decay` (dry run) and the brief's keep/skip feedback he gives.

@@ -126,8 +126,9 @@ before. An empty list is the normal, healthy value.
 ## 3. States
 
 ```
-todo ──▶ active ──▶ done ──▶ (archive/)
-          │  ▲
+todo ──▶ active ──▶ in-qa ──▶ done ──▶ (archive/)
+          │  ▲  ▲       │  PR open, waiting on test or review
+          │  │  └───────┘  a fix is needed
           │  └──── paused ──┐  deliberately set aside; resumable by choice
           ├──────▶ blocked ─┤  cannot proceed; waiting on something external
           │        ▲        │
@@ -139,6 +140,7 @@ todo ──▶ active ──▶ done ──▶ (archive/)
 | ----------- | ----------------------------------------------------------- | --------------------------------------- |
 | `todo`      | promoted to a durable task, not started                     | work begins → `active`                  |
 | `active`    | being worked now                                            | paused, blocked, finished, or abandoned |
+| `in-qa`     | built, PR open, waiting on test or review                   | PR merged → `done`; fix needed → `active` |
 | `paused`    | set aside by choice, resumable                              | picked up again → `active`              |
 | `blocked`   | cannot proceed; the blocker is named in the body            | blocker clears → `active`               |
 | `done`      | finished **and** verified — the verification ran and passed | archived                                |
