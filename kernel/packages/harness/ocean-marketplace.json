@@ -212,7 +212,7 @@
         "path": "skills/core/weekly-review"
       },
       "integrity": {
-        "sha256": "346d7a276b8fccbd693ec766fe726c4f2d1887fae4d82fa728e619441fe7ef97"
+        "sha256": "112aac4a9ec788a8c818dedec28989f62172ce1a0957112e979518f3dcb2452d"
       },
       "spec": {
         "directory": "weekly-review"

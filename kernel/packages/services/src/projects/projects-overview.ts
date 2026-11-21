@@ -37,7 +37,7 @@ export type ProjectOverview = {
 
 const ACTIVE_DAYS = 60;
 const WARM_DAYS = 365;
-const OPEN_STATES = new Set(["active", "todo", "paused", "blocked"]);
+const OPEN_STATES = new Set(["active", "in-qa", "todo", "paused", "blocked"]);
 
 async function git(cwd: string, args: string[]): Promise<string | undefined> {
   try {
