@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+## 2.13.0 (2026-11-21)
+
 - feat(tasks): new task state `in-qa` for work that is built with its PR open, waiting on test or review, so it no longer sits as `active`. The validator accepts it, the projects overview and day plan count it as open, and `ocean context` / `context.sh` list it beside active and blocked; the task policy and contract document it (`in-qa` → `done` once the PR merges, → `active` when a fix is needed) (#325)
 
 ## 2.12.0 (2026-11-21)
