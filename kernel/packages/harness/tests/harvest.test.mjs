@@ -347,3 +347,28 @@ test("legacy records are summarized but left unmarked for the skill; injected te
     );
   });
 });
+
+test("the journal leaves out a bare status as an outcome", async () => {
+  await withRoot(async (root) => {
+    await write(
+      root,
+      "01-daily/sessions/2026-11/2026-11-16-0930-x.md",
+      record(
+        "2026-11-16",
+        "claude",
+        "Quick look",
+        "## Outcome\n\nCompleted.\n",
+      ),
+    );
+    await harvestDay({ date: "2026-11-16", apply: true });
+    const note = await readFile(
+      path.join(root, "01-daily/2026-11-16.md"),
+      "utf8",
+    );
+    assert.match(
+      note,
+      /### 09:30 · claude · Quick look\n\n- Goal: Quick look\n- Record:/,
+    );
+    assert.doesNotMatch(note, /Outcome: Completed/);
+  });
+});

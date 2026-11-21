@@ -43,7 +43,8 @@ const MIN_ITEM = 25;
 // A journal line stays one line; a session lists at most this many Next steps.
 const JOURNAL_CHARS = 200;
 const JOURNAL_NEXT = 3;
-const PLACEHOLDER = /^(not stated|no objective was captured|none|n\/a)\.?$/i;
+// "Completed." is a status, not an outcome (older closeout records wrote it on every session).
+const PLACEHOLDER = /^(not stated|no objective was captured|none|n\/a|completed)\.?$/i;
 const SAME_TITLE = 0.6;
 
 // Where each kind of harvested item is filed, and the record type it carries.
