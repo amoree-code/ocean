@@ -105,7 +105,7 @@ async function withRoot(root, run) {
 
 const read = (home, relative) => readFile(path.join(home, relative), "utf8");
 // SessionStart plans keyed by client, SessionEnd by `<client>:end`, PreCompact by
-// `<client>:compact`.
+// `<client>:compact`, UserPromptSubmit (T-325) by `<client>:prompt`.
 const byClient = (plans) =>
   Object.fromEntries(
     plans.map((plan) => [
@@ -113,7 +113,9 @@ const byClient = (plans) =>
         ? `${plan.client}:end`
         : plan.event === "PreCompact"
           ? `${plan.client}:compact`
-          : plan.client,
+          : plan.event === "UserPromptSubmit"
+            ? `${plan.client}:prompt`
+            : plan.client,
       plan.status,
     ]),
   );
@@ -126,10 +128,13 @@ test("plan: a missing hook is a change, a non-canonical file a manual step with 
       "claude-code": "manual",
       "claude-code:end": "manual",
       "claude-code:compact": "manual",
+      "claude-code:prompt": "manual",
       codex: "change",
       "codex:end": "change",
+      "codex:prompt": "change",
       gemini: "change",
       "gemini:end": "change",
+      "gemini:prompt": "change",
     });
     const claude = plans.find((plan) => plan.client === "claude-code");
     assert.match(claude.reason, /canonical/);
@@ -171,6 +176,7 @@ test("an Ocean hook that already runs (bootstrap or shim) counts as present and 
     assert.equal(plans["claude-code:end"], "current");
     // PreCompact (T-313) is new: it alone is added; the running hooks stay as they are.
     assert.equal(plans["claude-code:compact"], "change");
+    assert.equal(plans["claude-code:prompt"], "change");
     await applyHooks({ env });
     const after = JSON.parse(await read(home, ".claude/settings.json"));
     const before = JSON.parse(bootstrap);
@@ -190,8 +196,10 @@ test("apply appends one group after the user's own, keeps every other byte, and 
     assert.deepEqual(results, [
       { client: "codex", event: "SessionStart", result: "written" },
       { client: "codex", event: "SessionEnd", result: "written" },
+      { client: "codex", event: "UserPromptSubmit", result: "written" },
       { client: "gemini", event: "SessionStart", result: "written" },
       { client: "gemini", event: "SessionEnd", result: "written" },
+      { client: "gemini", event: "UserPromptSubmit", result: "written" },
     ]);
     const codex = JSON.parse(await read(home, ".codex/hooks.json"));
     const original = JSON.parse(CODEX_HOOKS);
@@ -199,9 +207,14 @@ test("apply appends one group after the user's own, keeps every other byte, and 
       codex.hooks.SessionStart.slice(0, 2),
       original.hooks.SessionStart,
     );
+    // The user's own prompt hook stays first; the skill router's group follows it.
     assert.deepEqual(
-      codex.hooks.UserPromptSubmit,
+      codex.hooks.UserPromptSubmit.slice(0, 1),
       original.hooks.UserPromptSubmit,
+    );
+    assert.match(
+      codex.hooks.UserPromptSubmit[1].hooks[0].command,
+      /hook prompt --client codex$/,
     );
     assert.equal(codex.hooks.SessionStart.length, 3);
     assert.equal(
@@ -228,16 +241,25 @@ test("apply appends one group after the user's own, keeps every other byte, and 
       gemini.hooks.SessionStart[1].hooks[0].command,
       /--client gemini/,
     );
+    // Gemini's per-prompt event is BeforeAgent.
+    assert.equal(gemini.hooks.UserPromptSubmit, undefined);
+    assert.match(
+      gemini.hooks.BeforeAgent[0].hooks[0].command,
+      /hook prompt --client gemini$/,
+    );
     assert.equal(await read(home, ".claude/settings.json"), CLAUDE_SETTINGS);
     assert.deepEqual((await applyHooks({ env })).results, []);
     assert.deepEqual(byClient(await planHooks(env)), {
       "claude-code": "manual",
       "claude-code:end": "manual",
       "claude-code:compact": "manual",
+      "claude-code:prompt": "manual",
       codex: "current",
       "codex:end": "current",
+      "codex:prompt": "current",
       gemini: "current",
       "gemini:end": "current",
+      "gemini:prompt": "current",
     });
   });
 });
@@ -253,8 +275,10 @@ test("restore of the batch returns entries and hooks byte-identical", async () =
     assert.equal(entries.batch, batch);
     assert.deepEqual(hooks, {
       restored: [
+        "gemini:prompt-hook",
         "gemini:end-hook",
         "gemini:hook",
+        "codex:prompt-hook",
         "codex:end-hook",
         "codex:hook",
       ],
@@ -266,7 +290,7 @@ test("restore of the batch returns entries and hooks byte-identical", async () =
     const undone = (await readJournal()).filter(
       (entry) => entry.op === "hook-add" && entry.restoreOf === batch,
     );
-    assert.equal(undone.length, 4);
+    assert.equal(undone.length, 6);
   });
 });
 
@@ -298,7 +322,7 @@ test("a hook group the user changed after apply is a conflict on restore and lef
     await writeFile(file, json(edited));
     const result = await restoreHooks({ batch, env });
     assert.deepEqual(result, {
-      restored: ["codex:end-hook"],
+      restored: ["codex:prompt-hook", "codex:end-hook"],
       conflicts: ["codex:hook"],
     });
     const after = JSON.parse(await readFile(file, "utf8"));

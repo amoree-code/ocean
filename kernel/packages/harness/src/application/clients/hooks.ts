@@ -27,7 +27,11 @@ type HookGroup = Record<string, unknown>;
 
 type WindowsShell = "cmd" | "powershell";
 
-export type HookEvent = "SessionStart" | "SessionEnd" | "PreCompact";
+export type HookEvent =
+  | "SessionStart"
+  | "SessionEnd"
+  | "PreCompact"
+  | "UserPromptSubmit";
 
 // The `ocean hook` action each event runs, and what an Ocean hook for it already looks like.
 const EVENTS: Record<
@@ -49,6 +53,12 @@ const EVENTS: Record<
     action: "pre-compact",
     flags: "",
     pattern: /\bhook pre-compact\b/,
+  },
+  // Every prompt goes through the skill router, which names the skill it calls for (T-325).
+  UserPromptSubmit: {
+    action: "prompt",
+    flags: "",
+    pattern: /\bhook prompt\b/,
   },
 };
 
@@ -75,7 +85,7 @@ export const HOOK_ADAPTERS: HookAdapter[] = [
     hookClient: "claude",
     file: ".claude/settings.json",
     windowsShell: "powershell",
-    events: ["SessionStart", "SessionEnd", "PreCompact"],
+    events: ["SessionStart", "SessionEnd", "PreCompact", "UserPromptSubmit"],
     group: (command, windows) => ({
       hooks: [
         {
@@ -92,9 +102,10 @@ export const HOOK_ADAPTERS: HookAdapter[] = [
     hookClient: "codex",
     file: ".codex/hooks.json",
     windowsShell: "cmd",
-    events: ["SessionStart", "SessionEnd"],
+    // Codex 0.156 reads additionalContext from UserPromptSubmit too.
+    events: ["SessionStart", "SessionEnd", "UserPromptSubmit"],
     group: (command, _windows, event) =>
-      event === "SessionEnd"
+      event !== "SessionStart"
         ? { hooks: [{ type: "command", command, timeout: 10 }] }
         : {
             matcher: "startup|resume",
@@ -113,8 +124,10 @@ export const HOOK_ADAPTERS: HookAdapter[] = [
     hookClient: "gemini",
     file: ".gemini/settings.json",
     windowsShell: "powershell",
-    // Gemini CLI 0.58 also fires SessionEnd (fireSessionEndEvent), T-307.
-    events: ["SessionStart", "SessionEnd"],
+    // Gemini CLI 0.58 also fires SessionEnd (fireSessionEndEvent), T-307. Its per-prompt event
+    // is BeforeAgent, whose additionalContext 0.61 adds to the turn (T-325).
+    events: ["SessionStart", "SessionEnd", "UserPromptSubmit"],
+    key: (event) => (event === "UserPromptSubmit" ? "BeforeAgent" : event),
     // Gemini's hook timeout is in milliseconds.
     group: (command) => ({
       matcher: "*",
@@ -128,7 +141,7 @@ export const HOOK_ADAPTERS: HookAdapter[] = [
     hookClient: "qwen",
     file: ".qwen/settings.json",
     windowsShell: "powershell",
-    events: ["SessionStart", "SessionEnd"],
+    events: ["SessionStart", "SessionEnd", "UserPromptSubmit"],
     group: (command, windows, event) => ({
       ...(event === "SessionStart" ? { matcher: "startup|resume" } : {}),
       hooks: [
@@ -400,7 +413,7 @@ export async function restoreHooks(options: {
   const conflicts: string[] = [];
   const undo = newBatch();
   for (const entry of entries) {
-    const label = `${entry.client}:${entry.key === "SessionEnd" ? "end-hook" : entry.key === "PreCompact" ? "compact-hook" : "hook"}`;
+    const label = `${entry.client}:${entry.key === "SessionEnd" ? "end-hook" : entry.key === "PreCompact" ? "compact-hook" : entry.key === "UserPromptSubmit" ? "prompt-hook" : "hook"}`;
     // Set per attempt: edit() may run the change again when the file moved under it.
     const outcome = { restored: false };
     await edit(
