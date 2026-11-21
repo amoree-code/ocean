@@ -136,7 +136,7 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
   ],
   browser: [
     "Drive a browser session; uploads and submits need --approve.",
-    "ocean browser use|attach|detect|open|show|events|close|approve|navigate|read|observe|extract|click|type|replace-text|select|scroll|wait|upload|download|submit|run",
+    "ocean browser use|attach|profile|block|usage|status|stop|detect|open|show|events|close|approve|navigate|read|observe|extract|click|type|replace-text|select|scroll|wait|upload|download|submit|run",
   ],
   memory: [
     "Search, read, review and maintain memory records and the brain index.",

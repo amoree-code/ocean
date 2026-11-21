@@ -51,7 +51,7 @@ test("the engine index is schema-valid and every digest matches contentDigest", 
   const index = marketplaceIndexSchema.parse(
     JSON.parse(await readFile(engineIndex, "utf8")),
   );
-  assert.equal(index.capabilities.length, 17);
+  assert.equal(index.capabilities.length, 18);
   for (const capability of index.capabilities)
     assert.equal(
       await contentDigest(path.resolve(capability.source.path)),
@@ -200,5 +200,60 @@ test("the browser capability launches the pinned ocean-browser-mcp package", asy
   assert.equal(launch.command, "npx");
   // The package carries the attach and privacy flags (--autoConnect, no usage statistics, no CrUX)
   // and pins Chrome DevTools MCP exactly; the entry pins the package.
-  assert.deepEqual(launch.args, ["-y", "ocean-browser-mcp@0.2.0"]);
+  assert.deepEqual(launch.args, ["-y", "ocean-browser-mcp@0.3.0"]);
+  // Settings stored by `ocean browser profile|block` reach the server from the secret store.
+  const stored = {
+    OCEAN_BROWSER_PROFILE: "lean",
+    OCEAN_BROWSER_BLOCKED: "https://*.bank.example/*",
+  };
+  const withSettings = planMcpLaunch(
+    {
+      capability: entry.name,
+      version: entry.version,
+      permissions: entry.permissions,
+      server: entry.spec,
+    },
+    {
+      stateDir: os.tmpdir(),
+      env: { PATH: "/usr/bin" },
+      home: os.homedir(),
+      secret: (name) => stored[name],
+    },
+  );
+  assert.equal(withSettings.env.OCEAN_BROWSER_PROFILE, "lean");
+  assert.equal(
+    withSettings.env.OCEAN_BROWSER_BLOCKED,
+    "https://*.bank.example/*",
+  );
+});
+
+test("the Firefox capability launches Mozilla's pinned server with an optional profile", async () => {
+  const index = marketplaceIndexSchema.parse(
+    JSON.parse(await readFile(engineIndex, "utf8")),
+  );
+  const entry = index.capabilities.find(
+    (capability) => capability.name === "dev.ocean/firefox-devtools",
+  );
+  const installed = {
+    capability: entry.name,
+    version: entry.version,
+    permissions: entry.permissions,
+    server: entry.spec,
+  };
+  const options = { stateDir: os.tmpdir(), home: os.homedir() };
+  const bare = planMcpLaunch(installed, {
+    ...options,
+    env: { PATH: "/usr/bin" },
+  });
+  assert.deepEqual(bare.args, ["-y", "@mozilla/firefox-mcp@0.11.0"]);
+  const kept = planMcpLaunch(installed, {
+    ...options,
+    env: { PATH: "/usr/bin", OCEAN_FIREFOX_PROFILE: "/p" },
+  });
+  assert.deepEqual(kept.args, [
+    "-y",
+    "@mozilla/firefox-mcp@0.11.0",
+    "--profile-path",
+    "/p",
+  ]);
 });

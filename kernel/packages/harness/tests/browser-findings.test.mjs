@@ -13,7 +13,18 @@ import {
   resolveBrowserChoice,
   selectedBrowserProfile,
 } from "@ocean/market/mcp/chrome-debugging.js";
-import { browserFindings } from "../dist/interfaces/cli/browser-findings.js";
+import { memoryStore } from "@ocean/market/security/secrets.js";
+import {
+  browserFindings,
+  browserMajorVersion,
+} from "../dist/interfaces/cli/browser-findings.js";
+import {
+  browserBlocklist,
+  browserProfile,
+  browserUsage,
+  installedWrapperVersion,
+  useFirefox,
+} from "../dist/interfaces/cli/browser-settings.js";
 import { gatewayFindings } from "../dist/interfaces/cli/gateway-findings.js";
 
 test("doctor says nothing about the browser until a browser capability is installed", async () => {
@@ -193,4 +204,145 @@ test("doctor names the browser that is listening when the chosen one is not", as
     found.map((each) => each.id),
     ["brave"],
   );
+});
+
+test("doctor warns when the browser is too old to attach", async () => {
+  const serversRoot = await mkdtemp(path.join(os.tmpdir(), "ocean-browser-"));
+  await writeFile(
+    mcpServerFile(serversRoot, "dev.ocean/chrome-devtools"),
+    "{}",
+  );
+  const [old] = await browserFindings({
+    serversRoot,
+    profileRoot: "/x",
+    major: () => 143,
+    listening: async () => true,
+  });
+  assert.equal(old.severity, "WARN");
+  assert.match(old.message, /Chromium 143.*144 or later/);
+  const [current] = await browserFindings({
+    serversRoot,
+    profileRoot: "/x",
+    major: () => 158,
+    listening: async () => true,
+  });
+  assert.equal(current.severity, "OK");
+});
+
+test("the browser major version comes from the profile's Last Version file", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-browser-"));
+  assert.equal(browserMajorVersion(root), undefined);
+  await writeFile(path.join(root, "Last Version"), "158.1.100.58");
+  assert.equal(browserMajorVersion(root), 158);
+});
+
+test("browser profile is stored per capability; standard clears it", () => {
+  const store = memoryStore();
+  assert.equal(browserProfile(store).profile, "standard");
+  assert.equal(browserProfile(store, "Lean").profile, "lean");
+  assert.equal(
+    store.get("dev.ocean/chrome-devtools", "OCEAN_BROWSER_PROFILE"),
+    "lean",
+  );
+  browserProfile(store, "standard");
+  assert.equal(
+    store.get("dev.ocean/chrome-devtools", "OCEAN_BROWSER_PROFILE"),
+    undefined,
+  );
+  assert.throws(() => browserProfile(store, "huge"), /Usage/);
+});
+
+test("browser block keeps a comma-separated, de-duplicated list", () => {
+  const store = memoryStore();
+  browserBlocklist(store, "add", "https://*.bank.example/*");
+  browserBlocklist(store, "add", "https://*.bank.example/*");
+  browserBlocklist(store, "add", "https://accounts.example/*");
+  assert.deepEqual(browserBlocklist(store).blocked, [
+    "https://*.bank.example/*",
+    "https://accounts.example/*",
+  ]);
+  assert.equal(
+    store.get("dev.ocean/chrome-devtools", "OCEAN_BROWSER_BLOCKED"),
+    "https://*.bank.example/*,https://accounts.example/*",
+  );
+  browserBlocklist(store, "rm", "https://*.bank.example/*");
+  browserBlocklist(store, "rm", "https://accounts.example/*");
+  assert.equal(
+    store.get("dev.ocean/chrome-devtools", "OCEAN_BROWSER_BLOCKED"),
+    undefined,
+  );
+  assert.throws(() => browserBlocklist(store, "add", "a,b"), /no commas/);
+  assert.throws(() => browserBlocklist(store, "nuke"), /Usage/);
+});
+
+test("browser usage totals the wrapper's log per tool, skipping broken lines", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "ocean-browser-usage-"));
+  const line = (value) => JSON.stringify(value);
+  await writeFile(
+    path.join(dir, "usage.1.jsonl"),
+    `${line({ t: "2026-11-01T00:00:00Z", tool: "take_snapshot", chars: 4000, ms: 100 })}\n`,
+  );
+  await writeFile(
+    path.join(dir, "usage.jsonl"),
+    [
+      line({
+        t: "2026-11-20T00:00:00Z",
+        tool: "take_snapshot",
+        chars: 400,
+        ms: 300,
+      }),
+      line({
+        t: "2026-11-20T00:00:01Z",
+        tool: "take_screenshot",
+        chars: 80,
+        images: 1,
+        imageKB: 52.4,
+        ms: 90,
+        error: true,
+      }),
+      '{"tool": "cut',
+      "",
+    ].join("\n"),
+  );
+  const all = browserUsage(dir);
+  assert.equal(all.calls, 3);
+  assert.deepEqual(all.tools[0], {
+    tool: "take_snapshot",
+    calls: 2,
+    textTokens: 1100,
+    imageKB: 0,
+    avgMs: 200,
+    errors: 0,
+  });
+  assert.equal(all.tools[1].errors, 1);
+  assert.equal(all.imageKB, 52);
+  const recent = browserUsage(dir, {
+    days: 2,
+    now: Date.parse("2026-11-21T00:00:00Z"),
+  });
+  assert.equal(recent.calls, 2);
+});
+
+test("browser use firefox stores a dedicated profile under the Firefox capability", () => {
+  const store = memoryStore();
+  const result = useFirefox(store, { XDG_STATE_HOME: "/state" });
+  assert.equal(result.profile, path.join("/state", "ocean-firefox", "profile"));
+  assert.equal(
+    store.get("dev.ocean/firefox-devtools", "OCEAN_FIREFOX_PROFILE"),
+    result.profile,
+  );
+});
+
+test("the installed wrapper version is read from the capability's server record", async () => {
+  const serversRoot = await mkdtemp(path.join(os.tmpdir(), "ocean-browser-"));
+  assert.equal(installedWrapperVersion(serversRoot), undefined);
+  await writeFile(
+    mcpServerFile(serversRoot, "dev.ocean/chrome-devtools"),
+    JSON.stringify({
+      server: {
+        packages: [{ identifier: "ocean-browser-mcp", version: "0.3.0" }],
+      },
+    }),
+  );
+  assert.equal(installedWrapperVersion(serversRoot), "0.3.0");
 });

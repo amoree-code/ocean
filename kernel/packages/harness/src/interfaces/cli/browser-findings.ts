@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { mcpServerFile } from "@ocean/market/adapters/mcp-adapter.js";
 import { marketplacePaths } from "@ocean/market/install/default-marketplace.js";
@@ -18,6 +18,24 @@ export const BROWSER_CAPABILITIES = [
   "dev.ocean/browser",
 ];
 
+// chrome-devtools-mcp attaches with --autoConnect, which needs the inspect page's remote
+// debugging switch: Chromium 144 or later.
+export const MIN_AUTO_CONNECT_MAJOR = 144;
+
+// The Chromium major the browser last ran, from the `Last Version` file it keeps in its profile
+// root (Brave writes the Chromium version there too). No DevTools connection, so no prompt.
+export function browserMajorVersion(root: string): number | undefined {
+  try {
+    const major = Number.parseInt(
+      readFileSync(path.join(root, "Last Version"), "utf8"),
+      10,
+    );
+    return Number.isInteger(major) ? major : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export type BrowserFinding = {
   code: "BROWSER";
   severity: "OK" | "WARN";
@@ -33,6 +51,7 @@ export async function browserFindings(
     serversRoot?: string;
     profileRoot?: string;
     listening?: (portFile: string) => Promise<boolean>;
+    major?: (root: string) => number | undefined;
   } = {},
 ): Promise<BrowserFinding[]> {
   const serversRoot = options.serversRoot ?? marketplacePaths().mcpServers;
@@ -51,6 +70,12 @@ export async function browserFindings(
         keychainStore().get(BROWSER_CAPABILITY, BROWSER_PROFILE_VARIABLE),
     });
   const label = browserLabel(root);
+  const major = (options.major ?? browserMajorVersion)(root);
+  if (major !== undefined && major < MIN_AUTO_CONNECT_MAJOR)
+    return finding(
+      "WARN",
+      `${label} is on Chromium ${major}; attaching needs ${MIN_AUTO_CONNECT_MAJOR} or later: update the browser`,
+    );
   if (await probe(path.join(root, "DevToolsActivePort")))
     return finding(
       "OK",

@@ -1,0 +1,71 @@
+{
+  "kind": "mcp",
+  "name": "dev.ocean/firefox-devtools",
+  "description": "Control Firefox through Mozilla's Firefox MCP (WebDriver BiDi): tabs, navigation, clicks, forms, screenshots, console and network. By default it starts its own Firefox with a separate profile, never the owner's daily one; `ocean browser use firefox` keeps that profile between runs. CONNECT_EXISTING=true attaches to a Firefox the owner started with `--marionette --remote-debugging-port` instead, with that session's cookies and logins. On first use it downloads geckodriver from GitHub. The filesystem permission is declared for consent but not enforced at runtime, and the npm package is pinned by version, not by digest.",
+  "permissions": {
+    "filesystem": {
+      "read": ["/Applications/Firefox.app"],
+      "write": ["~/.local/state/ocean-firefox", "~/.cache/selenium"]
+    },
+    "network": [
+      "registry.npmjs.org",
+      "github.com",
+      "objects.githubusercontent.com",
+      "release-assets.githubusercontent.com",
+      "localhost",
+      "127.0.0.1"
+    ],
+    "env": [
+      "OCEAN_FIREFOX_PROFILE",
+      "CONNECT_EXISTING",
+      "MARIONETTE_PORT",
+      "FIREFOX_HEADLESS",
+      "TOOL_PRESET"
+    ],
+    "exec": ["npx"]
+  },
+  "server": {
+    "name": "dev.ocean/firefox-devtools",
+    "description": "Mozilla's Firefox MCP 0.11.0: drives Firefox over WebDriver BiDi and Marionette, in a separate profile unless told to attach to a running Firefox.",
+    "packages": [
+      {
+        "registryType": "npm",
+        "identifier": "@mozilla/firefox-mcp",
+        "version": "0.11.0",
+        "transport": { "type": "stdio" },
+        "packageArguments": [
+          {
+            "type": "named",
+            "name": "--profile-path",
+            "value": "{OCEAN_FIREFOX_PROFILE}",
+            "isRequired": false,
+            "description": "Folder for the dedicated Firefox profile; unset uses a fresh temporary one each run. Set with `ocean browser use firefox`."
+          }
+        ],
+        "environmentVariables": [
+          {
+            "name": "CONNECT_EXISTING",
+            "isRequired": false,
+            "description": "true attaches to a running Firefox started with --marionette --remote-debugging-port, instead of starting one."
+          },
+          {
+            "name": "MARIONETTE_PORT",
+            "isRequired": false,
+            "description": "Marionette port of that running Firefox (default 2828)."
+          },
+          {
+            "name": "FIREFOX_HEADLESS",
+            "isRequired": false,
+            "description": "true starts Firefox without a window."
+          },
+          {
+            "name": "TOOL_PRESET",
+            "isRequired": false,
+            "description": "slim, basic (default), developer (debugging, network, console, profiler) or all."
+          }
+        ]
+      }
+    ],
+    "_meta": { "dev.ocean": { "clientKey": "firefox-devtools" } }
+  }
+}
