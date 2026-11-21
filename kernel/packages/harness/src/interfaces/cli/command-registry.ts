@@ -144,6 +144,16 @@ import { configureClaudeCodeWrapper } from "../../application/integrations/claud
 import { repairEngineEntries } from "../../application/integrations/engine-entry-repair.js";
 import { autoSyncSkills } from "../../application/integrations/skill-auto-sync.js";
 import { syncSkillFilter } from "../../application/integrations/skill-filter.js";
+import {
+  buildSkillIndex,
+  loadSkillIndex,
+  PROMPT_HOOK_CLIENTS,
+  projectSignals,
+  ROUTE_THRESHOLD,
+  routerLine,
+  routeSkills,
+  skillRouterHook,
+} from "../../application/integrations/skill-router.js";
 import { selectProfileForTask } from "../../application/profiles/profile-suggestion.js";
 import {
   listSchedules,
@@ -922,6 +932,37 @@ async function commandHook(): Promise<void> {
     }
     return;
   }
+  if (action === "prompt") {
+    // Per-prompt skill router (T-325): names the skill the message calls for, or prints nothing.
+    // A failure is silent and exits 0, so a broken index never blocks the owner's prompt.
+    const flags = process.argv.slice(4);
+    const inline = flags.find((arg) => arg.startsWith("--client="));
+    const clientIndex = flags.indexOf("--client");
+    const client = inline
+      ? inline.slice("--client=".length)
+      : clientIndex >= 0
+        ? (flags[clientIndex + 1] ?? "")
+        : "claude";
+    if (!PROMPT_HOOK_CLIENTS.includes(client)) {
+      console.error(promptUsage);
+      process.exitCode = 1;
+      return;
+    }
+    try {
+      const raw = await readBoundedStdin();
+      const parsed: unknown = raw.trim() ? JSON.parse(raw) : {};
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        const output = await skillRouterHook(
+          parsed as Record<string, unknown>,
+          client,
+        );
+        if (output) console.log(JSON.stringify(output));
+      }
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+    }
+    return;
+  }
   if (action === "session-start") {
     const flags = process.argv.slice(4);
     if (flags.includes("--repair")) startBackgroundSync();
@@ -987,6 +1028,7 @@ async function commandHook(): Promise<void> {
   }
 }
 
+const promptUsage = `Usage: ocean hook prompt [--client ${PROMPT_HOOK_CLIENTS.join("|")}] (reads a hook payload from stdin)`;
 const sessionEndUsage = `Usage: ocean hook session-end [--client ${SESSION_END_CLIENTS.join("|")}] (reads a hook payload from stdin)`;
 const sessionStartUsage = `Usage: ocean hook session-start [--client ${SESSION_START_CLIENTS.join("|")}] [--repair]|pre-compact (reads a hook payload from stdin)|session-facts --client claude|codex --session <id> --transcript <path>`;
 
@@ -1320,9 +1362,57 @@ async function commandSkill(): Promise<void> {
       );
   } else if (action === "migrate") {
     console.log(JSON.stringify(await migrateLegacyLessons(), null, 2));
+  } else if (action === "route") {
+    // What the prompt hook would name for a message, with the near misses (T-325).
+    const args = process.argv.slice(4);
+    const value = (flag: string) => {
+      const at = args.indexOf(flag);
+      return at >= 0 ? args[at + 1] : undefined;
+    };
+    const valued = new Set(["--client", "--cwd"]);
+    const message = args
+      .filter((arg, i) => !arg.startsWith("--") && !valued.has(args[i - 1]))
+      .join(" ");
+    if (!message.trim()) {
+      console.error(
+        "Usage: ocean skill route <message> [--client claude|codex|gemini|qwen] [--cwd <dir>] [--rebuild] [--json]",
+      );
+      process.exitCode = 1;
+      return;
+    }
+    const index = args.includes("--rebuild")
+      ? await buildSkillIndex()
+      : await loadSkillIndex();
+    const result = routeSkills(index, message, {
+      signals: await projectSignals(value("--cwd") ?? process.cwd()),
+      client: value("--client") ?? "claude",
+    });
+    if (args.includes("--json"))
+      console.log(
+        JSON.stringify(
+          {
+            threshold: ROUTE_THRESHOLD,
+            skills: index.skills.length,
+            ...result,
+          },
+          null,
+          2,
+        ),
+      );
+    else {
+      console.log(
+        result.matches.length
+          ? routerLine(result.matches)
+          : `No skill above the threshold (${ROUTE_THRESHOLD}).`,
+      );
+      for (const item of result.candidates)
+        console.log(
+          `  ${item.score.toFixed(1).padStart(5)}  ${item.name}  [${item.why.join(", ")}]`,
+        );
+    }
   } else {
     console.error(
-      "Usage: ocean skill sync|doctor|list [status|id]|observe [session-id]|add|review <id> promoted|rejected|migrate",
+      "Usage: ocean skill sync|doctor|list [status|id]|observe [session-id]|add|review <id> promoted|rejected|migrate|route <message>",
     );
     process.exitCode = 1;
   }

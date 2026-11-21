@@ -3,6 +3,7 @@ import {
   copyClientSkills,
   retireCoreFromHub,
 } from "@ocean/market/skills/skill-hub.js";
+import { buildSkillIndex } from "./skill-router.js";
 
 export type SkillSyncSummary = {
   // Stale core-skill copies moved out of the hub into the archive (older hubs only).
@@ -52,6 +53,14 @@ export async function autoSyncSkills(home?: string): Promise<SkillSyncSummary> {
   } catch (error) {
     summary.failed.push(
       `core: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  // The skill router's index (T-325) picks up descriptions edited since the last session.
+  try {
+    await buildSkillIndex(home);
+  } catch (error) {
+    summary.failed.push(
+      `index: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
   return summary;

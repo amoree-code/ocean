@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+- feat(skills): skills fire on their own per message, in every client, without their descriptions in always-on context. A skill router indexes every installed skill (name, description, trigger phrases) at session start and scores each prompt deterministically (BM25, no model call), with the working directory's dependencies and files breaking ties; above the threshold, `ocean hook prompt` adds one line naming the SKILL.md to read, at most once per skill per session. Wired as UserPromptSubmit for Claude, Codex and Qwen and BeforeAgent for Gemini (Hermes and Cursor have no verified prompt hook). Skills hidden with `user-invocable-only` stay routable; only `off` removes them. `ocean skill route "<message>"` shows the match and scores (T-325)
+
 ## 2.14.0 (2026-11-21)
 
 - feat(tasks): task state follows its PRs. `ocean tasks sync [--all] [--dry-run]` reads the GitHub PR links in each task with `gh`: an open PR moves it to `in-qa`; once every linked PR is merged it goes through the `ocean tasks complete` gate to `done`, or stays `in-qa` with the reason (unticked work, missing sections, failed verification) — never a `done` without evidence. Session start runs it in the background for every project with tasks (#326)

@@ -93,6 +93,7 @@ test("Qwen and Cursor get start and end hooks in their own shapes; restore is by
       "cursor:SessionStart:change",
       "qwen:SessionEnd:change",
       "qwen:SessionStart:change",
+      "qwen:UserPromptSubmit:change",
     ]);
     const { batch } = await applyHooks({ env });
     const qwen = JSON.parse(await read(home, ".qwen/settings.json"));
@@ -117,6 +118,11 @@ test("Qwen and Cursor get start and end hooks in their own shapes; restore is by
     assert.match(
       qwen.hooks.SessionEnd[0].hooks[0].command,
       /hook session-end --client qwen$/,
+    );
+    // The skill router's per-prompt hook (T-325).
+    assert.match(
+      qwen.hooks.UserPromptSubmit[0].hooks[0].command,
+      /hook prompt --client qwen$/,
     );
     const cursor = JSON.parse(await read(home, ".cursor/hooks.json"));
     assert.equal(cursor.version, 1);
