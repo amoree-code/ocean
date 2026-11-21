@@ -188,7 +188,7 @@ test("the prompt hook injects one line per skill, once per session", async () =>
     assert.equal(first.hookSpecificOutput.hookEventName, "UserPromptSubmit");
     assert.match(
       first.hookSpecificOutput.additionalContext,
-      /"day-start" skill\. Read .*day-start\/SKILL\.md/,
+      /"day-start" skill\. Read .*day-start[\\/]SKILL\.md/,
     );
     assert.equal(await skillRouterHook(payload, "claude", home), null);
     const other = await skillRouterHook(
