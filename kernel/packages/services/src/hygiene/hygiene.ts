@@ -7,11 +7,11 @@ import {
 } from "@ocean/brain/memory/memory-audit.js";
 import { atomicWrite, parseFrontmatter } from "@ocean/core/shared/fs-utils.js";
 import {
-  DAILY_DIR,
   KNOWLEDGE_DIR,
   oceanPath,
   PERSONAL_DIR,
   PROJECTS_DIR,
+  REPORTS_DIR,
   SYSTEM_DIR,
 } from "@ocean/core/shared/paths.js";
 import { setFrontmatterFields } from "@ocean/loop/tasks/task-verification.js";
@@ -22,7 +22,7 @@ import { setFrontmatterFields } from "@ocean/loop/tasks/task-verification.js";
 // GitHub repo resolves — then stamps `last_verified` (all hold) and a word `confidence`
 // (high / low), and lists drifted records as proposed for archive. It never deletes and never
 // overwrites a numeric confidence (lessons and extracted facts own those). Every stamp is an
-// audited write, so drift does not flag it. One report per month in 01-daily/hygiene/.
+// audited write, so drift does not flag it. One report per month in 01-daily/reports/hygiene/.
 //
 // Drift compares each record's hash with last night's snapshot and lists the ones that changed
 // with no memory audit entry since then: edits that bypassed the audited write path.
@@ -132,7 +132,7 @@ export function stampFor(
 }
 
 export const hygieneFile = (month: string) =>
-  oceanPath(DAILY_DIR, "hygiene", `${month}.md`);
+  oceanPath(REPORTS_DIR, "hygiene", `${month}.md`);
 
 export async function runHygiene(options: {
   today: string;

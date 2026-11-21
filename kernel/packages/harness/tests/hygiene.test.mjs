@@ -174,7 +174,10 @@ test("runHygiene stamps verified and drifted records, audits each write, and rep
       await readHygieneHistory(),
     );
     const file = await writeHygieneReport("2026-11", text);
-    assert.equal(file, path.join(root, "01-daily", "hygiene", "2026-11.md"));
+    assert.equal(
+      file,
+      path.join(root, "01-daily", "reports", "hygiene", "2026-11.md"),
+    );
     assert.match(
       text,
       /\| 2026-10 \| 3 \| 3 \| 0 \| 0 \|\n\| 2026-11 \| 4 \| 2 \| 1 \| 1 \|/,

@@ -6,6 +6,7 @@ import {
   DAILY_DIR,
   oceanPath,
   PERSONAL_DIR,
+  REPORTS_DIR,
 } from "@ocean/core/shared/paths.js";
 import { listTasks } from "@ocean/loop/tasks/list-tasks.js";
 import { buildBrief, type FetchText } from "../brief/brief.js";
@@ -25,7 +26,8 @@ import {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const AHEAD_DAYS = 30;
-const LOOP_DAYS = 14;
+// Loops carry for three mornings; older ones stay in their session records.
+const LOOP_DAYS = 3;
 const EVENT =
   /\b(exam|deadline|due|interview|meeting|appointment|call|submit|test)\b|موعد|امتحان|مقابلة/i;
 const OPEN_STATES = new Set([
@@ -106,7 +108,7 @@ export async function upcoming(date: string): Promise<string[]> {
     .slice(0, 8);
 }
 
-// Unticked open loops from the last two weeks of notes, oldest first; ticking one in any note
+// Unticked open loops from the last three days of notes, oldest first; ticking one in any note
 // (`- [x]`) closes it everywhere.
 export async function openLoops(date: string): Promise<string[]> {
   const notes: { day: string; text: string }[] = [];
@@ -181,7 +183,7 @@ export async function prepareDay(options: {
     fetchText: options.fetchText,
   }).catch(() => null);
   // Items already in today's brief (an earlier run marked them seen) still lead the morning.
-  const briefFile = oceanPath(DAILY_DIR, "briefs", `${date}.md`);
+  const briefFile = oceanPath(REPORTS_DIR, "briefs", `${date}.md`);
   const earlier = (await readFile(briefFile, "utf8").catch(() => ""))
     .split("\n")
     .filter((line) => line.startsWith("- **"));
@@ -198,7 +200,7 @@ export async function prepareDay(options: {
   const hasFile = Boolean(brief?.file) || earlier.length > 0;
   const briefLines = [
     ...top,
-    ...(hasFile ? [`- Full brief: [${date}](briefs/${date}.md)`] : []),
+    ...(hasFile ? [`- Full brief: [${date}](reports/briefs/${date}.md)`] : []),
     ...(brief?.resurface ? [`- Look again: ${brief.resurface}`] : []),
     ...(options.news
       ? [`- ${options.news.replace(/\s+/g, " ").slice(0, 600)}`]

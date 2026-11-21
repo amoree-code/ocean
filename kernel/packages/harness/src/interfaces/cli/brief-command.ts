@@ -2,7 +2,7 @@ import { localDate } from "@ocean/core/shared/local-date.js";
 import { buildBrief } from "@ocean/services/brief/brief.js";
 
 // `ocean brief [--weekly] [--dry-run] [--date YYYY-MM-DD]` (T-314): what moved in what the owner
-// follows, written to 01-daily/briefs/.
+// follows, written to 01-daily/reports/briefs/.
 export async function runBriefCommand(args: string[]): Promise<void> {
   const at = args.indexOf("--date");
   const date = at >= 0 ? args[at + 1] : localDate();

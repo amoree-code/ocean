@@ -130,6 +130,8 @@ test("open loops carry forward until ticked; the morning block lists them with t
       ),
       ["- [ ] Ship the checkout page with new totals."],
     );
+    // Loops carry three mornings, then stay only in their record.
+    assert.deepEqual(await openLoops("2026-11-19"), []);
     await write(
       root,
       "04-projects/personal/ocean/tasks/T-1/task.md",
@@ -166,7 +168,10 @@ test("open loops carry forward until ticked; the morning block lists them with t
       note,
       /## Brief\n\n- \*\*Claude Code\*\* — \[v2\.1 released\]/,
     );
-    assert.match(note, /Full brief: \[2026-11-16\]\(briefs\/2026-11-16\.md\)/);
+    assert.match(
+      note,
+      /Full brief: \[2026-11-16\]\(reports\/briefs\/2026-11-16\.md\)/,
+    );
     assert.equal(plan.loops.length, 1);
     // A rerun replaces the block; a tick made in it is kept.
     await writeFile(

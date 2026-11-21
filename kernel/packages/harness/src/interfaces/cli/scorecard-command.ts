@@ -129,7 +129,7 @@ async function collect(): Promise<ScorecardInput> {
 }
 
 // `ocean scorecard [--json] [--write]` (T-318): Ocean's health numbers from real data; --write
-// also saves 01-daily/scorecard/YYYY-MM-DD.md.
+// also saves 01-daily/reports/scorecard/YYYY-MM-DD.md.
 export async function runScorecardCommand(args: string[]): Promise<void> {
   const unknown = args.filter((arg) => !["--json", "--write"].includes(arg));
   if (unknown.length) throw new Error(USAGE);

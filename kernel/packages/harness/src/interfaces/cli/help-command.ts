@@ -159,7 +159,7 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
     "ocean capture add <idea>|scan [session-id]|list [status]|promote <id> <target>|discard <id>",
   ],
   brief: [
-    "Write today's brief from your interests' feeds to 01-daily/briefs/ (high priority daily, all weekly).",
+    "Write today's brief from your interests' feeds to 01-daily/reports/briefs/ (high priority daily, all weekly).",
     "ocean brief [--weekly] [--dry-run] [--date YYYY-MM-DD]",
   ],
   interests: [
@@ -167,7 +167,7 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
     "ocean interests discover [--yes] | signals [--weeks N] [--yes] | decay [--weeks N] [--yes] | keep <name> | skip <name>",
   ],
   distill: [
-    "Distill a week (digest in 01-daily/weekly/, decisions and lessons as candidates), or review last month against goals.md (01-daily/monthly/).",
+    "Distill a week (digest in 01-daily/reports/weekly/, decisions and lessons as candidates), or review last month against goals.md (01-daily/reports/monthly/).",
     "ocean distill --week [--date YYYY-MM-DD] [--yes] | --month [--month-of YYYY-MM] [--yes]",
   ],
   harvest: [
@@ -179,7 +179,7 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
     "ocean rhythm [--yes]",
   ],
   upkeep: [
-    "Run the nightly jobs (doctor, telemetry, reindex, search eval, curator, scorecard), no model, and write the morning digest to 01-daily/digest/.",
+    "Run the nightly jobs (doctor, telemetry, reindex, search eval, curator, scorecard), no model, and write the morning digest to 01-daily/reports/digest/.",
     "ocean upkeep [--yes] [--if-due]",
   ],
   curator: [
@@ -195,7 +195,7 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
     "ocean failures [list] [--json] | open <id> <signature> --title <t> --mechanism <why> [--lesson <id>] [--rung <r>] | status <id> <status> [--by <mechanism>] | climb <id>",
   ],
   scorecard: [
-    "Print Ocean's health numbers from real data; --write saves 01-daily/scorecard/YYYY-MM-DD.md.",
+    "Print Ocean's health numbers from real data; --write saves 01-daily/reports/scorecard/YYYY-MM-DD.md.",
     "ocean scorecard [--json] [--write]",
   ],
   express: [

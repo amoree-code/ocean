@@ -2,10 +2,10 @@ import { mkdir, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { atomicWrite, parseFrontmatter } from "@ocean/core/shared/fs-utils.js";
 import {
-  DAILY_DIR,
   KNOWLEDGE_DIR,
   listProjectDirs,
   oceanPath,
+  REPORTS_DIR,
   SYSTEM_DIR,
 } from "@ocean/core/shared/paths.js";
 import { sessionTokens } from "@ocean/loop/runs/session-tokens.js";
@@ -448,7 +448,7 @@ export async function readSearchEval(): Promise<ScorecardInput["searchEval"]> {
 }
 
 export function scorecardFile(date: string): string {
-  return oceanPath(DAILY_DIR, "scorecard", `${date}.md`);
+  return oceanPath(REPORTS_DIR, "scorecard", `${date}.md`);
 }
 
 export async function writeScorecard(
