@@ -1,4 +1,11 @@
-import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  open,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 import { redactRuntimeText } from "@ocean/core/domain/redaction/redaction.js";
 import type {
@@ -19,7 +26,7 @@ import {
 } from "@ocean/core/shared/paths.js";
 import { findGitRoot } from "@ocean/core/shared/project-resolution.js";
 import type { LearnedSignal } from "./lesson-learning.js";
-import type { ModelNarrative } from "./model-narrative.js";
+import { isTrivialSession, type ModelNarrative } from "./model-narrative.js";
 import type { SessionDigest } from "./session-facts.js";
 
 // Same fallback title stamped on a session with no explicit title (see
@@ -70,6 +77,134 @@ async function uniqueFilename(
   return `${base}-${Date.now()}${ext}`;
 }
 
+// Blocks a client wraps around or slips in front of the user's words — system notes, IDE state,
+// slash-command echoes, background-task notices. Never the goal of a session (T-326).
+const WRAPPER_TAGS =
+  "system-reminder|task-notification|ide_[a-z_]+|command-[a-z-]+|local-command-[a-z-]+|browser_instruction|user-prompt-submit-hook";
+const WRAPPER_BLOCK = new RegExp(
+  `<(${WRAPPER_TAGS})\\b[^>]*>[\\s\\S]*?</\\1>`,
+  "gi",
+);
+const WRAPPER_START = new RegExp(`^<(${WRAPPER_TAGS})\\b`, "i");
+
+/** The user's own words in a message, or "" when it was only client wrapping. */
+export function withoutWrappers(text: string): string {
+  const stripped = text.replace(WRAPPER_BLOCK, " ").trim();
+  return WRAPPER_START.test(stripped) ? "" : stripped;
+}
+
+type SessionRecord = { file: string; text: string };
+
+const RECORD_HEAD_BYTES = 1024;
+
+async function recordHead(file: string): Promise<string> {
+  const handle = await open(file, "r").catch(() => null);
+  if (!handle) return "";
+  try {
+    const buffer = Buffer.alloc(RECORD_HEAD_BYTES);
+    const { bytesRead } = await handle.read(buffer, 0, RECORD_HEAD_BYTES, 0);
+    return buffer.subarray(0, bytesRead).toString("utf8");
+  } finally {
+    await handle.close();
+  }
+}
+
+/**
+ * The live record of one session in 01-daily/sessions/YYYY-MM/ (archive/ is history and is never
+ * rewritten). When an older duplicate exists, the digest record wins over a closeout one.
+ */
+export async function findSessionRecord(
+  sessionId: string,
+): Promise<SessionRecord | null> {
+  const root = oceanPath(DAILY_DIR, "sessions");
+  const needle = `session_id: ${JSON.stringify(sessionId)}`;
+  const months = (await readdir(root).catch(() => [] as string[]))
+    .filter((name) => /^\d{4}-\d{2}$/.test(name))
+    .sort()
+    .reverse();
+  const found: SessionRecord[] = [];
+  for (const month of months) {
+    const directory = path.join(root, month);
+    for (const name of (
+      await readdir(directory).catch(() => [] as string[])
+    ).sort()) {
+      if (!name.endsWith(".md")) continue;
+      const file = path.join(directory, name);
+      if (!(await recordHead(file)).split("\n").includes(needle)) continue;
+      found.push({ file, text: await readFile(file, "utf8") });
+    }
+  }
+  return (
+    found.find((record) => isDigestRecord(record.text)) ?? found[0] ?? null
+  );
+}
+
+// Records written before `source:` existed carry the chat summary's verification line instead.
+export function isDigestRecord(text: string): boolean {
+  return (
+    /^source: "digest"$/m.test(text) ||
+    text.includes("NOT PROVEN — summarized from a chat")
+  );
+}
+
+const PLACEHOLDER = /^(not stated\.?|no objective was captured\.?)$/i;
+
+/** A digest record read back into the digest it was written from. */
+export function recordDigest(text: string): SessionDigest {
+  const section = (heading: string) => {
+    const start = text.indexOf(`\n## ${heading}\n`);
+    if (start < 0) return "";
+    const body = text.slice(start + heading.length + 5);
+    const end = body.search(/\n## |\n---\n|\nRaw events:/);
+    return (end < 0 ? body : body.slice(0, end)).trim();
+  };
+  const prose = (heading: string) => {
+    const value = section(heading);
+    return PLACEHOLDER.test(value) ? "" : value;
+  };
+  const items = (heading: string) =>
+    section(heading)
+      .split("\n")
+      .filter((line) => line.startsWith("- "))
+      .map((line) => line.slice(2).trim())
+      .filter(Boolean);
+  return {
+    title: /^# (.+)$/m.exec(text)?.[1]?.trim() ?? "",
+    goal: prose("Goal"),
+    outcome: prose("Outcome"),
+    decisions: items("Decisions"),
+    fixes: items("Problems → fixes"),
+    learned: items("Learned"),
+    next: items("Next"),
+  };
+}
+
+const MERGED_ITEMS = 5;
+
+/**
+ * Two stretches of one conversation as one account: what it set out to do comes from the first,
+ * where it ended from the latest, and what remains to do only from the latest that said anything.
+ */
+export function mergeDigests(
+  earlier: SessionDigest,
+  later: SessionDigest,
+): SessionDigest {
+  const union = (a: string[], b: string[]) =>
+    [...new Set([...a, ...b])].slice(-MERGED_ITEMS);
+  return {
+    title: earlier.title || later.title,
+    goal: earlier.goal || later.goal,
+    outcome: later.outcome || earlier.outcome,
+    decisions: union(earlier.decisions, later.decisions),
+    fixes: union(earlier.fixes, later.fixes),
+    learned: union(earlier.learned, later.learned),
+    next: (later.next.length ? later.next : earlier.next).slice(
+      0,
+      MERGED_ITEMS,
+    ),
+  };
+}
+
 /**
  * One session record per session in 01-daily/sessions/YYYY-MM/ (T-314; was 00-inbox/brain-dump/),
  * separate from the machine-oriented kernel/bridge/sessions/summaries/ dump. Prefers
@@ -95,18 +230,42 @@ export async function writeBrainDump(input: {
 }): Promise<{ brainDumpPath: string } | null> {
   const { session, events, narrative, changedFiles, observations } = input;
 
+  // One record per session (T-326): the chat digest's record is the richer account, so it wins;
+  // a session that changed nothing and said nothing gets no record at all.
+  const existing = await findSessionRecord(session.sessionId);
+  if (existing && isDigestRecord(existing.text))
+    return {
+      brainDumpPath: path
+        .relative(oceanRoot(), existing.file)
+        .split(path.sep)
+        .join("/"),
+    };
+  if (!narrative && isTrivialSession(events, changedFiles)) return null;
+
+  // The first thing the user actually said, past any client wrapping.
   const workLog =
     narrative?.workLog ??
     (() => {
-      const objectiveEvent = events.find(
-        (event) =>
-          event.type === "user_input" || event.type === "resume_requested",
-      );
-      return safeText(objectiveEvent?.data ?? session.title, 200);
+      for (const event of events) {
+        if (event.type !== "user_input" && event.type !== "resume_requested")
+          continue;
+        const words = withoutWrappers(event.data);
+        if (words) return safeText(words, 200);
+      }
+      return safeText(session.title, 200);
     })();
 
   const hasRealProject = findGitRoot(session.workingDirectory) !== null;
   if (isGenericContent(workLog) && !hasRealProject) return null;
+
+  // Where the session ended: the assistant's last reply, else what it touched.
+  const lastReply = [...events]
+    .reverse()
+    .filter(
+      (event) => event.type === "provider_output" || event.type === "text",
+    )
+    .map((event) => safeText(withoutWrappers(event.data), 300))
+    .find(Boolean);
 
   const decision =
     narrative?.decision ??
@@ -142,9 +301,18 @@ export async function writeBrainDump(input: {
     session.status === "completed" && (input.exitCode ?? 0) === 0
       ? "completed"
       : "failed";
-  const title = isGenericContent(workLog)
-    ? project
-    : cleanTitle(workLog, project);
+  const title = !isGenericContent(workLog)
+    ? cleanTitle(workLog, project)
+    : lastReply
+      ? cleanTitle(lastReply, project)
+      : project;
+  const outcome =
+    status === "completed"
+      ? (lastReply ??
+        (changedFiles.length
+          ? `Changed ${changedFiles.length} file(s).`
+          : "Completed."))
+      : `Did not complete.${lastReply ? ` ${lastReply}` : ""}`;
 
   // A session record (T-314): flat frontmatter Obsidian can read, then fixed sections. The
   // narrative comes from one model call when there was one; otherwise from the events.
@@ -154,6 +322,7 @@ export async function writeBrainDump(input: {
     "type: session",
     `project: ${quote(project)}`,
     `provider: ${quote(session.provider)}`,
+    'source: "closeout"',
     `status: ${status}`,
     `session_id: ${quote(session.sessionId)}`,
     `date: ${date}`,
@@ -169,7 +338,7 @@ export async function writeBrainDump(input: {
     "",
     "## Outcome",
     "",
-    status === "completed" ? "Completed." : "Did not complete.",
+    outcome,
     ...(decision ? ["", "## Decisions", "", decision] : []),
     ...(problem ? ["", "## Problems → fixes", "", problem] : []),
     ...(observations?.length
@@ -183,12 +352,15 @@ export async function writeBrainDump(input: {
           ),
         ]
       : []),
-    "",
-    "## Verification",
-    "",
-    status === "completed" && (input.exitCode ?? 0) === 0
-      ? "NOT PROVEN — the session ended cleanly; no check is recorded here."
-      : `NOT PROVEN — exit code ${input.exitCode ?? "unknown"}.`,
+    // A clean exit proves nothing either way, so it says nothing; a failed one says how it ended.
+    ...(status === "failed"
+      ? [
+          "",
+          "## Verification",
+          "",
+          `NOT PROVEN — exit code ${input.exitCode ?? "unknown"}.`,
+        ]
+      : []),
     ...(changedFiles.length
       ? [
           "",
@@ -203,6 +375,17 @@ export async function writeBrainDump(input: {
     "",
     `Raw events: \`ocean session events ${session.sessionId}\``,
   ];
+
+  // A session closed out again (resumed, then ended) rewrites its own record.
+  if (existing) {
+    await writeFile(existing.file, `${lines.join("\n")}\n`, "utf8");
+    return {
+      brainDumpPath: path
+        .relative(oceanRoot(), existing.file)
+        .split(path.sep)
+        .join("/"),
+    };
+  }
 
   // 01-daily/sessions/YYYY-MM/, where the session-record template and Templater point.
   const directory = oceanPath(DAILY_DIR, "sessions", date.slice(0, 7));
@@ -269,9 +452,10 @@ export async function migrateBrainDumps(options: { apply: boolean }): Promise<{
   return { moved, skipped };
 }
 
-// A chat with no session in the store (Claude Desktop, an export: T-314) gets the same record, from
-// the digest its fact extraction returned — no model call of its own. One record per captured
-// stretch of the conversation, dated by its newest message.
+// A chat's record (Claude Desktop, an export, a Claude Code transcript: T-314) from the digest its
+// fact extraction returned — no model call of its own. One record per session (T-326): a later
+// stretch of the same conversation is merged into the record the first one wrote, and a thin
+// closeout record for the session is replaced by this richer one.
 export async function writeDigestRecord(input: {
   provider: string;
   sessionId: string;
@@ -280,8 +464,16 @@ export async function writeDigestRecord(input: {
   digest: SessionDigest;
   project?: string;
 }): Promise<{ path: string }> {
-  const { digest } = input;
-  const date = localDate(localMoment(input.endedAt));
+  const existing = await findSessionRecord(input.sessionId);
+  const earlier =
+    existing && isDigestRecord(existing.text)
+      ? recordDigest(existing.text)
+      : null;
+  const digest = earlier ? mergeDigests(earlier, input.digest) : input.digest;
+  const existingDate = existing
+    ? /^date: (\d{4}-\d{2}-\d{2})$/m.exec(existing.text)?.[1]
+    : undefined;
+  const date = existingDate ?? localDate(localMoment(input.endedAt));
   const time = localTime(localMoment(input.startedAt));
   const title = cleanTitle(
     safeText(digest.title || digest.goal, 400),
@@ -302,6 +494,7 @@ export async function writeDigestRecord(input: {
     "type: session",
     `project: ${quote(input.project ?? "")}`,
     `provider: ${quote(input.provider)}`,
+    'source: "digest"',
     "status: completed",
     `session_id: ${quote(input.sessionId)}`,
     `date: ${date}`,
@@ -321,21 +514,44 @@ export async function writeDigestRecord(input: {
     ...list("Decisions", digest.decisions),
     ...list("Problems → fixes", digest.fixes),
     ...list("Learned", digest.learned),
-    "",
-    "## Verification",
-    "",
-    "NOT PROVEN — summarized from a chat; nothing was run.",
     ...list("Next", digest.next),
     "",
   ];
-  const directory = oceanPath(DAILY_DIR, "sessions", date.slice(0, 7));
-  await mkdir(directory, { recursive: true });
-  const filename = await uniqueFilename(
-    directory,
-    `${date}-${time.replace(":", "")}-${slugify(title).length >= MIN_USEFUL_SLUG_LENGTH ? slugify(title) : input.provider}`,
-    ".md",
-  );
-  const file = path.join(directory, filename);
+  const slug =
+    slugify(title).length >= MIN_USEFUL_SLUG_LENGTH
+      ? slugify(title)
+      : input.provider;
+  let file: string;
+  if (earlier && existing) {
+    // A later stretch of the same chat: the record keeps its name, its day and its place.
+    file = existing.file;
+  } else if (existing) {
+    // The thin closeout record for this session: replaced in place, renamed after the real title.
+    const directory = path.dirname(existing.file);
+    const stamp = /^\d{4}-\d{2}-\d{2}-\d{4}/.exec(
+      path.basename(existing.file),
+    )?.[0];
+    await rm(existing.file, { force: true });
+    file = path.join(
+      directory,
+      await uniqueFilename(
+        directory,
+        `${stamp ?? `${date}-${time.replace(":", "")}`}-${slug}`,
+        ".md",
+      ),
+    );
+  } else {
+    const directory = oceanPath(DAILY_DIR, "sessions", date.slice(0, 7));
+    await mkdir(directory, { recursive: true });
+    file = path.join(
+      directory,
+      await uniqueFilename(
+        directory,
+        `${date}-${time.replace(":", "")}-${slug}`,
+        ".md",
+      ),
+    );
+  }
   await writeFile(file, `${lines.join("\n")}\n`, "utf8");
   return { path: path.relative(oceanRoot(), file).split(path.sep).join("/") };
 }

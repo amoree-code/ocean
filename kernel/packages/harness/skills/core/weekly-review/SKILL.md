@@ -10,7 +10,7 @@ category: core
 Take the owner from a full inbox to zero, one decision at a time. He decides; you prepare.
 
 1. Run `ocean distill --week` (dry run) and show what it would do; on his yes, run it with
-   `--yes`. Open the digest it wrote in `01-daily/weekly/`.
+   `--yes`. Open the digest it wrote in `01-daily/reports/weekly/`.
 2. Walk `ocean memory review list`, oldest first. For each candidate, show its title, source and
    proposed target in two lines, then ask: approve (`ocean memory review approve <id>`, with
    `--type <type>` or `--to <path>` when it has no target), edit, or reject. Never approve

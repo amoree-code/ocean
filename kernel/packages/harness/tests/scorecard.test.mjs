@@ -297,7 +297,7 @@ test("the 2026-11-18 baseline shape reproduces, then renders as table and markdo
     const file = await writeScorecard(rows, "2026-11-18");
     assert.equal(
       file,
-      path.join(root, "01-daily", "scorecard", "2026-11-18.md"),
+      path.join(root, "01-daily", "reports", "scorecard", "2026-11-18.md"),
     );
     const text = await readFile(file, "utf8");
     assert.equal(text, renderMarkdown(rows, "2026-11-18"));

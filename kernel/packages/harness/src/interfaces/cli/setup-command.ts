@@ -22,6 +22,8 @@ import {
   PERSONAL_DIR,
   projectDir,
   REGISTRY_DIR,
+  REPORT_KINDS,
+  REPORTS_DIR,
   SYSTEM_DIR,
   TEMPLATES_DIR,
   WORKSPACE_PROJECT_ID,
@@ -164,12 +166,13 @@ export type SetupOptions = {
 
 // The notes moved from 07-notes into 02-personal/notes. An older workspace's folder moves once,
 // whole; when both exist nothing is touched (the doctor names the leftover for the owner).
+const present = (file: string) =>
+  access(file).then(
+    () => true,
+    () => false,
+  );
+
 export async function moveLegacyNotes(): Promise<"moved" | "kept" | "none"> {
-  const present = (file: string) =>
-    access(file).then(
-      () => true,
-      () => false,
-    );
   const from = oceanPath(LEGACY_NOTES_DIR);
   const to = oceanPath(NOTES_DIR);
   if (!(await present(from))) return "none";
@@ -179,9 +182,27 @@ export async function moveLegacyNotes(): Promise<"moved" | "kept" | "none"> {
   return "moved";
 }
 
+// The generated reports moved from 01-daily/<kind>/ into 01-daily/reports/<kind>/. Each folder
+// moves once, whole; one that already exists at the new place is left for the owner.
+export async function moveReportFolders(): Promise<string[]> {
+  const moved: string[] = [];
+  for (const kind of REPORT_KINDS) {
+    const from = oceanPath(DAILY_DIR, kind);
+    const to = oceanPath(REPORTS_DIR, kind);
+    if (!(await present(from)) || (await present(to))) continue;
+    await mkdir(path.dirname(to), { recursive: true });
+    await rename(from, to);
+    moved.push(kind);
+  }
+  return moved;
+}
+
 export async function setup(options: SetupOptions = {}): Promise<void> {
   if ((await moveLegacyNotes()) === "moved")
     console.log(`Moved your notes: ${LEGACY_NOTES_DIR}/ → ${NOTES_DIR}/`);
+  const reports = await moveReportFolders();
+  if (reports.length)
+    console.log(`Moved reports into ${REPORTS_DIR}/: ${reports.join(", ")}`);
   await Promise.all(
     [...personalDirectories, `${projectDir(WORKSPACE_PROJECT_ID)}/tasks`].map(
       (directory) => mkdir(oceanPath(directory), { recursive: true }),

@@ -128,9 +128,9 @@ test("scorecardMoves lists only rows whose value changed, escaped pipes intact",
   assert.deepEqual(scorecardMoves(null, after), []);
 });
 
-test("previousScorecard picks the newest earlier day; digest is written to 01-daily/digest", async () => {
+test("previousScorecard picks the newest earlier day; digest is written to 01-daily/reports/digest", async () => {
   await withRoot(async (root) => {
-    const dir = path.join(root, "01-daily", "scorecard");
+    const dir = path.join(root, "01-daily", "reports", "scorecard");
     await mkdir(dir, { recursive: true });
     await writeFile(path.join(dir, "2026-11-17.md"), "old");
     await writeFile(path.join(dir, "2026-11-19.md"), "yesterday");
@@ -148,7 +148,10 @@ test("previousScorecard picks the newest earlier day; digest is written to 01-da
       hasPrevious: true,
     });
     const file = await writeDigest("2026-11-20", text);
-    assert.equal(file, path.join(root, "01-daily", "digest", "2026-11-20.md"));
+    assert.equal(
+      file,
+      path.join(root, "01-daily", "reports", "digest", "2026-11-20.md"),
+    );
     const saved = await readFile(file, "utf8");
     assert.match(
       saved,

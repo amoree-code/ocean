@@ -10,11 +10,12 @@ import {
   KNOWLEDGE_DIR,
   oceanPath,
   PERSONAL_DIR,
+  REPORTS_DIR,
 } from "@ocean/core/shared/paths.js";
 import { listMilestones } from "../express/express.js";
 
 // The weekly distill (T-314): a week's session records and briefs become one digest in
-// 01-daily/weekly/, the Decisions and Learned sections become knowledge candidates for review,
+// 01-daily/reports/weekly/, the Decisions and Learned sections become knowledge candidates for review,
 // each record read is marked `distilled: true`, and inbox captures marked processed move to
 // 00-inbox/archive/<week>/. Dry run unless `apply`. Nothing is written as knowledge directly.
 
@@ -107,7 +108,7 @@ export async function distillWeek(options: {
     );
     sessions.push({ file, text, title, status: fields.status ?? "" });
   }
-  const briefs = (await markdownIn(oceanPath(DAILY_DIR, "briefs"))).filter(
+  const briefs = (await markdownIn(oceanPath(REPORTS_DIR, "briefs"))).filter(
     (file) => inWeek(/(\d{4}-\d{2}-\d{2})/.exec(path.basename(file))?.[1]),
   );
   const captures: string[] = [];
@@ -149,7 +150,7 @@ export async function distillWeek(options: {
   const problems = pick("Problems → fixes");
   const next = pick("Next");
   const link = (file: string, label: string) =>
-    `[${label.replace(/[[\]]/g, "")}](../${path.relative(oceanPath(DAILY_DIR), file).split(path.sep).join("/")})`;
+    `[${label.replace(/[[\]]/g, "")}](${path.relative(oceanPath(REPORTS_DIR, "weekly"), file).split(path.sep).join("/")})`;
   const list = (
     items: { item: { file: string; title: string }; text: string }[],
   ) =>
@@ -157,7 +158,7 @@ export async function distillWeek(options: {
       ({ item, text }) =>
         `- ${link(item.file, item.title)}: ${text.replace(/\s+/g, " ").slice(0, 400)}`,
     );
-  const digestRelative = `${DAILY_DIR}/weekly/${week.label}.md`;
+  const digestRelative = `${REPORTS_DIR}/weekly/${week.label}.md`;
   result.digest = digestRelative;
   if (!options.apply) return result;
   const body = [
@@ -257,7 +258,7 @@ export async function reviewMonth(options: {
   const first = `${month}-01`;
   const last = `${month}-31`;
   const weeks: string[] = [];
-  for (const file of await markdownIn(oceanPath(DAILY_DIR, "weekly"))) {
+  for (const file of await markdownIn(oceanPath(REPORTS_DIR, "weekly"))) {
     const fields = parseFrontmatter(await readFile(file, "utf8"));
     if (fields.type !== "weekly") continue;
     // A week that straddles two months belongs to both reviews.
@@ -270,7 +271,7 @@ export async function reviewMonth(options: {
   const sessions = (await markdownIn(oceanPath(DAILY_DIR, "sessions", month)))
     .length;
   const goals = await goalNames();
-  const relative = `${DAILY_DIR}/monthly/${month}.md`;
+  const relative = `${REPORTS_DIR}/monthly/${month}.md`;
   const result: MonthResult = {
     month,
     review: relative,
@@ -294,7 +295,7 @@ export async function reviewMonth(options: {
   )
     return result;
   const link = (target: string, label: string) =>
-    `[${label.replace(/[[\]]/g, "")}](../${path.relative(oceanPath(DAILY_DIR), target).split(path.sep).join("/")})`;
+    `[${label.replace(/[[\]]/g, "")}](${path.relative(oceanPath(REPORTS_DIR, "monthly"), target).split(path.sep).join("/")})`;
   const body = [
     "---",
     "type: monthly",

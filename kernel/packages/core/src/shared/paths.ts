@@ -104,6 +104,17 @@ const brainArea = (area: string) => path.posix.join(BRAIN_PREFIX, area);
 export const PERSONAL_DIR = brainArea("02-personal");
 export const KNOWLEDGE_DIR = brainArea("05-knowledge");
 export const DAILY_DIR = brainArea("01-daily");
+// Generated reports (briefs, digest, scorecard, hygiene, weekly, monthly), one folder each, so
+// 01-daily/ itself holds only day notes, session records and their archive.
+export const REPORTS_DIR = path.posix.join(DAILY_DIR, "reports");
+export const REPORT_KINDS = [
+  "briefs",
+  "digest",
+  "scorecard",
+  "hygiene",
+  "weekly",
+  "monthly",
+] as const;
 export const INBOX_DIR = brainArea("00-inbox");
 export const TEMPLATES_DIR = brainArea("06-templates");
 // The owner's own notes (T-314): agents read and index them, and never write there. They sit
@@ -293,7 +304,7 @@ export const STORE_DIR = {
   notes: NOTES_DIR,
   // Session records and briefs (T-314), searchable beside memory and knowledge.
   sessions: `${DAILY_DIR}/sessions`,
-  briefs: `${DAILY_DIR}/briefs`,
+  briefs: `${REPORTS_DIR}/briefs`,
 } as const;
 
 // Brain-index records are "<store>/<path inside store>" ("memory/x.md", "knowledge/decisions/y.md").

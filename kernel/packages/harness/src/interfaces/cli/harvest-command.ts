@@ -12,8 +12,9 @@ const USAGE =
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // `ocean harvest` (T-314): a day's sessions from every AI client into that day's summary, their
-// decisions, fixes and lessons into 05-knowledge on their own (undo per day), then archiving after
-// 30 days. A dry run until --yes. The service runs `--pending --yes` once a day.
+// decisions, fixes and lessons into 05-knowledge on their own (undo per day), then archiving the
+// day's note after 7 days and its session records after 30. A dry run until --yes. The service
+// runs `--pending --yes` once a day.
 export async function runHarvestCommand(args: string[]): Promise<void> {
   const apply = args.includes("--yes");
   const [action] = args;
@@ -25,7 +26,7 @@ export async function runHarvestCommand(args: string[]): Promise<void> {
   }
   if (action === "archive") {
     const at = args.indexOf("--days");
-    const days = at >= 0 ? Number(args[at + 1]) : 30;
+    const days = at >= 0 ? Number(args[at + 1]) : 7;
     if (!(days > 0)) throw new Error(USAGE);
     const result = await archiveHarvested({ today: localDate(), days, apply });
     console.log(JSON.stringify(result, null, 2));

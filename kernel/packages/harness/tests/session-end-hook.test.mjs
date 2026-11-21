@@ -128,7 +128,12 @@ test("claudeSessionEndHook registers a desktop session from its transcript and r
         type: "assistant",
         message: {
           role: "assistant",
-          content: [{ type: "text", text: "Wired it up." }],
+          content: [
+            {
+              type: "text",
+              text: "Wired it up: the hook now writes the session record.",
+            },
+          ],
         },
       }),
     ].join("\n")}\n`,
@@ -165,7 +170,7 @@ test("claudeSessionEndHook registers a desktop session from its transcript and r
     "utf8",
   );
   assert.match(summary, /wire the brain-dump hook/);
-  assert.match(summary, /Wired it up\./);
+  assert.match(summary, /Wired it up: the hook now writes/);
 
   // The session record (T-314), in 01-daily/sessions/YYYY-MM/.
   const sessions = path.join(root, DAILY_DIR, "sessions");

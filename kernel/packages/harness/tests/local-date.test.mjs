@@ -66,6 +66,7 @@ test("a session closed after local midnight files its session record and summary
     });
     store.updateStatus("boundary-session", "running");
     store.appendEvent("boundary-session", "user_input", "Check the date boundary");
+    store.appendEvent("boundary-session", "provider_output", "The date boundary files under the local date, not UTC.");
     store.appendEvent("boundary-session", "process_exit", JSON.stringify({ exitCode: 0 }));
     store.updateStatus("boundary-session", "completed");
     await finalizeSession(store, "boundary-session", { exitCode: 0 });

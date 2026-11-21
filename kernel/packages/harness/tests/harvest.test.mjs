@@ -161,8 +161,19 @@ test("a day becomes one summary block and filed knowledge; a rerun changes nothi
     );
     assert.match(note, /My own plan\./);
     assert.match(note, /2 session\(s\): claude 1, codex 1\./);
-    assert.match(note, /### Problems → fixes\n\n- The checkout total drifted/);
-    assert.match(note, /## Open loops\n\n- \[ \] Ship the checkout page/);
+    // One journal entry per session, newest first; its Next steps are the open loops.
+    assert.match(
+      note,
+      /## Journal\n\n### codex · Checkout\n\n- Goal: Checkout\n- Outcome: Done\./,
+    );
+    assert.match(
+      note,
+      /### claude · Cart work\n\n- Goal: Cart work\n- Decided: Keep the cart in server state, not local storage\.\n- \[ \] Ship the checkout page with the new totals\. \(\[Cart work\]\(sessions\/2026-11\/a\.md\)\)\n- Record: \[Cart work\]/,
+    );
+    assert.doesNotMatch(
+      note,
+      /## Open loops|### Problems → fixes|### Sessions/,
+    );
     assert.match(note, /undo with `ocean harvest undo 2026-11-16`/);
     const decision = await readFile(
       path.join(root, "05-knowledge/decisions/cart-state.md"),
@@ -221,7 +232,7 @@ test("a day becomes one summary block and filed knowledge; a rerun changes nothi
   });
 });
 
-test("archive moves harvested days older than 30 days, keeps the rest", async () => {
+test("archive moves harvested notes after 7 days and their records after 30, keeps the rest", async () => {
   await withRoot(async (root) => {
     await write(
       root,
@@ -242,19 +253,27 @@ test("archive moves harvested days older than 30 days, keeps the rest", async ()
     await write(root, "01-daily/2026-09-02.md", "# day\n");
     await write(root, "01-daily/2026-09-03.md", "# a day with no sessions\n");
     await write(root, "01-daily/2026-11-10.md", "# day\n");
+    // Eleven days old: the note leaves after a week, its record stays until 30 days.
+    await write(
+      root,
+      "01-daily/sessions/2026-11/week.md",
+      record("2026-11-05", "claude", "Week", ""),
+    );
+    await write(root, "01-daily/2026-11-05.md", "# day\n");
     // Empty inbox folders go; one with a candidate stays.
     await mkdir(path.join(root, "00-inbox/candidates/2026-10-01"), {
       recursive: true,
     });
     await mkdir(path.join(root, "00-inbox/brain-dump"), { recursive: true });
     await write(root, "00-inbox/candidates/2026-11-15/x.md", "x\n");
-    for (const date of ["2026-09-01", "2026-11-10"])
+    for (const date of ["2026-09-01", "2026-11-05", "2026-11-10"])
       await harvestDay({ date, apply: true });
     const dry = await archiveHarvested({ today: "2026-11-16", apply: false });
     assert.deepEqual(dry, {
       notes: [
         "01-daily/archive/2026-09/2026-09-01.md",
         "01-daily/archive/2026-09/2026-09-03.md",
+        "01-daily/archive/2026-11/2026-11-05.md",
       ],
       sessions: ["01-daily/sessions/archive/2026-09/old.md"],
       emptied: ["00-inbox/candidates/2026-10-01", "00-inbox/brain-dump"],
@@ -326,5 +345,30 @@ test("legacy records are summarized but left unmarked for the skill; injected te
       await readFile(path.join(root, "01-daily/2026-11-16.md"), "utf8"),
       /\[Old dump\]/,
     );
+  });
+});
+
+test("the journal leaves out a bare status as an outcome", async () => {
+  await withRoot(async (root) => {
+    await write(
+      root,
+      "01-daily/sessions/2026-11/2026-11-16-0930-x.md",
+      record(
+        "2026-11-16",
+        "claude",
+        "Quick look",
+        "## Outcome\n\nCompleted.\n",
+      ),
+    );
+    await harvestDay({ date: "2026-11-16", apply: true });
+    const note = await readFile(
+      path.join(root, "01-daily/2026-11-16.md"),
+      "utf8",
+    );
+    assert.match(
+      note,
+      /### 09:30 · claude · Quick look\n\n- Goal: Quick look\n- Record:/,
+    );
+    assert.doesNotMatch(note, /Outcome: Completed/);
   });
 });

@@ -97,7 +97,7 @@ test("daily brief: high priority only, keywords narrow general feeds, ≤5, neve
     };
     const fetchText = async (url) => feeds[url] ?? null;
     const first = await buildBrief({ date: "2026-11-16", fetchText });
-    assert.equal(first.file, "01-daily/briefs/2026-11-16.md");
+    assert.equal(first.file, "01-daily/reports/briefs/2026-11-16.md");
     assert.deepEqual(first.failedSources, ["https://down.dev/feed"]);
     assert.deepEqual(
       first.items.map((item) => item.link),
@@ -163,7 +163,7 @@ test("a day with no new items still writes its Resurface line", async () => {
       fetchText: async () => null,
     });
     assert.equal(result.items.length, 0);
-    assert.equal(result.file, "01-daily/briefs/2026-11-16.md");
+    assert.equal(result.file, "01-daily/reports/briefs/2026-11-16.md");
     assert.match(
       await readFile(path.join(root, result.file), "utf8"),
       /## Resurface\n\n- 02-personal\/notes\/idea\.md/,

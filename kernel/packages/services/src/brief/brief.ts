@@ -3,11 +3,11 @@ import { mkdir, readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { atomicWrite, parseFrontmatter } from "@ocean/core/shared/fs-utils.js";
 import {
-  DAILY_DIR,
   KNOWLEDGE_DIR,
   NOTES_DIR,
   oceanPath,
   PERSONAL_DIR,
+  REPORTS_DIR,
   SYSTEM_DIR,
 } from "@ocean/core/shared/paths.js";
 
@@ -18,7 +18,7 @@ import {
 // interest, fifteen at most. No model and no web search here: the brief is the feed, filtered.
 
 export const INTERESTS_DIR = `${PERSONAL_DIR}/interests`;
-const BRIEFS_DIR = `${DAILY_DIR}/briefs`;
+const BRIEFS_DIR = `${REPORTS_DIR}/briefs`;
 const DAILY_LIMIT = 5;
 const WEEKLY_LIMIT = 15;
 const FETCH_TIMEOUT_MS = 10_000;

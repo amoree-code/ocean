@@ -186,3 +186,29 @@ test("setup moves an old 07-notes folder under 02-personal once, never over an e
     await stat(path.join(root, LEGACY_NOTES_DIR, "b.md"));
   });
 });
+
+test("setup moves the old report folders into 01-daily/reports once, never over an existing one", async () => {
+  const { moveReportFolders } = await import(
+    "../dist/interfaces/cli/setup-command.js"
+  );
+  await withRoot(async (root) => {
+    assert.deepEqual(await moveReportFolders(), []);
+    await mkdir(path.join(root, "01-daily", "briefs"), { recursive: true });
+    await writeFile(path.join(root, "01-daily", "briefs", "a.md"), "a\n");
+    await mkdir(path.join(root, "01-daily", "weekly"), { recursive: true });
+    await mkdir(path.join(root, "01-daily", "reports", "weekly"), {
+      recursive: true,
+    });
+    assert.deepEqual(await moveReportFolders(), ["briefs"]);
+    assert.equal(
+      await readFile(
+        path.join(root, "01-daily", "reports", "briefs", "a.md"),
+        "utf8",
+      ),
+      "a\n",
+    );
+    await assert.rejects(stat(path.join(root, "01-daily", "briefs")), /ENOENT/);
+    // Both places exist: nothing is touched.
+    await stat(path.join(root, "01-daily", "weekly"));
+  });
+});
