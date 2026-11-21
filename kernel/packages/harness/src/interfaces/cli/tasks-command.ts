@@ -28,6 +28,12 @@ import {
 } from "@ocean/loop/tasks/list-tasks.js";
 import { newTask } from "@ocean/loop/tasks/new-task.js";
 import { renumberTasks } from "@ocean/loop/tasks/renumber-tasks.js";
+import {
+  type PrLink,
+  type PrState,
+  syncTaskPrs,
+  type TaskPrSyncResult,
+} from "@ocean/loop/tasks/sync-task-prs.js";
 import { verifyAndRecord } from "@ocean/loop/tasks/task-verification.js";
 import { verificationReadiness } from "@ocean/loop/tasks/verification-readiness.js";
 import { taskReviewer } from "../../infrastructure/providers/task-reviewer.js";
@@ -65,6 +71,19 @@ function recordedVerification(id: string, root: string) {
     openStore: openSessionStore,
     reviewer: taskReviewer,
   });
+}
+
+// A linked PR's state, read with the owner's own `gh` login.
+async function githubPrState(link: PrLink): Promise<PrState> {
+  const { stdout } = await execFile(
+    "gh",
+    ["pr", "view", link.url, "--json", "state", "--jq", ".state"],
+    { timeout: 20_000 },
+  );
+  const state = stdout.trim();
+  if (state === "OPEN" || state === "MERGED" || state === "CLOSED")
+    return state;
+  throw new Error(`${link.url}: unexpected PR state "${state}"`);
 }
 
 // `ocean tasks list --pretty`: one aligned row per task, for a person rather than a tool.
@@ -228,6 +247,28 @@ export async function runTasksCommand(
     if (!outcome.passed) process.exitCode = 1;
     return;
   }
+  if (action === "sync") {
+    // Task state follows linked GitHub PRs: open → in-qa, all merged → done via the completion
+    // gate. Session start runs `--all` in the background.
+    const projects = args.includes("--all")
+      ? await projectsWithTasks()
+      : [projectId];
+    const apply = !args.includes("--dry-run");
+    const report: Record<string, TaskPrSyncResult> = {};
+    for (const project of projects) {
+      const root = resolveWithin(oceanPath(projectDir(project)), "tasks");
+      const outcome = await syncTaskPrs(root, {
+        apply,
+        fetchPr: githubPrState,
+        complete: (id, taskRoot) =>
+          completeTask(id, taskRoot, { verify: recordedVerification }),
+      });
+      if (outcome.changed.length || outcome.skipped.length)
+        report[project] = outcome;
+    }
+    console.log(JSON.stringify({ apply, projects: report }, null, 2));
+    return;
+  }
   if (action === "complete") {
     const id = args[0];
     if (!id) {
@@ -311,7 +352,7 @@ export async function runTasksCommand(
   }
   if (action !== "archive") {
     console.error(
-      "Usage: ocean tasks list [state] [--project <id>] [--pretty]|new <title> [--project <id>]|doctor [--all]|index [--write]|checkpoint <id> --note <text> [--next <text>]|verify <id>|complete <id>|claim <id> --by <name> [--paths a,b] [--force]|release <id> [--by <name>] [--force]|archive [--apply|--auto]|renumber --project <id> --prefix <PREFIX> [--write]",
+      "Usage: ocean tasks list [state] [--project <id>] [--pretty]|new <title> [--project <id>]|doctor [--all]|index [--write]|checkpoint <id> --note <text> [--next <text>]|verify <id>|complete <id>|sync [--all] [--dry-run]|claim <id> --by <name> [--paths a,b] [--force]|release <id> [--by <name>] [--force]|archive [--apply|--auto]|renumber --project <id> --prefix <PREFIX> [--write]",
     );
     process.exitCode = 1;
     return;

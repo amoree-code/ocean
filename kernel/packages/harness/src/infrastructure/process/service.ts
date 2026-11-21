@@ -121,6 +121,22 @@ export function startBackgroundSchedules(): void {
   }
 }
 
+// Task state follows linked GitHub PRs (open → in-qa, merged → done via the completion gate).
+// Session starts run it in the background; it needs `gh` and never blocks the session.
+export function startBackgroundTaskSync(): void {
+  if (process.env.OCEAN_NO_PULL_ON_START === "1") return;
+  try {
+    spawn(process.execPath, [process.argv[1], "tasks", "sync", "--all"], {
+      detached: true,
+      stdio: "ignore",
+    })
+      .on("error", () => {})
+      .unref();
+  } catch {
+    // the next session start runs it
+  }
+}
+
 export type ServiceRestart =
   | "restarted"
   | "not-installed"

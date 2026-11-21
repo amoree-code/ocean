@@ -46,7 +46,10 @@ authoritative there.
 
 States: `todo` · `active` · `in-qa` · `paused` · `blocked` · `done` · `cancelled`. Several
 being `active` is normal. `in-qa`: built and its PR is open, waiting on test or review; it
-moves to `done` once the PR merges and verification passed, or back to `active` on a fix. There is no current task and no stored pointer to one — the active
+moves to `done` once the PR merges and verification passed, or back to `active` on a fix.
+`ocean tasks sync` moves it by itself from the PR links in the task (session start runs it):
+an open PR → `in-qa`; every linked PR merged → `done` through the `tasks complete` gate, or it
+stays `in-qa` with the reason when the gate refuses. There is no current task and no stored pointer to one — the active
 set is derived from the records. A bare id resolves directly at
 `04-projects/<project>/tasks/<ID>/` (`ocean-paths` was a resolver in an earlier CLI
 generation and was consolidated away — it is not a real command anymore); if two

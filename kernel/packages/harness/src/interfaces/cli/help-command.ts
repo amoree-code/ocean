@@ -50,7 +50,7 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
   ],
   tasks: [
     "List, create, claim, checkpoint, verify and complete tasks.",
-    "ocean tasks list [state] [--project <id>] [--pretty]|new <title> [--project <id>]|doctor [--all]|index [--write]|checkpoint <id> --note <text> [--next <text>]|verify <id>|complete <id>|claim <id> --by <name> [--paths a,b] [--force]|release <id> [--by <name>] [--force]|archive [--apply|--auto]|renumber --project <id> --prefix <PREFIX> [--write]",
+    "ocean tasks list [state] [--project <id>] [--pretty]|new <title> [--project <id>]|doctor [--all]|index [--write]|checkpoint <id> --note <text> [--next <text>]|verify <id>|complete <id>|sync [--all] [--dry-run]|claim <id> --by <name> [--paths a,b] [--force]|release <id> [--by <name>] [--force]|archive [--apply|--auto]|renumber --project <id> --prefix <PREFIX> [--write]",
   ],
   loop: [
     "Start, inspect and stop task loops (repeated agent runs on one task).",
