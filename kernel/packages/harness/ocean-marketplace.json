@@ -176,7 +176,7 @@
         "path": "skills/core/use-browser"
       },
       "integrity": {
-        "sha256": "460fdc789084cbb07d320e12a9e96e803f02ee101f533c913530b71538d05b5b"
+        "sha256": "c63bfe03130634e262e838b30bf2d54188de69b1225b4a57a7d69be57dc5a8ad"
       },
       "spec": {
         "directory": "use-browser"
@@ -221,7 +221,7 @@
     {
       "kind": "mcp",
       "name": "dev.ocean/chrome-devtools",
-      "description": "Control the owner's real, signed-in Chromium browser (Chrome by default; Brave, Edge, Arc, Vivaldi, Opera or Chromium through `ocean browser use`) through the ocean-browser-mcp package (pinned Chrome DevTools MCP): tabs, navigation, clicks, forms, uploads, screenshots, console and network errors. Reads every open tab and acts inside any signed-in session of the attached browser, for every client wired to it. The browser asks to allow each new connection. The filesystem permission is declared for consent but not enforced at runtime, and the npm package is pinned by version, not by digest.",
+      "description": "Control the owner's real, signed-in Chromium browser (Chrome by default; Brave, Edge, Arc, Vivaldi, Opera or Chromium through `ocean browser use`) through the ocean-browser-mcp package (pinned Chrome DevTools MCP): tabs, navigation, clicks, forms, uploads, screenshots, console and network errors. Reads every open tab and acts inside any signed-in session of the attached browser, for every client wired to it. The browser asks to allow the connection once: one background connection (disconnected after 8 idle hours) serves every session; a pointer and a blue frame show which tab the agent is using. Cookies and auth headers are redacted, file:// pages are refused, and URL patterns can be blocked. Writes a usage log (tool names and sizes, no URLs), screenshot previews and oversized page snapshots under ~/.local/state/ocean-browser-mcp (kept 7 days). The filesystem permission is declared for consent but not enforced at runtime, and the npm package is pinned by version, not by digest.",
       "permissions": {
         "filesystem": {
           "read": [
@@ -232,6 +232,9 @@
             "~/Library/Application Support/Vivaldi",
             "~/Library/Application Support/com.operasoftware.Opera",
             "~/Library/Application Support/Arc"
+          ],
+          "write": [
+            "~/.local/state/ocean-browser-mcp"
           ]
         },
         "network": [
@@ -241,7 +244,15 @@
         ],
         "env": [
           "CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS",
-          "OCEAN_BROWSER_USER_DATA_DIR"
+          "OCEAN_BROWSER_USER_DATA_DIR",
+          "OCEAN_BROWSER_PROFILE",
+          "OCEAN_BROWSER_BLOCKED",
+          "OCEAN_BROWSER_CURSOR",
+          "OCEAN_BROWSER_PREVIEW",
+          "OCEAN_BROWSER_USAGE",
+          "OCEAN_BROWSER_SHARED",
+          "OCEAN_BROWSER_IDLE_MIN",
+          "OCEAN_BROWSER_SNAPSHOT_MAX_CHARS"
         ],
         "exec": [
           "npx"
@@ -256,16 +267,16 @@
         "path": "market/mcp/chrome-devtools"
       },
       "integrity": {
-        "sha256": "135cae4e9d1b2e6792670826f346d685251509fb9ac8c1ea5c83f2a9c972d064"
+        "sha256": "7ba422768c1d32a595f6a3cb77884c199978fc1e689e83c94d52708b867cdb8e"
       },
       "spec": {
         "name": "dev.ocean/chrome-devtools",
-        "description": "ocean-browser-mcp runs Chrome DevTools MCP 1.12.0 attached to the owner's running Chromium browser, with usage statistics and CrUX lookups off, so page URLs stay on this machine.",
+        "description": "ocean-browser-mcp runs Chrome DevTools MCP 1.13.0 attached to the owner's running Chromium browser, with usage statistics and CrUX lookups off, so page URLs stay on this machine.",
         "packages": [
           {
             "registryType": "npm",
             "identifier": "ocean-browser-mcp",
-            "version": "0.2.0",
+            "version": "0.3.0",
             "transport": {
               "type": "stdio"
             },
@@ -284,6 +295,46 @@
                 "default": "1",
                 "isRequired": false,
                 "description": "Skips upstream's update check (an npm child process and a registry fetch) on every start; the version is pinned."
+              },
+              {
+                "name": "OCEAN_BROWSER_PROFILE",
+                "isRequired": false,
+                "description": "Tool profile: standard (default), full, lean or slim. Set with `ocean browser profile <name>`."
+              },
+              {
+                "name": "OCEAN_BROWSER_BLOCKED",
+                "isRequired": false,
+                "description": "URL patterns the browser refuses while attached, comma- or newline-separated. Set with `ocean browser block`."
+              },
+              {
+                "name": "OCEAN_BROWSER_CURSOR",
+                "isRequired": false,
+                "description": "0 hides the agent pointer and frame."
+              },
+              {
+                "name": "OCEAN_BROWSER_PREVIEW",
+                "isRequired": false,
+                "description": "0 stops saving screenshot previews."
+              },
+              {
+                "name": "OCEAN_BROWSER_USAGE",
+                "isRequired": false,
+                "description": "0 stops the usage log."
+              },
+              {
+                "name": "OCEAN_BROWSER_SHARED",
+                "isRequired": false,
+                "description": "0 gives each session its own connection (and its own allow prompt)."
+              },
+              {
+                "name": "OCEAN_BROWSER_IDLE_MIN",
+                "isRequired": false,
+                "description": "Minutes without a call before the shared connection disconnects (default 480; 0 or never keeps it)."
+              },
+              {
+                "name": "OCEAN_BROWSER_SNAPSHOT_MAX_CHARS",
+                "isRequired": false,
+                "description": "Largest page snapshot sent whole, in characters (default 40000; 0 = no cap). Larger ones keep interactive elements and headings; the whole tree is saved to a file."
               }
             ]
           }
@@ -291,6 +342,101 @@
         "_meta": {
           "dev.ocean": {
             "clientKey": "chrome-devtools"
+          }
+        }
+      }
+    },
+    {
+      "kind": "mcp",
+      "name": "dev.ocean/firefox-devtools",
+      "description": "Control Firefox through Mozilla's Firefox MCP (WebDriver BiDi): tabs, navigation, clicks, forms, screenshots, console and network. By default it starts its own Firefox with a separate profile, never the owner's daily one; `ocean browser use firefox` keeps that profile between runs. CONNECT_EXISTING=true attaches to a Firefox the owner started with `--marionette --remote-debugging-port` instead, with that session's cookies and logins. On first use it downloads geckodriver from GitHub. The filesystem permission is declared for consent but not enforced at runtime, and the npm package is pinned by version, not by digest.",
+      "permissions": {
+        "filesystem": {
+          "read": [
+            "/Applications/Firefox.app"
+          ],
+          "write": [
+            "~/.local/state/ocean-firefox",
+            "~/.cache/selenium"
+          ]
+        },
+        "network": [
+          "registry.npmjs.org",
+          "github.com",
+          "objects.githubusercontent.com",
+          "release-assets.githubusercontent.com",
+          "localhost",
+          "127.0.0.1"
+        ],
+        "env": [
+          "OCEAN_FIREFOX_PROFILE",
+          "CONNECT_EXISTING",
+          "MARIONETTE_PORT",
+          "FIREFOX_HEADLESS",
+          "TOOL_PRESET"
+        ],
+        "exec": [
+          "npx"
+        ]
+      },
+      "version": "2.11.0",
+      "engines": {
+        "ocean": ">=2.11.0"
+      },
+      "source": {
+        "type": "path",
+        "path": "market/mcp/firefox-devtools"
+      },
+      "integrity": {
+        "sha256": "c0de223b6deefdf7df07edfa5037e540c8e02da85ee2d6e15c9da23f3bd5caca"
+      },
+      "spec": {
+        "name": "dev.ocean/firefox-devtools",
+        "description": "Mozilla's Firefox MCP 0.11.0: drives Firefox over WebDriver BiDi and Marionette, in a separate profile unless told to attach to a running Firefox.",
+        "packages": [
+          {
+            "registryType": "npm",
+            "identifier": "@mozilla/firefox-mcp",
+            "version": "0.11.0",
+            "transport": {
+              "type": "stdio"
+            },
+            "packageArguments": [
+              {
+                "type": "named",
+                "name": "--profile-path",
+                "value": "{OCEAN_FIREFOX_PROFILE}",
+                "isRequired": false,
+                "description": "Folder for the dedicated Firefox profile; unset uses a fresh temporary one each run. Set with `ocean browser use firefox`."
+              }
+            ],
+            "environmentVariables": [
+              {
+                "name": "CONNECT_EXISTING",
+                "isRequired": false,
+                "description": "true attaches to a running Firefox started with --marionette --remote-debugging-port, instead of starting one."
+              },
+              {
+                "name": "MARIONETTE_PORT",
+                "isRequired": false,
+                "description": "Marionette port of that running Firefox (default 2828)."
+              },
+              {
+                "name": "FIREFOX_HEADLESS",
+                "isRequired": false,
+                "description": "true starts Firefox without a window."
+              },
+              {
+                "name": "TOOL_PRESET",
+                "isRequired": false,
+                "description": "slim, basic (default), developer (debugging, network, console, profiler) or all."
+              }
+            ]
+          }
+        ],
+        "_meta": {
+          "dev.ocean": {
+            "clientKey": "firefox-devtools"
           }
         }
       }

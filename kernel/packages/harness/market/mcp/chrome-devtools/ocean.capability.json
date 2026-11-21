@@ -1,7 +1,7 @@
 {
   "kind": "mcp",
   "name": "dev.ocean/chrome-devtools",
-  "description": "Control the owner's real, signed-in Chromium browser (Chrome by default; Brave, Edge, Arc, Vivaldi, Opera or Chromium through `ocean browser use`) through the ocean-browser-mcp package (pinned Chrome DevTools MCP): tabs, navigation, clicks, forms, uploads, screenshots, console and network errors. Reads every open tab and acts inside any signed-in session of the attached browser, for every client wired to it. The browser asks to allow each new connection. The filesystem permission is declared for consent but not enforced at runtime, and the npm package is pinned by version, not by digest.",
+  "description": "Control the owner's real, signed-in Chromium browser (Chrome by default; Brave, Edge, Arc, Vivaldi, Opera or Chromium through `ocean browser use`) through the ocean-browser-mcp package (pinned Chrome DevTools MCP): tabs, navigation, clicks, forms, uploads, screenshots, console and network errors. Reads every open tab and acts inside any signed-in session of the attached browser, for every client wired to it. The browser asks to allow the connection once: one background connection (disconnected after 8 idle hours) serves every session; a pointer and a blue frame show which tab the agent is using. Cookies and auth headers are redacted, file:// pages are refused, and URL patterns can be blocked. Writes a usage log (tool names and sizes, no URLs), screenshot previews and oversized page snapshots under ~/.local/state/ocean-browser-mcp (kept 7 days). The filesystem permission is declared for consent but not enforced at runtime, and the npm package is pinned by version, not by digest.",
   "permissions": {
     "filesystem": {
       "read": [
@@ -12,23 +12,32 @@
         "~/Library/Application Support/Vivaldi",
         "~/Library/Application Support/com.operasoftware.Opera",
         "~/Library/Application Support/Arc"
-      ]
+      ],
+      "write": ["~/.local/state/ocean-browser-mcp"]
     },
     "network": ["registry.npmjs.org", "localhost", "127.0.0.1"],
     "env": [
       "CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS",
-      "OCEAN_BROWSER_USER_DATA_DIR"
+      "OCEAN_BROWSER_USER_DATA_DIR",
+      "OCEAN_BROWSER_PROFILE",
+      "OCEAN_BROWSER_BLOCKED",
+      "OCEAN_BROWSER_CURSOR",
+      "OCEAN_BROWSER_PREVIEW",
+      "OCEAN_BROWSER_USAGE",
+      "OCEAN_BROWSER_SHARED",
+      "OCEAN_BROWSER_IDLE_MIN",
+      "OCEAN_BROWSER_SNAPSHOT_MAX_CHARS"
     ],
     "exec": ["npx"]
   },
   "server": {
     "name": "dev.ocean/chrome-devtools",
-    "description": "ocean-browser-mcp runs Chrome DevTools MCP 1.12.0 attached to the owner's running Chromium browser, with usage statistics and CrUX lookups off, so page URLs stay on this machine.",
+    "description": "ocean-browser-mcp runs Chrome DevTools MCP 1.13.0 attached to the owner's running Chromium browser, with usage statistics and CrUX lookups off, so page URLs stay on this machine.",
     "packages": [
       {
         "registryType": "npm",
         "identifier": "ocean-browser-mcp",
-        "version": "0.2.0",
+        "version": "0.3.0",
         "transport": {
           "type": "stdio"
         },
@@ -47,6 +56,46 @@
             "default": "1",
             "isRequired": false,
             "description": "Skips upstream's update check (an npm child process and a registry fetch) on every start; the version is pinned."
+          },
+          {
+            "name": "OCEAN_BROWSER_PROFILE",
+            "isRequired": false,
+            "description": "Tool profile: standard (default), full, lean or slim. Set with `ocean browser profile <name>`."
+          },
+          {
+            "name": "OCEAN_BROWSER_BLOCKED",
+            "isRequired": false,
+            "description": "URL patterns the browser refuses while attached, comma- or newline-separated. Set with `ocean browser block`."
+          },
+          {
+            "name": "OCEAN_BROWSER_CURSOR",
+            "isRequired": false,
+            "description": "0 hides the agent pointer and frame."
+          },
+          {
+            "name": "OCEAN_BROWSER_PREVIEW",
+            "isRequired": false,
+            "description": "0 stops saving screenshot previews."
+          },
+          {
+            "name": "OCEAN_BROWSER_USAGE",
+            "isRequired": false,
+            "description": "0 stops the usage log."
+          },
+          {
+            "name": "OCEAN_BROWSER_SHARED",
+            "isRequired": false,
+            "description": "0 gives each session its own connection (and its own allow prompt)."
+          },
+          {
+            "name": "OCEAN_BROWSER_IDLE_MIN",
+            "isRequired": false,
+            "description": "Minutes without a call before the shared connection disconnects (default 480; 0 or never keeps it)."
+          },
+          {
+            "name": "OCEAN_BROWSER_SNAPSHOT_MAX_CHARS",
+            "isRequired": false,
+            "description": "Largest page snapshot sent whole, in characters (default 40000; 0 = no cap). Larger ones keep interactive elements and headings; the whole tree is saved to a file."
           }
         ]
       }

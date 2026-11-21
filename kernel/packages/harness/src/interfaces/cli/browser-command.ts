@@ -20,6 +20,13 @@ import {
 } from "@ocean/services/browser/browser-session.js";
 import { BrowserTaskRunner } from "@ocean/services/browser/browser-task-runner.js";
 import { PlaywrightBrowserProvider } from "../../infrastructure/providers/playwright-browser-provider.js";
+import {
+  browserBlocklist,
+  browserConnection,
+  browserProfile,
+  browserUsage,
+  useFirefox,
+} from "./browser-settings.js";
 
 // `ocean browser use <name|path>`: which Chromium browser `dev.ocean/chrome-devtools` attaches
 // to, stored on this machine (macOS keychain) and read by every client's launch. `use chrome`
@@ -36,9 +43,10 @@ async function runBrowserChoice(action: string, args: string[]) {
     });
   }
   const choice = args[0];
+  if (choice?.toLowerCase() === "firefox") return print(useFirefox(store));
   if (!choice)
     throw new Error(
-      `Usage: ocean browser use <${CHROMIUM_BROWSERS.map((each) => each.id).join("|")}|/absolute/profile/path>`,
+      `Usage: ocean browser use <${CHROMIUM_BROWSERS.map((each) => each.id).join("|")}|firefox|/absolute/profile/path>`,
     );
   const root = resolveBrowserChoice(choice);
   if (root === browserProfileRoot("chrome"))
@@ -58,6 +66,14 @@ export async function runBrowserCommand(
 ): Promise<void> {
   if (action === "use" || action === "attach")
     return runBrowserChoice(action, args);
+  if (action === "profile")
+    return print(browserProfile(keychainStore(), args[0]));
+  if (action === "block")
+    return print(browserBlocklist(keychainStore(), args[0], args[1]));
+  if (action === "usage")
+    return print(browserUsage(undefined, { days: numberFlag(args, "--days") }));
+  if (action === "status" || action === "stop")
+    return browserConnection(action);
   const store = await openSessionStore();
   const manager = new BrowserSessionManager(
     store,
@@ -253,6 +269,6 @@ function print(value: unknown): void {
 
 function usage(): void {
   console.error(
-    "Usage: ocean browser use|attach|detect|open|show|events|close|approve|navigate|read|observe|extract|click|type|replace-text|select|scroll|wait|upload|download|submit|run",
+    "Usage: ocean browser use|attach|profile|block|usage|status|stop|detect|open|show|events|close|approve|navigate|read|observe|extract|click|type|replace-text|select|scroll|wait|upload|download|submit|run",
   );
 }

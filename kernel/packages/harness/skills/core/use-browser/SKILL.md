@@ -1,7 +1,7 @@
 ---
 name: use-browser
 description: Open a supplied URL, understand the user's requested outcome from the live page, complete the browser task, and verify the result.
-version: 1.0.0
+version: 1.1.0
 category: core
 ---
 
@@ -9,23 +9,34 @@ category: core
 
 Use when the user gives a URL and asks the agent to complete, fill, test, submit, or otherwise operate the page.
 
-The skill defines the task and verification contract. When the user asks for their own
-signed-in Chrome, the routes are in `docs/browser-clients.md`: the marketplace
-`dev.ocean/chrome-devtools` entry (wired into every client by `ocean clients apply`), or Playwright MCP.
-Ocean's `ocean browser` capability remains the deterministic local backend for repeatable
-JSON task files.
+The skill defines the task and verification contract. Pick the backend in this order:
 
-Use Ocean's `ocean browser` capability through the terminal as the default browser backend. Do not switch to `claude-in-chrome`, an extension, or another browser connector unless the user explicitly asks for that backend. If Ocean cannot detect or open a browser, report the exact command result and stop; do not ask the user to install a different browser extension as the first workaround.
+1. **The `dev.ocean/chrome-devtools` MCP tools** (`list_pages`, `navigate_page`, `take_snapshot`,
+   `click`, `fill`, …), when the client has them: they drive the owner's own signed-in browser
+   (`ocean browser use` picks which one), and the owner sees a pointer and a blue "Ocean" frame
+   on the tab being driven. Routes and setup: `docs/browser-clients.md`.
+2. **`dev.ocean/firefox-devtools`**, only when the user asks for Firefox.
+3. **The `ocean browser` terminal capability** for repeatable JSON task files, or when the client
+   has no browser MCP tools.
+
+Do not switch to `claude-in-chrome`, an extension, or another browser connector unless the user explicitly asks for that backend. If the browser cannot be reached, report the exact error and stop (the usual cause: the browser is closed or its inspect page's remote debugging is off, and `ocean doctor` says which); do not ask the user to install a different browser extension as the first workaround.
+
+With the MCP tools:
+
+- Act on snapshot `uid`s. After the first full snapshot, later snapshots on the same page carry only the lines that changed, and unchanged `uid`s still work; call `take_snapshot` when you need the whole tree again. A very large page is cut to its interactive elements and headings, with the whole tree saved to the file the note names.
+- `list_pages` shows every tab; other replies show only the selected tab.
+- Take a screenshot only when the answer is visual (layout, RTL/Arabic rendering, charts, proof of a result). The reply carries a `Preview:` path the owner can open.
+- The browser asks the owner once to allow the connection; it is shared by every session. `ocean browser stop` ends it.
 
 ## Cost-aware execution
 
-Keep browser work bounded and token-efficient. Use one `observe` and one targeted `read` before acting, prefer `extract` over rereading the whole page, and keep page text bounded. Do not run exploratory shell scripts or repeated reload/undo cycles when a deterministic browser operation is unavailable. Use at most one retry for a reversible step and no automatic retry for submit, upload, purchase, message, or other consequential actions. If the live state is ambiguous after the bounded attempt, stop and report the blocker instead of spending more tokens guessing.
+Keep browser work bounded and token-efficient. With the terminal capability, use one `observe` and one targeted `read` before acting, prefer `extract` over rereading the whole page, and keep page text bounded. Do not run exploratory shell scripts or repeated reload/undo cycles when a deterministic browser operation is unavailable. Use at most one retry for a reversible step and no automatic retry for submit, upload, purchase, message, or other consequential actions. If the live state is ambiguous after the bounded attempt, stop and report the blocker instead of spending more tokens guessing.
 
 ## Workflow
 
 1. Treat the URL as the starting location, not as permission to perform every possible action on the site.
-2. Open or reconnect to an Ocean browser session with a persistent profile. Navigate to the URL.
-3. Inspect the live page with `observe`, `read`, and targeted `extract`. Identify the page's current state, the user's intended outcome, required fields, available controls, and a concrete success signal.
+2. With the MCP tools, `list_pages`, then `select_page` an existing tab or `new_page` for the URL; with the terminal, open or reconnect to an Ocean browser session with a persistent profile and navigate to the URL.
+3. Inspect the live page (`take_snapshot`; in the terminal, `observe`, `read`, and targeted `extract`). Identify the page's current state, the user's intended outcome, required fields, available controls, and a concrete success signal.
 4. Build the smallest step sequence that reaches the requested outcome. Prefer stable labels, roles, names, ids, and visible text. Use editor selectors for `contenteditable`, CodeMirror/Monaco containers, and `frame >>> editor` for same-origin iframe editors.
 5. For code-editor changes, use `ocean browser replace-text <session-id> <selector> <old-text> <new-text> --occurrence <n>` when replacing a specific token. Never simulate a precise replacement by clicking and typing into the middle of a Monaco/CodeMirror line. Verify the returned editor value and then re-read the page.
 6. Execute through Ocean browser operations or a bounded browser task file. Keep the task file small, cap retries at 0–1, and cap total steps to the minimum needed. After every state-changing step, verify the live post-condition. Stop if the page state contradicts the plan.
@@ -47,9 +58,9 @@ verify: <observable success signal>
 Use one bounded loop, verify every state-changing action, and stop when the
 success signal is present or a required human decision is reached.
 
-## Ocean execution shape
+## Ocean terminal execution shape
 
-Use the browser capability's session lifecycle and task runner:
+When using the terminal capability, use its session lifecycle and task runner:
 
 ```text
 ocean browser detect
