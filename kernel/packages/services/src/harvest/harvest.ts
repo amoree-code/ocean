@@ -40,6 +40,10 @@ import { section } from "../distill/distill.js";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_SESSION_MS = 8 * 60 * 60 * 1000;
 const MIN_ITEM = 25;
+// A journal line stays one line; a session lists at most this many Next steps.
+const JOURNAL_CHARS = 200;
+const JOURNAL_NEXT = 3;
+const PLACEHOLDER = /^(not stated|no objective was captured|none|n\/a)\.?$/i;
 const SAME_TITLE = 0.6;
 
 // Where each kind of harvested item is filed, and the record type it carries.
@@ -340,7 +344,6 @@ async function fileItem(
 
 function dayBlock(input: {
   sessions: DaySession[];
-  items: HarvestItem[];
   filed: Map<HarvestItem, string>;
   corrections: string[];
   minutes: Record<string, number>;
@@ -358,43 +361,56 @@ function dayBlock(input: {
       session.provider || "unknown",
       (byProvider.get(session.provider || "unknown") ?? 0) + 1,
     );
-  const kind = (k: Kind, label: string) => {
-    const items = input.items.filter((item) => item.kind === k);
-    return items.length
-      ? [
-          "",
-          `### ${label}`,
-          "",
-          ...items.map((item) => {
-            const filed = input.filed.get(item);
-            return `- ${item.text}${filed ? ` → \`${filed}\`` : ""} (${link(item.session)})`;
-          }),
-        ]
-      : [];
+  // One journal entry per session, newest first: what it was for, how it ended, what was
+  // decided, and its Next steps as open loops (carried forward a few mornings until ticked).
+  const line = (text: string) =>
+    text.length > JOURNAL_CHARS ? `${text.slice(0, JOURNAL_CHARS - 1)}…` : text;
+  // Goal and Outcome are prose: kept however short, unless a placeholder.
+  const first = (session: DaySession, heading: string) => {
+    const text = clean(section(session.text, heading));
+    return text && !PLACEHOLDER.test(text) && !containsKnownSecret(text)
+      ? text
+      : "";
   };
-  // Every Next a session left is an open loop: carried forward each morning until ticked.
-  const loops = input.sessions.flatMap((session) =>
-    sectionItems(session.text, "Next").map(
-      (item) => `- [ ] ${item} (${link(session)})`,
-    ),
-  );
+  const journal = [...input.sessions]
+    .sort((a, b) => b.relative.localeCompare(a.relative))
+    .flatMap((session) => {
+      const time = /(\d{4}-\d{2}-\d{2})-(\d{2})(\d{2})/.exec(
+        path.basename(session.file),
+      );
+      const head = [
+        time ? `${time[2]}:${time[3]}` : "",
+        session.provider,
+        session.title,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      const decisions = sectionItems(session.text, KINDS.decision.heading);
+      const goal = first(session, "Goal");
+      const outcome = first(session, "Outcome");
+      return [
+        "",
+        `### ${head}`,
+        "",
+        ...(goal ? [`- Goal: ${line(goal)}`] : []),
+        ...(outcome ? [`- Outcome: ${line(outcome)}`] : []),
+        ...(decisions.length
+          ? [
+              `- Decided: ${line(decisions[0])}${decisions.length > 1 ? ` (+${decisions.length - 1} more)` : ""}`,
+            ]
+          : []),
+        ...sectionItems(session.text, "Next")
+          .slice(0, JOURNAL_NEXT)
+          .map((item) => `- [ ] ${line(item)} (${link(session)})`),
+        `- Record: ${link(session)}`,
+      ];
+    });
   const minutes = Object.entries(input.minutes).sort((a, b) => b[1] - a[1]);
   return [
     "## Day summary",
     "",
     `${input.sessions.length} session(s): ${[...byProvider].map(([provider, n]) => `${provider} ${n}`).join(", ") || "none"}.`,
-    "",
-    "### Sessions",
-    "",
-    ...(input.sessions.length
-      ? input.sessions.map(
-          (session) =>
-            `- ${link(session)} — ${[session.project, session.provider, session.status].filter(Boolean).join(" · ")}`,
-        )
-      : ["- none"]),
-    ...kind("decision", "Decisions"),
-    ...kind("solution", "Problems → fixes"),
-    ...kind("discovery", "Learned"),
+    ...(journal.length ? ["", "## Journal", ...journal] : []),
     ...(input.captures.length
       ? ["", "### Captured", "", ...input.captures]
       : []),
@@ -404,7 +420,6 @@ function dayBlock(input: {
           `_Filed into knowledge on its own; undo with \`ocean harvest undo ${input.date}\`._`,
         ]
       : []),
-    ...(loops.length ? ["", "## Open loops", "", ...loops] : []),
     ...(input.corrections.length
       ? [
           "",
@@ -503,7 +518,6 @@ export async function harvestDay(options: {
   await mkdir(path.dirname(file), { recursive: true });
   const body = dayBlock({
     sessions,
-    items,
     filed,
     corrections,
     minutes,
@@ -570,25 +584,32 @@ export async function undoDay(
   return { removed, restored };
 }
 
-// After `days`, a harvested day leaves the working folders: the day's note to
-// 01-daily/archive/<YYYY-MM>/, its session records to 01-daily/sessions/archive/<YYYY-MM>/ (still
-// searched). Nothing is deleted, and nothing unharvested moves.
+// A harvested day leaves the working folders: after `days` (a week) its note goes to
+// 01-daily/archive/<YYYY-MM>/, so the root holds about the last seven days; after `sessionDays`
+// (a month) its session records go to 01-daily/sessions/archive/<YYYY-MM>/ (still searched).
+// Nothing is deleted, and nothing unharvested moves.
 export async function archiveHarvested(options: {
   today: string;
   days?: number;
+  sessionDays?: number;
   apply: boolean;
 }): Promise<{ notes: string[]; sessions: string[] }> {
-  const cutoff = new Date(
-    Date.parse(options.today) - (options.days ?? 30) * DAY_MS,
-  )
-    .toISOString()
-    .slice(0, 10);
+  const before = (days: number) =>
+    new Date(Date.parse(options.today) - days * DAY_MS)
+      .toISOString()
+      .slice(0, 10);
+  const cutoff = before(options.days ?? 7);
+  const sessionCutoff = before(options.sessionDays ?? 30);
   const moves: { from: string; to: string; kind: "notes" | "sessions" }[] = [];
   for (const file of await markdownIn(sessionsRoot())) {
     const fields = parseFrontmatter(
       (await readFile(file, "utf8")).slice(0, 4096),
     );
-    if (fields.type !== "session" || !fields.date || fields.date >= cutoff)
+    if (
+      fields.type !== "session" ||
+      !fields.date ||
+      fields.date >= sessionCutoff
+    )
       continue;
     if (!fields.harvested) continue;
     moves.push({

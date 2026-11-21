@@ -3,7 +3,11 @@ import { mkdtemp, readdir, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { writeBrainDump } from "@ocean/brain/memory/brain-dump.js";
+import {
+  withoutWrappers,
+  writeBrainDump,
+  writeDigestRecord,
+} from "@ocean/brain/memory/brain-dump.js";
 import { localDate, localTime } from "@ocean/core/shared/local-date.js";
 
 // The session's start on the machine's clock (T-297), as the file name stamps it.
@@ -182,9 +186,9 @@ test("mirrors task-observer signals under a Signals section when present, and om
   );
   assert.match(
     contentWithoutSignals,
-    /^---\ntype: session\nproject: ".*"\nprovider: ".*"\nstatus: (completed|failed)\nsession_id: "session-no-signals"\ndate: \d{4}-\d{2}-\d{2}\ntags: \[\]\ndistilled: false\n---\n/,
+    /^---\ntype: session\nproject: ".*"\nprovider: ".*"\nsource: "closeout"\nstatus: (completed|failed)\nsession_id: "session-no-signals"\ndate: \d{4}-\d{2}-\d{2}\ntags: \[\]\ndistilled: false\n---\n/,
   );
-  for (const heading of ["## Goal", "## Outcome", "## Verification"])
+  for (const heading of ["## Goal", "## Outcome"])
     assert.ok(contentWithoutSignals.includes(heading), heading);
 
   delete process.env.OCEAN_ROOT;
@@ -216,5 +220,187 @@ test("migrate-sessions moves brain-dump files into session records, never deleti
     "---\ntype: session\ndate: 2026-10-03\nstatus: legacy\ndistilled: false\n---\n\n# Fix login\n",
   );
   assert.deepEqual(await readdir(dump), ["notes.md"]);
+  delete process.env.OCEAN_ROOT;
+});
+
+// T-326: one record per session, with real words in it.
+
+const event = (type, data, eventId = 1) => ({
+  eventId,
+  sessionId: "s",
+  type,
+  data,
+  createdAt: "2026-09-21T15:52:00.000Z",
+});
+
+const digest = (overrides = {}) => ({
+  title: "Fix the login redirect",
+  goal: "Stop the login page looping back to itself.",
+  outcome: "Found the cookie path bug.",
+  decisions: ["Keep the session cookie host-only."],
+  fixes: [],
+  learned: [],
+  next: ["Write the regression test."],
+  ...overrides,
+});
+
+async function sessionFiles(root) {
+  const base = path.join(root, "01-daily", "sessions");
+  const months = await readdir(base).catch(() => []);
+  const files = [];
+  for (const month of months)
+    for (const name of await readdir(path.join(base, month)))
+      files.push(path.join(base, month, name));
+  return files;
+}
+
+test("strips client wrapping from a message and drops a message that is only wrapping", () => {
+  assert.equal(
+    withoutWrappers(
+      "<system-reminder>Linked sessions now</system-reminder> make it auto",
+    ),
+    "make it auto",
+  );
+  assert.equal(
+    withoutWrappers(
+      "<task-notification> <task-id>b47</task-id> <summary>Background command",
+    ),
+    "",
+  );
+  assert.equal(
+    withoutWrappers(
+      "<command-message>day-start</command-message><command-name>/day-start</command-name>",
+    ),
+    "",
+  );
+});
+
+test("a closeout record takes the first real message as goal and the last reply as outcome", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-brain-dump-"));
+  process.env.OCEAN_ROOT = root;
+
+  const result = await writeBrainDump({
+    session: baseSession({ sessionId: "real-words" }),
+    events: [
+      event(
+        "user_input",
+        "<task-notification> <task-id>x</task-id> <status>completed",
+        1,
+      ),
+      event("user_input", "make the task state follow its PR", 2),
+      event(
+        "provider_output",
+        "Looking at how tasks sync with pull requests today.",
+        3,
+      ),
+      event(
+        "provider_output",
+        "PR #325 is merged, so in-qa is now a real task state.",
+        4,
+      ),
+    ],
+    changedFiles: [],
+  });
+
+  const text = await readFile(path.join(root, result.brainDumpPath), "utf8");
+  assert.match(text, /## Goal\n\nmake the task state follow its PR\n/);
+  assert.match(
+    text,
+    /## Outcome\n\nPR #325 is merged, so in-qa is now a real task state\.\n/,
+  );
+  assert.doesNotMatch(text, /task-notification/);
+  assert.doesNotMatch(text, /## Verification/);
+  delete process.env.OCEAN_ROOT;
+});
+
+test("a session that changed nothing and said nothing gets no record", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-brain-dump-"));
+  process.env.OCEAN_ROOT = root;
+
+  const result = await writeBrainDump({
+    session: baseSession({ sessionId: "trivial" }),
+    events: [event("user_input", "hi"), event("provider_output", "Hi.", 2)],
+    changedFiles: [],
+  });
+
+  assert.equal(result, null);
+  assert.deepEqual(await sessionFiles(root), []);
+  delete process.env.OCEAN_ROOT;
+});
+
+test("two stretches of one chat merge into one record", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-brain-dump-"));
+  process.env.OCEAN_ROOT = root;
+  const at = "2026-09-21T15:52:00.000Z";
+
+  const first = await writeDigestRecord({
+    provider: "claude",
+    sessionId: "chat-1",
+    startedAt: at,
+    endedAt: at,
+    digest: digest(),
+  });
+  const second = await writeDigestRecord({
+    provider: "claude",
+    sessionId: "chat-1",
+    startedAt: "2026-09-21T17:10:00.000Z",
+    endedAt: "2026-09-21T17:10:00.000Z",
+    digest: digest({
+      title: "Regression test for login",
+      goal: "Add a test.",
+      outcome: "Redirect fixed and tested.",
+      decisions: ["Test against a real cookie jar."],
+      next: [],
+    }),
+  });
+
+  assert.equal(second.path, first.path);
+  assert.equal((await sessionFiles(root)).length, 1);
+  const text = await readFile(path.join(root, first.path), "utf8");
+  assert.match(text, /^source: "digest"$/m);
+  assert.match(text, /# Fix the login redirect\n/);
+  assert.match(
+    text,
+    /## Goal\n\nStop the login page looping back to itself\.\n/,
+  );
+  assert.match(text, /## Outcome\n\nRedirect fixed and tested\.\n/);
+  assert.match(
+    text,
+    /- Keep the session cookie host-only\.\n- Test against a real cookie jar\./,
+  );
+  // The later stretch left nothing to do, so the earlier Next stands.
+  assert.match(text, /## Next\n\n- Write the regression test\./);
+  assert.doesNotMatch(text, /NOT PROVEN/);
+  delete process.env.OCEAN_ROOT;
+});
+
+test("the chat digest replaces the thin closeout record, and a later closeout leaves it alone", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-brain-dump-"));
+  process.env.OCEAN_ROOT = root;
+  const session = baseSession({ sessionId: "both-writers" });
+  const events = [
+    event("user_input", "fix login"),
+    event("provider_output", "Looking into the login redirect loop now.", 2),
+  ];
+
+  const thin = await writeBrainDump({ session, events, changedFiles: [] });
+  const rich = await writeDigestRecord({
+    provider: "claude",
+    sessionId: "both-writers",
+    startedAt: "2026-09-21T15:52:00.000Z",
+    endedAt: "2026-09-21T15:52:00.000Z",
+    digest: digest(),
+  });
+
+  let files = await sessionFiles(root);
+  assert.equal(files.length, 1);
+  assert.notEqual(rich.path, thin.brainDumpPath);
+  assert.equal(path.basename(rich.path), `${stamp}-fix-the-login-redirect.md`);
+
+  const again = await writeBrainDump({ session, events, changedFiles: [] });
+  files = await sessionFiles(root);
+  assert.equal(files.length, 1);
+  assert.equal(again.brainDumpPath, rich.path);
+  assert.match(await readFile(files[0], "utf8"), /^source: "digest"$/m);
   delete process.env.OCEAN_ROOT;
 });

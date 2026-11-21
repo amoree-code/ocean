@@ -73,7 +73,7 @@ test("distill --week writes a digest, proposes decisions and lessons, marks reco
     );
     await write(
       root,
-      "01-daily/briefs/2026-11-18.md",
+      "01-daily/reports/briefs/2026-11-18.md",
       "---\ntype: brief\n---\n",
     );
     await write(
@@ -89,7 +89,7 @@ test("distill --week writes a digest, proposes decisions and lessons, marks reco
     const dry = await distillWeek({ date: "2026-11-19", apply: false });
     assert.deepEqual(dry, {
       week: "2026-W47",
-      digest: "01-daily/weekly/2026-W47.md",
+      digest: "01-daily/reports/weekly/2026-W47.md",
       sessions: ["01-daily/sessions/2026-11/a.md"],
       candidates: [],
       archived: ["00-inbox/archive/2026-W47/done.md"],
@@ -100,7 +100,7 @@ test("distill --week writes a digest, proposes decisions and lessons, marks reco
     assert.match(digest, /^---\ntype: weekly\nweek: 2026-W47\n/);
     assert.match(
       digest,
-      /\[Ship routing\]\(\.\.\/sessions\/2026-11\/a\.md\) — completed/,
+      /\[Ship routing\]\(\.\.\/\.\.\/sessions\/2026-11\/a\.md\) — completed/,
     );
     assert.match(
       digest,
@@ -209,12 +209,12 @@ test("the monthly review sets the month's weeks and milestones beside the active
     ]);
     await write(
       root,
-      "01-daily/weekly/2026-W40.md",
+      "01-daily/reports/weekly/2026-W40.md",
       "---\ntype: weekly\nfrom: 2026-09-28\nto: 2026-10-04\n---\n",
     );
     await write(
       root,
-      "01-daily/weekly/2026-W45.md",
+      "01-daily/reports/weekly/2026-W45.md",
       "---\ntype: weekly\nfrom: 2026-11-02\nto: 2026-11-08\n---\n",
     );
     await write(
@@ -228,14 +228,14 @@ test("the monthly review sets the month's weeks and milestones beside the active
       "---\ntype: milestone\ndate: 2026-10-20\nkind: certificate\nstatus: done\n---\n\n# NestJS certificate\n",
     );
     const dry = await reviewMonth({ month: "2026-10", apply: false });
-    assert.deepEqual(dry.weeks, ["01-daily/weekly/2026-W40.md"]);
+    assert.deepEqual(dry.weeks, ["01-daily/reports/weekly/2026-W40.md"]);
     assert.deepEqual(dry.milestones, ["NestJS certificate"]);
     assert.equal(dry.sessions, 1);
     await assert.rejects(
-      readFile(path.join(root, "01-daily/monthly/2026-10.md")),
+      readFile(path.join(root, "01-daily/reports/monthly/2026-10.md")),
     );
     await reviewMonth({ month: "2026-10", apply: true });
-    const file = path.join(root, "01-daily/monthly/2026-10.md");
+    const file = path.join(root, "01-daily/reports/monthly/2026-10.md");
     const text = await readFile(file, "utf8");
     assert.match(text, /^type: monthly$/m);
     assert.match(text, /^- \[ \] \*\*Back-end mastery \(NestJS\)\*\* — $/m);

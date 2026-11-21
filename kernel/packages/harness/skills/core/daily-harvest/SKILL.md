@@ -67,9 +67,9 @@ about other people, only what the work needs; never invent a detail.
 
 ## 3. Archive
 
-Run `ocean harvest archive --yes`: harvested days older than 30 days leave `01-daily/` for
-`01-daily/archive/<YYYY-MM>/` (notes) and `01-daily/sessions/archive/<YYYY-MM>/` (records, still
-searched). Nothing is deleted.
+Run `ocean harvest archive --yes`: a harvested day's note leaves `01-daily/` for
+`01-daily/archive/<YYYY-MM>/` after 7 days, and its session records go to
+`01-daily/sessions/archive/<YYYY-MM>/` (still searched) after 30. Nothing is deleted.
 
 ## 4. Report
 

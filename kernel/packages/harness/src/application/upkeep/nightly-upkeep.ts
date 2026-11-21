@@ -27,7 +27,7 @@ import {
 import { listSchedules } from "../scheduler/local-scheduler.js";
 
 // Nightly upkeep (T-322): each job is a child `ocean` process with a timeout; the results become
-// the morning digest in 01-daily/digest/. Once a day through `ocean rhythm` (ifDue), and the
+// the morning digest in 01-daily/reports/digest/. Once a day through `ocean rhythm` (ifDue), and the
 // monthly memory hygiene joins the first run of a month that has no report yet.
 
 const MINUTE = 60_000;

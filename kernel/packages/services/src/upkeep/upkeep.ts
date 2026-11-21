@@ -1,7 +1,7 @@
 import { mkdir, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { atomicWrite } from "@ocean/core/shared/fs-utils.js";
-import { DAILY_DIR, oceanPath } from "@ocean/core/shared/paths.js";
+import { oceanPath, REPORTS_DIR } from "@ocean/core/shared/paths.js";
 import { scorecardFile } from "../scorecard/scorecard.js";
 
 // Nightly upkeep (T-322): the deterministic jobs `ocean rhythm` runs once a day, and the morning
@@ -141,7 +141,7 @@ export async function previousScorecard(date: string): Promise<string | null> {
 }
 
 export const digestFile = (date: string) =>
-  oceanPath(DAILY_DIR, "digest", `${date}.md`);
+  oceanPath(REPORTS_DIR, "digest", `${date}.md`);
 
 export function renderDigest(input: {
   date: string;

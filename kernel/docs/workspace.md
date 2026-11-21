@@ -131,7 +131,7 @@ work-relevant facts only; nothing sensitive about other people.
 
 Interests live one per file in `02-personal/interests/` (`type: interest`, `priority`,
 `keywords`, `sources`). A source is an `https://` RSS/Atom feed or `github:<owner>/<repo>` (its
-releases). `ocean brief` writes `01-daily/briefs/<date>.md`: high-priority interests, five
+releases). `ocean brief` writes `01-daily/reports/briefs/<date>.md`: high-priority interests, five
 items at most, newest first; `--weekly` takes every interest, fifteen at most. A general feed
 is narrowed by the interest's keywords; a releases feed is taken whole. A seen-ledger in
 `bridge/state/brief/` keeps an item from coming back; a source that fails is listed, not fatal.
@@ -153,7 +153,7 @@ from one cheap model call when available, else from the session's events; trivia
 skipped. `ocean memory migrate-sessions [--yes]` moves older `00-inbox/brain-dump/` files there.
 
 `ocean distill --week [--yes]` closes a week (ISO, Monday–Sunday): one digest in
-`01-daily/weekly/<YYYY-Www>.md` linking the week's session records and briefs, each record's
+`01-daily/reports/weekly/<YYYY-Www>.md` linking the week's session records and briefs, each record's
 Decisions and Learned proposed as knowledge candidates, records marked `distilled: true`, and
 captures marked `status: processed` moved to `00-inbox/archive/<week>/`. The `/weekly-review`
 skill walks you from there to inbox zero. Search covers session records and briefs; a record
@@ -200,7 +200,7 @@ older than 30 days move to `01-daily/archive/<YYYY-MM>/` and `01-daily/sessions/
 candidates filed by topic, legacy records, corrections turned into rules, the system's own gaps.
 
 `ocean distill --month [--month-of YYYY-MM] [--yes]` writes last month's review to
-`01-daily/monthly/<YYYY-MM>.md`: the active goals from `02-personal/goals.md` as a checklist you
+`01-daily/reports/monthly/<YYYY-MM>.md`: the active goals from `02-personal/goals.md` as a checklist you
 answer, the milestones finished that month, its weekly digests and its session count. It is
 written once; a rerun never overwrites your answers.
 

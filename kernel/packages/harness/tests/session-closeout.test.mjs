@@ -188,13 +188,20 @@ test("still logs a generic-title session and its brain-dump when it has a real g
     resumeData: null,
   });
   store.updateStatus(sessionId, "running");
+  // A real reply: a session with no substantive output writes no record.
+  store.appendEvent(
+    sessionId,
+    "provider_output",
+    "Reviewed the project layout and fixed the failing build step.",
+  );
   store.appendEvent(sessionId, "process_exit", JSON.stringify({ exitCode: 0 }));
   store.updateStatus(sessionId, "completed");
 
   await finalizeSession(store, sessionId, { exitCode: 0 });
 
   const brainDump = await readBrainDump(root);
-  assert.match(brainDump, /^# project$/m);
+  // A generic title falls back to the reply, not the bare project name.
+  assert.match(brainDump, /^# Reviewed the project layout/m);
   assert.match(brainDump, /session_id: "closeout-session-real-project"/);
 
   store.close();
