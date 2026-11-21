@@ -165,7 +165,14 @@ timeline) and study plans (`type: study`, `02-personal/education/study/`, `study
 brief adds one **Resurface** line: the decision verified longest ago once that is more than 90
 days back, else your least recently touched note in `02-personal/notes/`. `ocean telemetry [--days N]
 [--yes]` finds errors that recur across sessions and providers whose sessions keep failing, and
-proposes each as a backlog line for review.
+proposes each as a backlog line for review. Each error carries a signature
+(`<command>/<error class>/<hash>`); `ocean failures open` gives one a record in
+`05-knowledge/failures/` that states its mechanism, fix and guardrail. Code alone changes a record's
+status (`open → fix-landing → absorbed → superseded-by <id>`, absorbing names the cheapest mechanism:
+doctor → template → code → skill-edit → new-skill), and each change appends a status-log line. When an
+absorbed signature comes back, telemetry proposes climbing its guardrail one rung (lesson → doctor →
+test), which `ocean failures climb` approves. The scorecard counts each signature's sessions over 14
+days and how many failures have stayed at zero that long.
 
 The daily note (`01-daily/<date>.md`) has one shape. Under the title, Ocean's morning block:
 `## Today` — Focus (open tasks), Coming up (dated lines in your records within 30 days), Open

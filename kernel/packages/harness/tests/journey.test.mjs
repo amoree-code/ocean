@@ -8,6 +8,7 @@ import { pickResurface } from "@ocean/services/brief/brief.js";
 import {
   analyzeSessions,
   errorShape,
+  failureSignature,
   proposeTelemetry,
 } from "@ocean/services/journey/telemetry.js";
 
@@ -44,7 +45,7 @@ test("telemetry groups the same error across sessions and flags failing provider
   const events = {
     s1: [{ type: "error", data: "spawn codex ENOENT /a/1" }],
     s2: [{ type: "error", data: "spawn codex ENOENT /b/2" }],
-    s3: [{ type: "provider_blocked", data: "spawn codex ENOENT /c/3" }],
+    s3: [{ type: "error", data: "spawn codex ENOENT /c/3" }],
     s4: [{ type: "text", data: "spawn codex ENOENT /d/4" }],
   };
   const findings = analyzeSessions(
@@ -55,7 +56,7 @@ test("telemetry groups the same error across sessions and flags failing provider
   assert.deepEqual(
     findings.map((f) => f.line),
     [
-      "Recurring error in 3 sessions: spawn codex ENOENT <path>",
+      `Recurring error in 3 sessions [${failureSignature("error", "spawn codex ENOENT /a/1")}]: spawn codex ENOENT <path>`,
       "codex: 3 of 4 sessions failed or never finished",
     ],
   );
