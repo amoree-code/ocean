@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.14.0
+
+- feat(tasks): task state follows its PRs. `ocean tasks sync [--all] [--dry-run]` reads the GitHub PR links in each task with `gh`: an open PR moves it to `in-qa`; once every linked PR is merged it goes through the `ocean tasks complete` gate to `done`, or stays `in-qa` with the reason (unticked work, missing sections, failed verification) — never a `done` without evidence. Session start runs it in the background for every project with tasks (#326)
+- feat(tasks): `ocean tasks sync [--all] [--dry-run]` moves a task's state from the GitHub PRs it links: an open PR → `in-qa`; every linked PR merged → `done` through the same completion gate as `ocean tasks complete` (or it stays `in-qa` with the reason). Session start runs it in the background for every project.
+
 ## 2.13.0
 
 - feat(tasks): new task state `in-qa` for work that is built with its PR open, waiting on test or review, so it no longer sits as `active`. The validator accepts it, the projects overview and day plan count it as open, and `ocean context` / `context.sh` list it beside active and blocked; the task policy and contract document it (`in-qa` → `done` once the PR merges, → `active` when a fix is needed) (#325)

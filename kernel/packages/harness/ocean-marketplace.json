@@ -5,9 +5,9 @@
     {
       "kind": "skill",
       "name": "dev.ocean.skills.business-logic",
-      "version": "2.13.0",
+      "version": "2.14.0",
       "engines": {
-        "ocean": ">=2.13.0"
+        "ocean": ">=2.14.0"
       },
       "source": {
         "type": "path",
@@ -23,9 +23,9 @@
     {
       "kind": "skill",
       "name": "dev.ocean.skills.catch-up",
-      "version": "2.13.0",
+      "version": "2.14.0",
       "engines": {
-        "ocean": ">=2.13.0"
+        "ocean": ">=2.14.0"
       },
       "source": {
         "type": "path",
@@ -41,9 +41,9 @@
     {
       "kind": "skill",
       "name": "dev.ocean.skills.core-thinking",
-      "version": "2.13.0",
+      "version": "2.14.0",
       "engines": {
-        "ocean": ">=2.13.0"
+        "ocean": ">=2.14.0"
       },
       "source": {
         "type": "path",
@@ -59,9 +59,9 @@
     {
       "kind": "skill",
       "name": "dev.ocean.skills.daily-harvest",
-      "version": "2.13.0",
+      "version": "2.14.0",
       "engines": {
-        "ocean": ">=2.13.0"
+        "ocean": ">=2.14.0"
       },
       "source": {
         "type": "path",
@@ -77,9 +77,9 @@
     {
       "kind": "skill",
       "name": "dev.ocean.skills.design-thinking",
-      "version": "2.13.0",
+      "version": "2.14.0",
       "engines": {
-        "ocean": ">=2.13.0"
+        "ocean": ">=2.14.0"
       },
       "source": {
         "type": "path",
@@ -95,9 +95,9 @@
     {
       "kind": "skill",
       "name": "dev.ocean.skills.graft",
-      "version": "2.13.0",
+      "version": "2.14.0",
       "engines": {
-        "ocean": ">=2.13.0"
+        "ocean": ">=2.14.0"
       },
       "source": {
         "type": "path",
@@ -113,9 +113,9 @@
     {
       "kind": "skill",
       "name": "dev.ocean.skills.loop",
-      "version": "2.13.0",
+      "version": "2.14.0",
       "engines": {
-        "ocean": ">=2.13.0"
+        "ocean": ">=2.14.0"
       },
       "source": {
         "type": "path",
@@ -131,9 +131,9 @@
     {
       "kind": "skill",
       "name": "dev.ocean.skills.memory-review",
-      "version": "2.13.0",
+      "version": "2.14.0",
       "engines": {
-        "ocean": ">=2.13.0"
+        "ocean": ">=2.14.0"
       },
       "source": {
         "type": "path",
@@ -149,9 +149,9 @@
     {
       "kind": "skill",
       "name": "dev.ocean.skills.session-handoff",
-      "version": "2.13.0",
+      "version": "2.14.0",
       "engines": {
-        "ocean": ">=2.13.0"
+        "ocean": ">=2.14.0"
       },
       "source": {
         "type": "path",
@@ -167,9 +167,9 @@
     {
       "kind": "skill",
       "name": "dev.ocean.skills.use-browser",
-      "version": "2.13.0",
+      "version": "2.14.0",
       "engines": {
-        "ocean": ">=2.13.0"
+        "ocean": ">=2.14.0"
       },
       "source": {
         "type": "path",
@@ -185,9 +185,9 @@
     {
       "kind": "skill",
       "name": "dev.ocean.skills.verification",
-      "version": "2.13.0",
+      "version": "2.14.0",
       "engines": {
-        "ocean": ">=2.13.0"
+        "ocean": ">=2.14.0"
       },
       "source": {
         "type": "path",
@@ -203,9 +203,9 @@
     {
       "kind": "skill",
       "name": "dev.ocean.skills.weekly-review",
-      "version": "2.13.0",
+      "version": "2.14.0",
       "engines": {
-        "ocean": ">=2.13.0"
+        "ocean": ">=2.14.0"
       },
       "source": {
         "type": "path",
@@ -258,9 +258,9 @@
           "npx"
         ]
       },
-      "version": "2.13.0",
+      "version": "2.14.0",
       "engines": {
-        "ocean": ">=2.13.0"
+        "ocean": ">=2.14.0"
       },
       "source": {
         "type": "path",
@@ -379,9 +379,9 @@
           "npx"
         ]
       },
-      "version": "2.13.0",
+      "version": "2.14.0",
       "engines": {
-        "ocean": ">=2.13.0"
+        "ocean": ">=2.14.0"
       },
       "source": {
         "type": "path",
@@ -445,9 +445,9 @@
       "kind": "mcp",
       "name": "dev.ocean/mcp-gateway",
       "description": "One MCP endpoint for every registered server: Ocean's own and those installed from the marketplace.",
-      "version": "2.13.0",
+      "version": "2.14.0",
       "engines": {
-        "ocean": ">=2.13.0"
+        "ocean": ">=2.14.0"
       },
       "source": {
         "type": "path",
@@ -489,9 +489,9 @@
       "kind": "mcp",
       "name": "dev.ocean/obsidian",
       "description": "Ocean's Obsidian vault bridge over MCP.",
-      "version": "2.13.0",
+      "version": "2.14.0",
       "engines": {
-        "ocean": ">=2.13.0"
+        "ocean": ">=2.14.0"
       },
       "source": {
         "type": "path",
@@ -533,9 +533,9 @@
       "kind": "mcp",
       "name": "dev.ocean/ocean",
       "description": "Ocean's own MCP server: workspace status, tasks, handoffs, sessions and the brain.",
-      "version": "2.13.0",
+      "version": "2.14.0",
       "engines": {
-        "ocean": ">=2.13.0"
+        "ocean": ">=2.14.0"
       },
       "source": {
         "type": "path",
@@ -587,9 +587,9 @@
           "npx"
         ]
       },
-      "version": "2.13.0",
+      "version": "2.14.0",
       "engines": {
-        "ocean": ">=2.13.0"
+        "ocean": ">=2.14.0"
       },
       "source": {
         "type": "path",
