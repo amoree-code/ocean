@@ -7,7 +7,7 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
-- feat(clients): Claude chat (Desktop, claude.ai, phone) now reaches Ocean through an account plugin instead of the admin-only organization folder: Ocean's repository is a plugin marketplace whose `ocean-memory` skill makes Claude call `brain_search` and answer from Ocean, onboarding's new `chat-plugin` step (and `ocean clients chat-plugin`) copies the marketplace name, opens Claude and lists the clicks, `ocean clients status` reads Claude Code's mirror of the account's marketplaces to say whether it is added, and the first memory tool result of each connection carries the authority line for hosts that drop `instructions` (T-328) (#PR)
+- feat(clients): Claude chat (Desktop, claude.ai, phone) now reaches Ocean through an account plugin instead of the admin-only organization folder: Ocean's repository is a plugin marketplace whose `ocean-memory` skill makes Claude call `brain_search` and answer from Ocean, onboarding's new `chat-plugin` step (and `ocean clients chat-plugin`) copies the marketplace name, opens Claude and lists the clicks, `ocean clients status` reads Claude Code's mirror of the account's marketplaces to say whether it is added, and the first memory tool result of each connection carries the authority line for hosts that drop `instructions` (T-328) (#333)
 
 ## 2.19.0 (2026-11-23)
 
