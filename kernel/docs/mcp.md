@@ -128,6 +128,14 @@ The server reads the private connection at `OCEAN_ROOT/bridge/integrations/obsid
 
 ## Wiring every client: `ocean clients` (T-296)
 
+`ocean clients status` (T-328) is the one view of whether each installed client really works with
+Ocean: **connected** (its `ocean` entry is current), **trigger** (`hook`, `plugin`, or only the
+server `instructions`) and **triggered** (hooks current, or — for an instructions-only client — a
+successful call in the ledger within `--days`, default 7, per mode, so Claude Desktop's chat and
+agent mode are judged apart), **captured** (its own memory is disabled, redirected, captured or
+harvested into Ocean) and the **last call** per mode. Ledger names no client claims are listed as
+unattributed rather than guessed. `--json` returns the same report.
+
 `ocean clients detect|plan` lists every AI client and IDE Ocean knows (installed ones, with the
 evidence), its tier (`supported`, `context-file`, `unsupported`, `unknown`), the pending change to
 its `ocean` entry, its native-memory policy, and the reason or fallback for clients that cannot
