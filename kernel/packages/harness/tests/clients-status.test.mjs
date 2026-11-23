@@ -173,3 +173,27 @@ test("the terminal view shows marks, ages and the summary line", () => {
   assert.match(text, /claude-desktop\s+✓\s+instructions\s+✓\s+✓\s+3d ago$/m);
   assert.match(text, /1 of 1 installed clients fully working/);
 });
+
+test("Claude Desktop says when its start plugin is not built, and is quiet once it is (T-328)", () => {
+  const desktop = plan("claude-desktop", { nativeMemory: "capture" });
+  const missing = rowOf(
+    buildClientStatus({
+      ...base,
+      plans: [desktop],
+      desktopPlugin: { built: false },
+    }),
+    "claude-desktop",
+  );
+  assert.ok(
+    missing.notes.some((note) => /ocean clients desktop-plugin/.test(note)),
+  );
+  const built = rowOf(
+    buildClientStatus({
+      ...base,
+      plans: [desktop],
+      desktopPlugin: { built: true },
+    }),
+    "claude-desktop",
+  );
+  assert.ok(!built.notes.some((note) => /desktop-plugin/.test(note)));
+});

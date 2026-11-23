@@ -2,6 +2,7 @@ import { readFile, realpath } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { buildOceanBootstrap } from "@ocean/context/context/resource-injection.js";
+import { MEMORY_AUTHORITY_LINE } from "@ocean/core/domain/mcp/memory-contract.js";
 import { recordIssuedAck } from "@ocean/core/shared/context-ack.js";
 import { truncateUtf8 } from "@ocean/core/shared/fs-utils.js";
 import { oceanRoot, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
@@ -170,7 +171,8 @@ export async function claudeSessionStartHook(
     }
   const bootstrap = buildOceanBootstrap(project, { rules: rules.length });
   await recordIssuedAck(bootstrap.ack);
-  const parts = [bootstrap.content];
+  // Beside the 256-byte bootstrap, never inside it: the authority claim is its own line.
+  const parts = [bootstrap.content, MEMORY_AUTHORITY_LINE];
   if (project.status === "bound" && rules.length)
     parts.push(projectRulesBlock(project.projectId, rules));
   // Fail visible: rules that cannot be read are said so, never silently dropped.

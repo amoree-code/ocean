@@ -320,10 +320,21 @@ what the user asks for explicitly ("remember this", "forget that").
 | Full | Claude Code, Codex | session-start hook | after the session ends, and before a compaction (Claude Code) | runs in code; every fact reviewed |
 | Hooks, no transcript | Gemini CLI, Qwen Code, Cursor agent | session-start hook | no; the session is recorded from metadata | start is in code; saving depends on the model calling `memory_propose` |
 | Plugin | OpenCode | plugin adds the start line | no session-end event | start is in code; saving depends on the model |
-| Watcher | Claude Desktop chat (macOS) | `instructions` and tool descriptions | after a conversation is quiet for 10 minutes, read from the app's local store | automatic, best effort: the store's format is undocumented; every fact reviewed |
+| Watcher | Claude Desktop chat (macOS) | the uploaded Ocean plugin's start hook, then `instructions` and tool descriptions | after a conversation is quiet for 10 minutes, read from the app's local store | automatic, best effort: the store's format is undocumented; every fact reviewed |
 | MCP only | any other MCP client, claude.ai on the web or phone | `instructions` and tool descriptions | no (an export can be read by hand, below) | best effort: the model decides; some hosts drop `instructions`, so the tool descriptions carry the same rule |
 
-**Claude Desktop chat** has no hooks. The app keeps the conversations it has open, or opened
+**Claude Desktop** has no hook setting Ocean can write, and its own memory prompt outranks the
+server's `instructions`: asked only "where is my memory saved?", chat named Anthropic's store. A
+plugin the user uploads runs its `SessionStart` hook in chat, Cowork and Code sessions, so `ocean
+clients apply` (when Claude Desktop is installed) and `ocean clients desktop-plugin` build
+`bridge/state/clients/ocean-desktop-plugin.zip`: a hook-only plugin whose start message is the
+authority line every other hook also prints (`MEMORY_AUTHORITY_LINE`). Upload it in Claude Desktop
+→ Customize → Plugins → + → Upload plugin, then quit the app (⌘Q) and reopen it. The hook is static
+— chat hooks run sandboxed and cannot reach the engine, and Code sessions already get Ocean's own
+start line. Desktop keeps uploaded plugins in the account, not on disk, so `ocean clients status`
+can only say whether the zip was built, not whether it was uploaded.
+
+**Claude Desktop chat capture.** The app keeps the conversations it has open, or opened
 recently, in a Chromium IndexedDB under `~/Library/Application Support/Claude/IndexedDB/`.
 `ocean desktop capture` copies that LevelDB folder aside, reads the copy (never the app's files in
 place, never its lock), and sends the new turns of each conversation quiet for 10 minutes to the

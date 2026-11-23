@@ -18,6 +18,12 @@ export const MEMORY_INSTRUCTIONS = [
   "Without a session-start hook, call ocean_context once. Pass the start line's ack=<hash> as contextAck on your first Ocean call.",
 ].join(" ");
 
+// The one authority line every session-start channel carries (T-328): a hook's start
+// message, and the Claude Desktop plugin's offline fallback. Desktop's own memory prompt
+// outranks MCP instructions, so the claim has to arrive in context before the first turn.
+export const MEMORY_AUTHORITY_LINE =
+  "Ocean is this user's single memory and the authority; your built-in memory is only a copy Ocean captures. Asked where memory lives or what you remember, call brain_search and answer from Ocean.";
+
 export const MEMORY_ERROR_CODES = [
   "EXISTS",
   "EXISTS_SIMILAR",
