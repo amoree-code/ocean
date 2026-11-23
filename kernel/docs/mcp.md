@@ -320,24 +320,32 @@ what the user asks for explicitly ("remember this", "forget that").
 | Full | Claude Code, Codex | session-start hook | after the session ends, and before a compaction (Claude Code) | runs in code; every fact reviewed |
 | Hooks, no transcript | Gemini CLI, Qwen Code, Cursor agent | session-start hook | no; the session is recorded from metadata | start is in code; saving depends on the model calling `memory_propose` |
 | Plugin | OpenCode | plugin adds the start line | no session-end event | start is in code; saving depends on the model |
-| Watcher | Claude Desktop chat (macOS) | the Ocean plugin's start hook (installed by Ocean), then `instructions` and tool descriptions | after a conversation is quiet for 10 minutes, read from the app's local store | automatic, best effort: the store's format is undocumented; every fact reviewed |
+| Watcher | Claude Desktop chat (macOS) | the Ocean plugin's `ocean-memory` skill, the authority line on the first memory result, and tool descriptions | after a conversation is quiet for 10 minutes, read from the app's local store | automatic, best effort: the store's format is undocumented; every fact reviewed |
 | MCP only | any other MCP client, claude.ai on the web or phone | `instructions` and tool descriptions | no (an export can be read by hand, below) | best effort: the model decides; some hosts drop `instructions`, so the tool descriptions carry the same rule |
 
-**Claude Desktop** has no hook setting Ocean can write, and its own memory prompt outranks the
-server's `instructions`: asked only "where is my memory saved?", chat named Anthropic's store. A
-plugin's `SessionStart` hook runs in chat and Cowork, so `ocean clients apply` (when Claude Desktop
-is installed) and `ocean clients desktop-plugin` install a hook-only plugin whose start message is
-the authority line every other hook also prints (`MEMORY_AUTHORITY_LINE`). It goes into Desktop's
-organization plugins folder (`/Library/Application Support/Claude/org-plugins/ocean` on macOS,
-`C:\Program Files\Claude\org-plugins\ocean` on Windows) with `installationPreference: "required"`,
-so Desktop installs it by itself at its next launch or new session — nothing to upload. The folder
-is admin-only, so the system asks for the admin password once; the plugin's version is a hash of
-its content, so an Ocean upgrade asks again only when the hook itself changes. `ocean clients
-status` reads that folder and notes when the plugin is missing or stale. Hooks from that folder do
-not run in Code sessions, which already get Ocean's own start line, and the hook is static because
-chat hooks run sandboxed and cannot reach the engine. Linux has no such folder, and a declined
-prompt leaves none: then Ocean writes `bridge/state/clients/ocean-desktop-plugin.zip` and says how
-to upload it.
+**Claude chat** (Desktop, claude.ai, phone) runs on Anthropic's servers. It gets Ocean's tools
+from the MCP entry Ocean writes, but it drops the server's `instructions`, runs no hooks, and its
+own memory prompt outranks both: asked only "where is my memory saved?", chat named Anthropic's
+store. Three things reach it instead:
+
+- **A skill.** An account plugin's skills load in chat, Cowork and Claude Code, and Claude loads
+  one by itself when a message matches its description. Ocean's public repository is a plugin
+  marketplace (`.claude-plugin/marketplace.json` at its root, the plugin in `kernel/plugins/ocean/`)
+  whose one skill, `ocean-memory`, tells Claude to call `brain_search` and answer from Ocean
+  whenever a message touches the user's own world, and that its built-in memory is a copy, not a
+  second store. A release updates it on every device.
+- **One step by the owner.** Adding a marketplace to a Claude account has no API, deep link or
+  config file. The onboarding step `chat-plugin` (and `ocean clients chat-plugin`) puts
+  `amoree-code/ocean` on the clipboard, opens Claude, and lists the clicks: Customize → Plugins →
+  Add → Add marketplace, paste, install Ocean. Skills need code execution on in Claude's settings.
+  Claude Code mirrors the account's marketplaces into `~/.claude/plugins/synced/*/.marketplaces.json`;
+  Ocean reads that mirror to tell whether the step is done, and `ocean clients status` notes when it
+  is not. Without Claude Code there is no mirror, so Ocean cannot tell and does not nag.
+- **The authority line in a tool result.** Hosts that drop `instructions` still show tool results
+  to the model, so the first `brain_search`, `brain_read` or `memory_read` result of each connection
+  carries `MEMORY_AUTHORITY_LINE` as a second text block.
+
+The plugin carries no hooks: chat does not run them, and Claude Code already gets Ocean's own.
 
 **Claude Desktop chat capture.** The app keeps the conversations it has open, or opened
 recently, in a Chromium IndexedDB under `~/Library/Application Support/Claude/IndexedDB/`.

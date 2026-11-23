@@ -9,12 +9,19 @@ import {
   type OnboardingAnswers,
   onboard,
 } from "@ocean/services/onboarding/onboarding.js";
+import {
+  CHAT_PLUGIN_STEPS,
+  type ChatPluginOpen,
+  chatPluginAdded,
+  OCEAN_MARKETPLACE,
+  openChatPluginSetup,
+} from "../clients/chat-plugin.js";
 import type { ClientPlan } from "../clients/clients.js";
 import type { HookPlan } from "../clients/hooks.js";
 import type { NativePlan } from "../clients/native.js";
 
 // Bump when a step is added; completed steps stay completed, only new ids run.
-export const ONBOARDING_VERSION = 4;
+export const ONBOARDING_VERSION = 5;
 
 export type OnboardingIO = {
   interactive: boolean;
@@ -61,10 +68,17 @@ export type OnboardingClients = {
   approved(): Promise<string[]>;
 };
 
+// Claude chat's Ocean plugin (T-328); the real ones unless a test passes its own.
+export type OnboardingChatPlugin = {
+  added(): boolean | undefined;
+  open(): ChatPluginOpen;
+};
+
 export type StepDependencies = {
   setup(): Promise<void>;
   wrappers: OnboardingWrappers;
   clients: OnboardingClients;
+  chatPlugin?: OnboardingChatPlugin;
 };
 
 async function yes(io: OnboardingIO, question: string): Promise<boolean> {
@@ -178,6 +192,53 @@ function connectStep(clients: OnboardingClients): OnboardingStep {
       io.say(
         '  In-app check (you): restart each client, then ask it to call `ocean_ping` and `brain_search` for "Ocean".',
       );
+      return "done";
+    },
+  };
+}
+
+// Claude chat (Desktop, claude.ai, phone) runs no hooks and drops MCP instructions, so Ocean's
+// rule reaches it as a skill in an account plugin (T-328). Adding a marketplace to an account
+// has no API: the one step left to the owner is a paste and a few clicks, set up here.
+export function chatPluginStep(
+  chat: OnboardingChatPlugin = {
+    added: () => chatPluginAdded(),
+    open: () => openChatPluginSetup(),
+  },
+): OnboardingStep {
+  return {
+    id: "chat-plugin",
+    title: "Claude chat (the Ocean plugin in your Claude account)",
+    optional: false,
+    async reopen() {
+      return chat.added() === false
+        ? "the Ocean plugin is not in your Claude account"
+        : null;
+    },
+    async run(io) {
+      if (chat.added() === true) {
+        io.say(
+          `  ${OCEAN_MARKETPLACE} is in your Claude account: every Claude chat asks Ocean first.`,
+        );
+        return "done";
+      }
+      io.say(
+        "  Claude chat runs on Anthropic's servers, so one step is yours: add Ocean's plugin to your Claude account.",
+      );
+      if (!io.interactive) {
+        for (const step of CHAT_PLUGIN_STEPS) io.say(`    ${step}`);
+        io.say("  Or run: ocean clients chat-plugin");
+        return "skipped";
+      }
+      const opened = chat.open();
+      if (opened.copied) io.say(`  ${OCEAN_MARKETPLACE} is on your clipboard.`);
+      if (opened.opened) io.say("  Claude is open.");
+      for (const step of CHAT_PLUGIN_STEPS) io.say(`    ${step}`);
+      if (!(await yes(io, "  Added it?"))) return "skipped";
+      if (chat.added() === false)
+        io.say(
+          "  Claude Code has not synced it yet; `ocean clients status` shows it once it has.",
+        );
       return "done";
     },
   };
@@ -313,6 +374,7 @@ export function buildSteps(deps: StepDependencies): OnboardingStep[] {
       },
     },
     connectStep(deps.clients),
+    chatPluginStep(deps.chatPlugin),
     guided("auth", "Provider authentication", [
       "Run: ocean auth",
       "Credentials stay in the OS keychain or environment, never in files.",

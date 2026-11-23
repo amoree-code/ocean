@@ -19,7 +19,10 @@ import {
   stagingDir,
 } from "@ocean/brain/memory/memory-paths.js";
 import { purgeMemoryCopies } from "@ocean/brain/memory/memory-trash.js";
-import { MEMORY_INSTRUCTIONS } from "@ocean/core/domain/mcp/memory-contract.js";
+import {
+  MEMORY_AUTHORITY_LINE,
+  MEMORY_INSTRUCTIONS,
+} from "@ocean/core/domain/mcp/memory-contract.js";
 import { atomicWrite } from "@ocean/core/shared/fs-utils.js";
 import {
   PROJECTS_DIR,
@@ -243,6 +246,35 @@ test("memory_write refuses every path outside the permanent roots", async () => 
       path: `${PERSONAL}/travel/visa.md`,
     });
     assert.equal(read.code, "HARDLINK");
+  });
+});
+
+test("the first memory result of a connection carries the authority line, once (T-328)", async () => {
+  await inWorkspace("authority", async (root) => {
+    await writeFile(
+      path.join(root, PERSONAL, "fact.md"),
+      "# Fact\n\nA fact.\n",
+    );
+    const raw = async (name, args = {}) =>
+      (
+        await handle({
+          jsonrpc: "2.0",
+          id: nextId++,
+          method: "tools/call",
+          params: { name, arguments: args },
+        })
+      ).result.content;
+    // A tool outside the memory set never carries it.
+    assert.equal((await raw("ocean_ping")).length, 1);
+    const first = await raw("memory_read", { path: `${PERSONAL}/fact.md` });
+    assert.equal(first.length, 2);
+    assert.deepEqual(first[1], { type: "text", text: MEMORY_AUTHORITY_LINE });
+    // The data block is unchanged JSON.
+    assert.ok(JSON.parse(first[0].text).sha256);
+    assert.equal(
+      (await raw("memory_read", { path: `${PERSONAL}/fact.md` })).length,
+      1,
+    );
   });
 });
 
