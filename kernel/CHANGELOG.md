@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+## 2.18.1 (2026-11-23)
+
 - fix(clients): `ocean clients status` treats Claude Desktop's two MCP names as one row with no modes, because current Desktop chat sends `local-agent-mode-ocean` too and was shown as silent for 10 days. The server instructions and `brain_search` now say Ocean is the authority over a client's own memory, which is only a copy (T-328) (#331)
 
 ## 2.18.0 (2026-11-23)
