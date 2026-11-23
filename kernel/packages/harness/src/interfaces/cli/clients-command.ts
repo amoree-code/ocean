@@ -27,6 +27,10 @@ import {
   verifyClient,
 } from "../../application/clients/clients.js";
 import {
+  desktopPluginInstalled,
+  installDesktopPlugin,
+} from "../../application/clients/desktop-plugin.js";
+import {
   applyDesktopWatcher,
   planDesktopWatcher,
   restoreDesktopWatcher,
@@ -52,7 +56,7 @@ import {
 } from "../../application/clients/status.js";
 
 const usage =
-  "Usage: ocean clients status [--json] [--days <n>] | detect|plan [--json] | apply [--client <id>…] [--yes] [--session-facts on|off] | verify [<id>…] | confirm <id>… --label in-app|headless|connected|blocked [--via <evidence>] [--reason <why>] | gateway [<id> on|off] [--default gateway|per-server] | allow|deny|unset <id> <server> | ledger | repair | restore [--batch <id>]";
+  "Usage: ocean clients status [--json] [--days <n>] | detect|plan [--json] | apply [--client <id>…] [--yes] [--session-facts on|off] | desktop-plugin | verify [<id>…] | confirm <id>… --label in-app|headless|connected|blocked [--via <evidence>] [--reason <why>] | gateway [<id> on|off] [--default gateway|per-server] | allow|deny|unset <id> <server> | ledger | repair | restore [--batch <id>]";
 
 export const SESSION_FACTS_QUESTION =
   "Capture durable facts from your sessions automatically? It costs one small model call per session, run by the client the session was in. Every fact goes to your review queue; nothing is saved without your approval, even with auto-approve on. [y/N] ";
@@ -108,6 +112,7 @@ export async function runClientsCommand(args: string[]): Promise<void> {
       plugins: await planOpencodePlugin(),
       native: await planNative(),
       watcher: await planDesktopWatcher(),
+      desktopPlugin: { installed: desktopPluginInstalled() },
       calls: await readCallLedger(),
       days,
     });
@@ -225,13 +230,35 @@ export async function runClientsCommand(args: string[]): Promise<void> {
         .results,
       sessionFacts: await sessionFactsAnswer(values("--session-facts")[0]),
     };
+    // Claude Desktop's start plugin (T-328): written to the folder Desktop installs from by
+    // itself, behind one admin password prompt.
+    const desktop = (await planClients()).find(
+      (plan) => plan.client === "claude-desktop",
+    );
+    const desktopPlugin =
+      desktop?.installed && (!selected || selected.includes("claude-desktop"))
+        ? await installDesktopPlugin()
+        : undefined;
     // After the session-facts answer: the watcher exists only for capture that is on (T-315).
     result = {
       ...appliedAll,
       watcher: (
         await applyDesktopWatcher({ clients: selected, batch: applied.batch })
       ).results,
+      ...(desktopPlugin ? { desktopPlugin } : {}),
     };
+  } else if (action === "desktop-plugin") {
+    // Installs the Claude Desktop start plugin, or says why it could not (T-328).
+    const done = await installDesktopPlugin();
+    if (!json) {
+      console.log(
+        done.status === "manual"
+          ? `not installed: ${done.reason}\n${done.file}\n${done.next}`
+          : `${done.status}: ${done.dir}${done.next ? `\n${done.next}` : ""}`,
+      );
+      return;
+    }
+    result = done;
   } else if (action === "verify") {
     const ids = rest.filter((arg) => !arg.startsWith("--"));
     const targets = ids.length

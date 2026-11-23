@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { OCEAN_BOOTSTRAP_MAX_BYTES } from "@ocean/context/context/resource-injection.js";
+import { MEMORY_AUTHORITY_LINE } from "@ocean/core/domain/mcp/memory-contract.js";
 import { PROJECTS_DIR, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import {
   claudeNativeHookStatus,
@@ -14,18 +15,39 @@ import {
   WORKTREE_WARNING_MAX_BYTES,
 } from "@ocean/loop/hooks/session-start-hook.js";
 
+// The authority line rides beside the bootstrap as its own line (T-328), never inside it.
+const AUTHORITY_BYTES = Buffer.byteLength(MEMORY_AUTHORITY_LINE) + 1;
+
 test("claudeSessionStartHook returns the documented Claude Code hookSpecificOutput shape", async () => {
   const outside = await mkdtemp(path.join(os.tmpdir(), "ocean-hook-outside-"));
   const result = await claudeSessionStartHook({ cwd: outside });
   assert.equal(result.hookSpecificOutput.hookEventName, "SessionStart");
   assert.ok(
     Buffer.byteLength(result.hookSpecificOutput.additionalContext) <=
-      OCEAN_BOOTSTRAP_MAX_BYTES,
+      OCEAN_BOOTSTRAP_MAX_BYTES + AUTHORITY_BYTES,
   );
   assert.match(
     result.hookSpecificOutput.additionalContext,
     /^ocean=1 project=/,
   );
+});
+
+test("every start message carries Ocean's authority line as its own second line (T-328)", async () => {
+  const outside = await mkdtemp(
+    path.join(os.tmpdir(), "ocean-hook-authority-"),
+  );
+  const text = (await claudeSessionStartHook({ cwd: outside }))
+    .hookSpecificOutput.additionalContext;
+  const [bootstrap, authority] = text.split("\n");
+  assert.match(bootstrap, /^ocean=1 /);
+  assert.ok(Buffer.byteLength(bootstrap) <= OCEAN_BOOTSTRAP_MAX_BYTES);
+  assert.doesNotMatch(bootstrap, /authority/);
+  assert.equal(authority, MEMORY_AUTHORITY_LINE);
+  assert.match(MEMORY_AUTHORITY_LINE, /brain_search/);
+  const cursor = await sessionStartHookForClient("cursor", {
+    workspace_roots: [outside],
+  });
+  assert.equal(cursor.additional_context.split("\n")[1], MEMORY_AUTHORITY_LINE);
 });
 
 test("claudeSessionStartHook reports unbound for a cwd with no Ocean binding, not a guess", async () => {
@@ -61,7 +83,8 @@ test("ocean hook session-start CLI: bounded stdout JSON, run from a cwd outside 
   const parsed = JSON.parse(result.stdout.trim());
   assert.equal(parsed.hookSpecificOutput.hookEventName, "SessionStart");
   assert.ok(
-    Buffer.byteLength(parsed.hookSpecificOutput.additionalContext) <= 256,
+    Buffer.byteLength(parsed.hookSpecificOutput.additionalContext) <=
+      256 + AUTHORITY_BYTES,
   );
   assert.doesNotMatch(
     parsed.hookSpecificOutput.additionalContext,
@@ -136,7 +159,8 @@ test("ocean hook session-start --client hermes emits Hermes' {context} shape onl
   assert.deepEqual(Object.keys(parsed), ["context"]);
   assert.match(parsed.context, /^ocean=1 /);
   assert.ok(
-    Buffer.byteLength(parsed.context) <= 256 + WORKTREE_WARNING_MAX_BYTES + 1,
+    Buffer.byteLength(parsed.context) <=
+      256 + AUTHORITY_BYTES + WORKTREE_WARNING_MAX_BYTES + 1,
   );
 });
 
@@ -400,9 +424,10 @@ test("oceanWorktreeWarning names the uncommitted changes and points at `ocean ta
     assert.ok(Buffer.byteLength(warning) <= WORKTREE_WARNING_MAX_BYTES);
 
     const result = await claudeSessionStartHook({ cwd: root });
-    const [bootstrap, line] =
+    const [bootstrap, authority, line] =
       result.hookSpecificOutput.additionalContext.split("\n");
     assert.ok(Buffer.byteLength(bootstrap) <= OCEAN_BOOTSTRAP_MAX_BYTES);
+    assert.equal(authority, MEMORY_AUTHORITY_LINE);
     assert.equal(line, warning);
   });
 });
@@ -464,8 +489,9 @@ test("a bound project with rules gets rules=N and the bounded rules block", asyn
         client === "hermes"
           ? result.context
           : result.hookSpecificOutput.additionalContext;
-      const [bootstrap, ...rest] = text.split("\n");
+      const [bootstrap, authority, ...rest] = text.split("\n");
       assert.match(bootstrap, /project=lab .* rules=2 ops=/, client);
+      assert.equal(authority, MEMORY_AUTHORITY_LINE, client);
       assert.ok(Buffer.byteLength(bootstrap) <= OCEAN_BOOTSTRAP_MAX_BYTES);
       assert.equal(
         rest.join("\n"),
@@ -484,7 +510,10 @@ test("the rules block stays bounded at the manifest limits", async () => {
   await withRoot(root, async () => {
     const result = await claudeSessionStartHook({ cwd: repo });
     const text = result.hookSpecificOutput.additionalContext;
-    assert.ok(Buffer.byteLength(text) <= OCEAN_BOOTSTRAP_MAX_BYTES + 2_400);
+    assert.ok(
+      Buffer.byteLength(text) <=
+        OCEAN_BOOTSTRAP_MAX_BYTES + AUTHORITY_BYTES + 2_400,
+    );
   });
 });
 
@@ -495,7 +524,9 @@ test("no rules means no token and no block", async () => {
       .hookSpecificOutput.additionalContext;
     assert.match(text, /project=lab/);
     assert.doesNotMatch(text, /rules=|Project rules/);
-    assert.ok(Buffer.byteLength(text) <= OCEAN_BOOTSTRAP_MAX_BYTES);
+    assert.ok(
+      Buffer.byteLength(text) <= OCEAN_BOOTSTRAP_MAX_BYTES + AUTHORITY_BYTES,
+    );
   });
 });
 

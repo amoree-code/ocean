@@ -445,9 +445,9 @@ installed(
     assert.equal(result.status, 0, result.stderr);
     const parsed = JSON.parse(result.stdout.trim());
     assert.equal(parsed.hookSpecificOutput.hookEventName, "SessionStart");
-    assert.ok(
-      Buffer.byteLength(parsed.hookSpecificOutput.additionalContext) <= 256,
-    );
+    // The bootstrap line is bounded; the authority line after it is a fixed constant (T-328).
+    const [bootstrap] = parsed.hookSpecificOutput.additionalContext.split("\n");
+    assert.ok(Buffer.byteLength(bootstrap) <= 256);
   },
 );
 
