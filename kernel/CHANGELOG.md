@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+## 2.17.0 (2026-11-23)
+
 - feat(clients): `ocean clients status [--json] [--days <n>]` shows one row per installed AI client: connected (its `ocean` entry is current), triggered (hooks current, or a real call in the ledger within the window, per mode — Desktop chat and Cowork are judged apart), captured (its own memory flows into Ocean) and the last call per mode. Ledger callers no client claims are listed rather than guessed (T-328) (#329)
 
 ## 2.16.0 (2026-11-21)
