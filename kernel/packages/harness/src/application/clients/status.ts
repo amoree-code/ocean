@@ -41,8 +41,8 @@ export type StatusInput = {
   plugins: OpencodePluginPlan[];
   native: NativePlan[];
   watcher: DesktopWatcherPlan[];
-  // Whether the Claude Desktop start plugin zip exists; its upload cannot be seen on disk.
-  desktopPlugin?: { built: boolean };
+  // Whether Desktop's organization plugins folder holds the current Ocean start plugin.
+  desktopPlugin?: { installed: boolean };
   calls: { ts: string; client: string; ok: boolean }[];
   now?: Date;
   days?: number;
@@ -161,10 +161,10 @@ export function buildClientStatus(input: StatusInput): ClientStatusReport {
       notes.push(`chat watcher ${watcher.status}`);
     if (
       plan.client === "claude-desktop" &&
-      input.desktopPlugin?.built === false
+      input.desktopPlugin?.installed === false
     )
       notes.push(
-        "start plugin not built: run `ocean clients desktop-plugin` and upload it",
+        "start plugin not installed: run `ocean clients desktop-plugin`",
       );
     if (plan.tier !== "supported" && plan.reason) notes.push(plan.reason);
 

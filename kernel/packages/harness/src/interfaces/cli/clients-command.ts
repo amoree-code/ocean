@@ -1,4 +1,3 @@
-import { existsSync } from "node:fs";
 import readline from "node:readline/promises";
 import {
   memorySettings,
@@ -28,8 +27,8 @@ import {
   verifyClient,
 } from "../../application/clients/clients.js";
 import {
-  desktopPluginFile,
-  writeDesktopPlugin,
+  desktopPluginInstalled,
+  installDesktopPlugin,
 } from "../../application/clients/desktop-plugin.js";
 import {
   applyDesktopWatcher,
@@ -113,7 +112,7 @@ export async function runClientsCommand(args: string[]): Promise<void> {
       plugins: await planOpencodePlugin(),
       native: await planNative(),
       watcher: await planDesktopWatcher(),
-      desktopPlugin: { built: existsSync(desktopPluginFile()) },
+      desktopPlugin: { installed: desktopPluginInstalled() },
       calls: await readCallLedger(),
       days,
     });
@@ -231,14 +230,14 @@ export async function runClientsCommand(args: string[]): Promise<void> {
         .results,
       sessionFacts: await sessionFactsAnswer(values("--session-facts")[0]),
     };
-    // Claude Desktop's start plugin (T-328): built here, uploaded by the user — Desktop keeps
-    // plugins in the account, so there is no file Ocean could write instead.
+    // Claude Desktop's start plugin (T-328): written to the folder Desktop installs from by
+    // itself, behind one admin password prompt.
     const desktop = (await planClients()).find(
       (plan) => plan.client === "claude-desktop",
     );
     const desktopPlugin =
       desktop?.installed && (!selected || selected.includes("claude-desktop"))
-        ? await writeDesktopPlugin()
+        ? await installDesktopPlugin()
         : undefined;
     // After the session-facts answer: the watcher exists only for capture that is on (T-315).
     result = {
@@ -249,13 +248,17 @@ export async function runClientsCommand(args: string[]): Promise<void> {
       ...(desktopPlugin ? { desktopPlugin } : {}),
     };
   } else if (action === "desktop-plugin") {
-    // Rebuilds the Claude Desktop start plugin and says how to upload it (T-328).
-    const built = await writeDesktopPlugin();
+    // Installs the Claude Desktop start plugin, or says why it could not (T-328).
+    const done = await installDesktopPlugin();
     if (!json) {
-      console.log(`${built.file}\n${built.next}`);
+      console.log(
+        done.status === "manual"
+          ? `not installed: ${done.reason}\n${done.file}\n${done.next}`
+          : `${done.status}: ${done.dir}${done.next ? `\n${done.next}` : ""}`,
+      );
       return;
     }
-    result = built;
+    result = done;
   } else if (action === "verify") {
     const ids = rest.filter((arg) => !arg.startsWith("--"));
     const targets = ids.length

@@ -1,50 +1,56 @@
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { cp, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { crc32 } from "node:zlib";
 import { MEMORY_AUTHORITY_LINE } from "@ocean/core/domain/mcp/memory-contract.js";
-import { enginePath, oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
+import { oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 
 // Claude Desktop's chat has no hook setting Ocean can write, and its own memory prompt outranks
 // the MCP server's instructions (T-328: asked alone "where is my memory saved?", chat named
-// Anthropic's store). A plugin the user uploads runs its SessionStart hook in chat, Cowork and
-// Code sessions alike (claude.com/docs/third-party/claude-desktop/extensions), so the plugin
-// carries the authority line into context before the first turn.
+// Anthropic's store). A plugin's SessionStart hook runs in chat and Cowork, so the plugin carries
+// the authority line into context before the first turn.
+//
+// Installed with no user step: Desktop syncs every plugin in its organization plugins folder at
+// launch and at each session start, and installs one whose manifest says
+// `installationPreference: "required"` (claude.com/docs/third-party/claude-desktop/extensions).
+// The folder is admin-only, so writing it asks for the admin password once — and again only
+// when the plugin's content changes, since its version is a hash of that content. Hooks from
+// that folder do not run in Code sessions, which already get Ocean's own start hook.
 //
 // Static on purpose: chat hooks run sandboxed (the probe's log write never landed on the host),
-// so the hook cannot reach the `ocean` engine, and in Code sessions Ocean's own hook already
-// gives the start line — calling the engine here would issue it twice. Desktop keeps uploaded
-// plugins in the account, not on disk, so Ocean cannot see whether one is installed.
+// so the hook cannot reach the `ocean` engine.
 
 export const DESKTOP_PLUGIN_NAME = "ocean";
 
-export function desktopPluginFile(): string {
+// Where Desktop reads organization plugins; Linux has none. OCEAN_DESKTOP_ORG_PLUGINS overrides.
+export function desktopOrgPluginsDir(
+  platform: NodeJS.Platform = process.platform,
+): string | undefined {
+  const override = process.env.OCEAN_DESKTOP_ORG_PLUGINS;
+  if (override) return override;
+  if (platform === "darwin")
+    return "/Library/Application Support/Claude/org-plugins";
+  if (platform === "win32") return "C:\\Program Files\\Claude\\org-plugins";
+  return undefined;
+}
+
+function desktopPluginFile(): string {
   return oceanPath(SYSTEM_DIR, "state", "clients", "ocean-desktop-plugin.zip");
 }
 
-export const DESKTOP_PLUGIN_UPLOAD =
-  "Claude Desktop → Customize → Plugins → + → Upload plugin, choose this file, then quit Claude (⌘Q) and reopen it";
-
-function engineVersion(): string {
-  const manifest = JSON.parse(readFileSync(enginePath("package.json"), "utf8"));
-  return String(manifest.version);
+function desktopPluginStaging(): string {
+  return oceanPath(SYSTEM_DIR, "state", "clients", "desktop-plugin");
 }
+
+const DESKTOP_PLUGIN_UPLOAD =
+  "Claude Desktop → Customize → Plugins → + → Upload plugin, choose this file, then quit Claude (⌘Q) and reopen it";
 
 const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
 
-// The plugin's files, by path inside the zip. Pure apart from the engine version.
-export function desktopPluginFiles(
-  version = engineVersion(),
-): Record<string, string> {
+function hookFiles(): Record<string, string> {
   return {
-    ".claude-plugin/plugin.json": json({
-      name: DESKTOP_PLUGIN_NAME,
-      version,
-      description:
-        "Ocean is your single memory: every Claude Desktop session starts knowing it, and asks Ocean before its own memory.",
-      author: { name: "Ocean" },
-      homepage: "https://github.com/amoree-code/ocean",
-    }),
     "hooks/hooks.json": json({
       hooks: {
         SessionStart: [
@@ -66,6 +72,33 @@ export function desktopPluginFiles(
         additionalContext: MEMORY_AUTHORITY_LINE,
       },
     }),
+  };
+}
+
+// Changes only when the hook does, so an Ocean upgrade alone never asks for the password again.
+function contentVersion(): string {
+  const hash = createHash("sha256");
+  for (const [name, text] of Object.entries(hookFiles()))
+    hash.update(`${name}\0${text}\0`);
+  return `1.0.0-${hash.digest("hex").slice(0, 12)}`;
+}
+
+// The plugin's files, by path inside the plugin folder.
+export function desktopPluginFiles(
+  version = contentVersion(),
+): Record<string, string> {
+  return {
+    ".claude-plugin/plugin.json": json({
+      name: DESKTOP_PLUGIN_NAME,
+      version,
+      description:
+        "Ocean is your single memory: every Claude Desktop session starts knowing it, and asks Ocean before its own memory.",
+      author: { name: "Ocean" },
+      homepage: "https://github.com/amoree-code/ocean",
+      installationPreference: "required",
+    }),
+    "version.json": json({ version }),
+    ...hookFiles(),
   };
 }
 
@@ -135,14 +168,120 @@ export function zipStored(files: Record<string, string>): Buffer {
   return Buffer.concat([...locals, directory, end]);
 }
 
-export type DesktopPluginResult = { file: string; next: string };
+// True when the folder Desktop reads holds exactly this plugin. Readable without admin rights.
+export function desktopPluginInstalled(
+  orgDir = desktopOrgPluginsDir(),
+): boolean {
+  if (!orgDir) return false;
+  const target = path.join(orgDir, DESKTOP_PLUGIN_NAME);
+  try {
+    return Object.entries(desktopPluginFiles()).every(
+      ([name, text]) => readFileSync(path.join(target, name), "utf8") === text,
+    );
+  } catch {
+    return false;
+  }
+}
 
-// Writes the plugin zip where `ocean clients apply` and `ocean clients desktop-plugin` say.
-// Uploading it stays the user's step: Desktop has no file or API Ocean may write for it.
-export async function writeDesktopPlugin(
-  file = desktopPluginFile(),
+const shellQuote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
+const psQuote = (value: string) => `'${value.replaceAll("'", "''")}'`;
+
+// Copies the staged plugin into the admin-only folder behind the system's own password prompt.
+function elevatedCopy(
+  staging: string,
+  target: string,
+  platform: NodeJS.Platform = process.platform,
+): void {
+  const orgDir = path.dirname(target);
+  if (platform === "darwin") {
+    const sh = `mkdir -p ${shellQuote(orgDir)} && rm -rf ${shellQuote(target)} && cp -R ${shellQuote(staging)} ${shellQuote(target)}`;
+    const escaped = sh.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
+    execFileSync(
+      "osascript",
+      [
+        "-e",
+        `do shell script "${escaped}" with prompt "Ocean installs its Claude Desktop plugin." with administrator privileges`,
+      ],
+      { stdio: "ignore" },
+    );
+    return;
+  }
+  if (platform === "win32") {
+    const inner = `New-Item -ItemType Directory -Force -Path ${psQuote(orgDir)} | Out-Null; if (Test-Path ${psQuote(target)}) { Remove-Item -Recurse -Force ${psQuote(target)} }; Copy-Item -Recurse ${psQuote(staging)} ${psQuote(target)}`;
+    const encoded = Buffer.from(inner, "utf16le").toString("base64");
+    execFileSync(
+      "powershell",
+      [
+        "-NoProfile",
+        "-Command",
+        `Start-Process powershell -Verb RunAs -Wait -ArgumentList '-NoProfile','-EncodedCommand','${encoded}'`,
+      ],
+      { stdio: "ignore" },
+    );
+    return;
+  }
+  throw new Error(`no elevated copy on ${platform}`);
+}
+
+async function directCopy(staging: string, target: string): Promise<void> {
+  await mkdir(path.dirname(target), { recursive: true });
+  await rm(target, { recursive: true, force: true });
+  await cp(staging, target, { recursive: true });
+}
+
+export type DesktopPluginResult =
+  | { status: "current" | "installed"; dir: string; next: string }
+  | { status: "manual"; file: string; reason: string; next: string };
+
+const NEXT_SYNC =
+  "Claude Desktop installs it at its next launch or new session; nothing to upload";
+
+// Puts the plugin where Desktop installs it by itself. Only when that folder does not exist on
+// this platform, or the admin prompt is declined, does it fall back to a zip to upload.
+export async function installDesktopPlugin(
+  options: {
+    orgDir?: string | undefined;
+    staging?: string;
+    copy?: (staging: string, target: string) => Promise<void>;
+    elevate?: (staging: string, target: string) => void;
+  } = {},
 ): Promise<DesktopPluginResult> {
-  await mkdir(path.dirname(file), { recursive: true });
-  await writeFile(file, zipStored(desktopPluginFiles()));
-  return { file, next: DESKTOP_PLUGIN_UPLOAD };
+  const orgDir = "orgDir" in options ? options.orgDir : desktopOrgPluginsDir();
+  const manual = async (reason: string): Promise<DesktopPluginResult> => {
+    const file = desktopPluginFile();
+    await mkdir(path.dirname(file), { recursive: true });
+    await writeFile(file, zipStored(desktopPluginFiles()));
+    return { status: "manual", file, reason, next: DESKTOP_PLUGIN_UPLOAD };
+  };
+  if (!orgDir)
+    return manual(
+      `Claude Desktop reads no organization plugins folder on ${process.platform}`,
+    );
+  const target = path.join(orgDir, DESKTOP_PLUGIN_NAME);
+  if (desktopPluginInstalled(orgDir))
+    return { status: "current", dir: target, next: "" };
+
+  const staging = path.join(
+    options.staging ?? desktopPluginStaging(),
+    DESKTOP_PLUGIN_NAME,
+  );
+  await rm(staging, { recursive: true, force: true });
+  for (const [name, text] of Object.entries(desktopPluginFiles())) {
+    await mkdir(path.dirname(path.join(staging, name)), { recursive: true });
+    await writeFile(path.join(staging, name), text);
+  }
+  try {
+    await (options.copy ?? directCopy)(staging, target);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== "EACCES" && code !== "EPERM") throw error;
+    try {
+      (options.elevate ?? elevatedCopy)(staging, target);
+    } catch {
+      return manual("the admin password prompt was declined or failed");
+    }
+  }
+  if (!desktopPluginInstalled(orgDir))
+    return manual(`the plugin did not land in ${target}`);
+  return { status: "installed", dir: target, next: NEXT_SYNC };
 }

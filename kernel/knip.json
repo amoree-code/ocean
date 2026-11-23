@@ -9,7 +9,7 @@
       "entry": ["tests/*.test.mjs", "scripts/*.mjs"],
       "project": ["src/**/*.ts", "tests/**/*.mjs", "scripts/**/*.mjs"],
       "ignore": ["tests/fixtures/**"],
-      "ignoreBinaries": ["gitleaks"]
+      "ignoreBinaries": ["gitleaks", "osascript"]
     },
     "packages/core": {
       "project": ["src/**/*.ts"]

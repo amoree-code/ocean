@@ -174,13 +174,13 @@ test("the terminal view shows marks, ages and the summary line", () => {
   assert.match(text, /1 of 1 installed clients fully working/);
 });
 
-test("Claude Desktop says when its start plugin is not built, and is quiet once it is (T-328)", () => {
+test("Claude Desktop says when its start plugin is not installed, and is quiet once it is (T-328)", () => {
   const desktop = plan("claude-desktop", { nativeMemory: "capture" });
   const missing = rowOf(
     buildClientStatus({
       ...base,
       plans: [desktop],
-      desktopPlugin: { built: false },
+      desktopPlugin: { installed: false },
     }),
     "claude-desktop",
   );
@@ -191,7 +191,7 @@ test("Claude Desktop says when its start plugin is not built, and is quiet once 
     buildClientStatus({
       ...base,
       plans: [desktop],
-      desktopPlugin: { built: true },
+      desktopPlugin: { installed: true },
     }),
     "claude-desktop",
   );
