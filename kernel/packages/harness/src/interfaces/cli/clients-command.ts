@@ -46,9 +46,13 @@ import {
   planOpencodePlugin,
   restoreOpencodePlugin,
 } from "../../application/clients/opencode-plugin.js";
+import {
+  buildClientStatus,
+  formatClientStatus,
+} from "../../application/clients/status.js";
 
 const usage =
-  "Usage: ocean clients detect|plan [--json] | apply [--client <id>…] [--yes] [--session-facts on|off] | verify [<id>…] | confirm <id>… --label in-app|headless|connected|blocked [--via <evidence>] [--reason <why>] | gateway [<id> on|off] [--default gateway|per-server] | allow|deny|unset <id> <server> | ledger | repair | restore [--batch <id>]";
+  "Usage: ocean clients status [--json] [--days <n>] | detect|plan [--json] | apply [--client <id>…] [--yes] [--session-facts on|off] | verify [<id>…] | confirm <id>… --label in-app|headless|connected|blocked [--via <evidence>] [--reason <why>] | gateway [<id> on|off] [--default gateway|per-server] | allow|deny|unset <id> <server> | ledger | repair | restore [--batch <id>]";
 
 export const SESSION_FACTS_QUESTION =
   "Capture durable facts from your sessions automatically? It costs one small model call per session, run by the client the session was in. Every fact goes to your review queue; nothing is saved without your approval, even with auto-approve on. [y/N] ";
@@ -92,7 +96,27 @@ export async function runClientsCommand(args: string[]): Promise<void> {
   const values = (flag: string) =>
     rest.flatMap((arg, index) => (rest[index - 1] === flag ? [arg] : []));
   let result: unknown;
-  if (action === "detect" || action === "plan") {
+  if (action === "status") {
+    // Connected, triggered, captured and used, per installed client (T-328 P1).
+    const daysFlag = values("--days")[0];
+    const days = daysFlag === undefined ? 7 : Number(daysFlag);
+    if (!Number.isInteger(days) || days < 1)
+      throw new Error("--days takes a whole number of days, 1 or more");
+    const report = buildClientStatus({
+      plans: await planClients(),
+      hooks: await planHooks(),
+      plugins: await planOpencodePlugin(),
+      native: await planNative(),
+      watcher: await planDesktopWatcher(),
+      calls: await readCallLedger(),
+      days,
+    });
+    if (!json) {
+      console.log(formatClientStatus(report));
+      return;
+    }
+    result = report;
+  } else if (action === "detect" || action === "plan") {
     const plans = await planClients();
     // `apply` refuses a temporary engine; the plan says so up front (T-300).
     const problem = temporaryEntryProblem(defaultClientEnv().entry);
