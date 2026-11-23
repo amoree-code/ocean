@@ -7,7 +7,7 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
-- feat(clients): every session-start hook now prints a second line saying Ocean is the user's single memory and the authority over the client's own, and `ocean clients apply` / `ocean clients desktop-plugin` build a Claude Desktop plugin that carries the same line into chat, Cowork and Code sessions — Desktop's own memory prompt outranked the MCP instructions, so asked alone "where is my memory saved?" it named Anthropic's store (T-328)
+- feat(clients): every session-start hook now prints a second line saying Ocean is the user's single memory and the authority over the client's own, and `ocean clients apply` / `ocean clients desktop-plugin` build a Claude Desktop plugin that carries the same line into chat, Cowork and Code sessions — Desktop's own memory prompt outranked the MCP instructions, so asked alone "where is my memory saved?" it named Anthropic's store (T-328) (#332)
 
 ## 2.18.1 (2026-11-23)
 
