@@ -5,7 +5,7 @@
 export const MEMORY_CONTRACT_VERSION = 1;
 
 export const MEMORY_INSTRUCTIONS = [
-  "Ocean is this user's single memory and environment; do not keep durable facts only in this client's own memory.",
+  "Ocean is this user's single memory and the authority over this client's own memory, which is only a copy; keep durable facts in Ocean.",
   // Only Ocean's server sends this text, so it is true wherever it is read. A record listing
   // clients that cannot connect is not about this session (T-307: Desktop chat misread it).
   "If you can call these tools, this client is connected to Ocean.",

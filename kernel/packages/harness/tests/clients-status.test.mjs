@@ -81,8 +81,9 @@ test("an MCP-only client is triggered only by ledger proof, per mode", () => {
   assert.equal(rowOf(silent, "claude-desktop").triggered, "no");
   assert.deepEqual(rowOf(silent, "claude-desktop").lastCall, {});
 
-  // Agent mode (Cowork) called this week; chat last called ten days ago.
-  const agentOnly = buildClientStatus({
+  // Current Desktop builds send the agent-mode name from plain chat too, so either name is
+  // proof for the one Desktop row; an old `claude-ai` call does not make it partial.
+  const current = buildClientStatus({
     ...base,
     plans: [desktop],
     native,
@@ -91,23 +92,21 @@ test("an MCP-only client is triggered only by ledger proof, per mode", () => {
       { ts: daysAgo(3), client: "local-agent-mode-ocean", ok: true },
     ],
   });
-  const row = rowOf(agentOnly, "claude-desktop");
-  assert.equal(row.triggered, "partial");
-  assert.deepEqual(row.notes, ["chat: no Ocean call in 7 days"]);
-  assert.deepEqual(row.lastCall, { chat: daysAgo(10), agent: daysAgo(3) });
+  const row = rowOf(current, "claude-desktop");
+  assert.equal(row.triggered, "yes");
+  assert.deepEqual(row.notes, []);
+  assert.deepEqual(row.lastCall, { "": daysAgo(3) });
   assert.equal(row.recentCalls, 1);
+  assert.equal(current.summary.working, 1);
 
-  const both = buildClientStatus({
+  // An older build that only sends `claude-ai` still counts.
+  const legacy = buildClientStatus({
     ...base,
     plans: [desktop],
     native,
-    calls: [
-      { ts: daysAgo(1), client: "claude-ai", ok: true },
-      { ts: daysAgo(2), client: "local-agent-mode-ocean", ok: true },
-    ],
+    calls: [{ ts: daysAgo(1), client: "claude-ai", ok: true }],
   });
-  assert.equal(rowOf(both, "claude-desktop").triggered, "yes");
-  assert.equal(both.summary.working, 1);
+  assert.equal(rowOf(legacy, "claude-desktop").triggered, "yes");
 });
 
 test("failed calls are not proof, and unknown callers are listed, not guessed", () => {
@@ -159,7 +158,7 @@ test("unsupported and uninstalled clients get no false verdicts", () => {
   assert.deepEqual(rowOf(report, "aider").notes, ["no MCP support"]);
 });
 
-test("the terminal view shows marks, mode ages and the summary line", () => {
+test("the terminal view shows marks, ages and the summary line", () => {
   const report = buildClientStatus({
     ...base,
     plans: [plan("claude-desktop", { nativeMemory: "capture" })],
@@ -171,10 +170,6 @@ test("the terminal view shows marks, mode ages and the summary line", () => {
     text,
     /^client\s+connected\s+trigger\s+triggered\s+captured\s+last call$/m,
   );
-  assert.match(
-    text,
-    /claude-desktop\s+✓\s+instructions\s+~\s+✓\s+agent 3d ago$/m,
-  );
-  assert.match(text, /↳ chat: no Ocean call in 7 days/);
-  assert.match(text, /0 of 1 installed clients fully working/);
+  assert.match(text, /claude-desktop\s+✓\s+instructions\s+✓\s+✓\s+3d ago$/m);
+  assert.match(text, /1 of 1 installed clients fully working/);
 });

@@ -91,12 +91,10 @@ export const CLIENT_ADAPTERS: ClientAdapter[] = [
       editor: jsonEditor(["mcpServers"]),
     },
     nativeMemory: "capture",
-    // Normal chat uses the claude.ai name although it runs locally; agent mode names its own
-    // `local-agent-mode-<server>` client.
-    mcpClients: [
-      { name: "claude-ai", mode: "chat" },
-      { name: "local-agent-mode-ocean", mode: "agent" },
-    ],
+    // Older builds sent `claude-ai` from chat and `local-agent-mode-<server>` from agent mode.
+    // Current builds send the agent-mode name from plain chat too (T-328: a chat call landed as
+    // `local-agent-mode-ocean`), so the name no longer tells the modes apart: one row, no modes.
+    mcpClients: [{ name: "claude-ai" }, { name: "local-agent-mode-ocean" }],
   },
   {
     id: "codex",
