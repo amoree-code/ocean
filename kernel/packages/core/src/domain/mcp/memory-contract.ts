@@ -9,11 +9,11 @@ export const MEMORY_INSTRUCTIONS = [
   // Only Ocean's server sends this text, so it is true wherever it is read. A record listing
   // clients that cannot connect is not about this session (T-307: Desktop chat misread it).
   "If you can call these tools, this client is connected to Ocean.",
-  "Before answering about the user, their projects or past decisions, search with brain_search, read with brain_read or memory_read, and cite the record path.",
-  "Use memory_write only when the user explicitly asks you to remember or change something: search first, then mode create for a new record, or mode update with the current sha256 from memory_read as expectedHash.",
-  "Facts you infer yourself, and anything imported from another tool's memory, go to memory_propose for the user's review, never to memory_write.",
-  "Never store secrets, credentials or temporary state. If a new fact contradicts a record, tell the user instead of overwriting it.",
-  "memory_delete is a soft delete; memory_history and memory_restore undo changes.",
+  // Relevance triggers (T-328 P2): concrete cues, not "about the user", which a model reads
+  // narrowly and so skips Ocean on most turns (Desktop chat went 10 days without a call).
+  "Call brain_search before you answer whenever a message touches the user's own world: their projects, code, tasks, people, past decisions or preferences, or words like my, our, last time, as before; and before planning, writing or reviewing anything for them. Read hits with brain_read and cite the path.",
+  "When the user states a decision, preference or correction, call memory_propose. Use memory_write only when they ask you to remember or change something: search first, then create, or update with memory_read's sha256 as expectedHash.",
+  "Never store secrets or temporary state; if a fact contradicts a record, tell the user. memory_delete is soft; memory_history and memory_restore undo.",
   // The handoff rule lives in ocean_handoff_create's own description; the ack line is T-319.
   "Without a session-start hook, call ocean_context once. Pass the start line's ack=<hash> as contextAck on your first Ocean call.",
 ].join(" ");

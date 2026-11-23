@@ -113,6 +113,17 @@ test("initialize carries the memory contract; capabilities and ping answer", asy
       init.result.instructions,
       /If you can call these tools, this client is connected to Ocean\./,
     );
+    // Relevance triggers (T-328 P2): concrete cues for when to search and when to propose,
+    // not only "at the start" or "about the user".
+    for (const cue of [
+      /Call brain_search before you answer whenever a message touches the user's own world/,
+      /projects, code, tasks, people, past decisions or preferences/,
+      /last time, as before/,
+      /before planning, writing or reviewing anything for them/,
+      /When the user states a decision, preference or correction, call memory_propose\./,
+      /Without a session-start hook, call ocean_context once\./,
+    ])
+      assert.match(init.result.instructions, cue);
     assert.deepEqual(await call("ocean_ping"), { ok: true });
     const capabilities = await call("ocean_capabilities");
     assert.equal(capabilities.contract, 1);
@@ -140,6 +151,14 @@ test("initialize carries the memory contract; capabilities and ping answer", asy
       /^Call this first, before answering anything about the user/,
     );
     assert.match(byName.brain_search.description, /cite their paths/);
+    assert.match(
+      byName.brain_search.description,
+      /a task ID, a person they name, a past decision or preference/,
+    );
+    assert.match(
+      byName.memory_propose.description,
+      /correction of how you work/,
+    );
     assert.match(
       byName.memory_propose.description,
       /^Call this when the user states something worth keeping/,
