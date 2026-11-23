@@ -29,6 +29,7 @@ import {
   mcpApprovalSchema,
 } from "@ocean/core/domain/mcp/mcp-contract.js";
 import {
+  MEMORY_AUTHORITY_LINE,
   MEMORY_CONTRACT_VERSION,
   MEMORY_INSTRUCTIONS,
   MemoryContractError,
@@ -568,6 +569,10 @@ let clientName = "unknown";
 // start line's hash: one `context_ack` ledger line per connection, ok when it echoed a hash
 // Ocean handed out.
 let contextAckChecked = false;
+// Hosts that drop `instructions` (Claude chat) still show tool results to the model, so the first
+// memory result of each connection carries the authority line as a second text block (T-328).
+let authoritySent = false;
+const AUTHORITY_TOOLS = new Set(["brain_search", "brain_read", "memory_read"]);
 
 async function callTool(
   name: string,
@@ -982,6 +987,7 @@ export async function handleOceanMcpRequest(
     if (typeof info?.name === "string" && /^[\w .@/-]{1,64}$/.test(info.name))
       clientName = info.name;
     contextAckChecked = false;
+    authoritySent = false;
     return {
       jsonrpc: "2.0",
       id: request.id,
@@ -1067,7 +1073,14 @@ export async function handleOceanMcpRequest(
   }
   await ports.mcpSessions?.open(clientName);
   try {
-    const result = textResult(await callTool(name, args, ports));
+    const result: {
+      content: { type: "text"; text: string }[];
+      structuredContent: unknown;
+    } = textResult(await callTool(name, args, ports));
+    if (!authoritySent && AUTHORITY_TOOLS.has(name)) {
+      authoritySent = true;
+      result.content.push({ type: "text", text: MEMORY_AUTHORITY_LINE });
+    }
     await recordMcpCall(clientName, name, true);
     await ports.mcpSessions?.toolCall(clientName, name, true);
     return { jsonrpc: "2.0", id: request.id, result };

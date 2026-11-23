@@ -174,26 +174,16 @@ test("the terminal view shows marks, ages and the summary line", () => {
   assert.match(text, /1 of 1 installed clients fully working/);
 });
 
-test("Claude Desktop says when its start plugin is not installed, and is quiet once it is (T-328)", () => {
+test("Claude Desktop says when the Ocean plugin is not in the account, and is quiet once it is or nothing can tell (T-328)", () => {
   const desktop = plan("claude-desktop", { nativeMemory: "capture" });
-  const missing = rowOf(
-    buildClientStatus({
-      ...base,
-      plans: [desktop],
-      desktopPlugin: { installed: false },
-    }),
-    "claude-desktop",
-  );
+  const row = (added) =>
+    rowOf(
+      buildClientStatus({ ...base, plans: [desktop], chatPlugin: { added } }),
+      "claude-desktop",
+    );
   assert.ok(
-    missing.notes.some((note) => /ocean clients desktop-plugin/.test(note)),
+    row(false).notes.some((note) => /ocean clients chat-plugin/.test(note)),
   );
-  const built = rowOf(
-    buildClientStatus({
-      ...base,
-      plans: [desktop],
-      desktopPlugin: { installed: true },
-    }),
-    "claude-desktop",
-  );
-  assert.ok(!built.notes.some((note) => /desktop-plugin/.test(note)));
+  assert.ok(!row(true).notes.some((note) => /chat-plugin/.test(note)));
+  assert.ok(!row(undefined).notes.some((note) => /chat-plugin/.test(note)));
 });

@@ -1,0 +1,10 @@
+{
+  "name": "ocean",
+  "version": "1.0.0",
+  "description": "Claude asks Ocean, the memory on your own computer, before its own memory, and answers from it.",
+  "author": { "name": "Ocean", "url": "https://github.com/amoree-code/ocean" },
+  "homepage": "https://github.com/amoree-code/ocean",
+  "repository": "https://github.com/amoree-code/ocean",
+  "license": "MIT",
+  "keywords": ["memory", "ocean", "mcp"]
+}

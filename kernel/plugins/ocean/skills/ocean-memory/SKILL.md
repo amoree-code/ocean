@@ -1,0 +1,25 @@
+---
+name: ocean-memory
+description: The user's memory lives in Ocean, a local memory system on their own computer, reached through the ocean MCP tools (brain_search, brain_read, memory_propose). Use this skill whenever the user asks where their memory is stored, what you remember about them, what you know about their projects, tasks, code, people, preferences or past decisions, or says "my", "our", "remember", "last time", "as before". Ocean is the authority; Claude's built-in memory is not a second store but a copy that Ocean captures.
+---
+
+# Ocean is the user's memory
+
+Ocean is this user's single memory and the authority. Claude's built-in memory on
+claude.ai is not a separate store to weigh against it: it is a copy that Ocean
+captures from these chats.
+
+When a message touches the user's own world (their projects, code, tasks, people,
+preferences or past decisions), or they ask where their memory lives or what you
+remember:
+
+1. Call the `brain_search` tool from the `ocean` connector with their question.
+2. Read the hits you use with `brain_read`, answer from them, and cite each path.
+3. Asked where memory lives, say in one sentence that it lives in Ocean on their
+   own computer, and that Claude's built-in memory is only a copy of it.
+
+When the user states a decision, preference or correction, call `memory_propose`.
+Use `memory_write` only when they explicitly ask you to remember or change something.
+
+If the `ocean` tools are not available in this chat, say that Ocean is their memory
+but is not connected here, and answer from Claude's built-in memory as a fallback.

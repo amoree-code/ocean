@@ -10,6 +10,12 @@ import {
   summarizeCallLedger,
 } from "@ocean/services/infrastructure/mcp/call-ledger.js";
 import {
+  CHAT_PLUGIN_STEPS,
+  chatPluginAdded,
+  OCEAN_MARKETPLACE,
+  openChatPluginSetup,
+} from "../../application/clients/chat-plugin.js";
+import {
   applyClients,
   attributeLedger,
   confirmClient,
@@ -26,10 +32,6 @@ import {
   temporaryEntryProblem,
   verifyClient,
 } from "../../application/clients/clients.js";
-import {
-  desktopPluginInstalled,
-  installDesktopPlugin,
-} from "../../application/clients/desktop-plugin.js";
 import {
   applyDesktopWatcher,
   planDesktopWatcher,
@@ -56,7 +58,7 @@ import {
 } from "../../application/clients/status.js";
 
 const usage =
-  "Usage: ocean clients status [--json] [--days <n>] | detect|plan [--json] | apply [--client <id>…] [--yes] [--session-facts on|off] | desktop-plugin | verify [<id>…] | confirm <id>… --label in-app|headless|connected|blocked [--via <evidence>] [--reason <why>] | gateway [<id> on|off] [--default gateway|per-server] | allow|deny|unset <id> <server> | ledger | repair | restore [--batch <id>]";
+  "Usage: ocean clients status [--json] [--days <n>] | detect|plan [--json] | apply [--client <id>…] [--yes] [--session-facts on|off] | chat-plugin | verify [<id>…] | confirm <id>… --label in-app|headless|connected|blocked [--via <evidence>] [--reason <why>] | gateway [<id> on|off] [--default gateway|per-server] | allow|deny|unset <id> <server> | ledger | repair | restore [--batch <id>]";
 
 export const SESSION_FACTS_QUESTION =
   "Capture durable facts from your sessions automatically? It costs one small model call per session, run by the client the session was in. Every fact goes to your review queue; nothing is saved without your approval, even with auto-approve on. [y/N] ";
@@ -112,7 +114,7 @@ export async function runClientsCommand(args: string[]): Promise<void> {
       plugins: await planOpencodePlugin(),
       native: await planNative(),
       watcher: await planDesktopWatcher(),
-      desktopPlugin: { installed: desktopPluginInstalled() },
+      chatPlugin: { added: chatPluginAdded() },
       calls: await readCallLedger(),
       days,
     });
@@ -230,14 +232,18 @@ export async function runClientsCommand(args: string[]): Promise<void> {
         .results,
       sessionFacts: await sessionFactsAnswer(values("--session-facts")[0]),
     };
-    // Claude Desktop's start plugin (T-328): written to the folder Desktop installs from by
-    // itself, behind one admin password prompt.
+    // Claude chat's Ocean plugin (T-328) is added to the account in Claude's own settings, which
+    // Ocean cannot write; apply only says whether it is there and what to run when it is not.
     const desktop = (await planClients()).find(
       (plan) => plan.client === "claude-desktop",
     );
-    const desktopPlugin =
+    const added = chatPluginAdded();
+    const chatPlugin =
       desktop?.installed && (!selected || selected.includes("claude-desktop"))
-        ? await installDesktopPlugin()
+        ? {
+            added,
+            ...(added === true ? {} : { next: "ocean clients chat-plugin" }),
+          }
         : undefined;
     // After the session-facts answer: the watcher exists only for capture that is on (T-315).
     result = {
@@ -245,20 +251,30 @@ export async function runClientsCommand(args: string[]): Promise<void> {
       watcher: (
         await applyDesktopWatcher({ clients: selected, batch: applied.batch })
       ).results,
-      ...(desktopPlugin ? { desktopPlugin } : {}),
+      ...(chatPlugin ? { chatPlugin } : {}),
     };
-  } else if (action === "desktop-plugin") {
-    // Installs the Claude Desktop start plugin, or says why it could not (T-328).
-    const done = await installDesktopPlugin();
+  } else if (action === "chat-plugin") {
+    // Claude chat's one step (T-328): the marketplace name on the clipboard, Claude open, the
+    // clicks printed. Nothing to do once Claude Code's mirror of the account lists it.
+    const added = chatPluginAdded();
+    const opened = added === true ? undefined : openChatPluginSetup();
     if (!json) {
-      console.log(
-        done.status === "manual"
-          ? `not installed: ${done.reason}\n${done.file}\n${done.next}`
-          : `${done.status}: ${done.dir}${done.next ? `\n${done.next}` : ""}`,
-      );
+      if (added === true) {
+        console.log(
+          `added: ${OCEAN_MARKETPLACE} is in your Claude account; its skill reaches every Claude chat`,
+        );
+        return;
+      }
+      if (opened?.copied)
+        console.log(`${OCEAN_MARKETPLACE} is on your clipboard.`);
+      for (const step of CHAT_PLUGIN_STEPS) console.log(`  ${step}`);
+      if (added === undefined)
+        console.log(
+          "Ocean checks for it through Claude Code; without Claude Code, nothing confirms it here.",
+        );
       return;
     }
-    result = done;
+    result = { added, ...(opened ?? {}), marketplace: OCEAN_MARKETPLACE };
   } else if (action === "verify") {
     const ids = rest.filter((arg) => !arg.startsWith("--"));
     const targets = ids.length

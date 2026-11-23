@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+- feat(clients): Claude chat (Desktop, claude.ai, phone) now reaches Ocean through an account plugin instead of the admin-only organization folder: Ocean's repository is a plugin marketplace whose `ocean-memory` skill makes Claude call `brain_search` and answer from Ocean, onboarding's new `chat-plugin` step (and `ocean clients chat-plugin`) copies the marketplace name, opens Claude and lists the clicks, `ocean clients status` reads Claude Code's mirror of the account's marketplaces to say whether it is added, and the first memory tool result of each connection carries the authority line for hosts that drop `instructions` (T-328) (#PR)
+
 ## 2.19.0 (2026-11-23)
 
 - feat(clients): every session-start hook now prints a second line saying Ocean is the user's single memory and the authority over the client's own, and `ocean clients apply` / `ocean clients desktop-plugin` install a Claude Desktop plugin that carries the same line into chat and Cowork. It goes into Desktop's organization plugins folder as a required plugin, so Desktop installs it by itself after one admin password prompt, with nothing to upload — Desktop's own memory prompt outranked the MCP instructions, so asked alone "where is my memory saved?" it named Anthropic's store (T-328) (#332)

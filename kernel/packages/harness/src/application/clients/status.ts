@@ -41,8 +41,9 @@ export type StatusInput = {
   plugins: OpencodePluginPlan[];
   native: NativePlan[];
   watcher: DesktopWatcherPlan[];
-  // Whether Desktop's organization plugins folder holds the current Ocean start plugin.
-  desktopPlugin?: { installed: boolean };
+  // Whether the Claude account lists Ocean's plugin marketplace; undefined when nothing here
+  // can tell (no Claude Code mirror of the account).
+  chatPlugin?: { added: boolean | undefined };
   calls: { ts: string; client: string; ok: boolean }[];
   now?: Date;
   days?: number;
@@ -159,12 +160,9 @@ export function buildClientStatus(input: StatusInput): ClientStatusReport {
     const watcher = input.watcher.find((item) => item.client === plan.client);
     if (watcher && watcher.status !== "current")
       notes.push(`chat watcher ${watcher.status}`);
-    if (
-      plan.client === "claude-desktop" &&
-      input.desktopPlugin?.installed === false
-    )
+    if (plan.client === "claude-desktop" && input.chatPlugin?.added === false)
       notes.push(
-        "start plugin not installed: run `ocean clients desktop-plugin`",
+        "Ocean plugin not in your Claude account: run `ocean clients chat-plugin`",
       );
     if (plan.tier !== "supported" && plan.reason) notes.push(plan.reason);
 
