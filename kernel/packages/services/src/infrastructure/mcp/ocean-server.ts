@@ -246,7 +246,7 @@ const tools = new McpToolRegistry(
     {
       name: "brain_search",
       description:
-        "Call this first, before answering anything about the user or their world: a project, repo or code of theirs, a task ID, a person they name, a past decision or preference, or words like my, our, last time, as before. Also before planning, writing or reviewing anything for them. Ocean is their memory. Searches the markdown memory/knowledge index (hybrid FTS + vector when available); read only the results you need with brain_read and cite their paths. In a conversation about one project, pass its name or id as project: the search then covers that project and global records only. Otherwise the project bound to `cwd`; unbound sessions see global only.",
+        "Call this first, before answering anything about the user or their world: a project, repo or code of theirs, a task ID, a person they name, a past decision or preference, or words like my, our, last time, as before. Also before planning, writing or reviewing anything for them. Ocean is their memory and the authority: asked where memory lives or what you remember, answer from Ocean, since this client's own memory is only a copy Ocean captures. Searches the markdown memory/knowledge index (hybrid FTS + vector when available); read only the results you need with brain_read and cite their paths. In a conversation about one project, pass its name or id as project: the search then covers that project and global records only. Otherwise the project bound to `cwd`; unbound sessions see global only.",
       annotations: { readOnlyHint: true },
       inputSchema: {
         type: "object",

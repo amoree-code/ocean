@@ -222,7 +222,7 @@ test("the ledger keeps 90 days and drops torn lines", () => {
   assert.equal(pruneLedgerText(`${at(200)}\n`, now), "");
 });
 
-test("Claude Desktop's chat and agent mode stay two identities of one client", async () => {
+test("Claude Desktop's two MCP names stay two identities of one client", async () => {
   await withRoot(async () => {
     for (const [id, name] of [
       [1, "claude-ai"],
@@ -253,10 +253,11 @@ test("Claude Desktop's chat and agent mode stay two identities of one client", a
     assert.deepEqual(
       rows.map(({ client, oceanClient, mode }) => [client, oceanClient, mode]),
       [
-        ["claude-ai", "claude-desktop", "chat"],
+        // Current Desktop chat also sends the agent-mode name, so neither name is a mode (T-328).
+        ["claude-ai", "claude-desktop", undefined],
         // An unidentified name is not guessed at.
         ["codex-mcp-client", undefined, undefined],
-        ["local-agent-mode-ocean", "claude-desktop", "agent"],
+        ["local-agent-mode-ocean", "claude-desktop", undefined],
       ],
     );
     assert.equal(row("claude-ai").calls, 1);

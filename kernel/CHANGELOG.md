@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+- fix(clients): `ocean clients status` treats Claude Desktop's two MCP names as one row with no modes, because current Desktop chat sends `local-agent-mode-ocean` too and was shown as silent for 10 days. The server instructions and `brain_search` now say Ocean is the authority over a client's own memory, which is only a copy (T-328) (#331)
+
 ## 2.18.0 (2026-11-23)
 
 - feat(mcp): the server instructions and the `brain_search` / `memory_propose` descriptions say *when* to call Ocean with concrete cues. Search when a message touches the user's projects, code, tasks, people, past decisions or preferences (or says my, our, last time, as before) and before planning, writing or reviewing for them. Propose a stated decision, preference or correction. This replaces "before answering about the user", which clients without a session hook read too narrowly (T-328) (#330)

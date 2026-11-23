@@ -34,6 +34,8 @@ skipped Ocean on most turns. Search when a message names the user's projects, co
 past decisions or preferences, or says *my*, *our*, *last time* or *as before*, and before planning,
 writing or reviewing anything for them. Propose when the user states a decision, preference or
 correction. `ocean clients status` shows whether a client without a hook actually calls Ocean.
+Both also say Ocean is the authority over the client's own memory, which is only a copy: asked
+where memory lives, a model answers from Ocean instead of listing two equal stores.
 
 | Tool | Effect |
 | ---- | ------ |
@@ -63,8 +65,9 @@ self-reported name is attribution, not authentication.
 
 Each summary row keeps that raw name and adds `oceanClient` when the name is known (`mcpClients` in
 `packages/harness/src/application/clients/registry.ts`), plus `mode` when the client sends one name
-per mode. Claude Desktop sends two: its normal chat is `claude-ai` (`mode: chat`) and agent mode is
-`local-agent-mode-ocean` (`mode: agent`). Evidence for one mode is not evidence for the other. An
+per mode. Claude Desktop sends two names but no modes: older builds sent `claude-ai` from chat and
+`local-agent-mode-ocean` from agent mode, while current builds send `local-agent-mode-ocean` from
+plain chat too (T-328), so either name is evidence for the one Desktop row. An
 unknown name, such as `codex-mcp-client` until it is identified, stays unattributed.
 
 Writable roots, fixed in `packages/brain/src/memory/memory-paths.ts`: records under
@@ -137,9 +140,9 @@ The server reads the private connection at `OCEAN_ROOT/bridge/integrations/obsid
 `ocean clients status` (T-328) is the one view of whether each installed client really works with
 Ocean: **connected** (its `ocean` entry is current), **trigger** (`hook`, `plugin`, or only the
 server `instructions`) and **triggered** (hooks current, or — for an instructions-only client — a
-successful call in the ledger within `--days`, default 7, per mode, so Claude Desktop's chat and
-agent mode are judged apart), **captured** (its own memory is disabled, redirected, captured or
-harvested into Ocean) and the **last call** per mode. Ledger names no client claims are listed as
+successful call in the ledger within `--days`, default 7, per mode for a client that sends one
+name per mode), **captured** (its own memory is disabled, redirected, captured or harvested into
+Ocean) and the **last call**. Ledger names no client claims are listed as
 unattributed rather than guessed. `--json` returns the same report.
 
 `ocean clients detect|plan` lists every AI client and IDE Ocean knows (installed ones, with the

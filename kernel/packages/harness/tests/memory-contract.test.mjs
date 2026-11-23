@@ -122,6 +122,8 @@ test("initialize carries the memory contract; capabilities and ping answer", asy
       /before planning, writing or reviewing anything for them/,
       /When the user states a decision, preference or correction, call memory_propose\./,
       /Without a session-start hook, call ocean_context once\./,
+      // Asked where memory lives, Desktop chat listed two equal stores (T-328).
+      /the authority over this client's own memory, which is only a copy/,
     ])
       assert.match(init.result.instructions, cue);
     assert.deepEqual(await call("ocean_ping"), { ok: true });
@@ -154,6 +156,10 @@ test("initialize carries the memory contract; capabilities and ping answer", asy
     assert.match(
       byName.brain_search.description,
       /a task ID, a person they name, a past decision or preference/,
+    );
+    assert.match(
+      byName.brain_search.description,
+      /answer from Ocean, since this client's own memory is only a copy/,
     );
     assert.match(
       byName.memory_propose.description,
