@@ -246,7 +246,7 @@ const tools = new McpToolRegistry(
     {
       name: "brain_search",
       description:
-        "Call this first, before answering anything about the user, their projects, preferences or past decisions: Ocean is their memory. Searches the markdown memory/knowledge index (hybrid FTS + vector when available); read only the results you need with brain_read and cite their paths. In a conversation about one project, pass its name or id as project: the search then covers that project and global records only. Otherwise the project bound to `cwd`; unbound sessions see global only.",
+        "Call this first, before answering anything about the user or their world: a project, repo or code of theirs, a task ID, a person they name, a past decision or preference, or words like my, our, last time, as before. Also before planning, writing or reviewing anything for them. Ocean is their memory. Searches the markdown memory/knowledge index (hybrid FTS + vector when available); read only the results you need with brain_read and cite their paths. In a conversation about one project, pass its name or id as project: the search then covers that project and global records only. Otherwise the project bound to `cwd`; unbound sessions see global only.",
       annotations: { readOnlyHint: true },
       inputSchema: {
         type: "object",
@@ -368,7 +368,7 @@ const tools = new McpToolRegistry(
     {
       name: "memory_propose",
       description:
-        "Call this when the user states something worth keeping across sessions (a decision, preference or project fact) without asking you to remember it, for a fact you inferred, or for one imported from another tool's memory: it queues it for the user's review. It is not memory until approved. In a conversation about one project, pass its name (as the user's Claude project is called) or Ocean id as project, and kind instead of target: `fact` (a decision, preference or detail) or `doc` (a spec, brief or longer notes), each with a kebab-case name, is filed in that project's memory/ or docs/ — written at once when the user allows it; `todo` (work to do) waits for review as a backlog line. Optionally say why (reason). If the fact disagrees with one of the user's own notes in 02-personal/notes, pass that note's path as contradicts: the note is never edited, and the disagreement waits in 02-personal/CONFLICTS.md for the user.",
+        "Call this when the user states something worth keeping across sessions (a decision, preference, correction of how you work, or project fact) without asking you to remember it, for a fact you inferred, or for one imported from another tool's memory: it queues it for the user's review. It is not memory until approved. In a conversation about one project, pass its name (as the user's Claude project is called) or Ocean id as project, and kind instead of target: `fact` (a decision, preference or detail) or `doc` (a spec, brief or longer notes), each with a kebab-case name, is filed in that project's memory/ or docs/ — written at once when the user allows it; `todo` (work to do) waits for review as a backlog line. Optionally say why (reason). If the fact disagrees with one of the user's own notes in 02-personal/notes, pass that note's path as contradicts: the note is never edited, and the disagreement waits in 02-personal/CONFLICTS.md for the user.",
       annotations: { readOnlyHint: false, destructiveHint: false },
       inputSchema: {
         type: "object",

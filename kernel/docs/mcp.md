@@ -29,6 +29,12 @@ answering about the user; when the user states something worth keeping; once at 
 conversation without a start line). A fresh install then uses Ocean without the user writing any
 prompt or project instructions.
 
+Both carry concrete relevance cues (T-328), because "about the user" is read narrowly and models
+skipped Ocean on most turns. Search when a message names the user's projects, code, tasks, people,
+past decisions or preferences, or says *my*, *our*, *last time* or *as before*, and before planning,
+writing or reviewing anything for them. Propose when the user states a decision, preference or
+correction. `ocean clients status` shows whether a client without a hook actually calls Ocean.
+
 | Tool | Effect |
 | ---- | ------ |
 | `memory_read` | one record with its `sha256` |

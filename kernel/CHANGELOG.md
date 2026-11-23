@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+- feat(mcp): the server instructions and the `brain_search` / `memory_propose` descriptions say *when* to call Ocean with concrete cues. Search when a message touches the user's projects, code, tasks, people, past decisions or preferences (or says my, our, last time, as before) and before planning, writing or reviewing for them. Propose a stated decision, preference or correction. This replaces "before answering about the user", which clients without a session hook read too narrowly (T-328) (#330)
+
 ## 2.17.0 (2026-11-23)
 
 - feat(clients): `ocean clients status [--json] [--days <n>]` shows one row per installed AI client: connected (its `ocean` entry is current), triggered (hooks current, or a real call in the ledger within the window, per mode — Desktop chat and Cowork are judged apart), captured (its own memory flows into Ocean) and the last call per mode. Ledger callers no client claims are listed rather than guessed (T-328) (#329)
