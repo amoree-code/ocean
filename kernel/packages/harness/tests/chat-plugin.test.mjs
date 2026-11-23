@@ -91,7 +91,7 @@ test("the repository is a Claude plugin marketplace whose Ocean plugin carries t
   const skill = readFileSync(
     path.join(pluginDir, "skills/ocean-memory/SKILL.md"),
     "utf8",
-  );
+  ).replace(/\r\n/g, "\n"); // Windows checkouts may carry CRLF.
   const front = skill.match(/^---\n([\s\S]*?)\n---\n/)?.[1] ?? "";
   assert.match(front, /^name: ocean-memory$/m);
   const description = front.match(/^description: (.*)$/m)?.[1] ?? "";
