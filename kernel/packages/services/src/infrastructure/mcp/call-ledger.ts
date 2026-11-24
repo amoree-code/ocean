@@ -1,5 +1,6 @@
 import { appendFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { SELF_CHECK_CLIENT } from "@ocean/core/domain/mcp/memory-contract.js";
 import { withFileLock } from "@ocean/core/shared/fs-utils.js";
 import { oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import { serverVersion } from "./server-version.js";
@@ -126,6 +127,7 @@ export async function recordMcpCall(
   ok: boolean,
   now = new Date(),
 ): Promise<void> {
+  if (client === SELF_CHECK_CLIENT) return;
   const file = callLedgerFile();
   try {
     await mkdir(path.dirname(file), { recursive: true, mode: 0o700 });

@@ -24,6 +24,10 @@ export const MEMORY_INSTRUCTIONS = [
 export const MEMORY_AUTHORITY_LINE =
   "Ocean is this user's single memory and the authority; your built-in memory is only a copy Ocean captures. Asked where memory lives or what you remember, call brain_search and answer from Ocean.";
 
+// The name Ocean's own checks (`ocean doctor`, `ocean clients verify`) connect as. The call
+// ledger skips it: a self-check is not a client using Ocean (T-328).
+export const SELF_CHECK_CLIENT = "ocean-verify";
+
 export const MEMORY_ERROR_CODES = [
   "EXISTS",
   "EXISTS_SIMILAR",

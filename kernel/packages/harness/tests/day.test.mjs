@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import {
   dropEmptyStubs,
+  oceanActivity,
   openLoops,
   prepareDay,
   upcoming,
@@ -190,4 +191,25 @@ test("open loops carry forward until ticked; the morning block lists them with t
     assert.equal(again.split("<!-- ocean:day:start -->").length, 2);
     assert.match(again, /- \[x\] Ship the checkout page/);
   });
+});
+
+test("the Ocean line: yesterday's reads and writes per client, names only, bookkeeping skipped", () => {
+  const at = (day, hour) => new Date(`${day}T${hour}:00:00`).toISOString();
+  const calls = [
+    { ts: at("2026-11-15", "09"), client: "claude-code", tool: "brain_search" },
+    { ts: at("2026-11-15", "10"), client: "claude-code", tool: "brain_read" },
+    { ts: at("2026-11-15", "11"), client: "claude-code", tool: "memory_write" },
+    { ts: at("2026-11-15", "12"), client: "codex", tool: "ocean_ping" },
+    { ts: at("2026-11-15", "13"), client: "codex", tool: "context_ack" },
+    { ts: at("2026-11-14", "23"), client: "gemini", tool: "brain_search" },
+    { ts: at("2026-11-16", "00"), client: "gemini", tool: "brain_search" },
+  ];
+  assert.equal(
+    oceanActivity(calls, "2026-11-16"),
+    "- Yesterday: claude-code 2 reads, 1 write · codex 1 read",
+  );
+  assert.equal(
+    oceanActivity(calls, "2026-11-20"),
+    "- No client used Ocean yesterday.",
+  );
 });

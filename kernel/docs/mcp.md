@@ -46,7 +46,8 @@ where memory lives, a model answers from Ocean instead of listing two equal stor
 | `memory_propose` | a server-named candidate under `00-inbox/candidates/<date>/`, for review; with `project` and `kind`, filed by Ocean in that project (below) |
 | `memory_delete` | soft delete into trash; needs `expectedHash` |
 | `memory_restore` | puts back a deleted record or an earlier version |
-| `ocean_context` | the bounded start line (256 bytes or less: project bound to `cwd`, operations) for clients without a session-start hook; read-only, no records |
+| `ocean_context` | the bounded start line (256 bytes or less: project bound to `cwd`, operations) for clients without a session-start hook, then, when the user has rules, one line naming the `ocean_policy` names that hold them; read-only, no records |
+| `ocean_policy` | the user's own rules: `core` (`charter/core.md`: language, direction, working style) or one policy module such as `response` (report shape); the same reader as `ocean policy`; an unknown or malformed name is refused |
 | `ocean_projects_list` | project ids and names |
 | `ocean_handoff_create` | a new cross-client handoff on the user's request: summary + next action, 4 KB at most, secrets and home paths redacted, the calling client recorded as provider; never overwrites; read back with `ocean_handoffs_list` / `ocean_handoff_get` |
 
@@ -188,9 +189,11 @@ apply; an entry the user changed since is reported as a conflict and left alone.
 undoes every batch, then deletes the backups, keeping only those of a client with a conflict. `ocean clients
 repair` (run by `ocean client sync`) re-applies only clients approved by an earlier `apply --yes`.
 `ocean clients verify [<id>]` starts each client's configured command and checks it answers as the
-brain server — proof the entry launches, not that the app connects. `ocean doctor` fails for an
-installed supported client that is not wired or needs a manual edit, warns for an unknown
-capability, and reports unsupported clients with their fallback.
+brain server and answers a real `ocean_ping` call — proof the entry launches and serves, not that
+the app connects; the check runs as `ocean-verify`, which the call ledger does not record. `ocean
+doctor` fails for an installed supported client that is not wired or needs a manual edit, warns for
+an unknown capability, reports unsupported clients with their fallback, and makes that same live
+call for every wired client (`CLIENT_LIVE_OK` / `CLIENT_LIVE_FAIL`).
 
 The state file `bridge/state/clients/clients.json` records the clients approved by an apply, the
 last `ocean clients verify` result of each, and the evidence for each client's use of Ocean:

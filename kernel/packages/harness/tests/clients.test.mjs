@@ -19,6 +19,7 @@ import {
   applyClients,
   backupPath,
   clientFindings,
+  clientLiveFindings,
   confirmClient,
   defaultToGatewayOnFreshSetup,
   edit,
@@ -696,6 +697,13 @@ test("verify proves the configured command answers as the brain server", async (
     await applyClients({ clients: ["cursor", "gemini"], env: live });
     const ok = await verifyClient("cursor", live);
     assert.equal(ok.ok, true, ok.detail);
+    assert.match(ok.detail, /real ocean_ping call/);
+    // The self-check never lands in the call ledger as a client using Ocean.
+    const ledger = await readFile(
+      path.join(root, "bridge/state/mcp/calls.jsonl"),
+      "utf8",
+    ).catch(() => "");
+    assert.doesNotMatch(ledger, /ocean-verify/);
     await writeFile(
       path.join(home, ".gemini/settings.json"),
       json({
@@ -710,6 +718,28 @@ test("verify proves the configured command answers as the brain server", async (
     const wrong = await verifyClient("gemini", live);
     assert.equal(wrong.ok, false, wrong.detail);
     assert.equal((await verifyClient("aider", live)).ok, false);
+  });
+});
+
+test("doctor's live check: one real call per wired client, a dead entry fails", async () => {
+  const { root, env } = await fixtureHome();
+  await withRoot(root, async () => {
+    await applyClients({ clients: ["cursor", "gemini"], env });
+    const seen = [];
+    const findings = await clientLiveFindings(env, async (client) => {
+      seen.push(client);
+      return client === "cursor"
+        ? { client, ok: true, detail: "answered" }
+        : { client, ok: false, detail: "exited with code 1 before answering" };
+    });
+    assert.deepEqual(seen.sort(), ["cursor", "gemini"]);
+    const byCode = Object.fromEntries(
+      findings.map((finding) => [finding.code, finding]),
+    );
+    assert.equal(byCode.CLIENT_LIVE_OK.severity, "OK");
+    assert.match(byCode.CLIENT_LIVE_OK.message, /\(cursor\): answered/);
+    assert.equal(byCode.CLIENT_LIVE_FAIL.severity, "FAIL");
+    assert.match(byCode.CLIENT_LIVE_FAIL.message, /\(gemini\): exited/);
   });
 });
 

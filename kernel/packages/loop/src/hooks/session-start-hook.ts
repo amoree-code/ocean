@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { buildOceanBootstrap } from "@ocean/context/context/resource-injection.js";
 import { MEMORY_AUTHORITY_LINE } from "@ocean/core/domain/mcp/memory-contract.js";
+import { rulesPointer } from "@ocean/core/shared/charter.js";
 import { recordIssuedAck } from "@ocean/core/shared/context-ack.js";
 import { truncateUtf8 } from "@ocean/core/shared/fs-utils.js";
 import { oceanRoot, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
@@ -206,7 +207,8 @@ export async function claudeSessionStartHook(
 }
 
 // The same bounded bootstrap line a session-start hook gives, for clients without hooks (T-307).
-// Read-only: it never registers a project, and it carries no rules, records or warnings.
+// Read-only: it never registers a project, and it carries no records or warnings, only a pointer
+// to the rules.
 export async function oceanContext(cwd: string): Promise<string> {
   const project = await resolveProject(cwd).catch(
     (): ProjectResolution => ({
@@ -218,7 +220,10 @@ export async function oceanContext(cwd: string): Promise<string> {
   );
   const bootstrap = buildOceanBootstrap(project);
   await recordIssuedAck(bootstrap.ack);
-  return bootstrap.content;
+  // A hookless client never sees the rules a hook client gets as its CLAUDE.md copy: a pointer
+  // beside the bounded line, never inside it (T-328).
+  const rules = await rulesPointer();
+  return rules ? `${bootstrap.content}\n${rules}` : bootstrap.content;
 }
 
 // Clients that take the bootstrap through their own hooks instead of a same-name shim (T-266).

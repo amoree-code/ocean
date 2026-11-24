@@ -177,7 +177,8 @@ days and how many failures have stayed at zero that long.
 The daily note (`01-daily/<date>.md`) has one shape. Under the title, Ocean's morning block:
 `## Today` — Focus (open tasks), Coming up (dated lines in your records within 30 days), Open
 loops (every unticked Next from the last two weeks, carried until you tick it), Your hours (from
-`02-personal/schedule/`), Waiting on you — and `## Brief` (the top items from the interests you
+`02-personal/schedule/`), Waiting on you, Ocean (which clients read or wrote Ocean yesterday, from
+the MCP call ledger) — and `## Brief` (the top items from the interests you
 follow, with today's full brief). Then the day's account written by the harvest: `## Day summary`,
 `## Open loops`, `## Corrections`, `## Time`. Last, `## Notes`: yours, never written by Ocean. Both
 blocks sit between markers and are rewritten in place; a tick you make in them is kept. Session
