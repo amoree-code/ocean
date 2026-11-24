@@ -66,6 +66,8 @@ export type OnboardingClients = {
   applyNative(batch: string): Promise<{ client: string; result: string }[]>;
   // Clients the owner already approved; a pending change for any other reopens the review.
   approved(): Promise<string[]>;
+  // Newest successful Ocean call per client id, from the call ledger (the "live" pillar).
+  lastCalls?(): Promise<Record<string, string>>;
 };
 
 // Claude chat's Ocean plugin (T-328); the real ones unless a test passes its own.
@@ -94,9 +96,110 @@ function describeClient(plan: ClientPlan): string {
   return `${plan.status}: ${plan.reason}; fallback: ${plan.fallback}`;
 }
 
-// T-296 §3.7: one consolidated review of every detected client (MCP entry and session hook), one
-// confirmation for all of them. Without a terminal nothing is written: client configs change
-// only on an explicit yes.
+// What each hook event does for the owner: the first two make the client call Ocean, the
+// last two put what happened in a session into Ocean.
+const HOOK_ROLE: Record<
+  HookPlan["event"],
+  { pillar: "trigger" | "capture"; does: string }
+> = {
+  SessionStart: {
+    pillar: "trigger",
+    does: "session-start hook loads Ocean's context",
+  },
+  UserPromptSubmit: {
+    pillar: "trigger",
+    does: "prompt hook routes each prompt to a skill",
+  },
+  SessionEnd: {
+    pillar: "capture",
+    does: "session-end hook records each finished session",
+  },
+  PreCompact: {
+    pillar: "capture",
+    does: "pre-compact hook keeps facts before a long chat is compacted",
+  },
+};
+
+function hookLine(hook: HookPlan): string {
+  const role = HOOK_ROLE[hook.event].does;
+  if (hook.status === "current") return role;
+  if (hook.status === "change") return `${role} (will add in ${hook.file})`;
+  return `${role} (hand edit needed: ${hook.reason}${hook.snippet ? `; add ${hook.snippet}` : ""})`;
+}
+
+function nativeLine(item: NativePlan): string {
+  if (item.status === "current") return `own memory governed: ${item.setting}`;
+  if (item.status === "change")
+    return `own memory: will set ${item.setting} in ${item.file}`;
+  if (item.status === "manual")
+    return `own memory: hand edit ${item.setting} in ${item.file} (${item.reason})`;
+  if (item.status === "capture") return `own memory captured: ${item.reason}`;
+  if (item.status === "harvest") return `own memory harvested: ${item.reason}`;
+  return `own memory NOT captured (${item.reason})`;
+}
+
+function ago(ts: string, now = Date.now()): string {
+  const minutes = Math.max(0, Math.round((now - Date.parse(ts)) / 60_000));
+  if (minutes < 60) return `${minutes}m`;
+  if (minutes < 48 * 60) return `${Math.round(minutes / 60)}h`;
+  return `${Math.round(minutes / 1440)}d`;
+}
+
+// T-328 P5: one card per detected client — connect → trigger → capture → live. The capture
+// lines are the consent: they say what flows into Ocean before the one question that allows it.
+function clientCards(
+  plans: ClientPlan[],
+  hooks: HookPlan[],
+  native: NativePlan[],
+  lastCalls: Record<string, string>,
+): string[] {
+  const ids = [
+    ...new Set([
+      ...plans.map((plan) => plan.client),
+      ...hooks.map((hook) => hook.client),
+      ...native.map((item) => item.client),
+    ]),
+  ];
+  const lines: string[] = [];
+  const row = (pillar: string, items: string[]) =>
+    items.forEach((item, index) => {
+      lines.push(`    ${(index ? "" : pillar).padEnd(8)} ${item}`);
+    });
+  for (const id of ids) {
+    const plan = plans.find((item) => item.client === id);
+    const own = hooks.filter((hook) => hook.client === id);
+    const memory = native.filter((item) => item.client === id);
+    lines.push(`  ${plan?.label ?? id}`);
+    row("connect", [plan ? describeClient(plan) : "n/a"]);
+    const triggers = own
+      .filter((hook) => HOOK_ROLE[hook.event].pillar === "trigger")
+      .map(hookLine);
+    if (!triggers.length && plan && ["current", "change"].includes(plan.status))
+      triggers.push(
+        "server instructions: the model calls Ocean when your work comes up",
+      );
+    row("trigger", triggers.length ? triggers : ["none"]);
+    const captures = [
+      ...own
+        .filter((hook) => HOOK_ROLE[hook.event].pillar === "capture")
+        .map(hookLine),
+      ...memory.map(nativeLine),
+    ];
+    if (!memory.length && plan?.nativeMemory === "none")
+      captures.push("it keeps no memory of its own");
+    row("capture", captures.length ? captures : ["nothing"]);
+    row("live", [
+      lastCalls[id]
+        ? `last Ocean call ${ago(lastCalls[id])} ago`
+        : "no Ocean call recorded yet",
+    ]);
+  }
+  return lines;
+}
+
+// T-296 §3.7: one consolidated review of every detected client (MCP entry, session hooks and
+// native memory), one confirmation for all of them. Without a terminal nothing is written:
+// client configs change only on an explicit yes.
 function connectStep(clients: OnboardingClients): OnboardingStep {
   return {
     id: "connect",
@@ -119,37 +222,21 @@ function connectStep(clients: OnboardingClients): OnboardingStep {
     },
     async run(io) {
       const plans = (await clients.plan()).filter((plan) => plan.installed);
-      for (const plan of plans)
-        io.say(`  ${plan.label.padEnd(34)} ${describeClient(plan)}`);
+      const hooks = await clients.hooks();
+      const native = await clients.native();
+      io.say(
+        "  Per client: connect → trigger → capture → live. What is captured stays in ~/ocean on this machine.",
+      );
+      for (const line of clientCards(
+        plans,
+        hooks,
+        native,
+        (await clients.lastCalls?.()) ?? {},
+      ))
+        io.say(line);
       for (const plan of plans.filter((item) => item.status === "manual"))
         io.say(
           `  Hand edit for ${plan.label} (${plan.file}): add ${plan.snippet}`,
-        );
-      const hooks = await clients.hooks();
-      for (const hook of hooks)
-        io.say(
-          `  ${`${hook.client} ${hook.event} hook`.padEnd(34)} ${
-            hook.status === "current"
-              ? "present"
-              : hook.status === "change"
-                ? `will add a ${hook.event} hook in ${hook.file}`
-                : `hand edit needed (${hook.reason})${hook.snippet ? `; add ${hook.snippet}` : ""}`
-          }`,
-        );
-      const native = await clients.native();
-      for (const item of native)
-        io.say(
-          `  ${`${item.client} native memory`.padEnd(34)} ${
-            item.status === "current"
-              ? "governed"
-              : item.status === "change"
-                ? `will set ${item.setting} in ${item.file}`
-                : item.status === "manual"
-                  ? `hand edit: ${item.setting} in ${item.file} (${item.reason})`
-                  : item.status === "capture"
-                    ? `captured: ${item.reason}`
-                    : `you: ${item.reason}`
-          }`,
         );
       const pending = plans.filter((plan) => plan.status === "change");
       const pendingHooks = hooks.filter((hook) => hook.status === "change");
@@ -164,10 +251,13 @@ function connectStep(clients: OnboardingClients): OnboardingStep {
         );
         return "skipped";
       }
+      io.say(
+        "  Before each edit the whole config is saved next to it as <file>.ocean-backup-<batch>; `ocean uninstall` puts everything back.",
+      );
       if (
         !(await yes(
           io,
-          `  Apply these changes (${pending.length} MCP entries, ${pendingHooks.length} session hooks, ${pendingNative.length} native-memory settings)?`,
+          `  Apply these changes and allow the capture above (${pending.length} MCP entries, ${pendingHooks.length} session hooks, ${pendingNative.length} native-memory settings)?`,
         ))
       )
         return "skipped";

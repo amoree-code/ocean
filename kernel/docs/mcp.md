@@ -179,9 +179,13 @@ YAML list is never rewritten: it becomes a manual step with the exact entry to a
 Each write re-reads the file right before replacing it (a concurrent edit makes Ocean recompute),
 keeps the file's mode and writes through a symlink. Rollback uses
 `bridge/state/clients/journal.jsonl` (mode 0600): the before/after value of each managed entry
-only — never a copy of a client file — and a value that holds a credential shape is kept as a hash,
-so restoring it can only remove Ocean's entry. `ocean clients restore [--batch <id>]` undoes an
-apply; an entry the user changed since is reported as a conflict and left alone. `ocean clients
+only — never a copy of a client file — and a value that holds a credential shape is kept as a hash.
+Before the first write of each apply batch, the whole client file is copied next to it as
+`<file>.ocean-backup-<batch>` (mode 0600, the owner's machine only), so a hashed value comes back
+from that copy, used only when it still hashes to the journaled value; without it, restore can only
+remove Ocean's entry. An undo writes no backup. `ocean clients restore [--batch <id>]` undoes an
+apply; an entry the user changed since is reported as a conflict and left alone. `ocean uninstall`
+undoes every batch, then deletes the backups, keeping only those of a client with a conflict. `ocean clients
 repair` (run by `ocean client sync`) re-applies only clients approved by an earlier `apply --yes`.
 `ocean clients verify [<id>]` starts each client's configured command and checks it answers as the
 brain server — proof the entry launches, not that the app connects. `ocean doctor` fails for an
