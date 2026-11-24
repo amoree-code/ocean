@@ -1,6 +1,6 @@
 {
   "name": "@ocean/loop",
-  "version": "2.23.0",
+  "version": "3.0.0",
   "private": false,
   "type": "module",
   "files": [
