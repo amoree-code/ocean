@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import {
@@ -102,6 +103,42 @@ function withContextAck(list: McpTool[]): McpTool[] {
       },
     };
   });
+}
+
+// The seconds the background capture waits first, so the app has written the turn that asked
+// for the save to its local store before it is read.
+export const DESKTOP_SAVE_WAIT_SECONDS = 20;
+
+// `ocean_session_save` (T-329): the capture is a model call, longer than a tool call should
+// take, so it runs as its own detached `ocean desktop capture --latest`, like SessionEnd's.
+function startDesktopSave(): { status: string; message: string } {
+  try {
+    spawn(
+      process.execPath,
+      [
+        process.argv[1] ?? "",
+        "desktop",
+        "capture",
+        "--latest",
+        "--wait",
+        String(DESKTOP_SAVE_WAIT_SECONDS),
+      ],
+      { detached: true, stdio: "ignore" },
+    )
+      .on("error", () => {})
+      .unref();
+  } catch {
+    return {
+      status: "failed",
+      message:
+        "The capture could not start. The conversation is still captured once it has been quiet for two hours.",
+    };
+  }
+  return {
+    status: "started",
+    message:
+      "Saving this conversation to Ocean in the background. Its session record appears in sessions/ within a few minutes.",
+  };
 }
 
 const tools = new McpToolRegistry(
@@ -247,6 +284,17 @@ const tools = new McpToolRegistry(
           approval: { type: "object" },
         },
         required: ["sessionId", "approval"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "ocean_session_save",
+      description:
+        "Claude Desktop chat only: save this conversation to Ocean now, instead of waiting for it to close. Call it when the user says save, remember this conversation, or is about to leave. It starts a background capture of the most recently updated Desktop conversation (its session record, facts and raw transcript) and returns at once; the record lands in sessions/ within a few minutes. Claude Code and CLI sessions are captured at session end and need no call.",
+      annotations: { readOnlyHint: false, destructiveHint: false },
+      inputSchema: {
+        type: "object",
+        properties: {},
         additionalProperties: false,
       },
     },
@@ -740,6 +788,7 @@ async function callTool(
       store.close();
     }
   }
+  if (name === "ocean_session_save") return startDesktopSave();
   if (name === "ocean_session_promote") {
     const approval = mcpApprovalSchema.parse(args.approval);
     const actionArgs = {

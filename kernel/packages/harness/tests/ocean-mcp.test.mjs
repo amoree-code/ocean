@@ -48,6 +48,7 @@ test("Ocean MCP exposes provider-neutral tools without Obsidian", async () => {
         "ocean_session_summary",
         "ocean_session_events",
         "ocean_session_promote",
+        "ocean_session_save",
         "brain_search",
         "brain_read",
         "brain_neighbors",

@@ -7,7 +7,9 @@ import v8 from "node:v8";
 import {
   conversationFromRecord,
   DesktopChatUnreadable,
+  messageText,
   readDesktopChats,
+  TOOL_RESULT_CHARS,
 } from "../dist/infrastructure/desktop/desktop-chat.js";
 import { unsnappy } from "../dist/infrastructure/desktop/snappy.js";
 
@@ -394,4 +396,39 @@ test("an edited message keeps only the branch that ends at the newest leaf", () 
     ["q", "a2", "thanks"],
   );
   assert.equal(conversationFromRecord({ conversationUuid: "x" }), null);
+});
+
+test("a message keeps its tool calls and results as bracketed lines, cut short; thinking is left out (T-329)", () => {
+  const long = "x".repeat(TOOL_RESULT_CHARS + 50);
+  const text = messageText([
+    { type: "thinking", thinking: "private reasoning" },
+    { type: "text", text: "Let me look." },
+    {
+      type: "tool_use",
+      name: "mcp__remote-devices__ocean__brain_search",
+      input: { summary: "recent projects" },
+    },
+    {
+      type: "tool_result",
+      name: "brain_search",
+      is_error: false,
+      content: [{ type: "text", text: `found\n  ${long}` }],
+    },
+    { type: "tool_use", name: "ocean_status", input: {} },
+    {
+      type: "tool_result",
+      is_error: true,
+      content: [{ type: "text", text: "boom" }],
+    },
+    { type: "text", text: "Done." },
+  ]);
+  const lines = text.split("\n\n");
+  assert.equal(lines[0], "Let me look.");
+  assert.equal(lines[1], "[tool brain_search: recent projects]");
+  assert.match(lines[2], /^\[tool result: found x+…\]$/);
+  assert.ok(lines[2].length < TOOL_RESULT_CHARS + 30);
+  assert.equal(lines[3], "[tool ocean_status]");
+  assert.equal(lines[4], "[tool error: boom]");
+  assert.equal(lines[5], "Done.");
+  assert.doesNotMatch(text, /private reasoning/);
 });
