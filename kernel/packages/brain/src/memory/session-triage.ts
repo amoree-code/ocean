@@ -1,4 +1,6 @@
-import type { FactTurn } from "./session-facts.js";
+// A chat turn as capture sees it. Lives here, not in session-facts.ts, so triage has no import
+// back into session-facts (a cycle the dependency check rejects).
+export type FactTurn = { role: "user" | "assistant"; text: string };
 
 // Free, deterministic triage before any model call (T-329 phase 2). A chat with nothing durable
 // in it — a greeting, one short question, a quick lookup — costs no model call: it gets a
