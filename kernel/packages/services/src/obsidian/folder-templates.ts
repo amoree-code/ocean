@@ -33,8 +33,9 @@ async function exists(file: string): Promise<boolean> {
   );
 }
 
-// One entry per routed type whose template exists in 06-templates; entries the owner made for
-// other folders are kept, and a routed folder's entry is replaced.
+// One entry per routed folder whose template exists in 06-templates; entries the owner made for
+// other folders are kept, and a routed folder's entry is replaced. Several types share a folder
+// (T-329: lessons/ holds solutions, failures, discoveries…): the first type routed there wins.
 export async function planFolderTemplates(
   current: FolderTemplate[],
 ): Promise<{ entries: FolderTemplate[]; missing: string[] }> {
@@ -43,6 +44,7 @@ export async function planFolderTemplates(
   for (const type of RECORD_TYPES) {
     const folder = recordFolder(type)?.replace(/\/$/, "");
     if (!folder) continue;
+    if (routed.some((entry) => entry.folder === folder)) continue;
     const template = `${TEMPLATES_DIR}/${type}.md`;
     if (await exists(oceanPath(template))) routed.push({ folder, template });
     else missing.push(type);

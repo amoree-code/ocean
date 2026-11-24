@@ -3,15 +3,17 @@
 Load when recording or retrieving what past work taught.
 
 **Knowledge answers: what did work teach us that saves effort next time.** Lifespan: until
-superseded. `~/ocean/05-knowledge/<kind>/`.
+superseded. `~/ocean/05-knowledge/<decisions|lessons>/`.
 
 Knowledge exists to **cut tokens**: retrieving one compact entry beats re-reading old files
 and re-deriving what was already established.
 
-## Kinds
+## Folders
 
-`task-results/` · `technical-solutions/` · `decisions/` · `architecture/` · `research/` ·
-`discoveries/` · `failures/`
+Two (T-329 phase 4): `decisions/` — what was chosen and why, architecture included — and
+`lessons/` — everything work taught: fixes, discoveries, failures, results, research. A
+lesson record says what it was born as in `kind:` (solution · discovery · failure · result ·
+research). Project references belong in `04-projects/<category>/<project>/docs/`.
 
 ## Before investigating
 

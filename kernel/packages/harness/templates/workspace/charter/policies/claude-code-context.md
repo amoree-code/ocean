@@ -66,7 +66,7 @@ Four kinds of context, kept distinct:
 | | Answers | Lives | Lifespan |
 |---|---|---|---|
 | **Memory** | what is true about the owner and their world | `02-personal/<section>/` | years |
-| **Knowledge** | what work taught us that saves effort next time | `05-knowledge/<kind>/` | until superseded |
+| **Knowledge** | what work taught us that saves effort next time | `05-knowledge/<decisions|lessons>/` | until superseded |
 | **Session** | what we are doing right now | `.ai/tasks/current.md`, `sessions/` | one session |
 | **Daily** | what happened today | `01-daily/YYYY-MM-DD.md` | one day |
 

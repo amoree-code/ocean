@@ -139,7 +139,7 @@ test("a day becomes one summary block and filed knowledge; a rerun changes nothi
     const dry = await harvestDay({ date: "2026-11-16", apply: false });
     assert.equal(dry.sessions, 2);
     await assert.rejects(
-      readFile(path.join(root, "05-knowledge/solutions"), "utf8"),
+      readFile(path.join(root, "05-knowledge/lessons"), "utf8"),
     );
 
     const result = await harvestDay({ date: "2026-11-16", apply: true });
@@ -184,11 +184,15 @@ test("a day becomes one summary block and filed knowledge; a rerun changes nothi
       decision,
       /## Evidence\n\n- 2026-11-16: \[Cart work\]\(\.\.\/\.\.\/01-daily\/sessions\/2026-11\/a\.md\)/,
     );
-    const [solution] = await readdir(path.join(root, "05-knowledge/solutions"));
-    const solutionText = await readFile(
-      path.join(root, "05-knowledge/solutions", solution),
-      "utf8",
+    // lessons/ holds every harvested kind (T-329); `kind:` says which one a record was born as.
+    const lessons = await readdir(path.join(root, "05-knowledge/lessons"));
+    const texts = await Promise.all(
+      lessons.map((file) =>
+        readFile(path.join(root, "05-knowledge/lessons", file), "utf8"),
+      ),
     );
+    const solutionText = texts.find((text) => /^kind: solution$/m.test(text));
+    assert.ok(solutionText, "a harvested solution lands in lessons/");
     assert.match(solutionText, /^type: solution$/m);
     assert.match(solutionText, /^origin: harvested$/m);
     assert.match(
@@ -226,7 +230,7 @@ test("a day becomes one summary block and filed knowledge; a rerun changes nothi
       /^last_verified: 2026-01-01$/m,
     );
     assert.deepEqual(
-      await readdir(path.join(root, "05-knowledge/solutions")),
+      await readdir(path.join(root, "05-knowledge/lessons")),
       [],
     );
   });

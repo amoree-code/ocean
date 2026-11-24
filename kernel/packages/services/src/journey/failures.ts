@@ -10,7 +10,7 @@ import { localDate } from "@ocean/core/shared/local-date.js";
 import { KNOWLEDGE_DIR, oceanPath } from "@ocean/core/shared/paths.js";
 import type { SignatureStats } from "./telemetry.js";
 
-// Failure records (T-323): one markdown file per failure signature in 05-knowledge/failures/.
+// Failure records (T-323): one markdown file per failure signature in 05-knowledge/lessons/.
 // A record states the mechanism, not the symptom, and carries a closed status
 //   open → fix-landing → absorbed → superseded-by <id>
 // changed only by code, one field per update, with a line appended to its status log; the
@@ -58,7 +58,8 @@ const NEXT: Record<FailureStatus, FailureStatus[]> = {
   absorbed: [],
 };
 
-export const failuresDir = () => oceanPath(KNOWLEDGE_DIR, "failures");
+// Failure records live among the lessons (T-329 phase 4), told apart by their signature.
+export const failuresDir = () => oceanPath(KNOWLEDGE_DIR, "lessons");
 const failureFile = (id: string) => path.join(failuresDir(), `${id}.md`);
 
 function parse(source: string): FailureRecord | null {
@@ -146,6 +147,7 @@ export async function openFailure(
     if (await readFile(file, "utf8").catch(() => null))
       throw new FailureRecordError(`Failure ${input.id} already exists`);
     const head = [
+      "kind: failure",
       `id: ${input.id}`,
       "type: failure",
       `title: ${JSON.stringify(input.title)}`,

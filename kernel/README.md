@@ -169,7 +169,7 @@ prints its usage and never runs it. To hand `--help` to a wrapped client, put it
 | `ocean upkeep` | the nightly jobs with no model — doctor, telemetry, reindex, search eval, drift, curator, scorecard, and memory hygiene once a month — then the morning digest in `01-daily/digest/` | Writes with `--yes` |
 | `ocean curator` | marks lessons and skills stale after 30 days unused (or 90 unreviewed) and archives them after 90; `review` undoes a mark | Writes with `--yes` |
 | `ocean telemetry` | recurring session errors (each named by a signature) and failing providers, as proposed backlog lines; also proposes a guardrail climb for an absorbed failure that came back and retiring a lesson that does no better than without it | Writes |
-| `ocean failures` | failure records by signature in `05-knowledge/failures/`: status `open → fix-landing → absorbed → superseded-by`, guardrail ladder `lesson → doctor → test`, recurrence counted from sessions | Reads; `open`, `status`, `climb` write |
+| `ocean failures` | failure records by signature in `05-knowledge/lessons/`: status `open → fix-landing → absorbed → superseded-by`, guardrail ladder `lesson → doctor → test`, recurrence counted from sessions | Reads; `open`, `status`, `climb` write |
 | `ocean scorecard` | Ocean's health numbers from real data: clients working, sessions verified and linked to tasks, attributed memory writes, search mode, schedules, lessons applied, failures at zero | Reads; `--write` saves `01-daily/scorecard/` |
 | `ocean express` | draft a CV section, LinkedIn post or scholarship paragraph from milestones | Writes |
 | `ocean handoff` | hand work from one session or client to another | Reads; `create` writes |

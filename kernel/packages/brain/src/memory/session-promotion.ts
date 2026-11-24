@@ -6,21 +6,13 @@ import { KNOWLEDGE_DIR, oceanPath } from "@ocean/core/shared/paths.js";
 import { syncMemoryIndexes } from "./index-sync.js";
 import { isProvingEvidence } from "./lesson-learning.js";
 
-const kinds = new Set([
-  "architecture",
-  "decisions",
-  "discoveries",
-  "failures",
-  "research",
-  "results",
-  "solutions",
-  "references",
-]);
+// 05-knowledge holds two folders (T-329 phase 4).
+const kinds = new Set(["decisions", "lessons"]);
 
 export async function promoteSessionToKnowledge(
   sessionId: string,
   openStore: SessionStoreFactory,
-  target = "knowledge/results",
+  target = "knowledge/lessons",
   approved = false,
 ): Promise<{ applied: boolean; sessionId: string; file?: string }> {
   if (!approved)
@@ -29,9 +21,7 @@ export async function promoteSessionToKnowledge(
     );
   const match = /^knowledge\/(\w+)$/.exec(target);
   if (!match || !kinds.has(match[1]))
-    throw new Error(
-      "Target must be knowledge/<architecture|decisions|discoveries|failures|research|results|solutions|references>",
-    );
+    throw new Error("Target must be knowledge/<decisions|lessons>");
   const store = await openStore();
   try {
     const session = store.get(sessionId);

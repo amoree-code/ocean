@@ -54,11 +54,13 @@ const PLACEHOLDER =
   /^(not stated|no objective was captured|none|n\/a|completed)\.?$/i;
 const SAME_TITLE = 0.6;
 
-// Where each kind of harvested item is filed, and the record type it carries.
+// Where each kind of harvested item is filed, and the record type it carries. 05-knowledge holds
+// two folders (T-329 phase 4): decisions, and lessons for everything work taught; a lesson
+// record names what it was born as in `kind:`.
 const KINDS = {
   decision: { heading: "Decisions", folder: "decisions" },
-  solution: { heading: "Problems → fixes", folder: "solutions" },
-  discovery: { heading: "Learned", folder: "discoveries" },
+  solution: { heading: "Problems → fixes", folder: "lessons" },
+  discovery: { heading: "Learned", folder: "lessons" },
 } as const;
 type Kind = keyof typeof KINDS;
 
@@ -328,6 +330,7 @@ async function fileItem(
   const file = path.join(folder, `${slug(item.text) || "untitled"}.md`);
   const body = [
     "---",
+    ...(KINDS[item.kind].folder === "lessons" ? [`kind: ${item.kind}`] : []),
     `type: ${item.kind}`,
     `title: ${JSON.stringify(title)}`,
     "status: active",

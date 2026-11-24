@@ -15,7 +15,7 @@ async function fixture() {
   const root = await mkdtemp(path.join(os.tmpdir(), "ocean-capture-cli-"));
   await mkdir(path.join(root, INBOX_DIR), { recursive: true });
   await mkdir(path.join(root, PERSONAL_DIR), { recursive: true });
-  await mkdir(path.join(root, KNOWLEDGE_DIR, "results"), {
+  await mkdir(path.join(root, KNOWLEDGE_DIR, "decisions"), {
     recursive: true,
   });
   await mkdir(path.join(root, PROJECTS_DIR), { recursive: true });
@@ -50,9 +50,9 @@ test("manual capture renders, promotes to knowledge, and updates its index", asy
     await readFile(path.join(root, INBOX_DIR, "INBOX.md"), "utf8"),
     /SMOKE_CAPTURE_CLI_IDEA/,
   );
-  cli(root, "capture", "promote", String(item.captureId), "knowledge/results");
+  cli(root, "capture", "promote", String(item.captureId), "knowledge/decisions");
   const records = (
-    await readdir(path.join(root, KNOWLEDGE_DIR, "results"))
+    await readdir(path.join(root, KNOWLEDGE_DIR, "decisions"))
   ).filter((file) => file.endsWith(".md"));
   assert.equal(records.length, 1);
   assert.match(

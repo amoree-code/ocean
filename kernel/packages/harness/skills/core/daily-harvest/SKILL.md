@@ -55,7 +55,7 @@ strengthen the record that holds it (merge into one current statement, fresh `up
    for every client goes to the backlog as a charter change, not into the charter itself.
 5. **The system itself**: an error recurring across sessions (`ocean telemetry --yes`); the same
    manual steps in three or more sessions → a backlog line `skill: <what it would do>`; a failure
-   in `05-knowledge/failures/` with no linked solution → look for the fix in the sessions.
+   in `05-knowledge/lessons/` (`kind: failure`) with no linked solution → look for the fix in the sessions.
 6. **Knowledge hygiene**: merge records that say the same thing; list decisions whose
    `last_verified` is over 90 days old; fix broken links; run `ocean memory sync --apply`.
 7. **The owner's journey**: a study session (IELTS, Letspeak) adds to his study log; finished,

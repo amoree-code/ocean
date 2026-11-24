@@ -208,7 +208,7 @@ Two tests decide, in order:
    materially worse off without this file? If the answer is "it might be nice", the
    answer is no.
 2. **Does it belong to the task, or to the world?** Task-specific → the task directory.
-   Reusable beyond this task → `05-knowledge/<kind>/` instead, and the task links
+   Reusable beyond this task → `05-knowledge/<decisions|lessons>/` instead, and the task links
    to it. Durable fact about the user → `02-personal/`.
 
 Test 2 is the one that keeps task directories small. A finding worth keeping is almost
@@ -225,7 +225,7 @@ When a task reaches `done`:
 
 1. `ocean tasks verify <ID>` has run, and the task carries `verified: yes` (or `partial`)
    with its `evidence` ids — `ocean tasks doctor` fails a `done` task without them.
-2. Each artifact is resolved once — promoted to `05-knowledge/<kind>/` if reusable,
+2. Each artifact is resolved once — promoted to `05-knowledge/<decisions|lessons>/` if reusable,
    left with the task if not. Nothing is copied to both places.
 3. `state: done`, `updated:` bumped, the index line updated.
 4. The task moves to `archive/<ID>/` when it stops being live context.
