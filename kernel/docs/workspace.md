@@ -26,7 +26,8 @@ folder; `ocean project bind <id> <path>` adds its first repo later.
 │   │                        07-notes/ instead; `ocean setup` moves it.
 │   └── 04-projects/         project data: registry, backlog, and each project in its
 │                            category folder, <category>/<id>/ (company, personal,
-│                            freelance, former-company, vendor; new ones in uncategorized/)
+│                            freelance, former-company, vendor, and the topics career,
+│                            learning, tooling, products; new ones in uncategorized/)
 ├── charter/                 private governance: core.md, policies/
 ├── kernel/                  this repository
 └── bridge/                  machine-local state, no git
