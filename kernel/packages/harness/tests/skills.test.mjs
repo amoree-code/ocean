@@ -22,6 +22,7 @@ test("lists the public core skill catalog without loading full instructions", as
     "graft",
     "loop",
     "memory-review",
+    "ocean-memory",
     "session-handoff",
     "use-browser",
     "verification",

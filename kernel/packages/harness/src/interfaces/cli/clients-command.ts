@@ -12,7 +12,6 @@ import {
 import {
   CHAT_PLUGIN_STEPS,
   chatPluginAdded,
-  OCEAN_MARKETPLACE,
   openChatPluginSetup,
 } from "../../application/clients/chat-plugin.js";
 import {
@@ -232,7 +231,7 @@ export async function runClientsCommand(args: string[]): Promise<void> {
         .results,
       sessionFacts: await sessionFactsAnswer(values("--session-facts")[0]),
     };
-    // Claude chat's Ocean plugin (T-328) is added to the account in Claude's own settings, which
+    // Claude chat's ocean-memory skill (T-328) is uploaded to the account in Claude's own settings, which
     // Ocean cannot write; apply only says whether it is there and what to run when it is not.
     const desktop = (await planClients()).find(
       (plan) => plan.client === "claude-desktop",
@@ -254,27 +253,26 @@ export async function runClientsCommand(args: string[]): Promise<void> {
       ...(chatPlugin ? { chatPlugin } : {}),
     };
   } else if (action === "chat-plugin") {
-    // Claude chat's one step (T-328): the marketplace name on the clipboard, Claude open, the
-    // clicks printed. Nothing to do once Claude Code's mirror of the account lists it.
+    // Claude chat's one step (T-328): the skill zip saved and shown, Claude open, the clicks
+    // printed. Nothing to do once Desktop's plugin list shows it.
     const added = chatPluginAdded();
     const opened = added === true ? undefined : openChatPluginSetup();
     if (!json) {
       if (added === true) {
         console.log(
-          `added: ${OCEAN_MARKETPLACE} is in your Claude account; its skill reaches every Claude chat`,
+          "added: the ocean-memory skill is in your Claude account; it reaches every Claude chat",
         );
         return;
       }
-      if (opened?.copied)
-        console.log(`${OCEAN_MARKETPLACE} is on your clipboard.`);
+      if (opened?.zip) console.log(`Saved ${opened.zip}.`);
       for (const step of CHAT_PLUGIN_STEPS) console.log(`  ${step}`);
       if (added === undefined)
         console.log(
-          "Ocean checks for it through Claude Code; without Claude Code, nothing confirms it here.",
+          "Ocean checks for it in Claude Desktop's plugin list; without Desktop, nothing confirms it here.",
         );
       return;
     }
-    result = { added, ...(opened ?? {}), marketplace: OCEAN_MARKETPLACE };
+    result = { added, ...(opened ?? {}) };
   } else if (action === "verify") {
     const ids = rest.filter((arg) => !arg.startsWith("--"));
     const targets = ids.length
