@@ -1,0 +1,12 @@
+{
+  "name": "ocean",
+  "description": "Your local memory for every AI client: projects, tasks, decisions and preferences, kept on your computer.",
+  "author": {
+    "name": "AMEER ABDULKAREEM JABBAR LAMI",
+    "url": "https://github.com/amoree-code"
+  },
+  "homepage": "https://github.com/amoree-code/ocean",
+  "repository": "https://github.com/amoree-code/ocean",
+  "license": "MIT",
+  "keywords": ["memory", "knowledge", "local-first"]
+}

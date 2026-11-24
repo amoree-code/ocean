@@ -10,6 +10,12 @@ import {
   summarizeCallLedger,
 } from "@ocean/services/infrastructure/mcp/call-ledger.js";
 import {
+  CLAUDE_PLUGIN_STEPS,
+  DESKTOP_EXTENSION_STEPS,
+  desktopConfigHasOcean,
+  writeBundles,
+} from "../../application/clients/bundles.js";
+import {
   CHAT_PLUGIN_STEPS,
   chatPluginAdded,
   openChatPluginSetup,
@@ -55,9 +61,10 @@ import {
   buildClientStatus,
   formatClientStatus,
 } from "../../application/clients/status.js";
+import { oceanVersion } from "../../version.js";
 
 const usage =
-  "Usage: ocean clients status [--json] [--days <n>] | detect|plan [--json] | apply [--client <id>…] [--yes] [--session-facts on|off] | chat-plugin | verify [<id>…] | confirm <id>… --label in-app|headless|connected|blocked [--via <evidence>] [--reason <why>] | gateway [<id> on|off] [--default gateway|per-server] | allow|deny|unset <id> <server> | ledger | repair | restore [--batch <id>]";
+  "Usage: ocean clients status [--json] [--days <n>] | detect|plan [--json] | apply [--client <id>…] [--yes] [--session-facts on|off] | chat-plugin | bundles [--out <dir>] | verify [<id>…] | confirm <id>… --label in-app|headless|connected|blocked [--via <evidence>] [--reason <why>] | gateway [<id> on|off] [--default gateway|per-server] | allow|deny|unset <id> <server> | ledger | repair | restore [--batch <id>]";
 
 export const SESSION_FACTS_QUESTION =
   "Capture durable facts from your sessions automatically? It costs one small model call per session, run by the client the session was in. Every fact goes to your review queue; nothing is saved without your approval, even with auto-approve on. [y/N] ";
@@ -273,6 +280,30 @@ export async function runClientsCommand(args: string[]): Promise<void> {
       return;
     }
     result = { added, ...(opened ?? {}) };
+  } else if (action === "bundles") {
+    // One-click bundles (T-328): the Claude Desktop Extension and the Claude plugin, written
+    // to Downloads (or --out) with the clicks to install each. Installing stays the user's.
+    const written = await writeBundles(
+      await oceanVersion(),
+      values("--out")[0],
+    );
+    const duplicate = desktopConfigHasOcean();
+    if (!json) {
+      console.log(`Saved ${written.extension}`);
+      for (const step of DESKTOP_EXTENSION_STEPS) console.log(`  ${step}`);
+      if (duplicate)
+        console.log(
+          "  Ocean is already in claude_desktop_config.json: keep one of the two, or Desktop shows every Ocean tool twice",
+        );
+      console.log(`Saved ${written.plugin}`);
+      for (const step of CLAUDE_PLUGIN_STEPS) console.log(`  ${step}`);
+      if (chatPluginAdded() === true)
+        console.log(
+          "  An Ocean skill is already in your Claude account: remove the ocean-memory upload once the plugin is in, so the skill loads once",
+        );
+      return;
+    }
+    result = { ...written, desktopConfigHasOcean: duplicate };
   } else if (action === "verify") {
     const ids = rest.filter((arg) => !arg.startsWith("--"));
     const targets = ids.length

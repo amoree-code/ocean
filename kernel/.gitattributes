@@ -3,3 +3,5 @@
 packages/harness/skills/core/** text eol=lf
 packages/harness/market/** text eol=lf
 packages/harness/ocean-marketplace.json text eol=lf
+# kernel/plugins/ocean is generated as a byte copy of the core skill (generate-claude-plugin.mjs).
+plugins/** text eol=lf

@@ -10,6 +10,8 @@
 !/LICENSE
 !/lefthook.yml
 !/.github/
+# The Claude plugin marketplace (T-328): Claude reads it only at a repository's root.
+!/.claude-plugin/
 !/kernel/
 
 # --- workspace structure: directories and .gitkeep only, never their files ---

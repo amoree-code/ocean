@@ -1,0 +1,15 @@
+{
+  "name": "ocean",
+  "owner": { "name": "Ocean", "url": "https://github.com/amoree-code/ocean" },
+  "metadata": {
+    "description": "Ocean, your local memory, for every Claude surface: chat, Cowork and Claude Code."
+  },
+  "plugins": [
+    {
+      "name": "ocean",
+      "source": "./kernel/plugins/ocean",
+      "description": "Claude asks Ocean, the memory on your own computer, before its own memory, and answers from it.",
+      "category": "productivity"
+    }
+  ]
+}

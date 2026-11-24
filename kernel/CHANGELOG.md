@@ -7,6 +7,9 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+- feat(clients): one-click bundles: `ocean clients bundles` writes `Ocean.mcpb`, a Claude Desktop Extension (MCPB 0.3, named Ocean, with an icon) whose launcher starts the Ocean installed on the machine, and `ocean.plugin`, a Claude plugin named Ocean carrying the `ocean-memory` skill for chat, Cowork and Claude Code; it warns when Desktop already has Ocean in its config, so the tools never show twice (T-328) (#336)
+- feat(clients): the repository is a Claude plugin marketplace again (`.claude-plugin/marketplace.json` → `kernel/plugins/ocean`, generated from the core skill, versioned by commit), so a marketplace added on claude.ai with Sync automatically keeps the Ocean plugin current (T-328) (#336)
+
 ## 2.22.0 (2026-11-24)
 
 - feat(clients): Ocean is now visible without asking: session-start hooks show the user `🌊 Ocean connected: <project>`, the server reports one display name (`serverInfo.title: "Ocean"`) under the one `ocean` key, and the hook and `ocean client sync` keep a small `bridge/state/visibility.json` that a Claude Code status line reads with `jq` to show `🌊 Ocean · <project> · synced <age>` (T-328) (#335)
