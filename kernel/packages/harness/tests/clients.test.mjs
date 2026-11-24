@@ -604,7 +604,7 @@ test("doctor findings fail unwired supported clients, warn unknown, report unsup
       before.filter((finding) => finding.code === code).length;
     assert.equal(by("CLIENT_NOT_WIRED"), 9);
     assert.equal(by("CLIENT_MANUAL"), 2);
-    // Warp and Xcode stay unsupported until their MCP support is verified (T-307).
+    // Xcode's app row is unsupported; its agents and Warp are absent from this home (T-328 P6).
     assert.equal(by("CLIENT_UNKNOWN"), 0);
     assert.equal(by("CLIENT_UNSUPPORTED"), 3);
     assert.ok(
@@ -1076,4 +1076,51 @@ test("a [[array-of-tables]] block after the last server ends that server's secti
     2,
     "the skill block is untouched",
   );
+});
+
+test("Warp and Xcode's agents are found by their folders and get Ocean in their own files (T-328 P6)", async () => {
+  const { home, root, env } = await fixtureHome();
+  const agents = "Library/Developer/Xcode/CodingAssistant";
+  await withRoot(root, async () => {
+    // Before Xcode creates an agent's folder, only the app's status row exists.
+    const none = statuses(await planClients(env));
+    for (const id of ["warp", "xcode-claude", "xcode-codex", "xcode-gemini"])
+      assert.equal(none[id], undefined, id);
+
+    for (const dir of [
+      ".warp",
+      `${agents}/ClaudeAgentConfig`,
+      `${agents}/codex`,
+      `${agents}/gemini`,
+    ])
+      await mkdir(path.join(home, dir), { recursive: true });
+    const found = statuses(await planClients(env));
+    for (const id of ["warp", "xcode-claude", "xcode-codex", "xcode-gemini"])
+      assert.equal(found[id], "change", id);
+
+    await applyClients({ env });
+    const read = async (relative) =>
+      readFile(path.join(home, relative), "utf8");
+    assert.deepEqual(
+      JSON.parse(await read(".warp/.mcp.json")).mcpServers.ocean,
+      ENTRY,
+    );
+    assert.deepEqual(
+      JSON.parse(await read(`${agents}/ClaudeAgentConfig/.claude.json`))
+        .mcpServers.ocean,
+      ENTRY,
+    );
+    assert.deepEqual(
+      JSON.parse(await read(`${agents}/gemini/settings.json`)).mcpServers.ocean,
+      ENTRY,
+    );
+    assert.match(
+      await read(`${agents}/codex/config.toml`),
+      /\[mcp_servers\.ocean\]/,
+    );
+    // The CLI's own files are untouched by the Xcode agents' entries.
+    const after = statuses(await planClients(env));
+    for (const id of ["warp", "xcode-claude", "xcode-codex", "xcode-gemini"])
+      assert.equal(after[id], "current", id);
+  });
 });

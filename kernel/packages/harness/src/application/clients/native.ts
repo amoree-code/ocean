@@ -12,6 +12,7 @@ import {
   readJournal,
 } from "./clients.js";
 import { canonicalJson, ManualEdit } from "./editors.js";
+import { XCODE_AGENTS } from "./registry.js";
 
 // Native-memory policy per client (T-296 §3.5, P4): keep each client's own memory store from
 // becoming a second source of truth. Ocean sets only the switch it manages — Claude Code's
@@ -20,7 +21,8 @@ import { canonicalJson, ManualEdit } from "./editors.js";
 // YAML is read, never written: a manual step until its switches are off, then current. Any
 // non-canonical JSON becomes a manual step with the exact setting too. Memory that lives on a
 // server is never switched off (owner, T-305): Desktop/claude.ai and ChatGPT are captured by the
-// daily `ocean pull`, Cursor's is out of reach and only reported, and Antigravity, which has no
+// daily `ocean pull`, Cursor's, VS Code's and Warp's are out of reach and only reported, and
+// Xcode's agents get their CLI's switch in their own folder. Antigravity, which has no
 // switch, is harvested into candidates instead.
 
 type JsonSetting = {
@@ -88,6 +90,29 @@ export const NATIVE_ADAPTERS: NativeAdapter[] = [
     section: "memory",
     values: { memory_enabled: false, user_profile_enabled: false },
   },
+  // Xcode's agents are the same CLIs reading their own config homes (T-328 P6): the Claude
+  // Agent's memory goes to Claude Code's staging folder, which the harvest already reads.
+  {
+    client: "xcode-claude",
+    kind: "json-set",
+    file: `${XCODE_AGENTS}/ClaudeAgentConfig/settings.json`,
+    key: ["autoMemoryDirectory"],
+    value: () => stagingDir("claude-code"),
+  },
+  {
+    client: "xcode-codex",
+    kind: "toml",
+    file: `${XCODE_AGENTS}/codex/config.toml`,
+    section: "memories",
+    values: { generate_memories: false, use_memories: false },
+  },
+  {
+    client: "xcode-gemini",
+    kind: "json-add",
+    file: `${XCODE_AGENTS}/gemini/settings.json`,
+    key: ["tools", "exclude"],
+    value: () => "save_memory",
+  },
   {
     client: "claude-desktop",
     kind: "capture",
@@ -96,7 +121,19 @@ export const NATIVE_ADAPTERS: NativeAdapter[] = [
   {
     client: "cursor",
     kind: "uncaptured",
-    text: "left on: Cursor keeps its Memories in the app, where Ocean cannot read them; its chats are indexed by `ocean pull`",
+    text: "left on: Cursor's Memories (no settings page since 2.1) live on its servers; its sessions reach Ocean through the session hooks",
+  },
+  {
+    // Two stores (code.visualstudio.com/docs/agents/run/memory, checked T-328 P6): Copilot
+    // Memory on GitHub's servers, and the local memory tool, whose files the docs do not place.
+    client: "vscode",
+    kind: "uncaptured",
+    text: "left on: Copilot Memory lives on GitHub's servers and the local /memories tool in VS Code's storage, neither readable by Ocean",
+  },
+  {
+    client: "warp",
+    kind: "uncaptured",
+    text: "left on: Warp's rules and agent memory sync through Warp Drive, on Warp's servers",
   },
   {
     client: "chatgpt",

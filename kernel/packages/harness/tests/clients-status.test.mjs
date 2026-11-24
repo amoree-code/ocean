@@ -135,7 +135,7 @@ test("unsupported and uninstalled clients get no false verdicts", () => {
         nativeMemory: "none",
         reason: "no MCP support",
       }),
-      plan("warp", {
+      plan("mystery", {
         tier: "unsupported",
         status: "unsupported",
         nativeMemory: "unknown",
@@ -152,7 +152,7 @@ test("unsupported and uninstalled clients get no false verdicts", () => {
     ]),
     [
       ["aider", "n/a", "n/a", "n/a"],
-      ["warp", "n/a", "n/a", "unknown"],
+      ["mystery", "n/a", "n/a", "unknown"],
     ],
   );
   assert.deepEqual(rowOf(report, "aider").notes, ["no MCP support"]);
@@ -186,4 +186,26 @@ test("Claude Desktop says when the Ocean plugin is not in the account, and is qu
   );
   assert.ok(!row(true).notes.some((note) => /chat-plugin/.test(note)));
   assert.ok(!row(undefined).notes.some((note) => /chat-plugin/.test(note)));
+});
+
+test("uncaptured memory with a wired session end hook is partly captured", () => {
+  const reason = "left on: kept on the vendor's servers";
+  const report = buildClientStatus({
+    ...base,
+    plans: [
+      plan("cursor", { nativeMemory: "uncaptured" }),
+      plan("warp", { nativeMemory: "uncaptured" }),
+    ],
+    hooks: [
+      { client: "cursor", event: "SessionStart", file: "f", status: "current" },
+      { client: "cursor", event: "SessionEnd", file: "f", status: "current" },
+    ],
+    native: [
+      { client: "cursor", status: "uncaptured", reason },
+      { client: "warp", status: "uncaptured", reason },
+    ],
+  });
+  assert.equal(rowOf(report, "cursor").captured, "partial");
+  assert.equal(rowOf(report, "warp").captured, "no");
+  assert.ok(rowOf(report, "cursor").notes.includes(reason));
 });

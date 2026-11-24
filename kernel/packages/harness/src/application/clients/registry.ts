@@ -68,6 +68,9 @@ const opencodeEditor = jsonEditor(
   },
 );
 
+// Home-relative folder holding each Xcode agent's own config (T-328 P6).
+export const XCODE_AGENTS = "Library/Developer/Xcode/CodingAssistant";
+
 export const CLIENT_ADAPTERS: ClientAdapter[] = [
   {
     id: "claude-code",
@@ -168,7 +171,7 @@ export const CLIENT_ADAPTERS: ClientAdapter[] = [
       file: "Library/Application Support/Code/User/mcp.json",
       editor: jsonEditor(["servers"], (value) => ({ type: "stdio", ...value })),
     },
-    nativeMemory: "unknown",
+    nativeMemory: "uncaptured",
   },
   {
     id: "hermes",
@@ -231,23 +234,65 @@ export const CLIENT_ADAPTERS: ClientAdapter[] = [
       "`ocean pull` captures its conversations and memory from the browsers' caches",
   },
   {
+    // Warp's agents read file-based MCP servers from `~/.warp/.mcp.json` (docs.warp.dev,
+    // agents/capabilities/mcp, checked T-328 P6); it reads ~/.claude.json too, but only with
+    // third-party auto-spawn on, which is off by default — so Ocean writes Warp's own file.
     id: "warp",
     label: "Warp",
-    // Unsupported until its MCP support is verified (T-307), not left as an open question.
-    tier: "unsupported",
+    tier: "supported",
     detect: { apps: ["Warp.app"], paths: [".warp"] },
-    nativeMemory: "unknown",
-    reason: "MCP support not verified",
-    fallback: "use Ocean from a supported client or the `ocean` CLI",
+    config: { file: ".warp/.mcp.json", editor: jsonEditor(["mcpServers"]) },
+    nativeMemory: "uncaptured",
   },
   {
+    // Xcode's own chat cannot load an MCP server; its agents (Xcode 26.3+) can, each from its
+    // own folder under CodingAssistant (rows below), so this row only accounts for the app.
     id: "xcode",
     label: "Xcode",
     tier: "unsupported",
     detect: { apps: ["Xcode.app"] },
-    nativeMemory: "unknown",
-    reason: "AI/MCP support not verified",
-    fallback: "use Ocean from a supported client or the `ocean` CLI",
+    nativeMemory: "none",
+    reason:
+      "its built-in chat cannot load an MCP server; Xcode's Claude Agent, Codex and Gemini agents connect from their own config folders",
+    fallback:
+      "enable an agent in Xcode → Settings → Intelligence, then `ocean clients apply`",
+  },
+  // Xcode's agents read only `~/Library/Developer/Xcode/CodingAssistant/<agent>` (Apple,
+  // "Extending and customizing agents"), never the CLI's own config, so each is a client of its
+  // own, found once Xcode has created its folder. Each folder stands in for that CLI's config
+  // home (CLAUDE_CONFIG_DIR, CODEX_HOME, ~/.gemini). Not yet run on a Mac with an agent enabled.
+  {
+    id: "xcode-claude",
+    label: "Xcode Claude Agent",
+    tier: "supported",
+    detect: { paths: [`${XCODE_AGENTS}/ClaudeAgentConfig`] },
+    config: {
+      file: `${XCODE_AGENTS}/ClaudeAgentConfig/.claude.json`,
+      editor: jsonEditor(["mcpServers"]),
+    },
+    nativeMemory: "redirect-staging",
+  },
+  {
+    id: "xcode-codex",
+    label: "Xcode Codex",
+    tier: "supported",
+    detect: { paths: [`${XCODE_AGENTS}/codex`] },
+    config: {
+      file: `${XCODE_AGENTS}/codex/config.toml`,
+      editor: tomlEditor("mcp_servers"),
+    },
+    nativeMemory: "disable",
+  },
+  {
+    id: "xcode-gemini",
+    label: "Xcode Gemini",
+    tier: "supported",
+    detect: { paths: [`${XCODE_AGENTS}/gemini`] },
+    config: {
+      file: `${XCODE_AGENTS}/gemini/settings.json`,
+      editor: jsonEditor(["mcpServers"]),
+    },
+    nativeMemory: "disable",
   },
 ];
 

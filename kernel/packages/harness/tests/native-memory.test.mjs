@@ -346,3 +346,38 @@ test("a claude.ai export becomes candidates per project and doc; a missing file 
     ]);
   });
 });
+
+test("Xcode's agents get their CLI's memory switch in their own folder (T-328 P6)", async () => {
+  const agents = "Library/Developer/Xcode/CodingAssistant";
+  const { home, root, env } = await fixture({
+    [`${agents}/ClaudeAgentConfig/settings.json`]: json({}),
+    [`${agents}/codex/config.toml`]: CODEX,
+    [`${agents}/gemini/settings.json`]: GEMINI,
+  });
+  await withRoot(root, async () => {
+    const plans = statuses(await planNative(env));
+    assert.equal(plans["xcode-claude"], "change");
+    assert.equal(plans["xcode-codex"], "change");
+    assert.equal(plans["xcode-gemini"], "change");
+    await applyNative({ env });
+    const claude = JSON.parse(
+      await read(home, `${agents}/ClaudeAgentConfig/settings.json`),
+    );
+    assert.ok(
+      claude.autoMemoryDirectory.endsWith(
+        path.join("00-inbox", "native", "claude-code"),
+      ),
+    );
+    assert.match(
+      await read(home, `${agents}/codex/config.toml`),
+      /\[memories\]\ngenerate_memories = false\nuse_memories = false/,
+    );
+    assert.deepEqual(
+      JSON.parse(await read(home, `${agents}/gemini/settings.json`)).tools
+        .exclude,
+      ["save_memory"],
+    );
+    // The standalone CLIs keep their own switches, set separately.
+    assert.equal(await read(home, ".claude/settings.json"), CLAUDE);
+  });
+});

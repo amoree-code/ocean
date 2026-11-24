@@ -200,8 +200,12 @@ no tool and cited the record path; it needs `--via` (e.g. the ledger line). `hea
 run, `connected` the client's own `mcp list`/`test`; `blocked` needs `--reason` (a login, a missing
 app). Only `in-app` makes `ocean doctor` say "checked in the app" (`CLIENT_WIRED`); `blocked` is
 `CLIENT_BLOCKED`, and anything else — including a confirmation recorded before labels existed — stays
-`CLIENT_CHECK_PENDING`: a config that launches the server is not proof that the app uses it. Warp
-and Xcode are `unsupported` until their MCP support is verified.
+`CLIENT_CHECK_PENDING`: a config that launches the server is not proof that the app uses it. Warp is
+wired through its own `~/.warp/.mcp.json` (it reads `~/.claude.json` only with third-party
+auto-spawn on, off by default). Xcode's built-in chat cannot load an MCP server and stays
+`unsupported`; its Claude Agent, Codex and Gemini agents (Xcode 26.3+) each read only their own
+folder under `~/Library/Developer/Xcode/CodingAssistant/`, so each is a client of its own, found
+once Xcode creates that folder (not yet run on a Mac with an agent enabled).
 
 `ocean onboard` runs the same plan as its `connect` step: one consolidated review of every detected
 client, one confirmation that applies all of them, then `verify` per written client and the in-app
@@ -246,7 +250,9 @@ batch as the MCP entries and hooks (journal op `native-set`, before/after of the
 | Gemini CLI, Qwen Code | disable | `save_memory` added to `tools.exclude` |
 | Hermes | disable (manual) | `memory.memory_enabled: false`, `memory.user_profile_enabled: false` — YAML is not rewritten |
 | Claude Desktop / claude.ai, ChatGPT | capture | nothing: memory stays on; the daily `ocean pull` proposes it from Claude Desktop's and the browsers' caches |
-| Cursor | uncaptured | nothing: memory stays on; its Memories live in the app, where Ocean cannot read them |
+| Xcode Claude Agent, Codex, Gemini | as their CLI | the same switch as the standalone CLI, in the agent's own `CodingAssistant/<agent>` folder |
+| Cursor | uncaptured | nothing: memory stays on; its Memories (no settings page since 2.1) live on Cursor's servers; its sessions reach Ocean through the session hooks, so status shows capture as partial |
+| VS Code, Warp | uncaptured | nothing: Copilot Memory lives on GitHub's servers (never switched off) and the local `/memories` tool in VS Code's storage; Warp's rules and memory sync through Warp Drive |
 | Antigravity | harvest | no switch exists |
 
 Memory that lives on a provider's server is never switched off: Ocean absorbs it instead.
