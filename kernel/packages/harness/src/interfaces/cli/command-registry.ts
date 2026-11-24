@@ -31,6 +31,8 @@ import {
   createProject,
   findGitRoot,
   knownTaskPrefixes,
+  linkNewProject,
+  linkProjectAlias,
   listProjectBindings,
   migrateProjectBindings,
   moveProject,
@@ -116,6 +118,10 @@ import {
   watchObsidianVault,
 } from "@ocean/services/obsidian/vault-sync.js";
 import { writeObsidianNote } from "@ocean/services/obsidian/vault-writer.js";
+import {
+  formatNameWarnings,
+  projectDoctor,
+} from "@ocean/services/projects/project-doctor.js";
 import {
   overviewTable,
   projectsOverview,
@@ -877,6 +883,40 @@ async function commandProject(): Promise<void> {
         process.exitCode = 2;
       }
     }
+  } else if (action === "link") {
+    // Another name for a project — a Claude project, an old folder name (T-332).
+    const args = process.argv.slice(4);
+    const flag = args.indexOf("--new");
+    const category = flag >= 0 ? args[flag + 1] : undefined;
+    const [name, id] = args.filter(
+      (_, index) => flag < 0 || (index !== flag && index !== flag + 1),
+    );
+    if (!name || (flag < 0 ? !id : !category || id)) {
+      console.error(
+        `Usage: ocean project link "<name>" <id> | link "<name>" --new <${PROJECT_CATEGORIES.join("|")}>`,
+      );
+      process.exitCode = 1;
+      return;
+    }
+    try {
+      const result =
+        flag >= 0
+          ? await linkNewProject(name, category ?? "")
+          : await linkProjectAlias(name, id);
+      console.log(JSON.stringify(result, null, 2));
+      if (result.conflict) process.exitCode = 2;
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exitCode = 2;
+    }
+  } else if (action === "doctor") {
+    // Every way the project names drifted apart, each with its fix (T-332). Advisory: exit 0.
+    const warnings = await projectDoctor();
+    console.log(
+      process.argv.includes("--json")
+        ? JSON.stringify(warnings, null, 2)
+        : formatNameWarnings(warnings),
+    );
   } else if (action === "migrate") {
     const result = await migrateProjectBindings(
       process.argv.includes("--write"),
@@ -896,7 +936,7 @@ async function commandProject(): Promise<void> {
     else console.log(await renderProjectIndex());
   } else {
     console.error(
-      "Usage: ocean project resolve [path]|bind <name> <path> [--add]|register [path]|unbind <path>|rename <id> <new-id>|new <id> <category> [name]|move <id> <category> [--write]|list [--category <name>]|status [--json] [--write]|migrate [--write]|index [--write]",
+      "Usage: ocean project resolve [path]|bind <name> <path> [--add]|register [path]|unbind <path>|rename <id> <new-id>|new <id> <category> [name]|move <id> <category> [--write]|list [--category <name>]|link <name> <id>|link <name> --new <category>|doctor [--json]|status [--json] [--write]|migrate [--write]|index [--write]",
     );
     process.exitCode = 1;
   }

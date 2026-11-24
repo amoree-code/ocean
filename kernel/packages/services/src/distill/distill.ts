@@ -13,6 +13,7 @@ import {
   REPORTS_DIR,
 } from "@ocean/core/shared/paths.js";
 import { listMilestones } from "../express/express.js";
+import { projectDoctor } from "../projects/project-doctor.js";
 import { type WeekFailure, weeklyPatterns } from "./patterns.js";
 
 // The weekly distill (T-314): a week's session records and briefs become one digest in
@@ -178,6 +179,7 @@ export async function distillWeek(options: {
     sessions,
     (await options.failures?.(week).catch(() => [])) ?? [],
   );
+  const nameWarnings = (await projectDoctor().catch(() => [])).length;
   const body = [
     "---",
     "type: weekly",
@@ -198,6 +200,15 @@ export async function distillWeek(options: {
         )
       : ["- none"]),
     ...(patterns.length ? ["", "## Patterns", "", ...patterns] : []),
+    // T-332: drifted project names, counted; `ocean project doctor` lists each with its fix.
+    ...(nameWarnings
+      ? [
+          "",
+          "## Projects",
+          "",
+          `- ${nameWarnings} project name warning(s) — run \`ocean project doctor\``,
+        ]
+      : []),
     ...(decisions.length ? ["", "## Decisions", "", ...list(decisions)] : []),
     ...(problems.length
       ? ["", "## Problems → fixes", "", ...list(problems)]

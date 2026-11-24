@@ -43,6 +43,7 @@ import {
   SYSTEM_DIR,
   WORKSPACE_PROJECT_ID,
 } from "./paths.js";
+import { nearName, normalizeName } from "./project-names.js";
 
 // Deterministic, local, metadata-first project resolution: no model call, no network round
 // trip. Bindings are a flat JSON registry (same pattern as kernel/bridge/registry/
@@ -168,6 +169,9 @@ export type ProjectManifest = {
   // (T-305). Kept as written like rules; read through projectTags/projectFormerPaths.
   tags?: unknown;
   formerPaths?: unknown;
+  // Other names the project goes by (T-332): Claude project names, old folder ids. Kept as
+  // written like tags; read through projectAliases.
+  aliases?: unknown;
   // Who the project belongs to, one of PROJECT_CATEGORIES: the category folder it sits in
   // (T-311), or, for a project still flat under 04-projects, the value written in its
   // project.json. Read through projectCategory.
@@ -180,6 +184,7 @@ export const MAX_PROJECT_VERIFY = 5;
 export const MAX_PROJECT_VERIFY_BYTES = 300;
 export const MAX_PROJECT_TAGS = 10;
 export const MAX_PROJECT_FORMER_PATHS = 20;
+export const MAX_PROJECT_ALIASES = 20;
 
 const MANIFEST_FILE = "project.json";
 
@@ -319,6 +324,21 @@ export function projectFormerPaths(
   );
 }
 
+export function projectAliases(
+  manifest: Pick<ProjectManifest, "aliases">,
+): string[] {
+  return lineList("aliases", manifest.aliases, MAX_PROJECT_ALIASES, 200);
+}
+
+// Matching reads aliases best-effort: a typo in one manifest's aliases never unbinds it.
+function aliasesOrNone(manifest: Pick<ProjectManifest, "aliases">): string[] {
+  try {
+    return projectAliases(manifest);
+  } catch {
+    return [];
+  }
+}
+
 // `folder` is the project folder's name, `category` the category folder it sits in, if any.
 function parseManifest(folder: string, raw: string, category?: string) {
   const parsed = JSON.parse(raw) as Partial<ProjectManifest>;
@@ -358,6 +378,7 @@ function parseManifest(folder: string, raw: string, category?: string) {
     ...(parsed.formerPaths !== undefined
       ? { formerPaths: parsed.formerPaths }
       : {}),
+    ...(parsed.aliases !== undefined ? { aliases: parsed.aliases } : {}),
     ...(category === UNCATEGORIZED
       ? {}
       : category !== undefined
@@ -1022,20 +1043,137 @@ export function codeRoots(): string[] {
     .map((entry) => path.resolve(expandHome(entry)));
 }
 
-// The existing project a client names (T-307): its id, or its name in any case (`LetSpeak` is
-// `letspeak`), or that name's slug. Never a guess beyond that.
+// The existing project a client names (T-307, T-332), first hit wins: its id, its name in any
+// case (`LetSpeak` is `letspeak`), one of its aliases, then any of those normalized
+// (`Jira - KarWatt` is `jira_karwatt`), then the name's slug. A normalized form two projects
+// share binds neither. Never a guess beyond that: near names only suggest (suggestProjects).
 export function matchProject(
   manifests: ProjectManifest[],
   ref: string,
 ): string | undefined {
   const name = ref.trim().toLowerCase();
+  if (!name) return undefined;
+  const byId = manifests.find(
+    (manifest) => manifest.id === ref || manifest.id === ref.trim(),
+  );
+  if (byId) return byId.id;
+  const byName = manifests.find(
+    (manifest) => manifest.name.trim().toLowerCase() === name,
+  );
+  if (byName) return byName.id;
+  const byAlias = manifests.find((manifest) =>
+    aliasesOrNone(manifest).some((alias) => alias.toLowerCase() === name),
+  );
+  if (byAlias) return byAlias.id;
+  const normalized = normalizeName(ref);
+  const byNormalized = [
+    ...new Set(
+      manifests
+        .filter((manifest) =>
+          [manifest.id, manifest.name, ...aliasesOrNone(manifest)].some(
+            (known) => normalizeName(known) === normalized,
+          ),
+        )
+        .map((manifest) => manifest.id),
+    ),
+  ];
+  if (byNormalized.length === 1) return byNormalized[0];
+  if (byNormalized.length > 1) return undefined;
   const slug = projectSlug(ref);
-  return manifests.find(
-    (manifest) =>
-      manifest.id === ref ||
-      manifest.name.trim().toLowerCase() === name ||
-      (slug !== "" && manifest.id === slug),
-  )?.id;
+  return slug
+    ? manifests.find((manifest) => manifest.id === slug)?.id
+    : undefined;
+}
+
+export type ProjectSuggestion = {
+  id: string;
+  // near-name: one of its names is near this one; path: a folder it is or was bound to has this
+  // name (`star-people` for the project bound to …/star-people).
+  via: "near-name" | "path";
+  name: string;
+};
+
+// The projects a name probably means, when matchProject binds none. Never bound on their own:
+// a warning shows them beside the `ocean project link` that would.
+export function suggestProjects(
+  manifests: ProjectManifest[],
+  ref: string,
+): ProjectSuggestion[] {
+  const normalized = normalizeName(ref);
+  const suggestions: ProjectSuggestion[] = [];
+  for (const manifest of manifests) {
+    const near = [manifest.id, manifest.name, ...aliasesOrNone(manifest)].find(
+      (known) => nearName(known, ref),
+    );
+    if (near) {
+      suggestions.push({ id: manifest.id, via: "near-name", name: near });
+      continue;
+    }
+    let former: string[] = [];
+    try {
+      former = projectFormerPaths(manifest);
+    } catch {
+      /* a bad formerPaths only loses its suggestions */
+    }
+    const folder = [...manifest.paths, ...former]
+      .map((stored) => path.basename(stored))
+      .find((base) => normalized && normalizeName(base) === normalized);
+    if (folder)
+      suggestions.push({ id: manifest.id, via: "path", name: folder });
+  }
+  return suggestions;
+}
+
+export type LinkResult = {
+  id: string;
+  alias: string;
+  added: boolean;
+  // Set when the name already belongs to another project: nothing is written.
+  conflict?: string;
+};
+
+// `ocean project link "<name>" <id>` (T-332): the name becomes an alias of the project, so every
+// later match on it binds there. A name another project already answers to is refused.
+export async function linkProjectAlias(
+  name: string,
+  id: string,
+): Promise<LinkResult> {
+  const alias = name.trim();
+  if (!alias) throw new Error("a name to link is required");
+  if (hasControlCharacters(alias) || Buffer.byteLength(alias, "utf8") > 200)
+    throw new Error("the name must be one line of at most 200 bytes");
+  return withProjectsLock(async () => {
+    const manifests = await listProjectManifests();
+    const manifest = manifests.find((candidate) => candidate.id === id);
+    if (!manifest) throw new Error(`no project '${id}'`);
+    const owner = matchProject(manifests, alias);
+    if (owner && owner !== id)
+      return { id, alias, added: false, conflict: owner };
+    const aliases = projectAliases(manifest);
+    if (aliases.some((known) => known.toLowerCase() === alias.toLowerCase()))
+      return { id, alias, added: false };
+    if (aliases.length >= MAX_PROJECT_ALIASES)
+      throw new Error(
+        `project '${id}' already has ${MAX_PROJECT_ALIASES} aliases`,
+      );
+    await writeManifest({ ...manifest, aliases: [...aliases, alias] });
+    return { id, alias, added: true };
+  });
+}
+
+// `ocean project link "<name>" --new <category>` (T-332): a name no project answers to becomes
+// a project of its own, linked to that name in one step. A name some project already answers to
+// is reported as that project, never registered twice.
+export async function linkNewProject(
+  name: string,
+  category: string,
+): Promise<LinkResult & { created: boolean }> {
+  const known = matchProject(await listProjectManifests(), name);
+  if (known)
+    return { id: known, alias: name.trim(), added: false, created: false };
+  const id = projectSlug(name);
+  const project = await createProject(id, category, name.trim());
+  return { ...(await linkProjectAlias(name, id)), created: project.created };
 }
 
 // The names of the owner's Claude projects this machine has seen, as the always-on service last
@@ -1097,10 +1235,13 @@ export async function registerNamedProject(
   });
 }
 
+// A run of separators is one separator (T-332): `Jira - KarWatt` is `jira-karwatt`, never
+// `jira---karwatt`. A run holding a hyphen becomes a hyphen; any other run keeps its first.
 export function projectSlug(name: string): string {
   return name
     .toLowerCase()
     .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/[-._]{2,}/g, (run) => (run.includes("-") ? "-" : run[0]))
     .replace(/^[^a-z0-9]+/, "")
     .slice(0, 64)
     .replace(/[-._]+$/, "");
