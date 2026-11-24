@@ -51,7 +51,7 @@ test("the engine index is schema-valid and every digest matches contentDigest", 
   const index = marketplaceIndexSchema.parse(
     JSON.parse(await readFile(engineIndex, "utf8")),
   );
-  assert.equal(index.capabilities.length, 18);
+  assert.equal(index.capabilities.length, 19);
   for (const capability of index.capabilities)
     assert.equal(
       await contentDigest(path.resolve(capability.source.path)),
@@ -65,7 +65,7 @@ test("every core skill is in the engine index and passes the injection scan", as
   const names = (await readdir(coreSkills, { withFileTypes: true }))
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name);
-  assert.equal(names.length, 12);
+  assert.equal(names.length, 13);
   for (const name of names) {
     assert.ok(
       index.capabilities.some(

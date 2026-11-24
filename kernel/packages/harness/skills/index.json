@@ -48,6 +48,12 @@
     "category": "core"
   },
   {
+    "name": "ocean-memory",
+    "description": "The user's memory lives in Ocean, a local memory system on their own computer, reached through the ocean MCP tools (brain_search, brain_read, memory_propose). Use this skill whenever the user asks where their memory is stored, what you remember about them, what you know about their projects, tasks, code, people, preferences or past decisions, or says \"my\", \"our\", \"remember\", \"last time\", \"as before\". Ocean is the authority; your built-in memory is not a second store but a copy that Ocean captures.",
+    "version": "1.0.0",
+    "category": "core"
+  },
+  {
     "name": "session-handoff",
     "description": "Produce a compact continuation packet with the next action and verification commands.",
     "version": "1.0.0",

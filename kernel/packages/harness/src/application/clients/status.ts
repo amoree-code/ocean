@@ -41,8 +41,8 @@ export type StatusInput = {
   plugins: OpencodePluginPlan[];
   native: NativePlan[];
   watcher: DesktopWatcherPlan[];
-  // Whether the Claude account lists Ocean's plugin marketplace; undefined when nothing here
-  // can tell (no Claude Code mirror of the account).
+  // Whether the Claude account lists the ocean-memory skill; undefined when nothing here
+  // can tell (no Desktop plugin list).
   chatPlugin?: { added: boolean | undefined };
   calls: { ts: string; client: string; ok: boolean }[];
   now?: Date;
@@ -162,7 +162,7 @@ export function buildClientStatus(input: StatusInput): ClientStatusReport {
       notes.push(`chat watcher ${watcher.status}`);
     if (plan.client === "claude-desktop" && input.chatPlugin?.added === false)
       notes.push(
-        "Ocean plugin not in your Claude account: run `ocean clients chat-plugin`",
+        "ocean-memory skill not in your Claude account: run `ocean clients chat-plugin`",
       );
     if (plan.tier !== "supported" && plan.reason) notes.push(plan.reason);
 

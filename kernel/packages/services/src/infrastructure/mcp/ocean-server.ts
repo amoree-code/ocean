@@ -40,7 +40,12 @@ import type { WrapperManagerPort } from "@ocean/core/domain/ports/platform-ports
 import type { SessionStoreFactory } from "@ocean/core/domain/ports/session-store-port.js";
 import { redactSecrets } from "@ocean/core/domain/redaction/redaction.js";
 import { ackIssued } from "@ocean/core/shared/context-ack.js";
-import { oceanPath, oceanRoot, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
+import {
+  enginePath,
+  oceanPath,
+  oceanRoot,
+  SYSTEM_DIR,
+} from "@ocean/core/shared/paths.js";
 import {
   findProject,
   folderProject,
@@ -468,8 +473,48 @@ const tools = new McpToolRegistry(
         additionalProperties: false,
       },
     },
+    {
+      name: "ocean_chat_skill",
+      description:
+        "Install Ocean's memory skill (ocean-memory) in the user's Claude account, so every Claude chat, Cowork and phone session asks Ocean before its own memory. Call when the user asks to install, set up, add or update Ocean or Ocean's skill in Claude, or says Claude chat is not using Ocean. Returns the skill file and how to hand it to the user to save.",
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: "object",
+        properties: {},
+        additionalProperties: false,
+      },
+    },
   ]),
 );
+
+// Ocean's memory skill for Claude chat (T-328). Nothing can add a skill to a Claude account
+// for the user: no API, deep link or MCP call. Chat can propose the skill itself, though: Claude
+// Desktop chat shows a skill card the user saves with one click (T-328, 2026-11-24), so the
+// click stays inside the chat; a .skill file is the fallback.
+export const CHAT_SKILL_DIR = "ocean-memory";
+
+export async function chatSkillInstall(): Promise<{
+  skill: string;
+  file: string;
+  content: string;
+  steps: string[];
+}> {
+  const file = `${CHAT_SKILL_DIR}/SKILL.md`;
+  return {
+    skill: CHAT_SKILL_DIR,
+    file,
+    content: await readFile(
+      enginePath("skills", "core", CHAT_SKILL_DIR, "SKILL.md"),
+      "utf8",
+    ),
+    steps: [
+      "If you can propose a skill for the user to save (a skill card), propose this one: name ocean-memory, content exactly as given, changing nothing. The user saves it from the card.",
+      `Otherwise, with your code tool, write content to ${file} exactly as given, zip the ${CHAT_SKILL_DIR} folder (the folder itself, so the zip holds ${file}) as ${CHAT_SKILL_DIR}.skill, share that file, and tell the user to save it, or to upload it in Customize → Skills.`,
+      "Without either, tell the user to run `ocean clients chat-plugin` on their computer: it saves ocean-memory.zip to upload in Customize → Skills.",
+      "Skills need Settings → Capabilities → Code execution on.",
+    ],
+  };
+}
 
 // What one MCP handoff may hold, summed over its texts (T-307).
 export const HANDOFF_MAX_BYTES = 4096;
@@ -749,6 +794,7 @@ async function callTool(
       indexPort: ports.brainIndex,
     });
   if (name === "ocean_ping") return { ok: true };
+  if (name === "ocean_chat_skill") return chatSkillInstall();
   if (name === "ocean_capabilities")
     return {
       contract: MEMORY_CONTRACT_VERSION,

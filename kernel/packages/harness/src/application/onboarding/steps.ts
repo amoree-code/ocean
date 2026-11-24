@@ -11,9 +11,9 @@ import {
 } from "@ocean/services/onboarding/onboarding.js";
 import {
   CHAT_PLUGIN_STEPS,
+  CHAT_SKILL_ZIP,
   type ChatPluginOpen,
   chatPluginAdded,
-  OCEAN_MARKETPLACE,
   openChatPluginSetup,
 } from "../clients/chat-plugin.js";
 import type { ClientPlan } from "../clients/clients.js";
@@ -198,8 +198,8 @@ function connectStep(clients: OnboardingClients): OnboardingStep {
 }
 
 // Claude chat (Desktop, claude.ai, phone) runs no hooks and drops MCP instructions, so Ocean's
-// rule reaches it as a skill in an account plugin (T-328). Adding a marketplace to an account
-// has no API: the one step left to the owner is a paste and a few clicks, set up here.
+// rule reaches it as a skill uploaded to the account (T-328). Uploading has no API: the one step
+// left to the owner is an upload and a few clicks, set up here.
 export function chatPluginStep(
   chat: OnboardingChatPlugin = {
     added: () => chatPluginAdded(),
@@ -208,22 +208,22 @@ export function chatPluginStep(
 ): OnboardingStep {
   return {
     id: "chat-plugin",
-    title: "Claude chat (the Ocean plugin in your Claude account)",
+    title: "Claude chat (the ocean-memory skill in your Claude account)",
     optional: false,
     async reopen() {
       return chat.added() === false
-        ? "the Ocean plugin is not in your Claude account"
+        ? "the ocean-memory skill is not in your Claude account"
         : null;
     },
     async run(io) {
       if (chat.added() === true) {
         io.say(
-          `  ${OCEAN_MARKETPLACE} is in your Claude account: every Claude chat asks Ocean first.`,
+          "  The ocean-memory skill is in your Claude account: every Claude chat asks Ocean first.",
         );
         return "done";
       }
       io.say(
-        "  Claude chat runs on Anthropic's servers, so one step is yours: add Ocean's plugin to your Claude account.",
+        "  Claude chat runs on Anthropic's servers, so one step is yours: upload Ocean's skill to your Claude account.",
       );
       if (!io.interactive) {
         for (const step of CHAT_PLUGIN_STEPS) io.say(`    ${step}`);
@@ -231,13 +231,13 @@ export function chatPluginStep(
         return "skipped";
       }
       const opened = chat.open();
-      if (opened.copied) io.say(`  ${OCEAN_MARKETPLACE} is on your clipboard.`);
+      if (opened.zip) io.say(`  Saved ${opened.zip}.`);
       if (opened.opened) io.say("  Claude is open.");
       for (const step of CHAT_PLUGIN_STEPS) io.say(`    ${step}`);
-      if (!(await yes(io, "  Added it?"))) return "skipped";
+      if (!(await yes(io, `  Uploaded ${CHAT_SKILL_ZIP}?`))) return "skipped";
       if (chat.added() === false)
         io.say(
-          "  Claude Code has not synced it yet; `ocean clients status` shows it once it has.",
+          "  Claude has not listed it yet; `ocean clients status` shows it once it has.",
         );
       return "done";
     },

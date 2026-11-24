@@ -21,7 +21,8 @@ transcripts and credentials are not copied between clients. The Obsidian vault s
 `initialize` returns `instructions`: the same memory contract for every client (Ocean is the
 memory; search before answering; explicit saves with `memory_write`; inferred or imported facts
 with `memory_propose`; never secrets). `ocean_capabilities` reports the contract version and
-whether writes are on; `ocean_ping` is a cheap health check.
+whether writes are on; `ocean_ping` is a cheap health check; `ocean_chat_skill` hands Claude chat
+Ocean's memory skill to package and save (below).
 
 Not every client shows `instructions` to its model, but every client shows tool descriptions. So
 `brain_search`, `memory_propose` and `ocean_context` each open with when to call them (before
@@ -320,7 +321,7 @@ what the user asks for explicitly ("remember this", "forget that").
 | Full | Claude Code, Codex | session-start hook | after the session ends, and before a compaction (Claude Code) | runs in code; every fact reviewed |
 | Hooks, no transcript | Gemini CLI, Qwen Code, Cursor agent | session-start hook | no; the session is recorded from metadata | start is in code; saving depends on the model calling `memory_propose` |
 | Plugin | OpenCode | plugin adds the start line | no session-end event | start is in code; saving depends on the model |
-| Watcher | Claude Desktop chat (macOS) | the Ocean plugin's `ocean-memory` skill, the authority line on the first memory result, and tool descriptions | after a conversation is quiet for 10 minutes, read from the app's local store | automatic, best effort: the store's format is undocumented; every fact reviewed |
+| Watcher | Claude Desktop chat (macOS) | the uploaded `ocean-memory` skill, the authority line on the first memory result, and tool descriptions | after a conversation is quiet for 10 minutes, read from the app's local store | automatic, best effort: the store's format is undocumented; every fact reviewed |
 | MCP only | any other MCP client, claude.ai on the web or phone | `instructions` and tool descriptions | no (an export can be read by hand, below) | best effort: the model decides; some hosts drop `instructions`, so the tool descriptions carry the same rule |
 
 **Claude chat** (Desktop, claude.ai, phone) runs on Anthropic's servers. It gets Ocean's tools
@@ -328,24 +329,38 @@ from the MCP entry Ocean writes, but it drops the server's `instructions`, runs 
 own memory prompt outranks both: asked only "where is my memory saved?", chat named Anthropic's
 store. Three things reach it instead:
 
-- **A skill.** An account plugin's skills load in chat, Cowork and Claude Code, and Claude loads
-  one by itself when a message matches its description. Ocean's public repository is a plugin
-  marketplace (`.claude-plugin/marketplace.json` at its root, the plugin in `kernel/plugins/ocean/`)
-  whose one skill, `ocean-memory`, tells Claude to call `brain_search` and answer from Ocean
-  whenever a message touches the user's own world, and that its built-in memory is a copy, not a
-  second store. A release updates it on every device.
-- **One step by the owner.** Adding a marketplace to a Claude account has no API, deep link or
-  config file. The onboarding step `chat-plugin` (and `ocean clients chat-plugin`) puts
-  `amoree-code/ocean` on the clipboard, opens Claude, and lists the clicks: Customize → Plugins →
-  Add → Add marketplace, paste, install Ocean. Skills need code execution on in Claude's settings.
-  Claude Code mirrors the account's marketplaces into `~/.claude/plugins/synced/*/.marketplaces.json`;
-  Ocean reads that mirror to tell whether the step is done, and `ocean clients status` notes when it
-  is not. Without Claude Code there is no mirror, so Ocean cannot tell and does not nag.
+- **A skill.** A skill in the Claude account loads in chat, Cowork and the phone, and Claude
+  loads it by itself when a message matches its description. Ocean's `ocean-memory` skill tells
+  Claude to call `brain_search` and answer from Ocean whenever a message touches the user's own
+  world, and that its built-in memory is a copy, not a second store.
+- **One upload by the owner.** Only an uploaded skill reaches chat. Desktop's "Add from a
+  repository" (a plugin marketplace) installs the plugin locally for the Code tab and never sends
+  it to the account: Desktop logs `skipping remote API path for plugin ocean@ocean
+  (reason=local-sourced)`, and chat went on naming Anthropic's store until the skill was uploaded.
+  Uploading has no API, deep link or config file, so the onboarding step `chat-plugin` (and
+  `ocean clients chat-plugin`) saves `ocean-memory.zip` (the core skill, `ocean-memory/SKILL.md`)
+  to Downloads, shows it in Finder, opens Claude, and lists the clicks: Customize → Skills → Add →
+  Upload a skill, pick the zip. Skills need code execution on in Claude's settings. A new Ocean
+  release does not update an uploaded skill; run the step again to replace it.
+  Chat can also do the packaging itself: asked to install Ocean's skill, it calls the
+  `ocean_chat_skill` tool, which returns the core `SKILL.md` and the steps: propose it as a skill
+  card, or else zip it as `ocean-memory.skill` and share the file. In Claude Desktop chat it
+  proposed the card, and one click saved it to the account as `ocean-memory@My Uploads`. The click
+  stays the user's; only the trip to Finder goes. This needs
+  the local MCP entry, so Claude Desktop only, and chat's code execution.
+  Ocean tells whether the step is done from Claude Desktop's own plugin list
+  (`plugin-list/<org>/<account>/plugins.json` under Desktop's app-data folder), which shows the
+  upload as `ocean-memory@My Uploads`. `ocean clients status` notes when the list lacks it; without
+  Desktop, Ocean cannot tell and does not nag. Ocean is not a plugin marketplace: nothing would
+  install from one, since Desktop keeps a marketplace plugin local and Claude Code already has the
+  skill from the sync below.
+- **The same skill in every other client.** `ocean-memory` is also one of the engine's core skills
+  (`packages/harness/skills/core/ocean-memory/`, the same file the upload carries), so the session-start
+  skill sync copies it into Claude Code, Codex, Gemini, Cursor, Hermes and Antigravity with no step.
+  Only Claude chat and Cowork need the upload above.
 - **The authority line in a tool result.** Hosts that drop `instructions` still show tool results
   to the model, so the first `brain_search`, `brain_read` or `memory_read` result of each connection
   carries `MEMORY_AUTHORITY_LINE` as a second text block.
-
-The plugin carries no hooks: chat does not run them, and Claude Code already gets Ocean's own.
 
 **Claude Desktop chat capture.** The app keeps the conversations it has open, or opened
 recently, in a Chromium IndexedDB under `~/Library/Application Support/Claude/IndexedDB/`.

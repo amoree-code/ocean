@@ -148,6 +148,24 @@
     },
     {
       "kind": "skill",
+      "name": "dev.ocean.skills.ocean-memory",
+      "version": "2.20.0",
+      "engines": {
+        "ocean": ">=2.20.0"
+      },
+      "source": {
+        "type": "path",
+        "path": "skills/core/ocean-memory"
+      },
+      "integrity": {
+        "sha256": "8e918188a476359ea27f945218cf91d9eeadd191b41049047762e752bd227fe1"
+      },
+      "spec": {
+        "directory": "ocean-memory"
+      }
+    },
+    {
+      "kind": "skill",
       "name": "dev.ocean.skills.session-handoff",
       "version": "2.20.0",
       "engines": {
