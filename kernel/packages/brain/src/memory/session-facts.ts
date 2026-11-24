@@ -3,15 +3,16 @@ import path from "node:path";
 import { MemoryContractError } from "@ocean/core/domain/mcp/memory-contract.js";
 import { redactSecrets } from "@ocean/core/domain/redaction/redaction.js";
 import { atomicWrite, withFileLock } from "@ocean/core/shared/fs-utils.js";
+import { localDate } from "@ocean/core/shared/local-date.js";
 import {
   FACT_TYPES,
   type FactType,
   factTarget,
   isFactType,
 } from "./fact-routing.js";
-import { sha256 } from "./memory-audit.js";
+import { readAudit, sha256 } from "./memory-audit.js";
 import { sessionFactsLedgerFile } from "./memory-paths.js";
-import { proposeMemory } from "./memory-write.js";
+import { proposeMemory, writeMemoryRecord } from "./memory-write.js";
 import { type Triage, triageTurns } from "./session-triage.js";
 
 // Automatic fact capture at the end of a session and before a compaction (T-313). The industry
@@ -443,19 +444,25 @@ async function writeLedger(ledger: Ledger): Promise<void> {
   await atomicWrite(file, `${JSON.stringify(ledger, null, 2)}\n`, 0o600);
 }
 
-export type ProposeResult = {
+export type CaptureResult = {
+  // Filed straight into memory: a new record each, undone with `ocean memory undo <auditId>`.
+  filed: { path: string; auditId: string }[];
+  // Left for the owner's review: a fact with no home, or one that would change a record.
   proposed: string[];
   skipped: { title: string; reason: string }[];
 };
 
-// Each fact → one candidate, through proposeMemory's own checks (size, secrets). A ledger of
-// content hashes keeps the same fact from being proposed twice across sessions; within one
-// session the transcript cursor already keeps the same turns from being read twice.
-export async function proposeSessionFacts(options: {
+// Each grounded fact (T-329 phase 3) is filed on its own when it routes to a record that does not
+// exist yet: the audit keeps it, and undo is a soft delete. A fact that would change an existing
+// or similar record, or that has no home, waits as a candidate (proposeMemory's own checks: size,
+// secrets). A ledger of content hashes keeps the same fact from being captured twice across
+// sessions; within one session the transcript cursor already keeps the same turns from being read
+// twice.
+export async function captureSessionFacts(options: {
   sessionId: string;
   client: string;
   facts: SessionFact[];
-}): Promise<ProposeResult> {
+}): Promise<CaptureResult> {
   // Two sessions ending together read and write the same ledger.
   await mkdir(path.dirname(sessionFactsLedgerFile()), {
     recursive: true,
@@ -468,9 +475,9 @@ async function proposeLocked(options: {
   sessionId: string;
   client: string;
   facts: SessionFact[];
-}): Promise<ProposeResult> {
+}): Promise<CaptureResult> {
   const ledger = await readLedger();
-  const result: ProposeResult = { proposed: [], skipped: [] };
+  const result: CaptureResult = { filed: [], proposed: [], skipped: [] };
   for (const fact of options.facts) {
     const key = factKey(fact);
     if (ledger[key]) {
@@ -480,13 +487,24 @@ async function proposeLocked(options: {
       });
       continue;
     }
+    const content = `# ${fact.title}\n\n${fact.content}\n\n> ${fact.evidence}\n`;
+    const source = `${SESSION_FACTS_SOURCE_PREFIX}${options.sessionId}`;
+    const target = await factTarget(fact);
+    if (target) {
+      const written = await fileNew(target, content, source);
+      if (written) {
+        ledger[key] = written.path;
+        result.filed.push(written);
+        continue;
+      }
+    }
     try {
       const { candidate } = await proposeMemory({
-        content: `# ${fact.title}\n\n${fact.content}\n\n> ${fact.evidence}\n`,
+        content,
         origin: "inferred",
-        source: `${SESSION_FACTS_SOURCE_PREFIX}${options.sessionId}`,
+        source,
         reason: fact.reason || "stated by the user in a session",
-        target: await factTarget(fact),
+        target,
         meta: {
           kind: "fact",
           client: options.client,
@@ -505,6 +523,50 @@ async function proposeLocked(options: {
       });
     }
   }
-  if (result.proposed.length) await writeLedger(ledger);
+  if (result.proposed.length || result.filed.length) await writeLedger(ledger);
   return result;
+}
+
+export type FiledFact = { path: string; auditId: string; at: string };
+
+// What sessions filed on their own on one local date and is still there (not undone or deleted
+// since): the day's "Filed" list, each with its undo.
+export async function filedFromSessions(
+  date = localDate(),
+): Promise<FiledFact[]> {
+  const entries = await readAudit();
+  const filed: FiledFact[] = [];
+  for (const [index, entry] of entries.entries()) {
+    if (entry.action !== "create" || !isSessionFactSource(entry.source))
+      continue;
+    if (localDate(new Date(entry.ts)) !== date) continue;
+    const removed = entries
+      .slice(index + 1)
+      .some((later) => later.path === entry.path && later.action === "delete");
+    if (!removed)
+      filed.push({ path: entry.path, auditId: entry.id, at: entry.ts });
+  }
+  return filed;
+}
+
+// A new record, or null when the path or a similar record exists (or the write is refused):
+// changing a record the owner has is left to his review.
+async function fileNew(
+  target: string,
+  content: string,
+  source: string,
+): Promise<{ path: string; auditId: string } | null> {
+  try {
+    const written = await writeMemoryRecord({
+      path: target,
+      content,
+      mode: "create",
+      source,
+      provenance: { origin: "inferred" },
+    });
+    return { path: written.path, auditId: written.auditId };
+  } catch (error) {
+    if (error instanceof MemoryContractError) return null;
+    throw error;
+  }
 }

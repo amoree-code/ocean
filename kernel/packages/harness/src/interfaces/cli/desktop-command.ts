@@ -115,12 +115,9 @@ export async function runDesktopCommand(args: string[]): Promise<void> {
       console.log(JSON.stringify(run, null, 2));
       return;
     }
-    const candidates =
+    const count = (key: "candidates" | "filed") =>
       run.status === "done"
-        ? run.runs.reduce(
-            (sum, each) => sum + (each.candidates?.length ?? 0),
-            0,
-          )
+        ? run.runs.reduce((sum, each) => sum + (each[key]?.length ?? 0), 0)
         : 0;
     await recordDesktopRun({
       at: new Date().toISOString(),
@@ -129,7 +126,8 @@ export async function runDesktopCommand(args: string[]): Promise<void> {
         ? {
             conversations: run.conversations,
             captured: run.runs.length,
-            candidates,
+            candidates: count("candidates"),
+            filed: count("filed"),
           }
         : {}),
     });

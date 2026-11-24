@@ -12,15 +12,22 @@ import path from "node:path";
 import test from "node:test";
 import {
   memorySettings,
+  readAudit,
   sessionFactsEnabled,
   setSessionFacts,
 } from "@ocean/brain/memory/memory-audit.js";
-import { approveCandidate } from "@ocean/brain/memory/memory-review.js";
+import {
+  approveCandidate,
+  archiveCandidates,
+  listCandidates,
+} from "@ocean/brain/memory/memory-review.js";
+import { undoMemoryWrite } from "@ocean/brain/memory/memory-trash.js";
 import {
   buildFactsPrompt,
+  captureSessionFacts,
   extractSessionFacts,
+  filedFromSessions,
   parseFacts,
-  proposeSessionFacts,
   selectTurns,
 } from "@ocean/brain/memory/session-facts.js";
 import { MemoryContractError } from "@ocean/core/domain/mcp/memory-contract.js";
@@ -64,6 +71,25 @@ async function inWorkspace(name, run) {
     else process.env.OCEAN_ROOT = previous;
   }
 }
+
+async function seedStores(root) {
+  for (const [store, index] of [
+    ["memory", "MEMORY.md"],
+    ["knowledge", "KNOWLEDGE.md"],
+  ]) {
+    await mkdir(path.join(root, STORE_DIR[store]), { recursive: true });
+    await writeFile(path.join(root, STORE_DIR[store], index), "# Index\n");
+  }
+}
+
+const fact = (title, type, project) => ({
+  title,
+  content: `${title} content.`,
+  evidence: `${title} evidence`,
+  reason: "r",
+  ...(type ? { type } : {}),
+  ...(project ? { project } : {}),
+});
 
 const userLine = (text) =>
   JSON.stringify({ type: "user", message: { role: "user", content: text } });
@@ -162,7 +188,7 @@ test("parseFacts keeps at most five well-formed facts and drops incomplete ones"
 });
 
 // T-314: the model names a type, the routing table names the place, and approval needs no path.
-test("a typed session fact arrives with its target; approve routes an untyped one by --type", async () => {
+test("a routable session fact is filed as a new record; the rest wait as candidates", async () => {
   await inWorkspace("routing", async (root) => {
     assert.equal(
       parseFacts(
@@ -181,23 +207,9 @@ test("a typed session fact arrives with its target; approve routes an untyped on
       buildFactsPrompt([{ role: "user", text: "hi" }]),
       /preference, person/,
     );
-    for (const [store, index] of [
-      ["memory", "MEMORY.md"],
-      ["knowledge", "KNOWLEDGE.md"],
-    ]) {
-      await mkdir(path.join(root, STORE_DIR[store]), { recursive: true });
-      await writeFile(path.join(root, STORE_DIR[store], index), "# Index\n");
-    }
+    await seedStores(root);
     await registerNamedProject("Harbor");
-    const fact = (title, type, project) => ({
-      title,
-      content: `${title} content.`,
-      evidence: `${title} evidence`,
-      reason: "r",
-      ...(type ? { type } : {}),
-      ...(project ? { project } : {}),
-    });
-    const { proposed } = await proposeSessionFacts({
+    const { filed, proposed } = await captureSessionFacts({
       sessionId: "s-route",
       client: "claude",
       facts: [
@@ -207,41 +219,153 @@ test("a typed session fact arrives with its target; approve routes an untyped on
         fact("No type at all"),
       ],
     });
+    assert.deepEqual(
+      filed.map((item) => item.path),
+      [
+        "02-personal/work/tabs-over-spaces.md",
+        "04-projects/uncategorized/harbor/memory/harbor-uses-postgres.md",
+      ],
+    );
+    const record = await readFile(path.join(root, filed[0].path), "utf8");
+    assert.match(record, /Tabs Over Spaces content\./);
+    assert.match(record, /^> Tabs Over Spaces evidence$/m);
+    // No route: a candidate, for the owner's review.
     const targets = [];
     for (const file of proposed) {
       const text = await readFile(path.join(root, file), "utf8");
       targets.push(/^target: "(.*)"$/m.exec(text)[1]);
     }
-    assert.deepEqual(targets, [
-      "02-personal/work/tabs-over-spaces.md",
-      "04-projects/uncategorized/harbor/memory/harbor-uses-postgres.md",
-      "",
-      "",
-    ]);
-    assert.match(
-      await readFile(path.join(root, proposed[0]), "utf8"),
-      /^type: "preference"$/m,
-    );
+    assert.deepEqual(targets, ["", ""]);
     const id = (file) => path.basename(file, ".md");
-    const approved = await approveCandidate({ id: id(proposed[0]) });
-    assert.equal(approved.path, "02-personal/work/tabs-over-spaces.md");
     await assert.rejects(
-      approveCandidate({ id: id(proposed[3]) }),
+      approveCandidate({ id: id(proposed[1]) }),
       (error) => error.code === "INVALID" && /--type/.test(error.message),
     );
     await assert.rejects(
-      approveCandidate({ id: id(proposed[3]), type: "astrology" }),
+      approveCandidate({ id: id(proposed[1]), type: "astrology" }),
       (error) =>
         error.code === "INVALID" && /unknown fact type/.test(error.message),
     );
     const routed = await approveCandidate({
-      id: id(proposed[3]),
+      id: id(proposed[1]),
       type: "goal",
     });
     assert.equal(routed.path, "02-personal/goals/no-type-at-all.md");
     assert.match(
       await readFile(path.join(root, routed.path), "utf8"),
       /No type at all content/,
+    );
+  });
+});
+
+test("a fact whose record exists is never written over: it waits as a candidate", async () => {
+  await inWorkspace("existing", async (root) => {
+    await seedStores(root);
+    await mkdir(path.join(root, "02-personal", "work"), { recursive: true });
+    const existing = "# Tabs Over Spaces\n\nThe owner's own words.\n";
+    await writeFile(
+      path.join(root, "02-personal/work/tabs-over-spaces.md"),
+      existing,
+    );
+    const { filed, proposed } = await captureSessionFacts({
+      sessionId: "s-existing",
+      client: "claude",
+      facts: [fact("Tabs Over Spaces", "preference")],
+    });
+    assert.equal(filed.length, 0);
+    assert.equal(proposed.length, 1);
+    assert.equal(
+      await readFile(
+        path.join(root, "02-personal/work/tabs-over-spaces.md"),
+        "utf8",
+      ),
+      existing,
+    );
+    assert.match(
+      await readFile(path.join(root, proposed[0]), "utf8"),
+      /^target: "02-personal\/work\/tabs-over-spaces.md"$/m,
+    );
+  });
+});
+
+test("undo soft-deletes what was filed, drops it from the filed list, and refuses after an edit", async () => {
+  await inWorkspace("undo", async (root) => {
+    await seedStores(root);
+    const { filed } = await captureSessionFacts({
+      sessionId: "s-undo",
+      client: "claude",
+      facts: [
+        fact("Tabs Over Spaces", "preference"),
+        fact("Ship Fridays", "goal"),
+      ],
+    });
+    assert.equal(filed.length, 2);
+    const today = await filedFromSessions();
+    assert.deepEqual(
+      today.map((item) => item.auditId),
+      filed.map((item) => item.auditId),
+    );
+    assert.deepEqual(await filedFromSessions("2000-01-01"), []);
+
+    const undone = await undoMemoryWrite({ id: filed[0].auditId });
+    assert.equal(undone.undone, "create");
+    await assert.rejects(readFile(path.join(root, filed[0].path), "utf8"));
+    assert.deepEqual(
+      (await filedFromSessions()).map((item) => item.path),
+      [filed[1].path],
+    );
+    await assert.rejects(
+      undoMemoryWrite({ id: filed[0].auditId }),
+      (error) => error.code === "MISSING",
+    );
+
+    await writeFile(
+      path.join(root, filed[1].path),
+      "# Ship Fridays\n\nEdited by the owner.\n",
+    );
+    await assert.rejects(
+      undoMemoryWrite({ id: filed[1].auditId }),
+      (error) =>
+        error.code === "CONFLICT" &&
+        error.message.includes(`ocean memory history ${filed[1].path}`),
+    );
+    await assert.rejects(
+      undoMemoryWrite({ id: "no-such-audit-id" }),
+      (error) => error.code === "MISSING",
+    );
+  });
+});
+
+test("archiving the queue lists until applied, then moves every candidate, unreviewed", async () => {
+  await inWorkspace("archive", async (root) => {
+    await seedStores(root);
+    const { proposed } = await captureSessionFacts({
+      sessionId: "s-archive",
+      client: "claude",
+      facts: [fact("No type one"), fact("No type two")],
+    });
+    assert.equal(proposed.length, 2);
+    const dry = await archiveCandidates();
+    assert.equal(dry.applied, false);
+    assert.equal(dry.moved.length, 2);
+    assert.equal((await listCandidates()).length, 2);
+
+    const applied = await archiveCandidates({ apply: true });
+    assert.equal(applied.moved.length, 2);
+    assert.equal((await listCandidates()).length, 0);
+    for (const item of applied.moved) {
+      assert.match(
+        item.to,
+        /^00-inbox\/archive\/candidates\/\d{4}-\d{2}-\d{2}\//,
+      );
+      assert.match(
+        await readFile(path.join(root, item.to), "utf8"),
+        /source: "session:s-archive"/,
+      );
+    }
+    assert.equal(
+      (await readAudit()).filter((entry) => entry.action === "archive").length,
+      2,
     );
   });
 });
@@ -302,7 +426,7 @@ test("a session fact is never auto-approved, even with proposeAutoApprove and pu
       path.join(root, SYSTEM_DIR, "config", "memory.json"),
       JSON.stringify({ proposeAutoApprove: "project", pullAutoApprove: "on" }),
     );
-    const { proposed } = await proposeSessionFacts({
+    const { proposed } = await captureSessionFacts({
       sessionId: "s-review",
       client: "claude",
       facts: [
@@ -326,7 +450,7 @@ test("a session fact is never auto-approved, even with proposeAutoApprove and pu
           error instanceof MemoryContractError && error.code === "PROTECTED",
       );
     // The same fact again is not proposed twice.
-    const again = await proposeSessionFacts({
+    const again = await captureSessionFacts({
       sessionId: "s-other",
       client: "claude",
       facts: [

@@ -4,9 +4,9 @@ import { writeDigestRecord } from "@ocean/brain/memory/brain-dump.js";
 import { sessionFactsEnabled } from "@ocean/brain/memory/memory-audit.js";
 import {
   type CompleteText,
+  captureSessionFacts,
   extractSessionFacts,
   type FactTurn,
-  proposeSessionFacts,
 } from "@ocean/brain/memory/session-facts.js";
 import { atomicWrite, withFileLock } from "@ocean/core/shared/fs-utils.js";
 import { oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
@@ -106,6 +106,7 @@ export type DesktopLastRun = {
   conversations?: number;
   captured?: number;
   candidates?: number;
+  filed?: number;
   code?: string;
   reason?: string;
 };
@@ -163,6 +164,8 @@ export type DesktopConversationRun = {
   to: string;
   // The session record written from the conversation's digest (T-314).
   record?: string;
+  // Records filed on their own (T-329 phase 3); candidates wait for the owner's review.
+  filed?: string[];
   candidates?: string[];
   // Free triage found nothing worth a model call: a one-line record only (T-329 phase 2).
   trivial?: boolean;
@@ -297,7 +300,7 @@ async function captureOne(
     });
     return { ...base, status: "failed" };
   }
-  const proposed = await proposeSessionFacts({
+  const proposed = await captureSessionFacts({
     sessionId: `desktop:${conversation.uuid}`,
     client: DESKTOP_CLIENT,
     facts: extraction.facts,
@@ -321,6 +324,7 @@ async function captureOne(
     ...base,
     status: "done",
     ...(record ? { record } : {}),
+    filed: proposed.filed.map((item) => item.path),
     candidates: proposed.proposed,
     rejected: extraction.rejected.length,
     ...(extraction.triage && !extraction.triage.worth ? { trivial: true } : {}),

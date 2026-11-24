@@ -184,6 +184,11 @@ export function candidatesRoot(): string {
   return oceanPath(INBOX_DIR, "candidates");
 }
 
+// Where the review queue went when auto-filing replaced it (T-329 phase 3). Never purged.
+export function candidatesArchiveRoot(): string {
+  return oceanPath(INBOX_DIR, "archive", "candidates");
+}
+
 // Server-named only: <candidates>/<yyyy-mm-dd>/<id>.md.
 export function candidateFile(day: string, id: string): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !/^[0-9a-z-]{8,64}$/.test(id))
