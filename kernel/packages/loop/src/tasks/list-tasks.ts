@@ -23,6 +23,8 @@ export type TaskSummary = {
   state: string;
   goal: string;
   updatedAt: string;
+  // The first paragraph of `## Next action`, one line; "" when the task has none.
+  next: string;
 };
 
 /**
@@ -71,12 +73,18 @@ export async function listTasks(
     const objective =
       source.match(/\n## Objective\n\n([\s\S]*?)(?=\n## |$)/)?.[1]?.trim() ??
       "";
+    const next =
+      source
+        .match(/\n## Next action\n\n([\s\S]*?)(?=\n\n|\n## |$)/)?.[1]
+        ?.replace(/\s+/g, " ")
+        .trim() ?? "";
     records.push({
       id: fields.id ?? entry.name,
       title: fields.title ?? "",
       state: fields.state ?? "",
       goal: objective || fields.goal || fields.requirement || "",
       updatedAt: fields.updated ?? fields.updated_at ?? "",
+      next,
     });
   }
   return records.sort((a, b) => a.id.localeCompare(b.id));

@@ -50,7 +50,13 @@ test("manual capture renders, promotes to knowledge, and updates its index", asy
     await readFile(path.join(root, INBOX_DIR, "INBOX.md"), "utf8"),
     /SMOKE_CAPTURE_CLI_IDEA/,
   );
-  cli(root, "capture", "promote", String(item.captureId), "knowledge/decisions");
+  cli(
+    root,
+    "capture",
+    "promote",
+    String(item.captureId),
+    "knowledge/decisions",
+  );
   const records = (
     await readdir(path.join(root, KNOWLEDGE_DIR, "decisions"))
   ).filter((file) => file.endsWith(".md"));

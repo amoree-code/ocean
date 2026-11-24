@@ -83,6 +83,7 @@ test("tasks list returns live task summaries and filters by state", async () => 
       state: "active",
       goal: "Test goal",
       updatedAt: "2026-09-13",
+      next: "",
       project: "ocean",
     },
     {
@@ -91,6 +92,7 @@ test("tasks list returns live task summaries and filters by state", async () => 
       state: "active",
       goal: "Quotes",
       updatedAt: "",
+      next: "",
       project: "ocean",
     },
   ]);

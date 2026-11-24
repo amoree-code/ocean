@@ -18,6 +18,7 @@ import {
 } from "@ocean/services/harvest/harvest.js";
 import { readCallLedger } from "@ocean/services/infrastructure/mcp/call-ledger.js";
 import { runUpkeepCommand } from "./upkeep-command.js";
+import { weekFailures } from "./week-failures.js";
 
 // `ocean rhythm [--yes]` (T-314): everything the day, week and month need, with no model, each
 // at most once: today's morning note, every day not yet harvested (and today so far), the
@@ -87,7 +88,11 @@ async function rhythm(args: string[]): Promise<void> {
       .slice(0, 10),
   );
   if (stamp.week !== lastWeek.label) {
-    done.week = await distillWeek({ date: lastWeek.from, apply });
+    done.week = await distillWeek({
+      date: lastWeek.from,
+      apply,
+      failures: weekFailures,
+    });
     if (apply) stamp.week = lastWeek.label;
   }
   // Last month, once it is over (the review itself is written once and never overwritten).

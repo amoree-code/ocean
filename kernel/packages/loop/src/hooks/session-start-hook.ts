@@ -21,6 +21,7 @@ import {
   connectedLine,
   recordConnected,
 } from "@ocean/core/shared/visibility.js";
+import { startBrief } from "./start-brief.js";
 
 // The documented Claude Code SessionStart hook contract on this machine (verified against
 // the live ~/.claude/settings.json hook entries, e.g. the existing ai-guard-push PreToolUse
@@ -196,6 +197,10 @@ export async function claudeSessionStartHook(
     const unreadable = await unreadableManifestsWarning();
     if (unreadable) parts.push(unreadable);
   }
+  if (project.status === "bound") {
+    const brief = await startBrief(project.projectId);
+    if (brief) parts.push(brief);
+  }
   if (warning) parts.push(warning);
   return {
     systemMessage: connectedLine(shown),
@@ -223,7 +228,10 @@ export async function oceanContext(cwd: string): Promise<string> {
   // A hookless client never sees the rules a hook client gets as its CLAUDE.md copy: a pointer
   // beside the bounded line, never inside it (T-328).
   const rules = await rulesPointer();
-  return rules ? `${bootstrap.content}\n${rules}` : bootstrap.content;
+  // The same start brief a hook client gets, so a hookless client starts where the project stands.
+  const brief =
+    project.status === "bound" ? await startBrief(project.projectId) : null;
+  return [bootstrap.content, rules, brief].filter(Boolean).join("\n");
 }
 
 // Clients that take the bootstrap through their own hooks instead of a same-name shim (T-266).

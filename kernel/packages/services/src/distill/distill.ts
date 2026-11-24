@@ -13,6 +13,7 @@ import {
   REPORTS_DIR,
 } from "@ocean/core/shared/paths.js";
 import { listMilestones } from "../express/express.js";
+import { type WeekFailure, weeklyPatterns } from "./patterns.js";
 
 // The weekly distill (T-314): a week's session records and briefs become one digest in
 // 01-daily/reports/weekly/, the Decisions and Learned sections become knowledge candidates for review,
@@ -87,6 +88,8 @@ export type DistillResult = {
 export async function distillWeek(options: {
   date: string;
   apply: boolean;
+  // The week's repeated telemetry failures, from the caller that can read the session store.
+  failures?: (week: { from: string; to: string }) => Promise<WeekFailure[]>;
 }): Promise<DistillResult> {
   const week = isoWeek(options.date);
   const inWeek = (date: string | undefined) =>
@@ -96,17 +99,27 @@ export async function distillWeek(options: {
     text: string;
     title: string;
     status: string;
+    project: string;
+    provider: string;
+    untitled: boolean;
   }[] = [];
   for (const file of await markdownIn(oceanPath(DAILY_DIR, "sessions"))) {
     const text = await readFile(file, "utf8");
     const fields = parseFrontmatter(text);
     if (fields.type !== "session" || fields.distilled === "true") continue;
     if (!inWeek(fields.date)) continue;
-    const title = cleanTitle(
-      /^# (.+)$/m.exec(text)?.[1] ?? "",
-      fields.project || path.basename(file, ".md"),
-    );
-    sessions.push({ file, text, title, status: fields.status ?? "" });
+    const own = cleanTitle(/^# (.+)$/m.exec(text)?.[1] ?? "", "");
+    const title = own || fields.project || path.basename(file, ".md");
+    sessions.push({
+      file,
+      text,
+      title,
+      status: fields.status ?? "",
+      project: fields.project ?? "",
+      provider: fields.provider ?? "",
+      // A title that is only the project's name is a fallback, not a title.
+      untitled: !own || own === fields.project,
+    });
   }
   const briefs = (await markdownIn(oceanPath(REPORTS_DIR, "briefs"))).filter(
     (file) => inWeek(/(\d{4}-\d{2}-\d{2})/.exec(path.basename(file))?.[1]),
@@ -161,6 +174,10 @@ export async function distillWeek(options: {
   const digestRelative = `${REPORTS_DIR}/weekly/${week.label}.md`;
   result.digest = digestRelative;
   if (!options.apply) return result;
+  const patterns = weeklyPatterns(
+    sessions,
+    (await options.failures?.(week).catch(() => [])) ?? [],
+  );
   const body = [
     "---",
     "type: weekly",
@@ -180,6 +197,7 @@ export async function distillWeek(options: {
             `- ${link(item.file, item.title)} — ${item.status || "unknown"}`,
         )
       : ["- none"]),
+    ...(patterns.length ? ["", "## Patterns", "", ...patterns] : []),
     ...(decisions.length ? ["", "## Decisions", "", ...list(decisions)] : []),
     ...(problems.length
       ? ["", "## Problems → fixes", "", ...list(problems)]
