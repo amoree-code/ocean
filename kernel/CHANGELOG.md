@@ -7,6 +7,9 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+- feat(clients): Ocean is now visible without asking: session-start hooks show the user `🌊 Ocean connected: <project>`, the server reports one display name (`serverInfo.title: "Ocean"`) under the one `ocean` key, and the hook and `ocean client sync` keep a small `bridge/state/visibility.json` that a Claude Code status line reads with `jq` to show `🌊 Ocean · <project> · synced <age>` (T-328)
+- feat(clients): the core `ocean-memory` skill now has the model begin its first reply that uses Ocean with `🌊 Ocean · <project>`, once per conversation, so Claude chat and Cowork, which have no start hook or status line, show Ocean too; chat needs the skill uploaded again to get it (T-328)
+
 ## 2.21.0 (2026-11-24)
 
 - feat(clients): the `ocean-memory` skill now ships with Ocean as a core skill, so Claude Code, Codex, Gemini, Cursor, Hermes and Antigravity get it at every session start with no step, worded for any client; Claude chat and Cowork get the same file as an uploaded skill (T-328)

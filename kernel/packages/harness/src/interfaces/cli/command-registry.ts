@@ -43,6 +43,7 @@ import {
   unbindProjectPath,
   writeProjectIndex,
 } from "@ocean/core/shared/project-resolution.js";
+import { recordSynced } from "@ocean/core/shared/visibility.js";
 import {
   claudeSessionEndHook,
   isSessionEndClient,
@@ -364,6 +365,8 @@ async function commandClient(): Promise<void> {
     const clients = await repairClients().catch((error: unknown) => ({
       error: error instanceof Error ? error.message : String(error),
     }));
+    // T-328 phase 3: status lines show `synced <age>` from this stamp.
+    await recordSynced();
     console.log(
       JSON.stringify(
         {

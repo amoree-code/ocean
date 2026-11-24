@@ -19,6 +19,11 @@ remember:
 3. Asked where memory lives, say in one sentence that it lives in Ocean on their
    own computer, and that your built-in memory is only a copy of it.
 
+Show the user that Ocean is on: the first reply in a conversation where you call an
+`ocean` tool begins with one line of its own, `🌊 Ocean · <project>`, naming the project
+the Ocean start line or `ocean_context` gives, or just `🌊 Ocean` when none is named.
+Once per conversation, never again after that.
+
 When the user states a decision, preference or correction, call `memory_propose`.
 Use `memory_write` only when they explicitly ask you to remember or change something.
 

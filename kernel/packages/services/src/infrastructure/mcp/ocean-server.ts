@@ -1040,7 +1040,13 @@ export async function handleOceanMcpRequest(
       result: {
         protocolVersion: "2025-06-18",
         capabilities: { tools: {}, resources: {}, prompts: {} },
-        serverInfo: { name: "ocean", version: await serverVersion() },
+        // `name` is the machine id; `title` (MCP 2025-06-18) is the one display name every
+        // client shows, under the one config key `ocean` → tool prefix `mcp__ocean__` (T-328).
+        serverInfo: {
+          name: "ocean",
+          title: "Ocean",
+          version: await serverVersion(),
+        },
         instructions: MEMORY_INSTRUCTIONS,
       },
     };
