@@ -7,7 +7,7 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
-- feat(onboarding): `ocean onboard` reviews each detected client as one card — connect, trigger, capture, live (its last Ocean call from the ledger) — so the capture lines are the consent the single "apply" question asks for; before the first edit of each batch the whole client config is saved next to it as `<file>.ocean-backup-<batch>` (0600), which brings back an entry the journal kept only as a hash, and `ocean uninstall` removes those backups except where a conflict means the owner still needs them (T-328)
+- feat(onboarding): `ocean onboard` reviews each detected client as one card — connect, trigger, capture, live (its last Ocean call from the ledger) — so the capture lines are the consent the single "apply" question asks for; before the first edit of each batch the whole client config is saved next to it as `<file>.ocean-backup-<batch>` (0600), which brings back an entry the journal kept only as a hash, and `ocean uninstall` removes those backups except where a conflict means the owner still needs them (T-328) (#337)
 
 ## 2.23.0 (2026-11-24)
 
