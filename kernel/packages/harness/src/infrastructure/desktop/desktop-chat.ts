@@ -75,20 +75,67 @@ function isoDate(value: unknown): string | null {
   return null;
 }
 
-// The text of a message: its `text` blocks only. Thinking, tool calls, tool results and
-// attachments are left out.
-function messageText(content: unknown): string {
+// What a tool step keeps: its call's input and its result are cut to these lengths, so a long
+// file read or search result does not crowd out the conversation (T-329).
+export const TOOL_INPUT_CHARS = 200;
+export const TOOL_RESULT_CHARS = 600;
+
+function clip(text: string, max: number): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length > max ? `${flat.slice(0, max)}…` : flat;
+}
+
+// "mcp__remote-devices__ocean__brain_search" → "brain_search".
+const toolName = (name: unknown): string =>
+  typeof name === "string" && name ? (name.split("__").at(-1) ?? name) : "tool";
+
+function toolInput(input: unknown): string {
+  if (typeof input === "string") return clip(input, TOOL_INPUT_CHARS);
+  if (!isObject(input) || Object.keys(input).length === 0) return "";
+  // The app keeps a one-line summary of the call's input where it has one.
+  if (typeof input.summary === "string" && Object.keys(input).length === 1)
+    return clip(input.summary, TOOL_INPUT_CHARS);
+  return clip(JSON.stringify(input), TOOL_INPUT_CHARS);
+}
+
+function toolResult(content: unknown): string {
+  if (typeof content === "string") return clip(content, TOOL_RESULT_CHARS);
   if (!Array.isArray(content)) return "";
-  return content
-    .filter(
-      (block) =>
-        isObject(block) &&
-        block.type === "text" &&
-        typeof block.text === "string",
-    )
-    .map((block) => (block as { text: string }).text.trim())
-    .filter(Boolean)
-    .join("\n\n");
+  return clip(
+    content
+      .filter(
+        (part) =>
+          isObject(part) &&
+          part.type === "text" &&
+          typeof part.text === "string",
+      )
+      .map((part) => (part as { text: string }).text)
+      .join(" "),
+    TOOL_RESULT_CHARS,
+  );
+}
+
+// The text of a message: its `text` blocks, and each tool call and result as one bracketed line
+// (T-329: a capture without them missed what the assistant actually did and found). Thinking
+// and attachments are left out.
+export function messageText(content: unknown): string {
+  if (!Array.isArray(content)) return "";
+  const parts: string[] = [];
+  for (const block of content) {
+    if (!isObject(block)) continue;
+    if (block.type === "text" && typeof block.text === "string") {
+      const text = block.text.trim();
+      if (text) parts.push(text);
+    } else if (block.type === "tool_use") {
+      const input = toolInput(block.input);
+      parts.push(`[tool ${toolName(block.name)}${input ? `: ${input}` : ""}]`);
+    } else if (block.type === "tool_result") {
+      const result = toolResult(block.content);
+      const label = block.is_error === true ? "tool error" : "tool result";
+      if (result) parts.push(`[${label}: ${result}]`);
+    }
+  }
+  return parts.join("\n\n");
 }
 
 type RawMessage = DesktopMessage & { parent: string | null };

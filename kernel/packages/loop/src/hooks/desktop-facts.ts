@@ -20,11 +20,55 @@ import { oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 // model unlocked,
 // and hands the turns back if the model gave no answer. Candidates carry
 // `source: session:desktop:<uuid>`, so they are never auto-approved. No message text is ever
-// written outside the candidates themselves: the state file and the run report hold ids,
-// times and counts only.
+// written outside the candidates, the session record and the raw transcript (T-329): the state
+// file and the run report hold ids, times and counts only.
+//
+// A conversation is read once it is closed (T-329), not every time it pauses: Desktop has no
+// session end, so "closed" is quiet for DEFAULT_CLOSE_MS, or quiet for DEFAULT_QUIET_MS while a
+// newer conversation has started since. One pass then sees the whole conversation, instead of
+// summing quarter-hour stretches whose title stuck to the first one.
 
 export const DESKTOP_CLIENT = "claude-desktop";
 export const DEFAULT_QUIET_MS = 10 * 60 * 1000;
+export const DEFAULT_CLOSE_MS = 2 * 60 * 60 * 1000;
+
+// The conversation as read, kept whole so a later pass (or a better model) can read it again
+// without the app still holding it. Local only, owner-readable, rewritten on each pass.
+export function desktopTranscriptFile(uuid: string): string {
+  return oceanPath(
+    SYSTEM_DIR,
+    "state",
+    "transcripts",
+    DESKTOP_CLIENT,
+    `${uuid.replace(/[^\w-]/g, "_")}.jsonl`,
+  );
+}
+
+// Written when the kept copy is missing or ends before the conversation does, so a
+// conversation read before transcripts were kept gets one too.
+async function keepTranscript(conversation: DesktopChat): Promise<void> {
+  const file = desktopTranscriptFile(conversation.uuid);
+  const kept = conversation.messages.filter(
+    (message) => message.createdAt && message.text.trim(),
+  );
+  const last = kept.at(-1)?.createdAt;
+  if (!last) return;
+  try {
+    const tail = (await readFile(file, "utf8")).trimEnd().split("\n").at(-1);
+    if (tail && JSON.parse(tail).at === last) return;
+  } catch {
+    // no copy yet, or unreadable: write it
+  }
+  await mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
+  const lines = kept.map((message) =>
+    JSON.stringify({
+      at: message.createdAt,
+      role: message.sender === "human" ? "user" : "assistant",
+      text: message.text,
+    }),
+  );
+  await atomicWrite(file, `${lines.join("\n")}\n`, 0o600);
+}
 
 export type DesktopChatMessage = {
   // ISO time; a message without one is never read.
@@ -143,8 +187,12 @@ export async function runDesktopFacts(options: {
   read: DesktopChatSource;
   complete: CompleteText | null;
   now?: Date;
+  // One window for every conversation, in place of the quiet/close pair (`--quiet`, exports).
   quietMs?: number;
+  closeMs?: number;
   since?: Date;
+  // Only the most recently updated conversation, read now (`ocean_session_save`).
+  latest?: boolean;
   enabled?: () => Promise<boolean>;
 }): Promise<DesktopFactsRun> {
   if (!(await (options.enabled ?? sessionFactsEnabled)()))
@@ -152,7 +200,19 @@ export async function runDesktopFacts(options: {
   const read = await options.read();
   if (read.status === "absent") return { status: "absent" };
   const now = (options.now ?? new Date()).getTime();
-  const quietMs = options.quietMs ?? DEFAULT_QUIET_MS;
+  const quietMs = options.latest ? 0 : (options.quietMs ?? DEFAULT_QUIET_MS);
+  const closeMs = options.latest
+    ? 0
+    : (options.closeMs ?? options.quietMs ?? DEFAULT_CLOSE_MS);
+  const newest = read.conversations.reduce(
+    (max, c) => Math.max(max, Date.parse(c.updatedAt) || 0),
+    0,
+  );
+  const conversations = options.latest
+    ? read.conversations
+        .filter((c) => (Date.parse(c.updatedAt) || 0) === newest)
+        .slice(0, 1)
+    : read.conversations;
   const result = {
     status: "done" as const,
     conversations: read.conversations.length,
@@ -160,11 +220,16 @@ export async function runDesktopFacts(options: {
     upToDate: 0,
     runs: [] as DesktopConversationRun[],
   };
-  for (const conversation of read.conversations) {
+  for (const conversation of conversations) {
     const updated = Date.parse(conversation.updatedAt);
     if (options.since && !(updated >= options.since.getTime())) continue;
-    // A conversation still being written is left for a later run.
-    if (!(updated <= now - quietMs)) {
+    const idle = now - updated;
+    // A conversation still open is left for a later run.
+    const closed =
+      options.latest ||
+      idle >= closeMs ||
+      (idle >= quietMs && updated < newest);
+    if (!closed) {
       result.waiting++;
       continue;
     }
@@ -197,6 +262,8 @@ async function captureOne(
     return { from, claimed: true };
   });
   const base = { uuid: conversation.uuid, from: claim.from, to: newest };
+  // Kept whole whether or not there is anything new, or a model to read it now.
+  await keepTranscript(conversation).catch(() => {});
   if (newest <= claim.from) return null;
   if (!claim.claimed || !complete) return { ...base, status: "no-provider" };
 

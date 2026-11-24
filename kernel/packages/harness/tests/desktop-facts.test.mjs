@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import {
   desktopFactsStateFile,
+  desktopTranscriptFile,
   runDesktopFacts,
 } from "@ocean/loop/hooks/desktop-facts.js";
 
@@ -108,7 +109,7 @@ test("a quiet Desktop conversation becomes a review-only candidate, once", async
 
     // New turns: only they are sent.
     conversations = [
-      chat("quiet", minutesAgo(15), [
+      chat("quiet", minutesAgo(150), [
         STATED,
         "Noted.",
         "Also I prefer short answers",
@@ -134,7 +135,7 @@ test("a failed model call hands the turns back; no model claims nothing; off doe
   await inWorkspace(async () => {
     const read = async () => ({
       status: "ok",
-      conversations: [chat("c1", minutesAgo(60), [STATED, "Noted."])],
+      conversations: [chat("c1", minutesAgo(150), [STATED, "Noted."])],
     });
     const failed = await runDesktopFacts({
       read,
@@ -223,7 +224,7 @@ test("the same call returns a digest; the conversation becomes a session record 
     const run = await runDesktopFacts({
       read: async () => ({
         status: "ok",
-        conversations: [chat("quiet", minutesAgo(30), [STATED, "Noted."])],
+        conversations: [chat("quiet", minutesAgo(150), [STATED, "Noted."])],
       }),
       complete: async (prompt) => {
         prompts.push(prompt);
@@ -271,4 +272,91 @@ test("the same call returns a digest; the conversation becomes a session record 
     buildFactsPrompt([{ role: "user", text: "hi" }]),
     /digest/,
   );
+});
+
+test("a conversation is read once it is closed: quiet two hours, or ten minutes once a newer one started (T-329)", async () => {
+  await inWorkspace(async () => {
+    const read = async () => ({
+      status: "ok",
+      conversations: [
+        chat("newest-paused", minutesAgo(30), [STATED, "Noted."]),
+        chat("older-paused", minutesAgo(40), [STATED, "Noted."]),
+        chat("older-live", minutesAgo(5), [STATED, "Noted."]),
+      ],
+    });
+    // "older-live" was updated 5 minutes ago: it is the newest, so it is still open; the two
+    // paused ones have been quiet over ten minutes with a newer conversation since.
+    const run = await runDesktopFacts({
+      read,
+      complete: async () => ANSWER,
+      now: NOW,
+      enabled: on,
+    });
+    assert.deepEqual(run.runs.map((r) => r.uuid).sort(), [
+      "newest-paused",
+      "older-paused",
+    ]);
+    assert.equal(run.waiting, 1);
+  });
+  await inWorkspace(async () => {
+    const alone = (age) => async () => ({
+      status: "ok",
+      conversations: [chat("alone", minutesAgo(age), [STATED, "Noted."])],
+    });
+    const open = await runDesktopFacts({
+      read: alone(90),
+      complete: async () => ANSWER,
+      now: NOW,
+      enabled: on,
+    });
+    assert.equal(open.waiting, 1);
+    assert.equal(open.runs.length, 0);
+    const closed = await runDesktopFacts({
+      read: alone(121),
+      complete: async () => ANSWER,
+      now: NOW,
+      enabled: on,
+    });
+    assert.equal(closed.runs.length, 1);
+  });
+});
+
+test("--latest reads only the newest conversation, at once, and keeps its raw transcript with tool steps (T-329)", async () => {
+  await inWorkspace(async () => {
+    const prompts = [];
+    const read = async () => ({
+      status: "ok",
+      conversations: [
+        chat("now", minutesAgo(0), [
+          STATED,
+          "[tool brain_search: deploy day]\n\n[tool result: Friday]\n\nNoted.",
+        ]),
+        chat("before", minutesAgo(300), ["older chat", "ok"]),
+      ],
+    });
+    const run = await runDesktopFacts({
+      read,
+      complete: async (prompt) => {
+        prompts.push(prompt);
+        return ANSWER;
+      },
+      now: NOW,
+      latest: true,
+      enabled: on,
+    });
+    assert.deepEqual(
+      run.runs.map((r) => r.uuid),
+      ["now"],
+    );
+    assert.match(prompts[0], /tool brain_search/);
+    const raw = (await readFile(desktopTranscriptFile("now"), "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    assert.deepEqual(
+      raw.map((line) => line.role),
+      ["user", "assistant"],
+    );
+    assert.match(raw[1].text, /\[tool result: Friday\]/);
+  });
 });

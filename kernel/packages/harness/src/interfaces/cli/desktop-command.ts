@@ -1,5 +1,4 @@
 import {
-  DEFAULT_QUIET_MS,
   recordDesktopRun,
   runDesktopFacts,
 } from "@ocean/loop/hooks/desktop-facts.js";
@@ -14,7 +13,7 @@ import {
 import { sessionFactsCompleter } from "../../infrastructure/providers/session-facts-completer.js";
 
 export const desktopUsage =
-  "ocean desktop capture [--dry-run] [--export <folder>] [--since <date>] [--quiet <minutes>] [--json]";
+  "ocean desktop capture [--dry-run] [--export <folder>] [--since <date>] [--quiet <minutes>] [--latest] [--wait <seconds>] [--json]";
 
 function flagValue(args: string[], flag: string): string | undefined {
   const index = args.indexOf(flag);
@@ -57,7 +56,9 @@ async function dryRun(source: Source, json: boolean): Promise<void> {
 
 // `ocean desktop capture` (T-315): Claude Desktop chat has no hooks, so this is what the
 // watcher runs. `--dry-run` lists the conversations Ocean can read, with message counts; the
-// real run sends the new turns of each quiet conversation to fact capture. Neither prints
+// real run sends the new turns of each closed conversation to fact capture (T-329: quiet two
+// hours, or ten minutes once a newer one has started); `--latest` reads the newest one now,
+// after `--wait` seconds (`ocean_session_save`). Neither prints
 // message text; the run's outcome is kept for `ocean doctor`. `--export <folder>` reads an
 // unpacked claude.ai data export's conversations.json instead (every device's conversations),
 // with the same cursor, so a conversation already read from the app is not read again; an
@@ -79,6 +80,11 @@ export async function runDesktopCommand(args: string[]): Promise<void> {
     return;
   }
   const json = rest.includes("--json");
+  const wait = Number(flagValue(rest, "--wait") ?? 0);
+  if (Number.isFinite(wait) && wait > 0)
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.min(wait, 300) * 1000),
+    );
   const exportDir = flagValue(rest, "--export");
   if (rest.includes("--export") && (!exportDir || exportDir.startsWith("--"))) {
     console.error(`Usage: ${desktopUsage}`);
@@ -97,12 +103,13 @@ export async function runDesktopCommand(args: string[]): Promise<void> {
       read,
       complete: sessionFactsCompleter("claude"),
       since: sinceDate,
+      latest: rest.includes("--latest"),
       quietMs:
         quietMinutes !== undefined
           ? quietMinutes * 60_000
           : exportDir
             ? 0
-            : DEFAULT_QUIET_MS,
+            : undefined,
     });
     if (exportDir) {
       console.log(JSON.stringify(run, null, 2));
