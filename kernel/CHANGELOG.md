@@ -7,6 +7,8 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+## 2.21.0 (2026-11-24)
+
 - feat(clients): the `ocean-memory` skill now ships with Ocean as a core skill, so Claude Code, Codex, Gemini, Cursor, Hermes and Antigravity get it at every session start with no step, worded for any client; Claude chat and Cowork get the same file as an uploaded skill (T-328)
 - fix(clients): `ocean clients status` and onboarding no longer say the Ocean plugin is missing from your Claude account when it is there: Ocean now reads Claude Desktop's own plugin list, which also shows an uploaded plugin (`ocean-memory@My Uploads`), instead of Claude Code's account mirror, which lags and never names an upload (T-328)
 - fix(clients): Claude chat setup (onboarding's `chat-plugin` step and `ocean clients chat-plugin`) now saves `ocean-memory.zip` to Downloads, shows it and lists the upload clicks, instead of telling you to add the marketplace: Desktop installs a marketplace plugin locally for the Code tab only, so chat never got the skill (T-328)

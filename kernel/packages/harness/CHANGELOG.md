@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.21.0
+
+- feat(clients): the `ocean-memory` skill now ships with Ocean as a core skill, so Claude Code, Codex, Gemini, Cursor, Hermes and Antigravity get it at every session start with no step, worded for any client; Claude chat and Cowork get the same file as an uploaded skill (T-328)
+- fix(clients): `ocean clients status` and onboarding no longer say the Ocean plugin is missing from your Claude account when it is there: Ocean now reads Claude Desktop's own plugin list, which also shows an uploaded plugin (`ocean-memory@My Uploads`), instead of Claude Code's account mirror, which lags and never names an upload (T-328)
+- fix(clients): Claude chat setup (onboarding's `chat-plugin` step and `ocean clients chat-plugin`) now saves `ocean-memory.zip` to Downloads, shows it and lists the upload clicks, instead of telling you to add the marketplace: Desktop installs a marketplace plugin locally for the Code tab only, so chat never got the skill (T-328)
+- feat(mcp): new read-only `ocean_chat_skill` tool lets Claude Desktop chat install Ocean's memory skill itself: asked to, chat gets the core `SKILL.md` and proposes it as a skill card (or, failing that, a `ocean-memory.skill` file) that the user saves with one click, with no Finder upload; onboarding's chat step names it as the other way (T-328)
+- chore(clients): Ocean's repository is no longer a Claude plugin marketplace: the root `.claude-plugin/` and `kernel/plugins/ocean/` are gone, since Desktop keeps a marketplace plugin local to its Code tab and Claude Code gets the skill from the session-start sync (T-328)
+
 ## 2.20.0
 
 - feat(clients): Claude chat (Desktop, claude.ai, phone) now reaches Ocean through an account plugin instead of the admin-only organization folder: Ocean's repository is a plugin marketplace whose `ocean-memory` skill makes Claude call `brain_search` and answer from Ocean, onboarding's new `chat-plugin` step (and `ocean clients chat-plugin`) copies the marketplace name, opens Claude and lists the clicks, `ocean clients status` reads Claude Code's mirror of the account's marketplaces to say whether it is added, and the first memory tool result of each connection carries the authority line for hosts that drop `instructions` (T-328) (#333)
