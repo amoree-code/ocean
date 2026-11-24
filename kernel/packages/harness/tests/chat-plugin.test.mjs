@@ -115,6 +115,9 @@ test("the core ocean-memory skill fits every client and Claude's skill limits (T
   for (const tool of ["brain_search", "memory_propose"])
     assert.ok(skill.includes(tool), `skill names ${tool}`);
   assert.match(skill, /copy/);
+  // Phase 3: clients with no start message or status line (chat) show Ocean in the reply.
+  assert.match(skill, /🌊 Ocean · <project>/);
+  assert.match(skill, /Once per conversation/);
   assert.doesNotMatch(
     skill,
     /claude\.ai's memory|these chats/,

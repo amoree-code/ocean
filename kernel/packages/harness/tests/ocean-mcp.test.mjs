@@ -276,6 +276,7 @@ test("Ocean MCP exposes bounded resources and prompt templates", async () => {
     method: "initialize",
   });
   assert.equal(init.result.serverInfo.name, "ocean");
+  assert.equal(init.result.serverInfo.title, "Ocean");
   const listedPrompts = await handle({
     jsonrpc: "2.0",
     id: 5,

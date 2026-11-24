@@ -16,6 +16,10 @@ import {
   resolveProject,
   scanProjectManifests,
 } from "@ocean/core/shared/project-resolution.js";
+import {
+  connectedLine,
+  recordConnected,
+} from "@ocean/core/shared/visibility.js";
 
 // The documented Claude Code SessionStart hook contract on this machine (verified against
 // the live ~/.claude/settings.json hook entries, e.g. the existing ai-guard-push PreToolUse
@@ -29,6 +33,9 @@ export type ClaudeSessionStartPayload = {
 };
 
 export type ClaudeSessionStartResult = {
+  // Shown to the owner, not the model (T-328 phase 3): `🌊 Ocean connected: <project>`.
+  // Claude Code, Codex, Gemini CLI and Qwen Code all read this common hook field.
+  systemMessage: string;
   hookSpecificOutput: {
     hookEventName: "SessionStart";
     additionalContext: string;
@@ -170,7 +177,11 @@ export async function claudeSessionStartHook(
       rulesProblem = error instanceof Error ? error.message : String(error);
     }
   const bootstrap = buildOceanBootstrap(project, { rules: rules.length });
-  await recordIssuedAck(bootstrap.ack);
+  const shown = project.status === "bound" ? project.projectId : project.status;
+  await Promise.all([
+    recordIssuedAck(bootstrap.ack),
+    recordConnected(cwd, shown),
+  ]);
   // Beside the 256-byte bootstrap, never inside it: the authority claim is its own line.
   const parts = [bootstrap.content, MEMORY_AUTHORITY_LINE];
   if (project.status === "bound" && rules.length)
@@ -186,6 +197,7 @@ export async function claudeSessionStartHook(
   }
   if (warning) parts.push(warning);
   return {
+    systemMessage: connectedLine(shown),
     hookSpecificOutput: {
       hookEventName: "SessionStart",
       additionalContext: parts.join("\n"),

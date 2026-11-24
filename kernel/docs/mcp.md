@@ -146,6 +146,24 @@ name per mode), **captured** (its own memory is disabled, redirected, captured o
 Ocean) and the **last call**. Ledger names no client claims are listed as
 unattributed rather than guessed. `--json` returns the same report.
 
+### Seeing that Ocean is on (T-328)
+
+Every client registers Ocean under the one key `ocean`, so its tools carry one prefix
+(`mcp__ocean__…` in Claude Code), and the server's `initialize` reply gives the one display name:
+`serverInfo.title` is `Ocean` (`name` stays the machine id `ocean`). A session-start hook answers
+with `systemMessage: "🌊 Ocean connected: <project>"`, which Claude Code, Codex, Gemini CLI and
+Qwen Code show the user, not the model; `<project>` is the same id as the model's start line, or
+`unbound`. The hook also records the folder and its project in
+`bridge/state/visibility.json`, and `ocean client sync` stamps `syncedAt` there when it finishes.
+The file holds folder paths, project ids and ISO timestamps only, keeps the 50 most recent folders,
+and is never fatal to a session. A status line reads it with `jq` rather than starting the CLI:
+the longest folder that contains the current directory names the project, and `syncedAt` gives
+the age, for example `🌊 Ocean · ocean · synced 3m`.
+Clients with no start message or status line (Claude chat, Cowork) see Ocean in the reply instead:
+the core `ocean-memory` skill has the model begin its first reply that calls an `ocean` tool with
+`🌊 Ocean · <project>` (or `🌊 Ocean`), once per conversation. That rests on the model following the
+skill; chat gets the new wording only once the skill is uploaded again.
+
 `ocean clients detect|plan` lists every AI client and IDE Ocean knows (installed ones, with the
 evidence), its tier (`supported`, `context-file`, `unsupported`, `unknown`), the pending change to
 its `ocean` entry, its native-memory policy, and the reason or fallback for clients that cannot

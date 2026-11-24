@@ -158,7 +158,7 @@
         "path": "skills/core/ocean-memory"
       },
       "integrity": {
-        "sha256": "8e918188a476359ea27f945218cf91d9eeadd191b41049047762e752bd227fe1"
+        "sha256": "c001b4fdf8afe2e52b5b8a1fea6311584da4b62146e99e7244cc29807ad98365"
       },
       "spec": {
         "directory": "ocean-memory"
