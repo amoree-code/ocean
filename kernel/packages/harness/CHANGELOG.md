@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.24.0
+
+- feat(onboarding): `ocean onboard` reviews each detected client as one card — connect, trigger, capture, live (its last Ocean call from the ledger) — so the capture lines are the consent the single "apply" question asks for; before the first edit of each batch the whole client config is saved next to it as `<file>.ocean-backup-<batch>` (0600), which brings back an entry the journal kept only as a hash, and `ocean uninstall` removes those backups except where a conflict means the owner still needs them (T-328) (#337)
+
 ## 2.23.0
 
 - feat(clients): one-click bundles: `ocean clients bundles` writes `Ocean.mcpb`, a Claude Desktop Extension (MCPB 0.3, named Ocean, with an icon) whose launcher starts the Ocean installed on the machine, and `ocean.plugin`, a Claude plugin named Ocean carrying the `ocean-memory` skill for chat, Cowork and Claude Code; it warns when Desktop already has Ocean in its config, so the tools never show twice (T-328) (#336)
