@@ -3,7 +3,8 @@
 // `ocean-language` would be two ids for one folder, and one write would clobber the other.
 export const PROJECT_ID = /^[a-z0-9][a-z0-9._-]*$/;
 
-// Who a project belongs to (T-311). A project lives in the folder of its category,
+// Who a project belongs to (T-311), or for personal work what it is about: career,
+// learning, tooling, products. A project lives in the folder of its category,
 // 04-projects/<category>/<id>/; a new one lands in UNCATEGORIZED until it is moved.
 export const PROJECT_CATEGORIES = [
   "company",
@@ -11,6 +12,10 @@ export const PROJECT_CATEGORIES = [
   "freelance",
   "former-company",
   "vendor",
+  "career",
+  "learning",
+  "tooling",
+  "products",
 ] as const;
 export type ProjectCategory = (typeof PROJECT_CATEGORIES)[number];
 export const UNCATEGORIZED = "uncategorized";
