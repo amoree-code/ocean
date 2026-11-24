@@ -231,6 +231,10 @@ test("a category folder name is never a project id (T-311)", () => {
     "freelance",
     "former-company",
     "vendor",
+    "career",
+    "learning",
+    "tooling",
+    "products",
     "uncategorized",
   ])
     assert.equal(isValidProjectId(name), false, name);
