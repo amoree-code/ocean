@@ -12,6 +12,7 @@ import {
 import { sha256 } from "./memory-audit.js";
 import { sessionFactsLedgerFile } from "./memory-paths.js";
 import { proposeMemory } from "./memory-write.js";
+import { type FactTurn, type Triage, triageTurns } from "./session-triage.js";
 
 // Automatic fact capture at the end of a session and before a compaction (T-313). The industry
 // pattern (Zep, Mem0, Supermemory): code around the model runs the memory loop, so a fact the
@@ -22,13 +23,32 @@ import { proposeMemory } from "./memory-write.js";
 // The model is injected (`complete`): provider execution lives in harness, which brain cannot
 // import, and tests pass a recorded answer.
 
-export type FactTurn = { role: "user" | "assistant"; text: string };
+export type { FactTurn };
+
+// Where a claim comes from (T-329 phase 2): what the user said, what a tool run showed, or
+// neither. Each is checked against the turns: a quote that is not found makes the claim
+// unverified, and an unverified claim is never filed as knowledge or proposed as memory.
+export type Evidence = "user" | "tool" | "unverified";
+
+export const evidenceTag = (evidence: Evidence) => `[${evidence}]`;
+
+// The evidence a session record's list item carries, read back from its leading tag; null for an
+// item written before tags existed.
+export function itemEvidence(item: string): Evidence | null {
+  const tag = /^\[(user|tool|unverified)\]\s*/.exec(item);
+  return tag ? (tag[1] as Evidence) : null;
+}
+
+export const untagged = (item: string) =>
+  item.replace(/^\[(user|tool|unverified)\]\s*/, "");
 
 export type SessionFact = {
   title: string;
   content: string;
-  // A verbatim quote from one of the user's turns; a fact whose quote is not found is dropped.
+  // A verbatim quote from one of the user's turns (source "user") or from a tool result
+  // (source "tool"); a fact whose quote is not found there is dropped.
   evidence: string;
+  source?: Exclude<Evidence, "unverified">;
   reason: string;
   project?: string;
   // Which row of the routing table the fact belongs to; its target follows from it (T-314).
@@ -106,17 +126,26 @@ export type SessionDigest = {
   next: string[];
 };
 
+// A digest's lists grow with the conversation instead of a fixed cap (T-329 phase 2).
 const DIGEST_ITEMS = 3;
+const DIGEST_ITEMS_LONG = 6;
+const LONG_CONVERSATION_CHARS = 12_000;
 const DIGEST_ITEM_CHARS = 220;
 
-const DIGEST_PROMPT = [
+export function digestItems(turns: FactTurn[]): number {
+  const chars = turns.reduce((sum, turn) => sum + turn.text.length, 0);
+  return chars >= LONG_CONVERSATION_CHARS ? DIGEST_ITEMS_LONG : DIGEST_ITEMS;
+}
+
+const digestPrompt = (items: number) => [
   "Also summarize the whole conversation for the user's daily log, in the digest field. Plain short sentences in English; lists may be empty; never a secret or a [REDACTED] value.",
-  `title: what the conversation was about, at most 8 words. goal and outcome: one sentence each. decisions, fixes ("problem → fix"), learned, next: at most ${DIGEST_ITEMS} items each.`,
+  `title: what the conversation was about, at most 8 words. goal and outcome: one sentence each. decisions, fixes ("problem → fix"), learned: at most ${items} items each, every item an object {"text","evidence","quote"}. next: at most ${items} plain strings.`,
+  'evidence is "user" when the USER said or confirmed it (quote: an exact copy from one USER line), "tool" when a tool result in the conversation shows it (quote: an exact copy from that [tool result: …]), else "unverified" (quote: ""). An assistant claim nobody confirmed and no tool showed is "unverified"; a decision the user did not confirm is not a decision.',
 ];
 
 export function buildFactsPrompt(
   turns: FactTurn[],
-  options: { digest?: boolean } = {},
+  options: { digest?: boolean; items?: number } = {},
 ): string {
   const transcript = turns
     .map(
@@ -126,12 +155,12 @@ export function buildFactsPrompt(
   return [
     "You extract durable memory from one conversation between a user and an AI assistant.",
     "Durable means still true and useful in a later, unrelated conversation: the user's identity, role, preferences, standing decisions, project facts, constraints, and corrections to the assistant.",
-    "Only extract what the USER stated or explicitly confirmed. Never extract the assistant's suggestions, guesses or plans the user did not confirm.",
+    "Only extract what the USER stated or explicitly confirmed, or a durable project fact a tool result shows (a version, a path, a setting). Never extract the assistant's suggestions, guesses or plans the user did not confirm.",
     "Never extract temporary state (what is being debugged right now, today's to-do, a file being edited), secrets, credentials, or anything marked [REDACTED] or [PRIVATE_PATH].",
     `Return at most ${MAX_FACTS} facts. Returning none is correct and common.`,
-    ...(options.digest ? DIGEST_PROMPT : []),
+    ...(options.digest ? digestPrompt(options.items ?? DIGEST_ITEMS) : []),
     "Answer with JSON only, no prose and no code fence:",
-    `{"facts":[{"title":"short label","content":"the fact as one or two plain sentences","evidence":"an exact quote, copied character for character from one USER line","reason":"why it is durable","type":"one of the types below","project":"project name if the fact is about one, else omit"}]${options.digest ? ',"digest":{"title":"","goal":"","outcome":"","decisions":[],"fixes":[],"learned":[],"next":[]}' : ""}}`,
+    `{"facts":[{"title":"short label","content":"the fact as one or two plain sentences","source":"user or tool","evidence":"an exact quote, copied character for character from one USER line (source user) or one [tool result: …] (source tool)","reason":"why it is durable","type":"one of the types below","project":"project name if the fact is about one, else omit"}]${options.digest ? ',"digest":{"title":"","goal":"","outcome":"","decisions":[{"text":"","evidence":"user","quote":""}],"fixes":[],"learned":[],"next":[]}' : ""}}`,
     `type is one of: ${FACT_TYPES.join(", ")}. Use project only for a fact about one project, and then also give its project name; a fact about the user stays a personal type even when it came up in a project.`,
     'Answer {"facts":[]} when nothing qualifies.',
     "",
@@ -168,7 +197,13 @@ function factsList(text: string | null): unknown[] | null {
 }
 
 // The digest the answer holds, cleaned and bounded; null when there is none or it says nothing.
-export function parseDigest(text: string | null): SessionDigest | null {
+// Each decision, fix and learned item is checked against the turns and tagged with the evidence
+// that held up ([user], [tool] or [unverified]); a bare string is unverified.
+export function parseDigest(
+  text: string | null,
+  turns: FactTurn[] = [],
+  items = DIGEST_ITEMS,
+): SessionDigest | null {
   if (!text) return null;
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
@@ -183,18 +218,39 @@ export function parseDigest(text: string | null): SessionDigest | null {
   } catch {
     return null;
   }
+  const usable = (item: string) =>
+    item && !/\[(redacted|private_path)\]/i.test(item);
+  const raw = (key: string) =>
+    Array.isArray(value[key]) ? (value[key] as unknown[]) : [];
   const list = (key: string) =>
-    (Array.isArray(value[key]) ? (value[key] as unknown[]) : [])
+    raw(key)
       .map((item) => redactSecrets(clean(item, DIGEST_ITEM_CHARS)))
-      .filter((item) => item && !/\[(redacted|private_path)\]/i.test(item))
-      .slice(0, DIGEST_ITEMS);
+      .filter(usable)
+      .slice(0, items);
+  const claims = (key: string) =>
+    raw(key)
+      .map((item) => {
+        const claim =
+          item && typeof item === "object"
+            ? (item as Record<string, unknown>)
+            : { text: item };
+        const text = redactSecrets(clean(claim.text, DIGEST_ITEM_CHARS));
+        const evidence = checkedEvidence(
+          claim.evidence,
+          clean(claim.quote, MAX_EVIDENCE),
+          turns,
+        );
+        return usable(text) ? `${evidenceTag(evidence)} ${text}` : "";
+      })
+      .filter(Boolean)
+      .slice(0, items);
   const digest: SessionDigest = {
     title: redactSecrets(clean(value.title, 80)),
     goal: redactSecrets(clean(value.goal, DIGEST_ITEM_CHARS)),
     outcome: redactSecrets(clean(value.outcome, DIGEST_ITEM_CHARS)),
-    decisions: list("decisions"),
-    fixes: list("fixes"),
-    learned: list("learned"),
+    decisions: claims("decisions"),
+    fixes: claims("fixes"),
+    learned: claims("learned"),
     next: list("next"),
   };
   return digest.title || digest.goal ? digest : null;
@@ -212,6 +268,7 @@ export function parseFacts(text: string | null): SessionFact[] {
       evidence: clean(value.evidence, MAX_EVIDENCE),
       reason: clean(value.reason, 300),
     };
+    if (value.source === "tool") fact.source = "tool";
     const project = clean(value.project, 64);
     if (project) fact.project = project;
     if (isFactType(value.type)) fact.type = value.type;
@@ -229,16 +286,57 @@ const normalize = (value: string) =>
     .replace(/\s+/g, " ")
     .trim();
 
-// The false-positive guard: a fact counts only when its evidence is really in what the user
-// said (after the same redaction the model saw). An assistant line, a paraphrase passed off as a
-// quote, or an invented fact has no such quote.
-export function isGrounded(fact: SessionFact, turns: FactTurn[]): boolean {
-  const evidence = normalize(fact.evidence);
-  if (evidence.length < MIN_EVIDENCE) return false;
-  if (/\[(redacted|private_path)\]/.test(evidence)) return false;
+// A tool result as desktop-chat.ts writes it: "[tool result: …]" or "[tool error: …]" on a line of
+// its own, its body flattened to one line. The line is the result's exact extent, so assistant
+// prose after it never counts as something a tool showed.
+const RESULT_LINE = /^\[tool (?:result|error): (.*?)\]?$/gm;
+
+function quoteInUser(quote: string, turns: FactTurn[]): boolean {
   return turns.some(
-    (turn) => turn.role === "user" && normalize(turn.text).includes(evidence),
+    (turn) => turn.role === "user" && normalize(turn.text).includes(quote),
   );
+}
+
+function quoteInTool(quote: string, turns: FactTurn[]): boolean {
+  return turns.some(
+    (turn) =>
+      turn.role === "assistant" &&
+      [...turn.text.matchAll(RESULT_LINE)].some((line) =>
+        normalize(line[1] ?? "").includes(quote),
+      ),
+  );
+}
+
+function quoteFound(
+  source: Evidence,
+  quote: string,
+  turns: FactTurn[],
+): boolean {
+  const normalized = normalize(quote);
+  if (normalized.length < MIN_EVIDENCE) return false;
+  if (/\[(redacted|private_path)\]/.test(normalized)) return false;
+  if (source === "user") return quoteInUser(normalized, turns);
+  if (source === "tool") return quoteInTool(normalized, turns);
+  return false;
+}
+
+// What the claimed evidence holds up as: the claim when its quote is found where it says,
+// unverified otherwise.
+export function checkedEvidence(
+  claimed: unknown,
+  quote: string,
+  turns: FactTurn[],
+): Evidence {
+  if (claimed !== "user" && claimed !== "tool") return "unverified";
+  return quoteFound(claimed, quote, turns) ? claimed : "unverified";
+}
+
+// The false-positive guard: a fact counts only when its evidence is really in what the user
+// said, or in a tool result for a fact whose source is a tool (after the same redaction the model
+// saw). An assistant line, a paraphrase passed off as a quote, or an invented fact has no such
+// quote.
+export function isGrounded(fact: SessionFact, turns: FactTurn[]): boolean {
+  return quoteFound(fact.source ?? "user", fact.evidence, turns);
 }
 
 export type ExtractionResult = {
@@ -252,18 +350,52 @@ export type ExtractionResult = {
   failed: boolean;
   // The conversation's summary, when it was asked for (digest: true) and given.
   digest?: SessionDigest | null;
+  // The free triage before the model; a chat it found trivial had no model call.
+  triage?: Triage;
 };
+
+const FIRST_LINE_CHARS = 80;
+
+// The one-line record of a chat triage found trivial: its first request, no model involved.
+export function trivialDigest(turns: FactTurn[]): SessionDigest | null {
+  const first = turns.find((turn) => turn.role === "user");
+  const line = first ? redactSecrets(clean(first.text, DIGEST_ITEM_CHARS)) : "";
+  if (!line || /\[(redacted|private_path)\]/i.test(line)) return null;
+  return {
+    title: clean(line, FIRST_LINE_CHARS),
+    goal: line,
+    outcome: "",
+    decisions: [],
+    fixes: [],
+    learned: [],
+    next: [],
+  };
+}
 
 export async function extractSessionFacts(options: {
   turns: FactTurn[];
   complete: CompleteText;
   budgetChars?: number;
   digest?: boolean;
+  // false skips the free triage and always calls the model.
+  triage?: boolean;
 }): Promise<ExtractionResult> {
   const turns = selectTurns(options.turns, options.budgetChars);
   if (!turns.some((turn) => turn.role === "user"))
     return { facts: [], rejected: [], prompt: "", turns: 0, failed: false };
-  const prompt = buildFactsPrompt(turns, { digest: options.digest });
+  const triage = triageTurns(turns);
+  if (options.triage !== false && !triage.worth)
+    return {
+      facts: [],
+      rejected: [],
+      prompt: "",
+      turns: turns.length,
+      failed: false,
+      triage,
+      ...(options.digest ? { digest: trivialDigest(turns) } : {}),
+    };
+  const items = digestItems(turns);
+  const prompt = buildFactsPrompt(turns, { digest: options.digest, items });
   let answer: string | null = null;
   try {
     answer = await options.complete(prompt);
@@ -286,7 +418,8 @@ export async function extractSessionFacts(options: {
     prompt,
     turns: turns.length,
     failed: factsList(answer) === null,
-    ...(options.digest ? { digest: parseDigest(answer) } : {}),
+    triage,
+    ...(options.digest ? { digest: parseDigest(answer, turns, items) } : {}),
   };
 }
 
@@ -357,6 +490,7 @@ async function proposeLocked(options: {
         meta: {
           kind: "fact",
           client: options.client,
+          evidence: fact.source ?? "user",
           ...(fact.type ? { type: fact.type } : {}),
           ...(fact.project ? { project: fact.project } : {}),
         },

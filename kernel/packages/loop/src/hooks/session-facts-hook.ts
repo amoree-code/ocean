@@ -136,6 +136,8 @@ export type SessionFactsRun =
       to: number;
       record?: string;
       candidates: string[];
+      // Free triage found nothing worth a model call (T-329 phase 2).
+      trivial?: boolean;
       rejected: number;
       skipped: number;
     };
@@ -240,6 +242,7 @@ export async function runSessionFacts(
     to: claim.slice.offset,
     candidates: proposed.proposed,
     rejected: extraction.rejected.length,
+    ...(extraction.triage && !extraction.triage.worth ? { trivial: true } : {}),
     skipped: proposed.skipped.length,
   };
   const store = await openStore();

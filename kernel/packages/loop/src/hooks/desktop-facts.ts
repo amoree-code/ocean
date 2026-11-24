@@ -164,6 +164,8 @@ export type DesktopConversationRun = {
   // The session record written from the conversation's digest (T-314).
   record?: string;
   candidates?: string[];
+  // Free triage found nothing worth a model call: a one-line record only (T-329 phase 2).
+  trivial?: boolean;
   rejected?: number;
   skipped?: number;
 };
@@ -321,6 +323,7 @@ async function captureOne(
     ...(record ? { record } : {}),
     candidates: proposed.proposed,
     rejected: extraction.rejected.length,
+    ...(extraction.triage && !extraction.triage.worth ? { trivial: true } : {}),
     skipped: proposed.skipped.length,
   };
 }
