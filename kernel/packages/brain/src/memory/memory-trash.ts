@@ -211,3 +211,45 @@ export async function purgeMemoryCopies(options: {
     }
   return { cutoff: cutoff.toISOString(), copies, applied: options.apply };
 }
+
+// Undoes one write by its audit id (T-329 phase 3: what was filed on its own): a created record
+// is soft-deleted, an updated one gets its earlier version back. Only while the record is as
+// that write left it; a record changed since is restored by hand from its history.
+export async function undoMemoryWrite(options: {
+  id: string;
+  source?: string;
+}): Promise<{ path: string; auditId: string; undone: "create" | "update" }> {
+  const entry = (await readAudit()).find((item) => item.id === options.id);
+  if (!entry || (entry.action !== "create" && entry.action !== "update"))
+    throw new MemoryContractError(
+      "MISSING",
+      `no create or update with audit id ${options.id}`,
+    );
+  const record = permanentRecord(entry.path);
+  const current = await readFile(record.file, "utf8").catch(() => null);
+  if (current === null)
+    throw new MemoryContractError(
+      "MISSING",
+      `${record.relative} is gone already`,
+    );
+  if (sha256(current) !== entry.afterSha)
+    throw new MemoryContractError(
+      "CONFLICT",
+      `${record.relative} changed after that write; restore it from \`ocean memory history ${record.relative}\``,
+    );
+  const source = options.source ?? "undo";
+  if (entry.action === "create") {
+    const removed = await deleteMemoryRecord({
+      path: entry.path,
+      expectedHash: sha256(current),
+      source,
+    });
+    return { path: removed.path, auditId: removed.auditId, undone: "create" };
+  }
+  const restored = await restoreMemory({
+    id: entry.id,
+    expectedHash: sha256(current),
+    source,
+  });
+  return { path: restored.path, auditId: restored.auditId, undone: "update" };
+}

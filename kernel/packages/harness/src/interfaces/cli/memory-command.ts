@@ -35,6 +35,7 @@ import {
 } from "@ocean/brain/memory/memory-harvest.js";
 import {
   approveCandidate,
+  archiveCandidates,
   listCandidates,
   rejectCandidate,
 } from "@ocean/brain/memory/memory-review.js";
@@ -43,12 +44,14 @@ import {
   memoryHistory,
   purgeMemoryCopies,
   restoreMemory,
+  undoMemoryWrite,
 } from "@ocean/brain/memory/memory-trash.js";
 import {
   deleteProfileFact,
   readProfileFacts,
   writeProfileFact,
 } from "@ocean/brain/memory/profile-facts.js";
+import { filedFromSessions } from "@ocean/brain/memory/session-facts.js";
 import { isValidProjectId } from "@ocean/core/domain/context/project-id.js";
 import { folderProject } from "@ocean/core/shared/project-resolution.js";
 import { defaultBrainIndexPort } from "../../composition/runtime.js";
@@ -288,6 +291,29 @@ async function runRecordCommand(
   console.log(JSON.stringify(result, null, 2));
 }
 
+// What session capture filed on its own (T-329 phase 3), and the undo of any one write.
+async function runFiled(args: string[]): Promise<void> {
+  const date = flagValue(args, "--date");
+  if (args.includes("--date") && !/^\d{4}-\d{2}-\d{2}$/.test(date ?? ""))
+    throw new Error("Usage: ocean memory filed [--date YYYY-MM-DD] [--json]");
+  const filed = await filedFromSessions(date);
+  if (args.includes("--json")) {
+    console.log(JSON.stringify(filed, null, 2));
+    return;
+  }
+  if (!filed.length) console.log("Nothing filed on its own that day.");
+  for (const item of filed)
+    console.log(`${item.path}  — undo: ocean memory undo ${item.auditId}`);
+}
+
+async function runUndo(args: string[]): Promise<void> {
+  const id = args.find((arg) => !arg.startsWith("--"));
+  if (!id) throw new Error("Usage: ocean memory undo <audit-id>");
+  console.log(
+    JSON.stringify(await undoMemoryWrite({ id, source: "cli" }), null, 2),
+  );
+}
+
 // Who wrote, changed or deleted what (T-319), from the memory audit log.
 async function runAudit(args: string[]): Promise<void> {
   const usage =
@@ -355,6 +381,16 @@ async function runReview(args: string[]): Promise<void> {
       );
     return;
   }
+  if (verb === "archive") {
+    const apply = args.includes("--yes");
+    const result = await archiveCandidates({ apply });
+    console.log(JSON.stringify(result, null, 2));
+    if (!apply)
+      console.error(
+        `Dry run: pass --yes to move these ${result.moved.length} candidates to the archive.`,
+      );
+    return;
+  }
   if ((verb === "approve" || verb === "reject") && id) {
     const result =
       verb === "approve"
@@ -368,7 +404,7 @@ async function runReview(args: string[]): Promise<void> {
     return;
   }
   console.error(
-    "Usage: ocean memory review [list] [--project <id>] [--json] | approve <id> [--type <fact type> | --to <record path>] | reject <id>",
+    "Usage: ocean memory review [list] [--project <id>] [--json] | approve <id> [--type <fact type> | --to <record path>] | reject <id> | archive [--yes]",
   );
   process.exitCode = 1;
 }
@@ -425,6 +461,8 @@ export async function runMemoryCommand(
   )
     return runRecordCommand(action, args);
   if (action === "audit") return runAudit(args);
+  if (action === "filed") return runFiled(args);
+  if (action === "undo") return runUndo(args);
   if (action === "reindex") return runReindex(args);
   if (action === "review") return runReview(args);
   if (action === "harvest") {
@@ -545,7 +583,7 @@ export async function runMemoryCommand(
     return;
   }
   console.error(
-    "Usage: ocean memory doctor|sync [--apply]|review [list|approve <id> [--to <path>]|reject <id>]|eval <questions.json|.jsonl> [--k N] [--min R] [--fts]|hygiene [--yes]|drift [--yes]|digest|harvest [--source <id>] [--yes]|import-claude <export-dir> [--yes]|history [path] [--limit N]|audit [--client <name>] [--days N] [--limit N] [--json]|restore <id> [--hash <sha256>]|delete <path> --hash <sha256>|purge [--days N] [--yes]|facts <profile> [key] [value]|facts <profile> delete <key>|session-facts [on|off]|reindex [--no-vectors]|search <q> [--project <id>|--all] [--type T] [--since D] [--as-of D] [--fts] [--json]|read <id|path>|neighbors <id|path> [--depth N] [--project <id>|--all]",
+    "Usage: ocean memory doctor|sync [--apply]|review [list|approve <id> [--to <path>]|reject <id>|archive [--yes]]|filed [--date YYYY-MM-DD] [--json]|undo <audit-id>|eval <questions.json|.jsonl> [--k N] [--min R] [--fts]|hygiene [--yes]|drift [--yes]|digest|harvest [--source <id>] [--yes]|import-claude <export-dir> [--yes]|history [path] [--limit N]|audit [--client <name>] [--days N] [--limit N] [--json]|restore <id> [--hash <sha256>]|delete <path> --hash <sha256>|purge [--days N] [--yes]|facts <profile> [key] [value]|facts <profile> delete <key>|session-facts [on|off]|reindex [--no-vectors]|search <q> [--project <id>|--all] [--type T] [--since D] [--as-of D] [--fts] [--json]|read <id|path>|neighbors <id|path> [--depth N] [--project <id>|--all]",
   );
   process.exitCode = 1;
 }

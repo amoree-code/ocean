@@ -144,7 +144,8 @@ export async function writeMemoryRecord(options: {
   allowSimilar?: boolean;
   source?: string;
   // An approved candidate keeps where it came from (T-307), instead of reading as a direct save.
-  provenance?: { origin: "inferred" | "imported"; candidate: string };
+  // A fact filed from a session on its own (T-329) has an origin and no candidate.
+  provenance?: { origin: "inferred" | "imported"; candidate?: string };
   // A project doc (T-307): created only, never updated.
   document?: boolean;
 }): Promise<{
@@ -210,7 +211,9 @@ export async function writeMemoryRecord(options: {
     path: record.relative,
     source: options.source ?? "unknown",
     origin: options.provenance?.origin ?? "explicit",
-    ...(options.provenance ? { candidate: options.provenance.candidate } : {}),
+    ...(options.provenance?.candidate
+      ? { candidate: options.provenance.candidate }
+      : {}),
     beforeSha: before === null ? null : sha256(before),
     afterSha: sha256(content),
     copy,

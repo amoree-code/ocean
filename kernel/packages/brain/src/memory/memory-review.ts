@@ -21,7 +21,12 @@ import {
   sha256,
   writeDurable,
 } from "./memory-audit.js";
-import { assertNoLinks, candidatesRoot, storedCopy } from "./memory-paths.js";
+import {
+  assertNoLinks,
+  candidatesArchiveRoot,
+  candidatesRoot,
+  storedCopy,
+} from "./memory-paths.js";
 import {
   checkContent,
   proposeMemory,
@@ -397,4 +402,40 @@ export async function rejectCandidate(
   id: string,
 ): Promise<{ id: string; auditId: string }> {
   return { id, auditId: await retire(await candidate(id), "reject") };
+}
+
+// Retires the review queue (T-329 phase 3): every pending candidate moves, unreviewed, to
+// 00-inbox/archive/candidates/<day>/<id>.md with an audit entry. Nothing is promoted and nothing
+// is deleted; the archive is never purged. Lists what it would move until `apply`.
+export async function archiveCandidates(
+  options: { apply?: boolean } = {},
+): Promise<{
+  applied: boolean;
+  moved: { id: string; from: string; to: string }[];
+}> {
+  const moved: { id: string; from: string; to: string }[] = [];
+  for (const item of await listCandidates()) {
+    const target = path.join(
+      candidatesArchiveRoot(),
+      item.day,
+      `${item.id}.md`,
+    );
+    const to = path.relative(oceanPath(), target).split(path.sep).join("/");
+    moved.push({ id: item.id, from: item.file, to });
+    if (!options.apply) continue;
+    await mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
+    const text = await readFile(oceanPath(item.file), "utf8");
+    await rename(oceanPath(item.file), target);
+    await appendAudit({
+      id: newId(),
+      action: "archive",
+      path: item.file,
+      source: "archive",
+      origin: item.origin === "imported" ? "imported" : "inferred",
+      beforeSha: sha256(text),
+      afterSha: null,
+      copy: to,
+    });
+  }
+  return { applied: Boolean(options.apply), moved };
 }

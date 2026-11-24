@@ -17,7 +17,9 @@ export type MemoryAction =
   | "purge"
   // Candidate review (T-296 P5): the candidate moved to trash after approve or reject.
   | "approve"
-  | "reject";
+  | "reject"
+  // T-329 phase 3: a pending candidate moved, unreviewed, to the durable candidate archive.
+  | "archive";
 
 export type AuditEntry = {
   id: string;

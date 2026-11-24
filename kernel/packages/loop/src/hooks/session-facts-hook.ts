@@ -4,9 +4,9 @@ import { writeDigestRecord } from "@ocean/brain/memory/brain-dump.js";
 import { sessionFactsEnabled } from "@ocean/brain/memory/memory-audit.js";
 import {
   type CompleteText,
+  captureSessionFacts,
   extractSessionFacts,
   type FactTurn,
-  proposeSessionFacts,
 } from "@ocean/brain/memory/session-facts.js";
 import type {
   SessionStoreFactory,
@@ -135,6 +135,8 @@ export type SessionFactsRun =
       from: number;
       to: number;
       record?: string;
+      // Records filed on their own (T-329 phase 3); candidates wait for the owner's review.
+      filed: string[];
       candidates: string[];
       // Free triage found nothing worth a model call (T-329 phase 2).
       trivial?: boolean;
@@ -216,7 +218,7 @@ export async function runSessionFacts(
     });
     return { status: "failed", from: claim.from, to: claim.slice.offset };
   }
-  const proposed = await proposeSessionFacts({
+  const proposed = await captureSessionFacts({
     sessionId,
     client,
     facts: extraction.facts,
@@ -240,6 +242,7 @@ export async function runSessionFacts(
     ...(record ? { record } : {}),
     from: claim.from,
     to: claim.slice.offset,
+    filed: proposed.filed.map((item) => item.path),
     candidates: proposed.proposed,
     rejected: extraction.rejected.length,
     ...(extraction.triage && !extraction.triage.worth ? { trivial: true } : {}),

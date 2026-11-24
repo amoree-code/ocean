@@ -8,7 +8,12 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import { syncMemoryIndexes } from "@ocean/brain/memory/index-sync.js";
-import { itemEvidence, untagged } from "@ocean/brain/memory/session-facts.js";
+import {
+  type FiledFact,
+  filedFromSessions,
+  itemEvidence,
+  untagged,
+} from "@ocean/brain/memory/session-facts.js";
 import { containsKnownSecret } from "@ocean/core/domain/redaction/redaction.js";
 import type {
   Session,
@@ -356,6 +361,8 @@ function dayBlock(input: {
   corrections: string[];
   minutes: Record<string, number>;
   captures: string[];
+  // Records session capture filed on its own that day (T-329 phase 3), each undoable.
+  sessionFiled: FiledFact[];
   date: string;
 }): string {
   const link = (session: DaySession) =>
@@ -421,6 +428,17 @@ function dayBlock(input: {
     ...(journal.length ? ["", "## Journal", ...journal] : []),
     ...(input.captures.length
       ? ["", "### Captured", "", ...input.captures]
+      : []),
+    ...(input.sessionFiled.length
+      ? [
+          "",
+          "## Filed",
+          "",
+          ...input.sessionFiled.map(
+            (item) =>
+              `- \`${item.path}\` — undo: \`ocean memory undo ${item.auditId}\``,
+          ),
+        ]
       : []),
     ...(input.filed.size
       ? [
@@ -502,7 +520,14 @@ export async function harvestDay(options: {
     minutes,
   };
   const captures = await dayCaptures(date);
-  if (!sessions.length && !ofDay.length && !captures.length) return result;
+  const sessionFiled = await filedFromSessions(date);
+  if (
+    !sessions.length &&
+    !ofDay.length &&
+    !captures.length &&
+    !sessionFiled.length
+  )
+    return result;
   result.note = `${DAILY_DIR}/${date}.md`;
   if (!options.apply) {
     result.created = items.map(
@@ -530,6 +555,7 @@ export async function harvestDay(options: {
     corrections,
     minutes,
     captures,
+    sessionFiled,
     date,
   });
   await withFileLock(file, async () => {
