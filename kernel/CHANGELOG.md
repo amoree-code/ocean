@@ -7,7 +7,7 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
-- feat(clients): Warp is now wired (`~/.warp/.mcp.json`), and Xcode's Claude Agent, Codex and Gemini agents are clients of their own, each found by its `CodingAssistant` folder and given the Ocean entry and its CLI's memory switch there; VS Code's memory is reported as uncaptured with the reason instead of unknown, Cursor's reason is corrected for 2.1, and an uncaptured client whose session-end hook is wired shows capture as partial (T-328)
+- feat(clients): Warp is now wired (`~/.warp/.mcp.json`), and Xcode's Claude Agent, Codex and Gemini agents are clients of their own, each found by its `CodingAssistant` folder and given the Ocean entry and its CLI's memory switch there; VS Code's memory is reported as uncaptured with the reason instead of unknown, Cursor's reason is corrected for 2.1, and an uncaptured client whose session-end hook is wired shows capture as partial (T-328) (#338)
 - feat(onboarding): `ocean onboard` reviews each detected client as one card — connect, trigger, capture, live (its last Ocean call from the ledger) — so the capture lines are the consent the single "apply" question asks for; before the first edit of each batch the whole client config is saved next to it as `<file>.ocean-backup-<batch>` (0600), which brings back an entry the journal kept only as a hash, and `ocean uninstall` removes those backups except where a conflict means the owner still needs them (T-328) (#337)
 
 ## 2.23.0 (2026-11-24)
