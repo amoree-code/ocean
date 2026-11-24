@@ -12,6 +12,7 @@ import { appendFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { clientJournalFile } from "@ocean/brain/memory/memory-paths.js";
+import { SELF_CHECK_CLIENT } from "@ocean/core/domain/mcp/memory-contract.js";
 import { containsKnownSecret } from "@ocean/core/domain/redaction/redaction.js";
 import { atomicWrite, withFileLock } from "@ocean/core/shared/fs-utils.js";
 import {
@@ -1071,8 +1072,9 @@ export async function removeOceanEntries(
   return { removed, left };
 }
 
-// Starts the client's configured `ocean` command and checks it answers as the brain server.
-// This proves the entry launches; it does not prove the client app connects to it.
+// Starts the client's configured `ocean` command, with that entry's own env, and makes one real
+// tool call (`ocean_ping`) the way the client would. This proves the entry launches and answers;
+// it does not prove the client app connects to it. The self-check's name stays out of the ledger.
 export async function verifyClient(
   client: string,
   env: ClientEnv = defaultClientEnv(),
@@ -1085,12 +1087,21 @@ export async function verifyClient(
     : undefined;
   if (!entry || typeof entry.command !== "string")
     return { client, ok: false, detail: "no `ocean` entry" };
+  const entryEnv =
+    entry.env && typeof entry.env === "object"
+      ? Object.fromEntries(
+          Object.entries(entry.env as Record<string, unknown>).filter(
+            (pair): pair is [string, string] => typeof pair[1] === "string",
+          ),
+        )
+      : {};
   return new Promise((resolve) => {
     const child = spawn(
       entry.command as string,
       (entry.args as string[]) ?? [],
       {
         stdio: ["pipe", "pipe", "ignore"],
+        env: { ...process.env, ...entryEnv },
       },
     );
     let output = "";
@@ -1122,29 +1133,40 @@ export async function verifyClient(
             JSON.parse(line) as {
               id?: number;
               result?: Record<string, unknown>;
+              error?: { message?: string };
             },
         );
       const init = replies.find((reply) => reply.id === 1);
       const list = replies.find((reply) => reply.id === 2);
-      if (!init || !list) return;
+      const ping = replies.find((reply) => reply.id === 3);
+      if (!init || !list || !ping) return;
       const name = (init.result?.serverInfo as { name?: string } | undefined)
         ?.name;
       const tools = ((list.result?.tools as { name: string }[]) ?? []).map(
         (tool) => tool.name,
       );
-      const ok =
-        name === "ocean" &&
-        tools.includes("brain_search") &&
-        tools.includes("memory_write");
-      finish(
-        ok,
-        ok
-          ? "answers as the ocean brain server with memory tools"
-          : `serverInfo ${name}, ${tools.length} tools`,
-      );
+      if (
+        name !== "ocean" ||
+        !tools.includes("brain_search") ||
+        !tools.includes("memory_write")
+      )
+        return finish(false, `serverInfo ${name}, ${tools.length} tools`);
+      const answer = (
+        ping.result?.structuredContent as { ok?: unknown } | undefined
+      )?.ok;
+      if (ping.error || ping.result?.isError || answer !== true)
+        return finish(
+          false,
+          `ocean_ping failed: ${ping.error?.message ?? "no ok in the answer"}`,
+        );
+      finish(true, "answered a real ocean_ping call as the ocean brain server");
     });
+    const send = (id: number, method: string, params?: unknown) =>
+      `${JSON.stringify({ jsonrpc: "2.0", id, method, ...(params ? { params } : {}) })}\n`;
     child.stdin.write(
-      `${JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { clientInfo: { name: "ocean-verify" } } })}\n${JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list" })}\n`,
+      send(1, "initialize", { clientInfo: { name: SELF_CHECK_CLIENT } }) +
+        send(2, "tools/list") +
+        send(3, "tools/call", { name: "ocean_ping", arguments: {} }),
     );
   });
 }
@@ -1155,6 +1177,29 @@ export type ClientFinding = {
   message: string;
   fixable: boolean;
 };
+
+// Doctor's end-to-end view (T-328): every installed client whose `ocean` entry is current gets
+// one real call through that entry, all at once. An entry that is written but does not answer
+// fails: the client would show Ocean connected and get nothing.
+export async function clientLiveFindings(
+  env: ClientEnv = defaultClientEnv(),
+  verify: typeof verifyClient = verifyClient,
+): Promise<ClientFinding[]> {
+  const wired = (await planClients(env)).filter(
+    (plan) => plan.installed && plan.status === "current",
+  );
+  return Promise.all(
+    wired.map(async (plan) => {
+      const check = await verify(plan.client, env);
+      return {
+        code: check.ok ? "CLIENT_LIVE_OK" : "CLIENT_LIVE_FAIL",
+        severity: check.ok ? ("OK" as const) : ("FAIL" as const),
+        message: `${plan.label} (${plan.client}): ${check.detail}`,
+        fixable: false,
+      };
+    }),
+  );
+}
 
 // Doctor view: a supported client that is installed but not wired fails; unsupported clients
 // are reported with their fallback; an unknown capability is a warning, never a pass. On this

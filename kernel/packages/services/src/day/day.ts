@@ -47,6 +47,7 @@ export type DayPlan = {
   loops: string[];
   schedule: string[];
   waiting: string[];
+  activity: string[];
   brief: string[];
 };
 
@@ -153,6 +154,48 @@ async function schedule(): Promise<string[]> {
   return lines.slice(0, 5);
 }
 
+// One ledger row as the day note needs it; the interfaces pass the MCP call ledger in.
+export type ClientCall = { ts: string; client: string; tool: string };
+
+const WRITE_TOOLS = new Set([
+  "memory_write",
+  "memory_propose",
+  "memory_delete",
+  "memory_restore",
+  "ocean_handoff_create",
+  "ocean_session_promote",
+]);
+// Ledger bookkeeping rows, not a model using a tool.
+const NOT_A_USE = new Set(["context_ack", "unknown"]);
+
+// The day before `date` on the local clock: which clients read Ocean and which wrote to it
+// (T-328). One line, from the ledger's names only — never what was read or written.
+export function oceanActivity(calls: ClientCall[], date: string): string {
+  const start = new Date(`${date}T00:00:00`);
+  const from = new Date(start);
+  from.setDate(from.getDate() - 1);
+  const counts = new Map<string, { reads: number; writes: number }>();
+  for (const call of calls) {
+    const at = Date.parse(call.ts);
+    if (!(at >= from.getTime() && at < start.getTime())) continue;
+    if (NOT_A_USE.has(call.tool)) continue;
+    const row = counts.get(call.client) ?? { reads: 0, writes: 0 };
+    if (WRITE_TOOLS.has(call.tool)) row.writes += 1;
+    else row.reads += 1;
+    counts.set(call.client, row);
+  }
+  if (!counts.size) return "- No client used Ocean yesterday.";
+  const plural = (n: number, word: string) =>
+    `${n} ${word}${n === 1 ? "" : "s"}`;
+  const parts = [...counts.entries()]
+    .sort((a, b) => b[1].reads + b[1].writes - (a[1].reads + a[1].writes))
+    .map(
+      ([client, { reads, writes }]) =>
+        `${client} ${[reads ? plural(reads, "read") : "", writes ? plural(writes, "write") : ""].filter(Boolean).join(", ")}`,
+    );
+  return `- Yesterday: ${parts.join(" · ")}`;
+}
+
 const section = (title: string, lines: string[], empty?: string) =>
   lines.length || empty
     ? ["", `### ${title}`, "", ...(lines.length ? lines : [`- ${empty}`])]
@@ -163,6 +206,8 @@ export async function prepareDay(options: {
   apply: boolean;
   fetchText?: FetchText;
   news?: string;
+  // The MCP call ledger; without it the note has no Ocean line.
+  calls?: () => Promise<ClientCall[]>;
 }): Promise<DayPlan> {
   const { date } = options;
   const tasks = (await listTasks())
@@ -174,6 +219,9 @@ export async function prepareDay(options: {
   const deadlines = (await upcoming(date)).map((line) => `- ${line}`);
   const loops = await openLoops(date);
   const hours = await schedule();
+  const activity = options.calls
+    ? [oceanActivity(await options.calls().catch(() => []), date)]
+    : [];
   const waiting = (await memoryDigest({ stale: null })).map(
     (line) => `- ${line}`,
   );
@@ -214,6 +262,7 @@ export async function prepareDay(options: {
     ...section("Open loops", loops),
     ...section("Your hours", hours),
     ...section("Waiting on you", waiting),
+    ...section("Ocean", activity),
     "",
     "## Brief",
     "",
@@ -229,6 +278,7 @@ export async function prepareDay(options: {
     loops,
     schedule: hours,
     waiting,
+    activity,
     brief: briefLines,
   };
   if (!options.apply) return plan;

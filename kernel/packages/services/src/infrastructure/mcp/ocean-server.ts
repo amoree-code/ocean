@@ -39,6 +39,7 @@ import type { EmbedderPort } from "@ocean/core/domain/ports/embedder-port.js";
 import type { WrapperManagerPort } from "@ocean/core/domain/ports/platform-ports.js";
 import type { SessionStoreFactory } from "@ocean/core/domain/ports/session-store-port.js";
 import { redactSecrets } from "@ocean/core/domain/redaction/redaction.js";
+import { readRules } from "@ocean/core/shared/charter.js";
 import { ackIssued } from "@ocean/core/shared/context-ack.js";
 import {
   enginePath,
@@ -425,11 +426,23 @@ const tools = new McpToolRegistry(
     {
       name: "ocean_context",
       description:
-        "Call this once at the start of a conversation when no Ocean start line is already in your context (clients without a session-start hook). Returns the bounded Ocean start line (256 bytes or less: the project bound to cwd and the operations available). Holds no records; search for those.",
+        "Call this once at the start of a conversation when no Ocean start line is already in your context (clients without a session-start hook). Returns the bounded Ocean start line (256 bytes or less: the project bound to cwd and the operations available) and, when the user has rules, which ocean_policy names hold them. Holds no records; search for those.",
       annotations: { readOnlyHint: true },
       inputSchema: {
         type: "object",
         properties: { cwd: { type: "string" } },
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "ocean_policy",
+      description:
+        'Read the user\'s own rules: name "core" (language, direction, working style) or a policy such as "response" (report shape). Call it when ocean_context names it, before your first substantial reply.',
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: "object",
+        properties: { name: { type: "string" } },
+        required: ["name"],
         additionalProperties: false,
       },
     },
@@ -805,6 +818,7 @@ async function callTool(
     return oceanContext(
       typeof args.cwd === "string" && args.cwd ? args.cwd : process.cwd(),
     );
+  if (name === "ocean_policy") return readRules(requiredArgument(args, "name"));
   if (name === "ocean_projects_list")
     return {
       projects: (await scanProjectManifests()).manifests

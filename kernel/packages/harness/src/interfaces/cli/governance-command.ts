@@ -1,25 +1,9 @@
-import { readdir, readFile } from "node:fs/promises";
 import {
-  CHARTER_DIR,
-  oceanPath,
-  POLICIES_DIR,
-  resolveWithin,
-} from "@ocean/core/shared/paths.js";
-
-const policyRoot = () => oceanPath(POLICIES_DIR);
-const rulesFile = () => oceanPath(CHARTER_DIR, "core.md");
-
-async function policyNames(): Promise<string[]> {
-  return (await readdir(policyRoot(), { withFileTypes: true }))
-    .filter(
-      (entry) =>
-        entry.isFile() &&
-        entry.name.endsWith(".md") &&
-        entry.name !== "README.md",
-    )
-    .map((entry) => entry.name.slice(0, -3))
-    .sort();
-}
+  CORE_RULES,
+  policyNames,
+  readCoreRules,
+  readRules,
+} from "@ocean/core/shared/charter.js";
 
 export async function runPolicyCommand(name = "list"): Promise<void> {
   const names = await policyNames();
@@ -28,7 +12,7 @@ export async function runPolicyCommand(name = "list"): Promise<void> {
     return;
   }
   if (name === "doctor") {
-    const core = await readFile(rulesFile(), "utf8");
+    const core = (await readCoreRules()) ?? "";
     const referenced = new Set(
       [...core.matchAll(/ocean policy ([a-z-]+)/g)]
         .map((match) => match[1])
@@ -45,11 +29,8 @@ export async function runPolicyCommand(name = "list"): Promise<void> {
     if (missing.length) process.exitCode = 1;
     return;
   }
-  if (!/^[a-z][a-z-]*$/.test(name) || !names.includes(name))
-    throw new Error(`Unknown policy: ${name}`);
-  process.stdout.write(
-    await readFile(resolveWithin(policyRoot(), `${name}.md`), "utf8"),
-  );
+  if (name === CORE_RULES) throw new Error(`Unknown policy: ${name}`);
+  process.stdout.write(await readRules(name));
 }
 
 export async function runLifecycleCommand(args: string[]): Promise<void> {

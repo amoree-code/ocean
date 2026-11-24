@@ -89,6 +89,40 @@ test("ocean_context is the bounded start line: 256 bytes or less, project resolv
   });
 });
 
+test("ocean_context points a hookless client at the rules, and ocean_policy reads them", async () => {
+  await withRoot(async (root) => {
+    const call = await as("rules-client");
+    const bare = await call("ocean_context", { cwd: os.tmpdir() });
+    assert.doesNotMatch(bare.result.content[0].text, /ocean_policy/);
+    await mkdir(path.join(root, "charter", "policies"), { recursive: true });
+    await writeFile(
+      path.join(root, "charter", "core.md"),
+      "# Rules\n\nReply in Arabic.\n",
+    );
+    await writeFile(
+      path.join(root, "charter", "policies", "response.md"),
+      "# Response\n\nLabelled lines.\n",
+    );
+    const text = (await call("ocean_context", { cwd: os.tmpdir() })).result
+      .content[0].text;
+    const [line, pointer] = text.split("\n");
+    assert.ok(Buffer.byteLength(line) <= 256);
+    assert.match(line, /ack=[0-9a-f]{8}$/);
+    assert.match(
+      pointer,
+      /ocean_policy with name "core".*"response" \(report shape\)/,
+    );
+    const core = await call("ocean_policy", { name: "core" });
+    assert.match(core.result.content[0].text, /Reply in Arabic/);
+    const response = await call("ocean_policy", { name: "response" });
+    assert.match(response.result.content[0].text, /Labelled lines/);
+    for (const name of ["missing", "../core", "README"]) {
+      const refused = await call("ocean_policy", { name });
+      assert.ok(refused.error || refused.result?.isError, name);
+    }
+  });
+});
+
 test("ocean_handoff_create: bounded, redacted, never overwrites, and a second client reads it", async () => {
   await withRoot(async () => {
     const a = await as("client-a");

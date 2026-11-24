@@ -2,6 +2,7 @@ import { createInterface } from "node:readline/promises";
 import { listLessons, setLessonStatus } from "@ocean/brain/memory/lessons.js";
 import { localDate } from "@ocean/core/shared/local-date.js";
 import { prepareDay } from "@ocean/services/day/day.js";
+import { readCallLedger } from "@ocean/services/infrastructure/mcp/call-ledger.js";
 
 /**
  * Interactive human-in-the-loop gate for candidate lessons (see lessons.ts). Only runs on a
@@ -69,7 +70,12 @@ export async function runDailyCommand(
       : "";
   // The morning half of the daily note (T-314): focus, coming up, open loops, hours, what
   // waits on you, and the brief — between markers, so a rerun replaces only that block.
-  const plan = await prepareDay({ date: localDate(), apply, news });
+  const plan = await prepareDay({
+    date: localDate(),
+    apply,
+    news,
+    calls: readCallLedger,
+  });
   console.log(JSON.stringify({ apply, ...plan }, null, 2));
   if (!apply) console.error("Dry run: pass --apply to write it.");
 }

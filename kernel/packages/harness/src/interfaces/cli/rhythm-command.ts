@@ -16,6 +16,7 @@ import {
   harvestDay,
   pendingDays,
 } from "@ocean/services/harvest/harvest.js";
+import { readCallLedger } from "@ocean/services/infrastructure/mcp/call-ledger.js";
 import { runUpkeepCommand } from "./upkeep-command.js";
 
 // `ocean rhythm [--yes]` (T-314): everything the day, week and month need, with no model, each
@@ -56,7 +57,9 @@ async function rhythm(args: string[]): Promise<void> {
   // Morning: once a day, when today's note has no Today block yet.
   const note = await readFile(noteFile(today), "utf8").catch(() => "");
   if (!hasBlock(note, "day"))
-    done.day = (await prepareDay({ date: today, apply })).note;
+    done.day = (
+      await prepareDay({ date: today, apply, calls: readCallLedger })
+    ).note;
   // The days not yet told, then today so far.
   const store = await openSessionStore();
   try {
