@@ -207,6 +207,18 @@ auto-spawn on, off by default). Xcode's built-in chat cannot load an MCP server 
 folder under `~/Library/Developer/Xcode/CodingAssistant/`, so each is a client of its own, found
 once Xcode creates that folder (not yet run on a Mac with an agent enabled).
 
+**New-client detector (macOS).** A per-user LaunchAgent, `com.ocean.client-detect`, runs
+`ocean clients detect --new --notify` when `/Applications` or `~/Applications` changes and every
+hour. It shows one notification per newly installed client that Ocean can wire, naming the command
+that connects it (`ocean clients apply --client <id> --yes`); it never edits a client itself. The
+clients installed when it is set up are recorded as seen in `bridge/state/clients/detected.json`
+(0600, ids and times only), so only a client installed later is offered, and each is offered once.
+A whole `ocean clients apply` adds it (never one with `--client`), `ocean onboard` asks for it on
+its own yes, `ocean clients restore` and `ocean uninstall` remove it, and `ocean doctor` warns when
+it is missing (`CLIENT_DETECT_MISSING`) or a plist Ocean did not write is in its place
+(`CLIENT_DETECT_MANUAL`). Its PATH is the folders of the client CLIs plus the usual install folders,
+since launchd's own PATH would hide every CLI.
+
 `ocean onboard` runs the same plan as its `connect` step: one consolidated review of every detected
 client, one confirmation that applies all of them, then `verify` per written client and the in-app
 check to do by hand. Without a terminal (or with `--yes`) the step writes nothing and prints the

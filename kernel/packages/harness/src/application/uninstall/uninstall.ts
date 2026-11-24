@@ -7,6 +7,11 @@ import { atomicWrite } from "@ocean/core/shared/fs-utils.js";
 import { liveEngineEntry, oceanRoot } from "@ocean/core/shared/paths.js";
 import { removeCoreSkills } from "@ocean/market/skills/core-skill-sync.js";
 import {
+  CLIENT_DETECT_FILE,
+  CLIENT_DETECT_LABEL,
+  restoreClientDetect,
+} from "../clients/client-detect.js";
+import {
   backupPath,
   type ClientEnv,
   defaultClientEnv,
@@ -141,6 +146,7 @@ function serviceFiles(ctx: Context): UninstallItem[] {
           ctx.launchAgent(RUNTIME_LABEL),
           ctx.launchAgent(BRIDGE_LABEL),
           path.join(ctx.home, DESKTOP_WATCHER_FILE),
+          path.join(ctx.home, CLIENT_DETECT_FILE),
         ]
       : ctx.platform === "linux"
         ? [ctx.systemdUnit]
@@ -216,7 +222,12 @@ async function stopServices(
   report: UninstallReport,
 ): Promise<void> {
   if (ctx.platform === "darwin") {
-    for (const label of [DESKTOP_WATCHER_LABEL, BRIDGE_LABEL, RUNTIME_LABEL]) {
+    for (const label of [
+      CLIENT_DETECT_LABEL,
+      DESKTOP_WATCHER_LABEL,
+      BRIDGE_LABEL,
+      RUNTIME_LABEL,
+    ]) {
       const file = ctx.launchAgent(label);
       if (!existsSync(file)) continue;
       await ctx
@@ -271,6 +282,7 @@ export async function runUninstall(
       await restoreOpencodePlugin({ batch, env }),
       await restoreNative({ batch, env }),
       await restoreDesktopWatcher({ batch, env, run: ctx.run }),
+      await restoreClientDetect({ batch, env, run: ctx.run }),
     ];
     for (const result of results) {
       removed("clients", result.restored);

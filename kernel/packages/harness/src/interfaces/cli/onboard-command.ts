@@ -1,6 +1,10 @@
 import { createInterface } from "node:readline/promises";
 import { readCallLedger } from "@ocean/services/infrastructure/mcp/call-ledger.js";
 import {
+  applyClientDetect,
+  planClientDetect,
+} from "../../application/clients/client-detect.js";
+import {
   applyClients,
   defaultToGatewayOnFreshSetup,
   planClients,
@@ -66,6 +70,9 @@ const stepDependencies = () => ({
     native: () => planNative(),
     applyNative: async (batch: string) =>
       (await applyNative({ batch })).results,
+    detector: () => planClientDetect(),
+    applyDetector: async (batch?: string) =>
+      (await applyClientDetect({ batch })).results,
   },
 });
 
