@@ -4,9 +4,11 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
+  mentionsToken,
   prLinks,
   syncTaskPrs,
   targetState,
+  taskTokens,
 } from "@ocean/loop/tasks/sync-task-prs.js";
 
 const PR = "https://github.com/acme/app/pull/";
@@ -179,6 +181,139 @@ test("blocked, done, no-PR and unreadable-PR tasks are left alone", async () => 
     });
     assert.equal(result.changed.length, 0);
     assert.deepEqual(result.skipped, [{ id: "T-4", reason: "no PR 9" }]);
+  } finally {
+    await ws.done();
+  }
+});
+
+test("taskTokens: the id, its unpadded form and the Jira keys in the task's URLs", () => {
+  assert.deepEqual(
+    taskTokens(
+      "see https://x.atlassian.net/browse/STPL-5 and /browse/ABC-12",
+      "STPL-005",
+    ),
+    ["STPL-005", "STPL005", "STPL-5", "ABC-12"],
+  );
+  assert.deepEqual(taskTokens("no urls", "T-327"), ["T-327", "T327"]);
+});
+
+test("mentionsToken matches whole keys only, case-insensitively", () => {
+  assert.equal(mentionsToken("feat/t-327-task-sync", ["T-327"]), true);
+  assert.equal(mentionsToken("STPL-5: add page", ["STPL-5"]), true);
+  assert.equal(mentionsToken("feat/t328-onboarding", ["T-328", "T328"]), true);
+  assert.equal(mentionsToken("T-3270 other", ["T-327"]), false);
+  assert.equal(mentionsToken("xT-327", ["T-327"]), false);
+});
+
+test("a PR found by title or branch moves a todo task to in-qa without any artifacts link", async () => {
+  const ws = await workspace({ "T-1": task("T-1", "todo") });
+  try {
+    const seen = [];
+    const result = await syncTaskPrs(ws.root, {
+      discoverPrs: async (tokens) => {
+        seen.push(tokens);
+        return [{ url: `${PR}7`, repo: "acme/app", number: 7 }];
+      },
+      fetchPr: fetchFrom({ 7: "OPEN" }),
+      complete: async () => assert.fail("must not complete"),
+      apply: true,
+      now,
+    });
+    assert.deepEqual(seen, [["T-1", "T1"]]);
+    assert.deepEqual(
+      result.changed.map((c) => [c.id, c.from, c.to]),
+      [["T-1", "todo", "in-qa"]],
+    );
+    assert.match(await ws.read("T-1"), /state: in-qa\n/);
+  } finally {
+    await ws.done();
+  }
+});
+
+test("a discovered merged PR completes through the gate", async () => {
+  const ws = await workspace({ "T-1": task("T-1", "in-qa") });
+  try {
+    const completed = [];
+    await syncTaskPrs(ws.root, {
+      discoverPrs: async () => [{ url: `${PR}7`, repo: "acme/app", number: 7 }],
+      fetchPr: fetchFrom({ 7: "MERGED" }),
+      complete: async (id) => completed.push(id),
+      apply: true,
+      now,
+    });
+    assert.deepEqual(completed, ["T-1"]);
+  } finally {
+    await ws.done();
+  }
+});
+
+test("a failing discovery is reported, never silent, and the task is left alone", async () => {
+  const ws = await workspace({ "T-1": task("T-1", "todo") });
+  try {
+    const result = await syncTaskPrs(ws.root, {
+      discoverPrs: async () => {
+        throw new Error("gh: not logged in");
+      },
+      fetchPr: fetchFrom({}),
+      complete: async () => assert.fail("must not complete"),
+      apply: true,
+      now,
+    });
+    assert.deepEqual(result.skipped, [
+      { id: "T-1", reason: "PR discovery failed: gh: not logged in" },
+    ]);
+    assert.match(await ws.read("T-1"), /state: todo\n/);
+  } finally {
+    await ws.done();
+  }
+});
+
+test("a todo task whose branch is ahead of its base becomes active; only todo, only without a PR", async () => {
+  const ws = await workspace({
+    "T-1": task("T-1", "todo"),
+    "T-2": task("T-2", "paused"),
+    "T-3": task("T-3", "todo", { prs: [1] }),
+  });
+  try {
+    const options = {
+      branchAhead: async () => "branch feat/t-1 is 2 commits ahead of main",
+      fetchPr: fetchFrom({ 1: "OPEN" }),
+      complete: async () => assert.fail("must not complete"),
+      now,
+    };
+    const dry = await syncTaskPrs(ws.root, options);
+    assert.deepEqual(dry.changed.map((c) => [c.id, c.from, c.to]).sort(), [
+      ["T-1", "todo", "active"],
+      ["T-3", "todo", "in-qa"],
+    ]);
+    assert.match(await ws.read("T-1"), /state: todo\n/);
+    await syncTaskPrs(ws.root, { ...options, apply: true });
+    const source = await ws.read("T-1");
+    assert.match(source, /state: active\n/);
+    assert.match(
+      source,
+      /todo → active \(sync\): branch feat\/t-1 is 2 commits ahead of main\./,
+    );
+    assert.match(await ws.read("T-2"), /state: paused\n/);
+    // A second sync has nothing to do for the now-active task.
+    const again = await syncTaskPrs(ws.root, { ...options, apply: true });
+    assert.deepEqual(again.changed, []);
+  } finally {
+    await ws.done();
+  }
+});
+
+test("no branch ahead leaves a todo task alone", async () => {
+  const ws = await workspace({ "T-1": task("T-1", "todo") });
+  try {
+    const result = await syncTaskPrs(ws.root, {
+      branchAhead: async () => null,
+      fetchPr: fetchFrom({}),
+      complete: async () => assert.fail("must not complete"),
+      apply: true,
+      now,
+    });
+    assert.deepEqual(result.changed, []);
   } finally {
     await ws.done();
   }

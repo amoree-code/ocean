@@ -1,4 +1,5 @@
 import { execFile as execFileCallback } from "node:child_process";
+import { existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -10,8 +11,10 @@ import {
   WORKSPACE_PROJECT_ID,
 } from "@ocean/core/shared/paths.js";
 import {
+  canonicalPath,
   folderProject,
   projectsWithTasks,
+  readProjectManifest,
 } from "@ocean/core/shared/project-resolution.js";
 import { resolveTaskReference } from "@ocean/core/shared/task-reference.js";
 import { openSessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
@@ -29,11 +32,14 @@ import {
 import { newTask } from "@ocean/loop/tasks/new-task.js";
 import { renumberTasks } from "@ocean/loop/tasks/renumber-tasks.js";
 import {
+  mentionsToken,
   type PrLink,
   type PrState,
+  prLinks,
   syncTaskPrs,
   type TaskPrSyncResult,
 } from "@ocean/loop/tasks/sync-task-prs.js";
+import { branchAheadOfBase } from "@ocean/loop/tasks/task-git.js";
 import { verifyAndRecord } from "@ocean/loop/tasks/task-verification.js";
 import { verificationReadiness } from "@ocean/loop/tasks/verification-readiness.js";
 import { taskReviewer } from "../../infrastructure/providers/task-reviewer.js";
@@ -84,6 +90,55 @@ async function githubPrState(link: PrLink): Promise<PrState> {
   if (state === "OPEN" || state === "MERGED" || state === "CLOSED")
     return state;
   throw new Error(`${link.url}: unexpected PR state "${state}"`);
+}
+
+// The repos a project is bound to that exist on this machine (its manifest `paths`).
+async function projectRepos(project: string): Promise<string[]> {
+  const manifest = await readProjectManifest(project).catch(() => null);
+  return (manifest?.paths ?? [])
+    .map((repo) => canonicalPath(repo))
+    .filter((repo) => existsSync(repo));
+}
+
+// PRs of the project's repos (any state, newest 100 each) read once per sync, then matched
+// against a task's tokens in the PR title or branch.
+function prDiscovery(repos: string[]) {
+  let listed: Promise<{ url: string; title: string; branch: string }[]> | null =
+    null;
+  const list = () =>
+    (listed ??= (async () => {
+      const found: { url: string; title: string; branch: string }[] = [];
+      for (const repo of repos) {
+        const { stdout } = await execFile(
+          "gh",
+          [
+            "pr",
+            "list",
+            "--state",
+            "all",
+            "--limit",
+            "100",
+            "--json",
+            "url,title,headRefName",
+          ],
+          { cwd: repo, timeout: 30_000 },
+        );
+        for (const pr of JSON.parse(stdout) as {
+          url: string;
+          title: string;
+          headRefName: string;
+        }[])
+          found.push({ url: pr.url, title: pr.title, branch: pr.headRefName });
+      }
+      return found;
+    })());
+  return async (tokens: string[]): Promise<PrLink[]> =>
+    (await list())
+      .filter(
+        (pr) =>
+          mentionsToken(pr.title, tokens) || mentionsToken(pr.branch, tokens),
+      )
+      .flatMap((pr) => prLinks(pr.url));
 }
 
 // `ocean tasks list --pretty`: one aligned row per task, for a person rather than a tool.
@@ -249,24 +304,42 @@ export async function runTasksCommand(
   }
   if (action === "sync") {
     // Task state follows linked GitHub PRs: open → in-qa, all merged → done via the completion
-    // gate. Session start runs `--all` in the background.
-    const projects = args.includes("--all")
-      ? await projectsWithTasks()
-      : [projectId];
+    // gate; a PR that names the task and a branch ahead of its base count too (T-327). Session
+    // start runs `--all` in the background. Outside any project there is no project to sync, so
+    // it syncs every one, as `tasks list` does there, rather than reporting an empty workspace.
+    const projects =
+      args.includes("--all") || (!explicitProject && !cwdProject)
+        ? await projectsWithTasks()
+        : [projectId];
     const apply = !args.includes("--dry-run");
     const report: Record<string, TaskPrSyncResult> = {};
     for (const project of projects) {
       const root = resolveWithin(oceanPath(projectDir(project)), "tasks");
+      const repos = await projectRepos(project);
       const outcome = await syncTaskPrs(root, {
         apply,
         fetchPr: githubPrState,
+        discoverPrs: repos.length ? prDiscovery(repos) : undefined,
+        branchAhead: async (tokens) => {
+          for (const repo of repos) {
+            const found = await branchAheadOfBase(repo, (branch) =>
+              mentionsToken(branch, tokens),
+            );
+            if (found) return found;
+          }
+          return null;
+        },
         complete: (id, taskRoot) =>
           completeTask(id, taskRoot, { verify: recordedVerification }),
       });
       if (outcome.changed.length || outcome.skipped.length)
         report[project] = outcome;
     }
-    console.log(JSON.stringify({ apply, projects: report }, null, 2));
+    // `scanned` names what was looked at, so an empty `projects` reads as "nothing to move", not
+    // "nothing looked at".
+    console.log(
+      JSON.stringify({ apply, scanned: projects, projects: report }, null, 2),
+    );
     return;
   }
   if (action === "complete") {

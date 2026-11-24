@@ -48,7 +48,7 @@ States: `todo` · `active` · `in-qa` · `paused` · `blocked` · `done` · `can
 being `active` is normal. `in-qa`: built and its PR is open, waiting on test or review; it
 moves to `done` once the PR merges and verification passed, or back to `active` on a fix.
 `ocean tasks sync` moves it by itself from the PR links in the task (session start runs it):
-an open PR → `in-qa`; every linked PR merged → `done` through the `tasks complete` gate, or it
+an open PR → `in-qa` (found by itself from a PR title or branch carrying the task id or Jira key; no `artifacts:` link needed); a `todo` task whose branch is ahead of its base → `active`; every linked PR merged → `done` through the `tasks complete` gate, or it
 stays `in-qa` with the reason when the gate refuses. There is no current task and no stored pointer to one — the active
 set is derived from the records. A bare id resolves directly at
 `04-projects/<project>/tasks/<ID>/` (`ocean-paths` was a resolver in an earlier CLI
