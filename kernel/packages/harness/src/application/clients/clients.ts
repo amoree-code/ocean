@@ -8,7 +8,7 @@ import {
   readFileSync,
   realpathSync,
 } from "node:fs";
-import { appendFile, mkdir, readFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { clientJournalFile } from "@ocean/brain/memory/memory-paths.js";
@@ -745,8 +745,62 @@ export const newBatch = () =>
     .replace(/[-:TZ]/g, "")
     .slice(0, 14)}-${randomBytes(4).toString("hex")}`;
 
+// The whole file as it was before a batch first touched it (T-328 P5): `<file>.ocean-backup-<batch>`,
+// next to the original, readable by the owner only. The journal keeps a value only when it is
+// Ocean-shaped and holds no secret; this copy is what brings back anything else.
+export const backupPath = (file: string, batch: string) =>
+  `${file}.ocean-backup-${batch}`;
+
+async function writeBackup(file: string, text: string, batch: string) {
+  try {
+    await writeFile(backupPath(file, batch), text, { flag: "wx", mode: 0o600 });
+  } catch (error) {
+    // A batch edits one file several times; the first copy is the original.
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+  }
+}
+
+// The value `key` held in the batch's backup of `file`, only when it hashes to `beforeSha`, so
+// a backup the owner edited since never restores something else.
+export async function backupValue(
+  file: string,
+  batch: string,
+  key: string,
+  beforeSha: string,
+  servers: (text: string) => Map<string, ServerValue> | null,
+): Promise<ServerValue | null> {
+  const text = await readText(backupPath(file, batch));
+  const value = text === null ? undefined : servers(text)?.get(key);
+  return value && sha(JSON.stringify(value)) === beforeSha ? value : null;
+}
+
+// Removes the backups of the given batches, except those of files a conflict kept: their
+// copy is the owner's way back. Returns the paths removed and the ones kept.
+export async function removeBackups(
+  home: string,
+  journal: JournalEntry[],
+  keepClients: Set<string> = new Set(),
+): Promise<{ removed: string[]; kept: string[] }> {
+  const removed: string[] = [];
+  const kept: string[] = [];
+  const seen = new Set<string>();
+  for (const entry of journal) {
+    if (entry.restoreOf) continue;
+    const file = backupPath(path.join(home, entry.file), entry.batch);
+    if (seen.has(file) || !existsSync(file)) continue;
+    seen.add(file);
+    if (keepClients.has(entry.client)) kept.push(file);
+    else {
+      await rm(file, { force: true });
+      removed.push(file);
+    }
+  }
+  return { removed, kept: kept.filter((file) => existsSync(file)) };
+}
+
 // Writes one client file: re-reads it right before the rename and recomputes when it changed
-// meanwhile, so an edit the user (or the client) made in between is never overwritten.
+// meanwhile, so an edit the user (or the client) made in between is never overwritten. Before
+// the first write of a batch (not an undo) the file is copied whole to its backup.
 // Exported for its test only.
 export async function edit(
   file: string,
@@ -762,6 +816,8 @@ export async function edit(
     await mkdir(path.dirname(file), { recursive: true });
     const outcome = await withFileLock(file, async () => {
       if ((await readText(file)) !== text) return "retry" as const;
+      if (text !== null && result.entries.some((entry) => !entry.restoreOf))
+        await writeBackup(file, text, batch);
       await atomicWrite(file, result.next, text === null ? 0o600 : undefined);
       return "written" as const;
     });
@@ -879,6 +935,19 @@ export async function restoreClients(
     const adapter = CLIENT_ADAPTERS.find((item) => item.config?.file === file);
     if (!adapter?.config) continue;
     const config = adapter.config;
+    // A value the journal kept only as a hash comes back from the batch's backup.
+    const original = new Map<string, ServerValue>();
+    for (const entry of entries.filter((item) => item.file === file)) {
+      if (entry.before || !entry.beforeSha) continue;
+      const value = await backupValue(
+        path.join(env.home, file),
+        batch,
+        entry.key,
+        entry.beforeSha,
+        (text) => config.editor.servers(text),
+      );
+      if (value) original.set(entry.key, value);
+    }
     // Collected per attempt: edit() may run the change again when the file moved under it.
     let fileRestored: string[] = [];
     let fileConflicts: string[] = [];
@@ -913,20 +982,21 @@ export async function restoreClients(
               conflicts.push(label);
               continue;
             }
-            if (entry.before)
-              queue({ kind: "set", key: entry.key, value: entry.before });
+            const before = entry.before ?? original.get(entry.key);
+            if (before) queue({ kind: "set", key: entry.key, value: before });
             else queue({ kind: "remove", key: entry.key });
             restored.push(
-              entry.beforeSha
+              entry.beforeSha && !before
                 ? `${label} (removed; original not stored)`
                 : label,
             );
           } else if (entry.op === "remove") {
-            if (servers.has(entry.key) || !entry.before) {
+            const before = entry.before ?? original.get(entry.key);
+            if (servers.has(entry.key) || !before) {
               conflicts.push(label);
               continue;
             }
-            queue({ kind: "set", key: entry.key, value: entry.before });
+            queue({ kind: "set", key: entry.key, value: before });
             restored.push(label);
           }
           notes.push({ ...entry, restoreOf: batch });

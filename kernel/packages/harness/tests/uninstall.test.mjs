@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -80,6 +87,12 @@ async function sandbox() {
   };
 }
 
+// Every `.ocean-backup-` file under a folder, at any depth.
+async function backupsIn(dir) {
+  const names = await readdir(dir, { recursive: true });
+  return names.filter((name) => name.includes(".ocean-backup-"));
+}
+
 async function withRoot(root, run) {
   const previous = process.env.OCEAN_ROOT;
   process.env.OCEAN_ROOT = root;
@@ -133,6 +146,9 @@ test("uninstall puts client configs, hooks, services, profile and shims back", a
       root: box.root,
     });
     assert.ok(plan.items.some((item) => item.area === "shell"));
+    // T-328 P5: apply backed each edited config up, and the plan says those go too.
+    assert.ok(plan.items.some((item) => item.area === "backups"));
+    assert.ok((await backupsIn(box.home)).length > 0);
     assert.equal(plan.purge, null);
 
     const report = await runUninstall({
@@ -177,6 +193,8 @@ test("uninstall puts client configs, hooks, services, profile and shims back", a
     assert.equal(report.purged, null);
     assert.ok(existsSync(box.root), "the workspace is kept without --purge");
     assert.deepEqual(report.left, []);
+    assert.deepEqual(await backupsIn(box.home), []);
+    assert.ok(report.removed.some((item) => item.area === "backups"));
     assert.ok(report.next.some((step) => step.includes("npm uninstall")));
     // The apply batch counts as undone afterwards, so a second run has nothing to restore.
     assert.deepEqual(pendingBatches(await readJournal()), []);

@@ -7,11 +7,13 @@ import { atomicWrite } from "@ocean/core/shared/fs-utils.js";
 import { liveEngineEntry, oceanRoot } from "@ocean/core/shared/paths.js";
 import { removeCoreSkills } from "@ocean/market/skills/core-skill-sync.js";
 import {
+  backupPath,
   type ClientEnv,
   defaultClientEnv,
   type JournalEntry,
   newBatch,
   readJournal,
+  removeBackups,
   removeOceanEntries,
   restoreClients,
 } from "../clients/clients.js";
@@ -180,6 +182,17 @@ export async function planUninstall(
       area: "clients",
       target: "remove any Ocean MCP entry and hook still in a client config",
     });
+  const backups = new Set(
+    (await readJournal())
+      .filter((entry) => !entry.restoreOf)
+      .map((entry) => backupPath(path.join(ctx.home, entry.file), entry.batch))
+      .filter((file) => existsSync(file)),
+  );
+  if (backups.size)
+    items.push({
+      area: "backups",
+      target: `${backups.size} config backup(s) Ocean wrote before editing (kept where a change cannot be undone cleanly)`,
+    });
   items.push({
     area: "skills",
     target:
@@ -276,6 +289,18 @@ export async function runUninstall(
       left("clients", [
         `${conflict} (changed since Ocean wrote it; check by hand)`,
       ]);
+  // The config backups apply wrote (T-328 P5) go too, except where a conflict above means the
+  // copy is still the owner's way back.
+  const backups = await removeBackups(
+    ctx.home,
+    await readJournal(),
+    new Set([...conflicts].map((conflict) => conflict.split(":")[0])),
+  );
+  removed("backups", backups.removed);
+  left(
+    "backups",
+    backups.kept.map((file) => `${file} (your config before Ocean edited it)`),
+  );
 
   // 3. Skills and rules Ocean copied into clients.
   const skills = await removeCoreSkills(ctx.home);

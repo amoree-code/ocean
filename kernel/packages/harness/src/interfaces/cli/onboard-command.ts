@@ -1,4 +1,5 @@
 import { createInterface } from "node:readline/promises";
+import { readCallLedger } from "@ocean/services/infrastructure/mcp/call-ledger.js";
 import {
   applyClients,
   defaultToGatewayOnFreshSetup,
@@ -9,6 +10,7 @@ import {
 } from "../../application/clients/clients.js";
 import { applyHooks, planHooks } from "../../application/clients/hooks.js";
 import { applyNative, planNative } from "../../application/clients/native.js";
+import { mcpClientOf } from "../../application/clients/registry.js";
 import {
   loadOnboardingState,
   type OnboardingState,
@@ -51,6 +53,14 @@ const stepDependencies = () => ({
       return check;
     },
     approved: async () => Object.keys((await readClientState()).approved),
+    lastCalls: async () => {
+      const last: Record<string, string> = {};
+      for (const call of await readCallLedger()) {
+        const id = call.ok ? mcpClientOf(call.client)?.id : undefined;
+        if (id && (!last[id] || call.ts > last[id])) last[id] = call.ts;
+      }
+      return last;
+    },
     hooks: () => planHooks(),
     applyHooks: async (batch: string) => (await applyHooks({ batch })).results,
     native: () => planNative(),

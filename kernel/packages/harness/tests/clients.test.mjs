@@ -5,7 +5,9 @@ import {
   lstat,
   mkdir,
   mkdtemp,
+  readdir,
   readFile,
+  rm,
   stat,
   symlink,
   writeFile,
@@ -15,6 +17,7 @@ import path from "node:path";
 import test from "node:test";
 import {
   applyClients,
+  backupPath,
   clientFindings,
   confirmClient,
   defaultToGatewayOnFreshSetup,
@@ -26,6 +29,7 @@ import {
   readClientState,
   readGatewayClients,
   recordVerification,
+  removeBackups,
   repairClients,
   restoreClients,
   setGatewayClient,
@@ -443,34 +447,103 @@ test("a file changed between read and write is re-read, never overwritten", asyn
   });
 });
 
-test("a replaced entry that carries a secret is journaled by hash only", async () => {
+const SECRET_ENTRY = {
+  command: "node",
+  args: ["/old", "mcp", "serve", "--token", FAKE_TOKEN],
+};
+
+test("a replaced entry that carries a secret is journaled by hash only, and restored from the backup", async () => {
   const { home, root, env } = await fixtureHome();
   const file = path.join(home, ".cursor/mcp.json");
-  await writeFile(
-    file,
-    json({
-      mcpServers: {
-        ocean: {
-          command: "node",
-          args: ["/old", "mcp", "serve", "--token", FAKE_TOKEN],
-        },
-      },
-    }),
-  );
+  const original = json({ mcpServers: { ocean: SECRET_ENTRY } });
+  await writeFile(file, original);
   await withRoot(root, async () => {
-    await applyClients({ clients: ["cursor"], env });
+    const { batch } = await applyClients({ clients: ["cursor"], env });
     const journal = await readFile(
       path.join(root, "bridge/state/clients/journal.jsonl"),
       "utf8",
     );
     assert.doesNotMatch(journal, /sk-ant-/);
     assert.match(journal, /"beforeSha":"[0-9a-f]{64}"/);
+    // T-328 P5: the whole file, as it was, sits next to it and only the owner can read it.
+    const backup = backupPath(file, batch);
+    assert.equal(await readFile(backup, "utf8"), original);
+    await assertMode(backup, 0o600);
     const undone = await restoreClients({ env });
-    assert.deepEqual(undone.restored, [
-      "cursor:ocean (removed; original not stored)",
-    ]);
-    assert.deepEqual(JSON.parse(await readFile(file, "utf8")).mcpServers, {});
+    assert.deepEqual(undone.restored, ["cursor:ocean"]);
+    assert.deepEqual(JSON.parse(await readFile(file, "utf8")).mcpServers, {
+      ocean: SECRET_ENTRY,
+    });
   });
+});
+
+test("without its backup, or with a backup edited since, a hashed entry is only removed", async () => {
+  for (const spoil of [
+    (backup) => rm(backup),
+    (backup) =>
+      writeFile(
+        backup,
+        json({ mcpServers: { ocean: { command: "evil", args: [] } } }),
+      ),
+  ]) {
+    const { home, root, env } = await fixtureHome();
+    const file = path.join(home, ".cursor/mcp.json");
+    await writeFile(file, json({ mcpServers: { ocean: SECRET_ENTRY } }));
+    await withRoot(root, async () => {
+      const { batch } = await applyClients({ clients: ["cursor"], env });
+      await spoil(backupPath(file, batch));
+      const undone = await restoreClients({ env });
+      assert.deepEqual(undone.restored, [
+        "cursor:ocean (removed; original not stored)",
+      ]);
+      assert.deepEqual(JSON.parse(await readFile(file, "utf8")).mcpServers, {});
+    });
+  }
+});
+
+test("a batch backs a file up once, before its first edit, and an undo writes no backup", async () => {
+  const { home, root, env } = await fixtureHome();
+  await withRoot(root, async () => {
+    const before = await readFile(path.join(home, ".cursor/mcp.json"), "utf8");
+    const { batch } = await applyClients({ env });
+    const backup = backupPath(path.join(home, ".cursor/mcp.json"), batch);
+    assert.equal(await readFile(backup, "utf8"), before);
+    await restoreClients({ env });
+    const names = (await readdir(path.join(home, ".cursor"))).filter((name) =>
+      name.includes(".ocean-backup-"),
+    );
+    assert.deepEqual(names, [path.basename(backup)]);
+  });
+});
+
+test("removeBackups deletes a batch's backups but keeps those of a client a conflict names", async () => {
+  const home = await mkdtemp(path.join(os.tmpdir(), "ocean-backups-"));
+  await mkdir(path.join(home, ".cursor"), { recursive: true });
+  await mkdir(path.join(home, ".codex"), { recursive: true });
+  const cursor = backupPath(path.join(home, ".cursor/mcp.json"), "b1");
+  const codex = backupPath(path.join(home, ".codex/config.toml"), "b1");
+  await writeFile(cursor, "{}");
+  await writeFile(codex, "");
+  const entry = (client, file) => ({
+    batch: "b1",
+    ts: "",
+    client,
+    file,
+    op: "set",
+    key: "ocean",
+    before: null,
+    after: {},
+  });
+  const result = await removeBackups(
+    home,
+    [
+      entry("cursor", ".cursor/mcp.json"),
+      entry("codex", ".codex/config.toml"),
+      { ...entry("codex", ".codex/config.toml"), restoreOf: "b1" },
+    ],
+    new Set(["codex"]),
+  );
+  assert.deepEqual(result, { removed: [cursor], kept: [codex] });
 });
 
 test("restore returns every file byte-identical, and refuses a node the user changed", async () => {

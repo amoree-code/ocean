@@ -236,9 +236,12 @@ test("connect shows one review and applies every pending client on one yes", asy
   assert.deepEqual(calls.apply, [["cursor", "codex"]]);
   assert.deepEqual(calls.verify, ["cursor", "codex"]);
   const text = lines.join("\n");
-  assert.match(text, /claude-code\s+connected/);
+  assert.match(text, /claude-code\n\s+connect\s+connected/);
   assert.match(text, /Hand edit for opencode .*\{"ocean":\{\}\}/);
-  assert.match(text, /chatgpt\s+unsupported: why; fallback: other way/);
+  assert.match(
+    text,
+    /chatgpt\n\s+connect\s+unsupported: why; fallback: other way/,
+  );
   assert.doesNotMatch(text, /ghost/);
   assert.match(text, /restore --batch b1/);
   assert.match(text, /cursor: PROVEN/);
@@ -300,11 +303,17 @@ test("connect puts session hooks in the same review and applies them under the s
   assert.deepEqual(calls.apply, [[]]);
   assert.deepEqual(calls.applyHooks, ["b1"]);
   const text = lines.join("\n");
-  assert.match(text, /codex SessionEnd hook\s+will add a SessionEnd hook/);
-  assert.match(text, /claude-code SessionStart hook\s+present/);
   assert.match(
     text,
-    /gemini SessionStart hook\s+hand edit needed \(not canonical\); add hooks/,
+    /capture\s+session-end hook records each finished session \(will add in ~\/\.codex\/hooks\.json\)/,
+  );
+  assert.match(
+    text,
+    /claude-code\n\s+connect\s+n\/a\n\s+trigger\s+session-start hook loads Ocean's context\n/,
+  );
+  assert.match(
+    text,
+    /trigger\s+session-start hook loads Ocean's context \(hand edit needed: not canonical; add hooks/,
   );
   assert.match(text, /codex SessionEnd hook: written/);
 });
@@ -342,11 +351,50 @@ test("connect lists native-memory policies and applies the settable ones in the 
   assert.equal(await step.run(io), "done");
   assert.deepEqual(calls.applyNative, ["b1"]);
   const text = lines.join("\n");
-  assert.match(text, /gemini native memory\s+will set tools\.exclude/);
-  assert.match(text, /cursor native memory\s+you: left on/);
-  assert.match(text, /chatgpt native memory\s+captured: left on/);
-  assert.match(text, /codex native memory\s+governed/);
+  assert.match(text, /capture\s+own memory: will set tools\.exclude/);
+  assert.match(text, /own memory NOT captured \(left on: Cursor/);
+  assert.match(text, /own memory captured: left on/);
+  assert.match(text, /own memory governed: \[memories\]/);
   assert.match(text, /gemini native memory: written/);
+});
+
+test("connect shows one card per client with its live call, the backup and the consent", async () => {
+  const { buildSteps } = await import(
+    "../dist/application/onboarding/steps.js"
+  );
+  const fake = fakeClients(
+    [
+      plan("cursor", "change", { nativeMemory: "none" }),
+      plan("codex", "current"),
+    ],
+    [],
+    [],
+  );
+  fake.clients.lastCalls = async () => ({
+    codex: new Date(Date.now() - 5 * 60_000).toISOString(),
+  });
+  const step = buildSteps({
+    setup: async () => {},
+    wrappers: {},
+    clients: fake.clients,
+  }).find((item) => item.id === "connect");
+  const asked = [];
+  const { io, lines } = fakeIO(true);
+  io.ask = async (question, fallback) => {
+    asked.push(question);
+    return fallback;
+  };
+  assert.equal(await step.run(io), "done");
+  const text = lines.join("\n");
+  assert.match(text, /connect → trigger → capture → live/);
+  assert.match(
+    text,
+    /cursor\n\s+connect\s+will set ocean in ~\/\.cursor\n\s+trigger\s+server instructions: .*\n\s+capture\s+it keeps no memory of its own\n\s+live\s+no Ocean call recorded yet/,
+  );
+  assert.match(text, /codex\n(.*\n){3}\s+live\s+last Ocean call 5m ago/);
+  assert.match(text, /\.ocean-backup-<batch>/);
+  assert.match(text, /ocean uninstall/);
+  assert.match(asked[0], /allow the capture above/);
 });
 
 test("a completed connect step reopens only for a new, unapproved client", async () => {
