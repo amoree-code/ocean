@@ -380,6 +380,38 @@ store. Three things reach it instead:
   to the model, so the first `brain_search`, `brain_read` or `memory_read` result of each connection
   carries `MEMORY_AUTHORITY_LINE` as a second text block.
 
+**One-click bundles.** `ocean clients bundles [--out <dir>]` writes two installable files to
+Downloads, each named Ocean, and prints the clicks. Installing stays the user's; Ocean cannot.
+
+- **`Ocean.mcpb`, a Claude Desktop Extension** ([MCPB](https://github.com/modelcontextprotocol/mcpb)
+  manifest 0.3): `display_name` Ocean, a 512px icon drawn in code (`oceanIcon`), and a `node`
+  server that Desktop runs with its own Node. The server is a small launcher: it starts the Ocean
+  installed on this machine with the command `oceanServerEntry` gives (the `ocean` shim and
+  `mcp serve`), passed in the manifest's `env`, and hands it stdio. Ocean itself is not inside, so
+  the memory stays local and updates with Ocean; when the command is gone the launcher says to run
+  `ocean setup` and build the file again. Install: double-click it, or Settings → Extensions →
+  Advanced settings → Install Extension. It is for a Desktop that Ocean has not configured: when
+  `claude_desktop_config.json` already has the `ocean` entry, the command warns that the two would
+  show every tool twice.
+- **`ocean.plugin`, a Claude plugin** (`.claude-plugin/plugin.json` named `ocean`, plus
+  `skills/ocean-memory/SKILL.md`, the core skill). Uploaded from Customize → Plugins → Add → Upload
+  plugin, it is saved to the account, so the skill loads in chat, Cowork and Claude Code under the
+  name Ocean. It carries no connector and no hook: chat and Cowork already reach Ocean through
+  Desktop's entry and Claude Code through its own, and a second server would duplicate the tools.
+  Desktop's plugin list shows it as `ocean`, which `chatPluginAdded` already counts. Once it is in,
+  remove the older `ocean-memory` upload so the skill loads once.
+
+**The repository as a marketplace (auto-update).** The same plugin is served from this repository:
+`.claude-plugin/marketplace.json` at the root lists `ocean` with source `./kernel/plugins/ocean`,
+a folder `scripts/generate-claude-plugin.mjs` writes from the core skill (`check:skills` fails when
+it is stale, and `bundles.test.mjs` keeps its `plugin.json` equal to the bundle's). Its
+`plugin.json` has no version, so Claude versions it by commit and every skill change is an update.
+On claude.ai, Customize → Plugins → Add marketplace → `amoree-code/ocean`, then install Ocean and
+turn on Sync automatically: the plugin is saved to the account and each push to `main` reaches it
+with no re-upload. Add it there, not from Claude Desktop's Code tab, which installs a marketplace
+locally for Claude Code only (T-328 log). The `ocean.plugin` upload and this route are one plugin:
+keep one.
+
 **Claude Desktop chat capture.** The app keeps the conversations it has open, or opened
 recently, in a Chromium IndexedDB under `~/Library/Application Support/Claude/IndexedDB/`.
 `ocean desktop capture` copies that LevelDB folder aside, reads the copy (never the app's files in
