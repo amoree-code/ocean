@@ -65,10 +65,20 @@ function connectedOf(plan: ClientPlan): Pillar {
   return "partial";
 }
 
-function capturedOf(plan: ClientPlan, native: NativePlan | undefined): Pillar {
+// A client whose own memory is out of reach still counts as partly captured when its session
+// end hook is wired, since every session then reaches Ocean (T-328 P6, Cursor).
+function capturedOf(
+  plan: ClientPlan,
+  native: NativePlan | undefined,
+  hooks: HookPlan[],
+): Pillar {
   if (native) {
     if (["current", "capture", "harvest"].includes(native.status)) return "yes";
     if (native.status === "manual") return "partial";
+    const sessionsHooked = hooks.some(
+      (hook) => hook.event === "SessionEnd" && hook.status === "current",
+    );
+    if (native.status === "uncaptured" && sessionsHooked) return "partial";
     return "no";
   }
   if (plan.nativeMemory === "none") return "n/a";
@@ -154,7 +164,7 @@ export function buildClientStatus(input: StatusInput): ClientStatusReport {
     }
 
     const native = input.native.find((item) => item.client === plan.client);
-    const captured = capturedOf(plan, native);
+    const captured = capturedOf(plan, native, hooks);
     if (native?.status === "uncaptured" && native.reason)
       notes.push(native.reason);
     const watcher = input.watcher.find((item) => item.client === plan.client);
