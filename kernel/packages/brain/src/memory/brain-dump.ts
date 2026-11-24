@@ -12,6 +12,7 @@ import type {
   Session,
   SessionEvent,
 } from "@ocean/core/domain/sessions/session.js";
+import { sessionIdentity } from "@ocean/core/domain/sessions/session-identity.js";
 import { cleanTitle } from "@ocean/core/shared/clean-title.js";
 import {
   localDate,
@@ -295,17 +296,19 @@ export async function writeBrainDump(input: {
   const started = localMoment(session.createdAt);
   const time = localTime(started);
   const date = localDate(started);
-  const project =
-    path.basename(session.workingDirectory) || session.workingDirectory;
+  // The project and task decided when the session was created (T-331): "" when unbound.
+  const identity = sessionIdentity(session, events);
+  const project = identity.projectId;
   const status =
     session.status === "completed" && (input.exitCode ?? 0) === 0
       ? "completed"
       : "failed";
+  const fallbackTitle = project || "Session";
   const title = !isGenericContent(workLog)
-    ? cleanTitle(workLog, project)
+    ? cleanTitle(workLog, fallbackTitle)
     : lastReply
-      ? cleanTitle(lastReply, project)
-      : project;
+      ? cleanTitle(lastReply, fallbackTitle)
+      : fallbackTitle;
   const outcome =
     status === "completed"
       ? (lastReply ??
@@ -321,6 +324,7 @@ export async function writeBrainDump(input: {
     "---",
     "type: session",
     `project: ${quote(project)}`,
+    `task: ${quote(identity.taskId)}`,
     `provider: ${quote(session.provider)}`,
     'source: "closeout"',
     `status: ${status}`,
@@ -462,7 +466,9 @@ export async function writeDigestRecord(input: {
   startedAt: string;
   endedAt: string;
   digest: SessionDigest;
+  // From the store session's identity (T-331); "" when unbound, never a folder name.
   project?: string;
+  task?: string;
 }): Promise<{ path: string }> {
   const existing = await findSessionRecord(input.sessionId);
   const earlier =
@@ -475,6 +481,10 @@ export async function writeDigestRecord(input: {
     : undefined;
   const date = existingDate ?? localDate(localMoment(input.endedAt));
   const time = localTime(localMoment(input.startedAt));
+  // A later stretch keeps the start the first stretch recorded.
+  const started =
+    (existing ? /^started: "([^"]+)"$/m.exec(existing.text)?.[1] : undefined) ??
+    input.startedAt;
   const title = cleanTitle(
     safeText(digest.title || digest.goal, 400),
     input.project || "Conversation",
@@ -493,8 +503,11 @@ export async function writeDigestRecord(input: {
     "---",
     "type: session",
     `project: ${quote(input.project ?? "")}`,
+    `task: ${quote(input.task ?? "")}`,
     `provider: ${quote(input.provider)}`,
     'source: "digest"',
+    `started: ${quote(started)}`,
+    `ended: ${quote(input.endedAt)}`,
     "status: completed",
     `session_id: ${quote(input.sessionId)}`,
     `date: ${date}`,

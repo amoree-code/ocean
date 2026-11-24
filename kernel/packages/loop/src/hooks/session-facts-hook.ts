@@ -12,6 +12,7 @@ import type {
   SessionStoreFactory,
   SessionStorePort,
 } from "@ocean/core/domain/ports/session-store-port.js";
+import { sessionIdentity } from "@ocean/core/domain/sessions/session-identity.js";
 import { safeJsonParse, withFileLock } from "@ocean/core/shared/fs-utils.js";
 import { oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import {
@@ -57,7 +58,7 @@ export async function readTranscriptSlice(
   transcriptPath: string,
   client: SessionEndClient,
   from = 0,
-): Promise<{ turns: FactTurn[]; offset: number }> {
+): Promise<TranscriptSlice> {
   let size: number;
   try {
     size = (await stat(transcriptPath)).size;
@@ -84,15 +85,71 @@ export async function readTranscriptSlice(
   const lines = buffer.subarray(0, lastNewline).toString("utf8").split("\n");
   if (partialFirst) lines.shift();
   const turns: FactTurn[] = [];
+  let first: string | undefined;
+  let last: string | undefined;
   for (const line of lines) {
     const record = line.trim() ? safeJsonParse(line) : null;
+    const at = record ? lineTime(record) : undefined;
+    if (at) {
+      first ??= at;
+      last = at;
+    }
     if (!record || record.isMeta === true) continue;
     const turn = transcriptTurn(record, client);
     if (!turn) continue;
     const text = turn.role === "user" ? userText(turn.text) : turn.text.trim();
     if (text) turns.push({ role: turn.role, text });
   }
-  return { turns, offset: start + lastNewline + 1 };
+  return {
+    turns,
+    offset: start + lastNewline + 1,
+    ...(first ? { first } : {}),
+    ...(last ? { last } : {}),
+  };
+}
+
+export type TranscriptSlice = {
+  turns: FactTurn[];
+  offset: number;
+  // The first and last line timestamps read, when the transcript carries them.
+  first?: string;
+  last?: string;
+};
+
+// A transcript line's own time: Claude Code and Codex both stamp each line at the top level.
+function lineTime(record: Record<string, unknown>): string | undefined {
+  const at = record.timestamp;
+  return typeof at === "string" && Number.isFinite(Date.parse(at))
+    ? new Date(at).toISOString()
+    : undefined;
+}
+
+// How much of a transcript's head is read to find when it started.
+const HEAD_BYTES = 64 * 1024;
+
+// When the transcript started: the first timestamp in its head, or undefined.
+export async function transcriptStart(
+  transcriptPath: string,
+): Promise<string | undefined> {
+  let handle: Awaited<ReturnType<typeof open>> | undefined;
+  try {
+    handle = await open(transcriptPath, "r");
+    const buffer = Buffer.alloc(HEAD_BYTES);
+    const { bytesRead } = await handle.read(buffer, 0, HEAD_BYTES, 0);
+    for (const line of buffer
+      .subarray(0, bytesRead)
+      .toString("utf8")
+      .split("\n")) {
+      const record = line.trim() ? safeJsonParse(line) : null;
+      const at = record ? lineTime(record) : undefined;
+      if (at) return at;
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  } finally {
+    await handle?.close();
+  }
 }
 
 // The cursor: where the latest claim for this transcript ended. Each claim starts at the
@@ -122,6 +179,19 @@ function lockFile(sessionId: string): string {
     "extract",
     sessionId.replace(/[^A-Za-z0-9_-]/g, "_"),
   );
+}
+
+// The session's real span: the transcript's first timestamp to the last one read. Capture time
+// only when the transcript carries none.
+async function digestTimes(
+  transcriptPath: string,
+  slice: TranscriptSlice,
+): Promise<{ startedAt: string; endedAt: string }> {
+  const now = new Date().toISOString();
+  const startedAt =
+    (await transcriptStart(transcriptPath)) ?? slice.first ?? now;
+  const endedAt = slice.last ?? now;
+  return { startedAt, endedAt: endedAt < startedAt ? startedAt : endedAt };
 }
 
 // The model for one client's run, or null when that client cannot run headless here.
@@ -171,17 +241,28 @@ export async function runSessionFacts(
   const claim = await withFileLock(lockFile(sessionId), async () => {
     const store = await openStore();
     try {
-      await ensureHookSession(store, sessionId, client, payloadCwd(payload));
+      const session = await ensureHookSession(
+        store,
+        sessionId,
+        client,
+        payloadCwd(payload),
+      );
+      // The project and task were decided when the session was created; read, never recomputed.
+      const identity = sessionIdentity(
+        session ?? { projectId: null, taskId: null },
+        store.listEvents(sessionId),
+      );
       const from = latestClaim(store, sessionId, transcriptPath)?.to ?? 0;
       const slice = await readTranscriptSlice(transcriptPath, client, from);
-      if (slice.offset === from) return { from, slice, claimed: false };
-      if (!complete) return { from, slice, claimed: false };
+      if (slice.offset === from)
+        return { from, slice, identity, claimed: false };
+      if (!complete) return { from, slice, identity, claimed: false };
       store.appendEvent(
         sessionId,
         FACTS_CLAIM_EVENT,
         JSON.stringify({ transcript: transcriptPath, from, to: slice.offset }),
       );
-      return { from, slice, claimed: true };
+      return { from, slice, identity, claimed: true };
     } finally {
       store.close();
     }
@@ -225,15 +306,14 @@ export async function runSessionFacts(
   });
   let record: string | undefined;
   if (extraction.digest) {
-    const now = new Date().toISOString();
     record = (
       await writeDigestRecord({
         provider: client,
         sessionId,
-        startedAt: now,
-        endedAt: now,
+        ...(await digestTimes(transcriptPath, claim.slice)),
         digest: extraction.digest,
-        project: payload.cwd ? path.basename(payload.cwd) : "",
+        project: claim.identity.projectId,
+        task: claim.identity.taskId,
       })
     ).path;
   }

@@ -19,6 +19,10 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import {
+  NO_PROJECT,
+  type ProjectDecision,
+} from "../domain/sessions/session-identity.js";
+import {
   derivePrefix,
   formatTaskId,
   isValidPrefix,
@@ -59,7 +63,7 @@ export type ProjectResolution =
       projectId: string;
       name: string;
       path: string;
-      matchedOn: "git-root" | "cwd" | "path" | "ocean-root";
+      matchedOn: "project-folder" | "git-root" | "cwd" | "path" | "ocean-root";
       confidence: "high";
     }
   | {
@@ -642,13 +646,31 @@ export async function withNextTaskId<T extends { ok: boolean }>(
   });
 }
 
+// The project whose own folder (04-projects/<category>/<id>/, or a flat 04-projects/<id>/)
+// holds the cwd, when that folder has a project.json (T-331). Without this a session started in
+// a project folder resolved to the workspace project through the ocean root.
+function projectFolderMatch(
+  cwd: string,
+  manifests: ProjectManifest[],
+): { manifest: ProjectManifest; folder: string } | null {
+  for (const manifest of manifests) {
+    const folder = canonicalPath(oceanPath(projectDir(manifest.id)));
+    if (cwd === folder || cwd.startsWith(`${folder}${path.sep}`))
+      return { manifest, folder };
+  }
+  return null;
+}
+
 // Resolves the active Ocean project from a working directory: no terminal-in-Ocean
-// requirement. Match order is git root, then the exact cwd, then (as a last resort) whether
-// the path is inside the Ocean workspace root itself, which is always the workspace project.
+// requirement. Match order is the project's own folder (unless a bound path is deeper), git
+// root, then the exact cwd, then (as a last resort) whether the path is inside the Ocean
+// workspace root itself, which is always the workspace project.
 export async function resolveProject(cwd: string): Promise<ProjectResolution> {
   const resolvedCwd = canonicalPath(cwd);
   const gitRoot = findGitRoot(resolvedCwd);
-  const bindings = await listProjectBindings();
+  const manifests = await listProjectManifests();
+  const bindings = combineBindings(manifests, await listLegacyBindings());
+  const inFolder = projectFolderMatch(resolvedCwd, manifests);
 
   const containing = bindings
     .filter((binding) => {
@@ -658,6 +680,19 @@ export async function resolveProject(cwd: string): Promise<ProjectResolution> {
       );
     })
     .sort((a, b) => path.resolve(b.path).length - path.resolve(a.path).length);
+  if (
+    inFolder &&
+    (!containing.length ||
+      path.resolve(containing[0].path).length <= inFolder.folder.length)
+  )
+    return {
+      status: "bound",
+      projectId: inFolder.manifest.id,
+      name: inFolder.manifest.name,
+      path: inFolder.folder,
+      matchedOn: "project-folder",
+      confidence: "high",
+    };
   if (
     containing.length &&
     (!containing[1] ||
@@ -1488,6 +1523,20 @@ export async function projectsWithTasks(): Promise<string[]> {
     }
   }
   return [...new Set(projects)].sort();
+}
+
+// How a resolution decided the project, for the session's identity (T-331). An unbound or
+// ambiguous folder decides nothing.
+export function projectDecision(
+  resolution: ProjectResolution,
+): ProjectDecision {
+  if (resolution.status !== "bound") return NO_PROJECT;
+  const how =
+    resolution.matchedOn === "project-folder" ||
+    resolution.matchedOn === "git-root"
+      ? resolution.matchedOn
+      : "path";
+  return { projectId: resolution.projectId, how, confidence: "high" };
 }
 
 // The project a folder belongs to, or null when it belongs to none. A registry that cannot be

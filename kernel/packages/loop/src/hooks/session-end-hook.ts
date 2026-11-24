@@ -7,7 +7,10 @@ import type {
 } from "@ocean/core/domain/ports/session-store-port.js";
 import type { Session } from "@ocean/core/domain/sessions/session.js";
 import { finalizeSession } from "../sessions/session-closeout.js";
-import { sessionProjectId } from "../sessions/session-projects.js";
+import {
+  recordProjectDecision,
+  sessionProjectDecision,
+} from "../sessions/session-projects.js";
 import { resolveSessionTask } from "../tasks/session-task.js";
 
 // The documented Claude Code SessionEnd hook contract (same family as the
@@ -192,7 +195,8 @@ export async function ensureHookSession(
 ): Promise<Session | null> {
   const existing = store.get(sessionId);
   if (existing) return existing;
-  const projectId = await sessionProjectId(cwd);
+  const decision = await sessionProjectDecision(cwd);
+  const projectId = decision.projectId || null;
   store.create({
     sessionId,
     taskId: await resolveSessionTask(cwd, projectId),
@@ -205,6 +209,7 @@ export async function ensureHookSession(
     resumeData: null,
     projectId,
   });
+  recordProjectDecision(store, sessionId, decision);
   store.updateStatus(sessionId, "running");
   return store.get(sessionId);
 }

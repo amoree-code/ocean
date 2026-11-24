@@ -1,5 +1,14 @@
 import type { SessionStorePort } from "@ocean/core/domain/ports/session-store-port.js";
-import { folderProject } from "@ocean/core/shared/project-resolution.js";
+import {
+  NO_PROJECT,
+  PROJECT_IDENTITY_EVENT,
+  type ProjectDecision,
+} from "@ocean/core/domain/sessions/session-identity.js";
+import {
+  folderProject,
+  projectDecision,
+  resolveProject,
+} from "@ocean/core/shared/project-resolution.js";
 
 export type SessionProjectBackfill = {
   sessions: number;
@@ -10,11 +19,32 @@ export type SessionProjectBackfill = {
 // The project to record on a new session. Recording a session must not fail on registry state,
 // so an unreadable registry yields null; the next `ocean migrate --apply` fills it.
 export async function sessionProjectId(cwd: string): Promise<string | null> {
+  return (await sessionProjectDecision(cwd)).projectId || null;
+}
+
+// The project and how it was decided, once, when the session is created (T-331).
+export async function sessionProjectDecision(
+  cwd: string,
+): Promise<ProjectDecision> {
   try {
-    return await folderProject(cwd);
+    return projectDecision(await resolveProject(cwd));
   } catch {
-    return null;
+    return NO_PROJECT;
   }
+}
+
+// Records how the session's project was decided, so writers read it instead of recomputing.
+export function recordProjectDecision(
+  store: SessionStorePort,
+  sessionId: string,
+  decision: ProjectDecision,
+): void {
+  if (decision.projectId)
+    store.appendEvent(
+      sessionId,
+      PROJECT_IDENTITY_EVENT,
+      JSON.stringify(decision),
+    );
 }
 
 // Fill project_id on sessions recorded before the column existed, then on the handoffs that
