@@ -12,7 +12,7 @@ import {
 import { sha256 } from "./memory-audit.js";
 import { sessionFactsLedgerFile } from "./memory-paths.js";
 import { proposeMemory } from "./memory-write.js";
-import { type Triage, triageTurns } from "./session-triage.js";
+import { type FactTurn, type Triage, triageTurns } from "./session-triage.js";
 
 // Automatic fact capture at the end of a session and before a compaction (T-313). The industry
 // pattern (Zep, Mem0, Supermemory): code around the model runs the memory loop, so a fact the
@@ -23,7 +23,7 @@ import { type Triage, triageTurns } from "./session-triage.js";
 // The model is injected (`complete`): provider execution lives in harness, which brain cannot
 // import, and tests pass a recorded answer.
 
-export type FactTurn = { role: "user" | "assistant"; text: string };
+export type { FactTurn };
 
 // Where a claim comes from (T-329 phase 2): what the user said, what a tool run showed, or
 // neither. Each is checked against the turns: a quote that is not found makes the claim
