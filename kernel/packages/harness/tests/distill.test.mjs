@@ -108,6 +108,11 @@ test("distill --week writes a digest, proposes decisions and lessons, marks reco
     );
     assert.match(digest, /\[2026-11-18\]\(\.\.\/briefs\/2026-11-18\.md\)/);
     assert.ok(!digest.includes("Last week"));
+    // T-329 phase 5: counts sit above the prose sections; no session store, no failures line.
+    assert.match(
+      digest,
+      /## Patterns\n\n- Projects: p 1\n- Clients: claude 1\n- Status: completed 1\n\n## Decisions/,
+    );
     // A section with several lines is taken whole.
     assert.ok(digest.includes("Second decision stays too."));
     assert.equal(done.candidates.length, 2);
