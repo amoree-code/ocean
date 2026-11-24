@@ -7,6 +7,7 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+- feat(projects): four topic categories — `career`, `learning`, `tooling`, `products` — join the ownership ones, so `ocean project move <id> career` files a project under `04-projects/career/` and the four names stay reserved as project ids (#341)
 - feat(clients): a macOS LaunchAgent, `com.ocean.client-detect`, notices a client installed after setup (on a change to `/Applications` and hourly) and shows one notification naming `ocean clients apply --client <id> --yes`, never editing anything itself; `ocean clients detect --new [--notify]` runs it by hand, a whole apply and `ocean onboard` add it, restore and uninstall remove it, and doctor reports it missing (T-328) (#340)
 - docs(readme): Ocean has a logo — the icon's blue-to-teal tile with two waves beside an "Ocean" wordmark (Inter SemiBold, outlined so it renders the same everywhere), with light and dark versions and the mark alone in `kernel/docs/assets/`; the README shows it at the top and follows the reader's color scheme (#339)
 - feat(clients): Warp is now wired (`~/.warp/.mcp.json`), and Xcode's Claude Agent, Codex and Gemini agents are clients of their own, each found by its `CodingAssistant` folder and given the Ocean entry and its CLI's memory switch there; VS Code's memory is reported as uncaptured with the reason instead of unknown, Cursor's reason is corrected for 2.1, and an uncaptured client whose session-end hook is wired shows capture as partial (T-328) (#338)
