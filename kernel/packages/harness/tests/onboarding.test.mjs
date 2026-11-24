@@ -433,3 +433,52 @@ test("a completed connect step reopens only for a new, unapproved client", async
     assert.match(second.lines.join("\n"), /Reopening c: new client/);
   });
 });
+
+// T-328 P7: the new-client detector is its own yes, asked after the client changes or when
+// every client is already connected, and applied under the apply's batch when there is one.
+test("connect offers the client detector on its own yes, in the apply's batch", async () => {
+  const { buildSteps, DETECTOR_QUESTION } = await import(
+    "../dist/application/onboarding/steps.js"
+  );
+  const build = (plans, status) => {
+    const fake = fakeClients(plans);
+    fake.calls.applyDetector = [];
+    fake.clients.detector = async () => [
+      { client: "ocean", file: "~/x.plist", status },
+    ];
+    fake.clients.applyDetector = async (batch) => {
+      fake.calls.applyDetector.push(batch ?? null);
+      return [{ client: "ocean", result: "written" }];
+    };
+    const step = buildSteps({
+      setup: async () => {},
+      wrappers: {},
+      clients: fake.clients,
+    }).find((item) => item.id === "connect");
+    return { step, calls: fake.calls };
+  };
+
+  const pending = build([plan("cursor", "change")], "change");
+  const first = fakeIO(true, ["y", "y"]);
+  assert.equal(await pending.step.run(first.io), "done");
+  assert.deepEqual(pending.calls.applyDetector, ["b1"]);
+  assert.ok(first.lines.includes("  client detector: written"));
+
+  const connected = build([plan("cursor", "current")], "change");
+  assert.equal(await connected.step.run(fakeIO(true, ["y"]).io), "done");
+  assert.deepEqual(connected.calls.applyDetector, [null]);
+
+  const declined = build([plan("cursor", "current")], "change");
+  await declined.step.run(fakeIO(true, ["n"]).io);
+  assert.deepEqual(declined.calls.applyDetector, []);
+
+  const current = build([plan("cursor", "current")], "current");
+  const quiet = fakeIO(true, []);
+  await current.step.run(quiet.io);
+  assert.deepEqual(current.calls.applyDetector, []);
+
+  const headless = build([plan("cursor", "current")], "change");
+  await headless.step.run(fakeIO(false).io);
+  assert.deepEqual(headless.calls.applyDetector, []);
+  assert.match(DETECTOR_QUESTION, /nothing is edited without your yes/);
+});

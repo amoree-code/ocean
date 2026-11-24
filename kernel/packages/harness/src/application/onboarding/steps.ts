@@ -16,6 +16,7 @@ import {
   chatPluginAdded,
   openChatPluginSetup,
 } from "../clients/chat-plugin.js";
+import type { ClientDetectPlan } from "../clients/client-detect.js";
 import type { ClientPlan } from "../clients/clients.js";
 import type { HookPlan } from "../clients/hooks.js";
 import type { NativePlan } from "../clients/native.js";
@@ -68,7 +69,13 @@ export type OnboardingClients = {
   approved(): Promise<string[]>;
   // Newest successful Ocean call per client id, from the call ledger (the "live" pillar).
   lastCalls?(): Promise<Record<string, string>>;
+  // The new-client detector (T-328 P7): planned, and applied under the batch when there is one.
+  detector?(): Promise<ClientDetectPlan[]>;
+  applyDetector?(batch?: string): Promise<{ client: string; result: string }[]>;
 };
+
+export const DETECTOR_QUESTION =
+  "  Watch for AI clients you install later and offer to connect each one? (a macOS notification; nothing is edited without your yes)";
 
 // Claude chat's Ocean plugin (T-328); the real ones unless a test passes its own.
 export type OnboardingChatPlugin = {
@@ -241,8 +248,19 @@ function connectStep(clients: OnboardingClients): OnboardingStep {
       const pending = plans.filter((plan) => plan.status === "change");
       const pendingHooks = hooks.filter((hook) => hook.status === "change");
       const pendingNative = native.filter((item) => item.status === "change");
+      const detectorPending = (await clients.detector?.())?.some(
+        (plan) => plan.status === "change",
+      );
+      // Asked on its own, after the client changes, so declining it never blocks them.
+      const offerDetector = async (batch?: string) => {
+        if (!detectorPending || !clients.applyDetector) return;
+        if (!io.interactive || !(await yes(io, DETECTOR_QUESTION))) return;
+        for (const { result } of await clients.applyDetector(batch))
+          io.say(`  client detector: ${result}`);
+      };
       if (pending.length + pendingHooks.length + pendingNative.length === 0) {
         io.say("  Every client Ocean can wire is already connected.");
+        await offerDetector();
         return "done";
       }
       if (!io.interactive) {
@@ -268,6 +286,7 @@ function connectStep(clients: OnboardingClients): OnboardingStep {
         io.say(`  ${client} ${event} hook: ${result}`);
       for (const { client, result } of await clients.applyNative(batch))
         io.say(`  ${client} native memory: ${result}`);
+      await offerDetector(batch);
       io.say(`  Undo with: ocean clients restore --batch ${batch}`);
       for (const { client, result } of results) {
         if (result !== "written") {
