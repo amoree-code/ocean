@@ -8,6 +8,7 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import { syncMemoryIndexes } from "@ocean/brain/memory/index-sync.js";
+import { itemEvidence, untagged } from "@ocean/brain/memory/session-facts.js";
 import { containsKnownSecret } from "@ocean/core/domain/redaction/redaction.js";
 import type {
   Session,
@@ -160,12 +161,17 @@ export function sectionItems(text: string, heading: string): string[] {
 export const structured = (session: DaySession) =>
   /^## (Goal|Outcome|Decisions|Learned)$/m.test(session.text);
 
+// An item tagged [unverified] (T-329 phase 2) is an assistant claim nobody confirmed and no tool
+// showed: it stays in the session record and is never filed. [user] and [tool] items are filed
+// without their tag; an untagged item is from a record written before tags existed.
 export function harvestItems(sessions: DaySession[]): HarvestItem[] {
   const items: HarvestItem[] = [];
   for (const session of sessions)
     for (const kind of Object.keys(KINDS) as Kind[])
-      for (const text of sectionItems(session.text, KINDS[kind].heading))
-        items.push({ kind, text, session });
+      for (const text of sectionItems(session.text, KINDS[kind].heading)) {
+        if (itemEvidence(text) === "unverified") continue;
+        items.push({ kind, text: untagged(text), session });
+      }
   return items;
 }
 

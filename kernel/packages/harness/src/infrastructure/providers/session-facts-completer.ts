@@ -16,13 +16,16 @@ import { runProvider } from "./providers.js";
 // whose session it was runs it, so whoever uses only Codex gets capture too and no other CLI is
 // required. Read-only, in a folder of its own (no project context to load), with a cheap model
 // where the client has a known one. OCEAN_SESSION_FACTS_MODEL overrides it.
+// Sonnet, not Haiku (T-329 phase 2): free triage already drops the trivial chats, each chat is
+// read once it is closed, and the extraction has to tell a confirmed decision from an assistant
+// guess, which the smaller model got wrong.
 
 // The env flag the spawned call carries: its own hooks see it and do nothing, so the capture
 // call is never recorded as a session, and never captures from itself.
 export const FACTS_CALL_ENV = "FACTS_CALL";
 
 const DEFAULT_MODEL: Partial<Record<HeadlessProvider, string>> = {
-  claude: "haiku",
+  claude: "sonnet",
 };
 
 const PROVIDER: Partial<Record<SessionEndClient, HeadlessProvider>> = {
@@ -30,7 +33,7 @@ const PROVIDER: Partial<Record<SessionEndClient, HeadlessProvider>> = {
   codex: "codex",
 };
 
-const TIMEOUT_MS = 90_000;
+const TIMEOUT_MS = 180_000;
 
 // The whole task is in the prompt; the system prompt only keeps the answer machine-readable.
 const FACTS_SYSTEM_PROMPT =

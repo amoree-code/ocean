@@ -93,6 +93,8 @@ test("session-facts fixtures: no false positives on negatives, full recall on po
     const result = await extractSessionFacts({
       turns: fixture.turns,
       complete: complete ?? (async () => fixture.recorded),
+      // The eval measures the model: no chat is triaged away.
+      triage: false,
     });
     const contents = result.facts.map((fact) => fact.content);
     if (fixture.negative) falsePositives += result.facts.length;
@@ -411,7 +413,7 @@ test("PreCompact then SessionEnd read each turn once; a failed call hands its tu
 
     await appendFile(
       transcript,
-      `${userLine("Add a chart to the sales page.")}\n`,
+      `${userLine("From now on, every sales page gets a chart.")}\n`,
     );
     // The model fails once: the new turns are handed back.
     answer = () => null;
@@ -599,7 +601,7 @@ test("with digest, a stretch of a long session becomes a session record from the
     assert.match(record, /^project: "ocean"$/m);
     assert.match(
       record,
-      /^## Decisions\n\n- The harvest owns the night block/m,
+      /^## Decisions\n\n- \[unverified\] The harvest owns the night block/m,
     );
   });
 });

@@ -202,7 +202,9 @@ test("the same call returns a digest; the conversation becomes a session record 
   const { parseDigest, buildFactsPrompt } = await import(
     "@ocean/brain/memory/session-facts.js"
   );
-  const { harvestDay } = await import("@ocean/services/harvest/harvest.js");
+  const { harvestDay, harvestItems } = await import(
+    "@ocean/services/harvest/harvest.js"
+  );
   await inWorkspace(async (root) => {
     const prompts = [];
     const answer = JSON.stringify({
@@ -212,12 +214,27 @@ test("the same call returns a digest; the conversation becomes a session record 
         goal: "Decide how releases go out.",
         outcome: "A weekly release routine was agreed.",
         decisions: [
-          "Release every Friday after the full test suite passes on main.",
+          {
+            text: "Release every Friday after the full test suite passes on main.",
+            evidence: "user",
+            quote: "I deploy every Friday",
+          },
         ],
         fixes: [
-          "The tag raced a merge → cut the tag only after main is pushed.",
+          {
+            text: "The tag raced a merge → cut the tag only after main is pushed.",
+            evidence: "user",
+            quote: "based in Baghdad",
+          },
         ],
-        learned: [],
+        // The assistant's claim with a quote nobody said: kept in the record, never filed.
+        learned: [
+          {
+            text: "Fridays are the quietest day for deploys.",
+            evidence: "user",
+            quote: "Fridays are quiet",
+          },
+        ],
         next: ["Write the release checklist into the project docs."],
       },
     });
@@ -243,13 +260,36 @@ test("the same call returns a digest; the conversation becomes a session record 
     );
     const record = await readFile(path.join(root, done.record), "utf8");
     assert.match(record, /^provider: "claude-desktop"$/m);
-    assert.match(record, /^## Decisions\n\n- Release every Friday/m);
-    assert.match(record, /^## Problems → fixes\n\n- The tag raced a merge/m);
-    assert.doesNotMatch(record, /## Learned/);
+    assert.match(record, /^## Decisions\n\n- \[user\] Release every Friday/m);
+    assert.match(
+      record,
+      /^## Problems → fixes\n\n- \[user\] The tag raced a merge/m,
+    );
+    assert.match(record, /^## Learned\n\n- \[unverified\] Fridays are/m);
     // The daily harvest reads it like any other session.
     const day = await harvestDay({ date: "2025-12-31", apply: false });
     assert.equal(day.sessions, 1);
     assert.equal(day.created.length, 2);
+    // Filed without the evidence tag; the unverified learned item is not filed at all.
+    const items = harvestItems([
+      {
+        file: "",
+        relative: "",
+        title: "",
+        date: "",
+        project: "",
+        provider: "",
+        status: "",
+        text: record,
+      },
+    ]);
+    const texts = items.map((item) => item.text).sort();
+    assert.match(texts[0], /^Release every Friday/);
+    assert.match(texts[1], /^The tag raced a merge/);
+    assert.equal(items.length, 2);
+    assert.ok(
+      items.every((item) => !/^\[(user|tool|unverified)\]/.test(item.text)),
+    );
   });
   // Bounded and cleaned; no digest without a title or goal; the plain prompt asks for none.
   const long = "x".repeat(500);
@@ -264,7 +304,9 @@ test("the same call returns a digest; the conversation becomes a session record 
     }),
   );
   assert.equal(digest.decisions.length, 3);
-  assert.ok(digest.decisions[0].length <= 220);
+  // A bare string is a claim with no evidence.
+  assert.match(digest.decisions[0], /^\[unverified\] x/);
+  assert.ok(digest.decisions[0].length <= 220 + "[unverified] ".length);
   assert.deepEqual(digest.learned, []);
   assert.equal(parseDigest('{"facts":[],"digest":{"decisions":["x"]}}'), null);
   assert.equal(parseDigest('{"facts":[]}'), null);
@@ -359,4 +401,116 @@ test("--latest reads only the newest conversation, at once, and keeps its raw tr
     );
     assert.match(raw[1].text, /\[tool result: Friday\]/);
   });
+});
+
+test("free triage: a trivial chat costs no model call and gets a one-line record", async () => {
+  const { triageTurns } = await import("@ocean/brain/memory/session-triage.js");
+  await inWorkspace(async (root) => {
+    const prompts = [];
+    const run = await runDesktopFacts({
+      read: async () => ({
+        status: "ok",
+        conversations: [
+          chat("tiny", minutesAgo(150), [
+            "what is the capital of Peru?",
+            "Lima.",
+          ]),
+        ],
+      }),
+      complete: async (prompt) => {
+        prompts.push(prompt);
+        return ANSWER;
+      },
+      now: NOW,
+      enabled: on,
+    });
+    assert.equal(prompts.length, 0);
+    const [done] = run.runs;
+    assert.equal(done.status, "done");
+    assert.equal(done.trivial, true);
+    assert.deepEqual(done.candidates, []);
+    const record = await readFile(path.join(root, done.record), "utf8");
+    assert.match(record, /^# what is the capital of Peru\?$/m);
+    assert.doesNotMatch(record, /## Decisions/);
+  });
+  // What makes a chat worth a model call.
+  const worth = (texts) =>
+    triageTurns(
+      texts.map((text, index) => ({
+        role: index % 2 ? "assistant" : "user",
+        text,
+      })),
+    ).worth;
+  assert.equal(worth(["hi", "Hello!"]), false);
+  assert.equal(worth([STATED, "Noted."]), true);
+  assert.equal(worth(["خلي الردود قصيرة", "تمام"]), true);
+  assert.equal(
+    worth(["fix it", "Done.", "and src/app/page.tsx?", "Done."]),
+    true,
+  );
+  assert.equal(
+    worth(["check it", "[tool a: x]\n\n[tool b: y]\n\n[tool c: z]"]),
+    true,
+  );
+});
+
+test("evidence: a tool-result quote grounds a tool fact; a quote from nowhere is unverified", async () => {
+  const { checkedEvidence, isGrounded, parseDigest, itemEvidence, untagged } =
+    await import("@ocean/brain/memory/session-facts.js");
+  const turns = [
+    { role: "user", text: "Which Node version does the project pin?" },
+    {
+      role: "assistant",
+      text: '[tool read_file: package.json]\n\n[tool result: { "engines": { "node": ">=22.12" } }]\n\nIt pins Node 22.12, probably for the test runner.',
+    },
+  ];
+  assert.equal(checkedEvidence("tool", '"node": ">=22.12"', turns), "tool");
+  // Assistant prose is not a tool result.
+  assert.equal(
+    checkedEvidence("tool", "probably for the test runner", turns),
+    "unverified",
+  );
+  assert.equal(
+    checkedEvidence("user", "Which Node version does", turns),
+    "user",
+  );
+  assert.equal(checkedEvidence("user", "pins Node 22.12", turns), "unverified");
+  assert.equal(checkedEvidence(undefined, "", turns), "unverified");
+  const fact = {
+    title: "Node version",
+    content: "The project needs Node 22.12 or newer.",
+    evidence: '"node": ">=22.12"',
+    reason: "build requirement",
+  };
+  assert.equal(isGrounded({ ...fact, source: "tool" }, turns), true);
+  // The same quote claimed as the user's words is not in any user line.
+  assert.equal(isGrounded(fact, turns), false);
+  const digest = parseDigest(
+    JSON.stringify({
+      facts: [],
+      digest: {
+        title: "Node version",
+        learned: [
+          {
+            text: "Node 22.12 is pinned.",
+            evidence: "tool",
+            quote: '"engines": { "node"',
+          },
+          {
+            text: "It is for the test runner.",
+            evidence: "tool",
+            quote: "for the test runner",
+          },
+        ],
+      },
+    }),
+    turns,
+  );
+  assert.deepEqual(digest.learned, [
+    "[tool] Node 22.12 is pinned.",
+    "[unverified] It is for the test runner.",
+  ]);
+  assert.equal(itemEvidence(digest.learned[1]), "unverified");
+  assert.equal(itemEvidence("an old untagged item"), null);
+  assert.equal(untagged(digest.learned[0]), "Node 22.12 is pinned.");
 });
