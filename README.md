@@ -1,4 +1,9 @@
-# Ocean
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="kernel/docs/assets/ocean-logo-dark.svg">
+    <img alt="Ocean" src="kernel/docs/assets/ocean-logo.svg" height="72">
+  </picture>
+</h1>
 
 **One workspace for every AI agent you use.** Ocean is a local-first layer that gives Claude,
 Codex, Gemini, Qwen, Cursor, OpenCode and other AI clients the same projects, tasks, memory
