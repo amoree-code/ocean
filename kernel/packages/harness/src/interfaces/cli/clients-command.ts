@@ -21,6 +21,13 @@ import {
   openChatPluginSetup,
 } from "../../application/clients/chat-plugin.js";
 import {
+  applyClientDetect,
+  detectNewClients,
+  notifyNewClients,
+  planClientDetect,
+  restoreClientDetect,
+} from "../../application/clients/client-detect.js";
+import {
   applyClients,
   attributeLedger,
   confirmClient,
@@ -64,7 +71,7 @@ import {
 import { oceanVersion } from "../../version.js";
 
 const usage =
-  "Usage: ocean clients status [--json] [--days <n>] | detect|plan [--json] | apply [--client <id>…] [--yes] [--session-facts on|off] | chat-plugin | bundles [--out <dir>] | verify [<id>…] | confirm <id>… --label in-app|headless|connected|blocked [--via <evidence>] [--reason <why>] | gateway [<id> on|off] [--default gateway|per-server] | allow|deny|unset <id> <server> | ledger | repair | restore [--batch <id>]";
+  "Usage: ocean clients status [--json] [--days <n>] | detect|plan [--json] | detect --new [--notify] | apply [--client <id>…] [--yes] [--session-facts on|off] | chat-plugin | bundles [--out <dir>] | verify [<id>…] | confirm <id>… --label in-app|headless|connected|blocked [--via <evidence>] [--reason <why>] | gateway [<id> on|off] [--default gateway|per-server] | allow|deny|unset <id> <server> | ledger | repair | restore [--batch <id>]";
 
 export const SESSION_FACTS_QUESTION =
   "Capture durable facts from your sessions automatically? It costs one small model call per session, run by the client the session was in. Every fact goes to your review queue; nothing is saved without your approval, even with auto-approve on. [y/N] ";
@@ -129,6 +136,24 @@ export async function runClientsCommand(args: string[]): Promise<void> {
       return;
     }
     result = report;
+  } else if (action === "detect" && rest.includes("--new")) {
+    // Clients installed since the last look (T-328 P7); `--notify` is how the detector runs.
+    const found = await detectNewClients();
+    if (rest.includes("--notify")) await notifyNewClients(found.offers);
+    if (!json) {
+      if (found.seeded)
+        console.log(
+          "Recorded every installed client; new ones are offered from now on.",
+        );
+      for (const offer of found.offers)
+        console.log(
+          `${offer.label} is installed — connect it: ${offer.command}`,
+        );
+      if (!found.seeded && !found.offers.length)
+        console.log("No new client to connect.");
+      return;
+    }
+    result = found;
   } else if (action === "detect" || action === "plan") {
     const plans = await planClients();
     // `apply` refuses a temporary engine; the plan says so up front (T-300).
@@ -169,6 +194,13 @@ export async function runClientsCommand(args: string[]): Promise<void> {
             }`,
           );
       if (action === "plan")
+        for (const detector of await planClientDetect())
+          console.log(
+            `${"client detector".padEnd(15)} ${detector.status.padEnd(14)} ${detector.file} new-client offers${
+              detector.reason ? ` (${detector.reason})` : ""
+            }`,
+          );
+      if (action === "plan")
         for (const watcher of await planDesktopWatcher())
           console.log(
             `${"claude-desktop watcher".padEnd(15)} ${watcher.status.padEnd(14)} ${watcher.file} chat capture${
@@ -186,6 +218,7 @@ export async function runClientsCommand(args: string[]): Promise<void> {
             plugins: await planOpencodePlugin(),
             native: await planNative(),
             watcher: await planDesktopWatcher(),
+            detector: await planClientDetect(),
           };
   } else if (action === "apply") {
     const clients = values("--client");
@@ -215,9 +248,12 @@ export async function runClientsCommand(args: string[]): Promise<void> {
           plan.status === "change" &&
           (!clients.length || clients.includes(plan.client)),
       );
+      const detector = clients.length
+        ? []
+        : (await planClientDetect()).filter((plan) => plan.status === "change");
       console.log(
         JSON.stringify(
-          { dryRun: true, pending, hooks, plugins, native, watcher },
+          { dryRun: true, pending, hooks, plugins, native, watcher, detector },
           null,
           2,
         ),
@@ -256,6 +292,10 @@ export async function runClientsCommand(args: string[]): Promise<void> {
       ...appliedAll,
       watcher: (
         await applyDesktopWatcher({ clients: selected, batch: applied.batch })
+      ).results,
+      // A whole apply only: the detector serves every client, not the one `--client` names.
+      detector: (
+        await applyClientDetect({ clients: selected, batch: applied.batch })
       ).results,
       ...(chatPlugin ? { chatPlugin } : {}),
     };
@@ -391,6 +431,7 @@ export async function runClientsCommand(args: string[]): Promise<void> {
           plugins: await restoreOpencodePlugin({ batch: restored.batch }),
           native: await restoreNative({ batch: restored.batch }),
           watcher: await restoreDesktopWatcher({ batch: restored.batch }),
+          detector: await restoreClientDetect({ batch: restored.batch }),
         }
       : restored;
   } else {

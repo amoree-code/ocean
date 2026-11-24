@@ -121,6 +121,7 @@ import {
   projectsOverview,
   writeRegistryBlock,
 } from "@ocean/services/projects/projects-overview.js";
+import { clientDetectFindings } from "../../application/clients/client-detect.js";
 import {
   clientFindings,
   repairClients,
@@ -1480,6 +1481,7 @@ async function commandDoctor(): Promise<void> {
   report.findings.push(
     ...(await clientFindings()),
     ...(await desktopWatcherFindings()),
+    ...(await clientDetectFindings()),
     ...(await nativeFindings()),
     ...(await browserFindings()),
     ...(await gatewayFindings()),
