@@ -101,7 +101,7 @@ the same three fields by hand.)
 
 1. **Is it needed?** Would a future session be materially worse off without it?
    "It might be nice" means no.
-2. **Task, or world?** Reusable beyond this task → `05-knowledge/<kind>/` instead,
+2. **Task, or world?** Reusable beyond this task → `05-knowledge/<decisions|lessons>/` instead,
    and the task links to it.
 
 | Artifact | Written when |

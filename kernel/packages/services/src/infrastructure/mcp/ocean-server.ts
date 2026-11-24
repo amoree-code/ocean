@@ -794,7 +794,7 @@ async function callTool(
     const actionArgs = {
       sessionId: args.sessionId,
       target:
-        typeof args.target === "string" ? args.target : "knowledge/results",
+        typeof args.target === "string" ? args.target : "knowledge/lessons",
     };
     if (approval.fingerprint !== actionFingerprint(name, actionArgs))
       throw new Error(
@@ -803,7 +803,7 @@ async function callTool(
     return promoteSessionToKnowledge(
       requiredArgument(args, "sessionId"),
       ports.sessionStoreFactory,
-      typeof args.target === "string" ? args.target : "knowledge/results",
+      typeof args.target === "string" ? args.target : "knowledge/lessons",
       true,
     );
   }

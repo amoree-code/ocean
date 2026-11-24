@@ -321,7 +321,7 @@ export function failuresRows(
       value: `${zero} of ${failures.length}`,
       n: zero,
       of: failures.length,
-      source: "05-knowledge/failures + session signatures",
+      source: "05-knowledge/lessons failure records + session signatures",
     },
     ...failures.map((entry) => ({
       id: `failure:${entry.id}`,

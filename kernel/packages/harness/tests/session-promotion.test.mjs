@@ -52,7 +52,7 @@ test("promotes an approved completed session into knowledge and rejects missing 
   const result = await promoteSessionToKnowledge(
     sessionId,
     defaultSessionStoreFactory,
-    "knowledge/results",
+    "knowledge/lessons",
     true,
   );
   assert.equal(result.applied, true);

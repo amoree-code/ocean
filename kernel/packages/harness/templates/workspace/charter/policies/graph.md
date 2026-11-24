@@ -44,4 +44,4 @@ Derived, never authoritative: rebuilt on demand, gitignored, never edited, never
 never published. It may suggest a relevant skill, capability or record, but the real record
 must still be read and the task's approval gates still apply.
 
-Detail: `05-knowledge/architecture/ocean-graph-brain.md`.
+Detail: `05-knowledge/decisions/ocean-graph-brain.md`.

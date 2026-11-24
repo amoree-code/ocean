@@ -46,16 +46,8 @@ import {
   requireAbsentTarget,
 } from "./record-io.js";
 
-const KNOWLEDGE_KINDS = [
-  "architecture",
-  "decisions",
-  "discoveries",
-  "failures",
-  "references",
-  "research",
-  "results",
-  "solutions",
-];
+// 05-knowledge holds two folders (T-329 phase 4).
+const KNOWLEDGE_KINDS = ["decisions", "lessons"];
 
 const RECORD_FIELDS = [
   "name",

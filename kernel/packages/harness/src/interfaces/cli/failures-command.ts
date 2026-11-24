@@ -24,7 +24,7 @@ function option(args: string[], name: string): string | undefined {
   return at >= 0 ? args[at + 1] : undefined;
 }
 
-// `ocean failures` (T-323): failure records in 05-knowledge/failures/, each tracked by its
+// `ocean failures` (T-323): failure records in 05-knowledge/lessons/, each tracked by its
 // telemetry signature. Every change goes through code, one field at a time; `climb` is the
 // owner's approval of a guardrail climb that telemetry proposed.
 export async function runFailuresCommand(args: string[]): Promise<void> {

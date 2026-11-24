@@ -1652,7 +1652,7 @@ async function commandSession(): Promise<void> {
     }
   } else if (action === "promote") {
     const sessionId = process.argv[4];
-    const target = process.argv[5] ?? "knowledge/results";
+    const target = process.argv[5] ?? "knowledge/lessons";
     store.close();
     if (!sessionId) {
       console.error(
