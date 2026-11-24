@@ -7,6 +7,7 @@ with `!` (`feat!: …`). Each push to `main` releases what is under Unreleased (
 
 ## Unreleased
 
+- feat(projects): a fifth topic category, `education` — for language study and study abroad — beside `career`, `learning`, `tooling` and `products`, so `ocean project move <id> education` files a project under `04-projects/education/` and the name stays reserved as a project id (#343)
 - feat(clients): a client without a session-start hook gets the user's rules too — `ocean_context` adds one line naming them and the new `ocean_policy` tool reads `core` or a policy module such as `response`; `ocean doctor` now makes a real `ocean_ping` call through every wired client's configured command (`CLIENT_LIVE_OK`/`FAIL`), kept out of the call ledger; and the daily note's morning block has an Ocean line of which clients read or wrote Ocean yesterday (T-328) (#342)
 - feat(projects): four topic categories — `career`, `learning`, `tooling`, `products` — join the ownership ones, so `ocean project move <id> career` files a project under `04-projects/career/` and the four names stay reserved as project ids (#341)
 - feat(clients): a macOS LaunchAgent, `com.ocean.client-detect`, notices a client installed after setup (on a change to `/Applications` and hourly) and shows one notification naming `ocean clients apply --client <id> --yes`, never editing anything itself; `ocean clients detect --new [--notify]` runs it by hand, a whole apply and `ocean onboard` add it, restore and uninstall remove it, and doctor reports it missing (T-328) (#340)

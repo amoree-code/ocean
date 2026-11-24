@@ -232,6 +232,7 @@ test("a category folder name is never a project id (T-311)", () => {
     "former-company",
     "vendor",
     "career",
+    "education",
     "learning",
     "tooling",
     "products",
