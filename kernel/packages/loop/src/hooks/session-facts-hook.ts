@@ -13,8 +13,16 @@ import type {
   SessionStorePort,
 } from "@ocean/core/domain/ports/session-store-port.js";
 import { sessionIdentity } from "@ocean/core/domain/sessions/session-identity.js";
+import {
+  ActivityTally,
+  type SessionActivity,
+} from "@ocean/core/domain/sessions/session-metadata.js";
 import { safeJsonParse, withFileLock } from "@ocean/core/shared/fs-utils.js";
 import { oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
+import {
+  findGitRoot,
+  repoRelative,
+} from "@ocean/core/shared/project-resolution.js";
 import {
   type ClaudeSessionEndPayload,
   ensureHookSession,
@@ -85,6 +93,8 @@ export async function readTranscriptSlice(
   const lines = buffer.subarray(0, lastNewline).toString("utf8").split("\n");
   if (partialFirst) lines.shift();
   const turns: FactTurn[] = [];
+  const tally = new ActivityTally();
+  let cwd: string | undefined;
   let first: string | undefined;
   let last: string | undefined;
   for (const line of lines) {
@@ -95,14 +105,20 @@ export async function readTranscriptSlice(
       last = at;
     }
     if (!record || record.isMeta === true) continue;
+    cwd = noteActivity(record, client, tally) ?? cwd;
     const turn = transcriptTurn(record, client);
     if (!turn) continue;
     const text = turn.role === "user" ? userText(turn.text) : turn.text.trim();
-    if (text) turns.push({ role: turn.role, text });
+    if (text) {
+      turns.push({ role: turn.role, text });
+      tally.turn(turn.role);
+    }
   }
   return {
     turns,
     offset: start + lastNewline + 1,
+    activity: tally.result(),
+    ...(cwd ? { cwd } : {}),
     ...(first ? { first } : {}),
     ...(last ? { last } : {}),
   };
@@ -111,10 +127,87 @@ export async function readTranscriptSlice(
 export type TranscriptSlice = {
   turns: FactTurn[];
   offset: number;
+  // What the stretch did (T-334): turns, tool calls, touched paths (as the transcript names
+  // them), the model and the branch, counted from the lines, never asked of a model.
+  activity?: SessionActivity;
+  // The working folder the transcript names, which its touched paths are relative to.
+  cwd?: string;
   // The first and last line timestamps read, when the transcript carries them.
   first?: string;
   last?: string;
 };
+
+const asRecord = (value: unknown): Record<string, unknown> | undefined =>
+  value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+
+// The path a tool call's input names, if any.
+function inputPath(input: unknown): string | undefined {
+  const fields = asRecord(
+    typeof input === "string" ? safeJsonParse(input) : input,
+  );
+  const found = fields?.file_path ?? fields?.notebook_path ?? fields?.path;
+  return typeof found === "string" && found ? found : undefined;
+}
+
+// One transcript line's model, branch and tool calls into the tally; returns the working folder
+// the line names. Claude Code stamps cwd and gitBranch on each line and lists tool_use blocks
+// in assistant messages; Codex keeps them in session_meta, turn_context and response_item lines.
+function noteActivity(
+  record: Record<string, unknown>,
+  client: SessionEndClient,
+  tally: ActivityTally,
+): string | undefined {
+  if (client === "codex") {
+    const payload = asRecord(record.payload);
+    if (!payload) return undefined;
+    if (record.type === "session_meta")
+      tally.branch(asRecord(payload.git)?.branch);
+    if (record.type === "turn_context") tally.model(payload.model);
+    if (
+      record.type === "response_item" &&
+      typeof payload.type === "string" &&
+      /call$/.test(payload.type) &&
+      !/output$/.test(payload.type)
+    )
+      tally.tool(
+        typeof payload.name === "string" ? payload.name : payload.type,
+        inputPath(payload.arguments ?? payload.input),
+      );
+    return typeof payload.cwd === "string" ? payload.cwd : undefined;
+  }
+  tally.branch(record.gitBranch);
+  if (record.type === "assistant") {
+    const message = asRecord(record.message);
+    tally.model(message?.model);
+    if (Array.isArray(message?.content))
+      for (const block of message.content) {
+        const each = asRecord(block);
+        if (each?.type === "tool_use" && typeof each.name === "string")
+          tally.tool(each.name, inputPath(each.input));
+      }
+  }
+  return typeof record.cwd === "string" ? record.cwd : undefined;
+}
+
+// The tally's touched paths made repo-relative, for the record.
+export function recordActivity(
+  activity: SessionActivity | undefined,
+  cwd: string | undefined,
+): SessionActivity | undefined {
+  if (!activity) return undefined;
+  const root = cwd ? findGitRoot(cwd) : null;
+  const files: Record<string, number> = {};
+  for (const [file, count] of Object.entries(activity.files)) {
+    const relative = repoRelative(
+      cwd && !path.isAbsolute(file) ? path.resolve(cwd, file) : file,
+      root,
+    );
+    files[relative] = (files[relative] ?? 0) + count;
+  }
+  return { ...activity, files };
+}
 
 // A transcript line's own time: Claude Code and Codex both stamp each line at the top level.
 function lineTime(record: Record<string, unknown>): string | undefined {
@@ -314,6 +407,12 @@ export async function runSessionFacts(
         digest: extraction.digest,
         project: claim.identity.projectId,
         task: claim.identity.taskId,
+        identity: claim.identity,
+        activity: recordActivity(
+          claim.slice.activity,
+          claim.slice.cwd ?? payloadCwd(payload),
+        ),
+        ...(extraction.call ? { extraction: extraction.call } : {}),
       })
     ).path;
   }

@@ -76,7 +76,7 @@ export function sessionFactsCompleter(
     return null;
   }
   const model = oceanEnv("SESSION_FACTS_MODEL") ?? DEFAULT_MODEL[provider];
-  return async (prompt) => {
+  const complete: CompleteText = async (prompt) => {
     const cwd = oceanPath(SYSTEM_DIR, "state", "memory", "extract");
     await mkdir(cwd, { recursive: true, mode: 0o700 });
     const result = await run({
@@ -91,4 +91,7 @@ export function sessionFactsCompleter(
     });
     return result.exitCode === 0 ? finalText(result.events) : null;
   };
+  // Without a model of its own the client's default answers; the record says which client.
+  complete.model = model ?? `${provider} default`;
+  return complete;
 }

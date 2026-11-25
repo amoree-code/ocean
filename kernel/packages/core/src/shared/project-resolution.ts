@@ -121,6 +121,44 @@ export function linkedWorktreeMain(gitRoot: string): string | null {
   }
 }
 
+// The branch checked out in the repo containing `directory`, from its HEAD file (no git call);
+// undefined outside a repo or on a detached HEAD.
+export function gitBranch(directory: string): string | undefined {
+  const root = findGitRoot(directory);
+  if (!root) return undefined;
+  try {
+    let gitdir = path.join(root, ".git");
+    if (statSync(gitdir).isFile()) {
+      const pointer = readFileSync(gitdir, "utf8").match(
+        /^gitdir:\s*(.+)$/m,
+      )?.[1];
+      if (!pointer) return undefined;
+      gitdir = path.resolve(root, pointer.trim());
+    }
+    return readFileSync(path.join(gitdir, "HEAD"), "utf8").match(
+      /^ref:\s*refs\/heads\/(.+)$/m,
+    )?.[1];
+  } catch {
+    return undefined;
+  }
+}
+
+// A touched path as a record names it: relative to the repo it sits in, else to the home folder
+// (`~/…`), else as given. Forward slashes on every platform.
+export function repoRelative(file: string, root: string | null): string {
+  const slashed = (value: string) => value.split(path.sep).join("/");
+  if (!path.isAbsolute(file)) return slashed(file);
+  if (root) {
+    const relative = path.relative(root, file);
+    if (relative && !relative.startsWith("..") && !path.isAbsolute(relative))
+      return slashed(relative);
+  }
+  const home = path.relative(os.homedir(), file);
+  if (home && !home.startsWith("..") && !path.isAbsolute(home))
+    return `~/${slashed(home)}`;
+  return slashed(file);
+}
+
 const execFileAsync = promisify(execFile);
 
 // `git status --short` lines for the repo containing `directory`; [] when it is not a repo or

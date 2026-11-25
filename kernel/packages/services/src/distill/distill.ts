@@ -2,6 +2,10 @@ import { mkdir, readdir, readFile, rename } from "node:fs/promises";
 import path from "node:path";
 import { proposeMemory } from "@ocean/brain/memory/memory-write.js";
 import { MemoryContractError } from "@ocean/core/domain/mcp/memory-contract.js";
+import {
+  type RecordMetadata,
+  readMetadata,
+} from "@ocean/core/domain/sessions/session-metadata.js";
 import { cleanTitle } from "@ocean/core/shared/clean-title.js";
 import { atomicWrite, parseFrontmatter } from "@ocean/core/shared/fs-utils.js";
 import {
@@ -103,6 +107,7 @@ export async function distillWeek(options: {
     project: string;
     provider: string;
     untitled: boolean;
+    meta: RecordMetadata;
   }[] = [];
   for (const file of await markdownIn(oceanPath(DAILY_DIR, "sessions"))) {
     const text = await readFile(file, "utf8");
@@ -120,6 +125,7 @@ export async function distillWeek(options: {
       provider: fields.provider ?? "",
       // A title that is only the project's name is a fallback, not a title.
       untitled: !own || own === fields.project,
+      meta: readMetadata(fields),
     });
   }
   const briefs = (await markdownIn(oceanPath(REPORTS_DIR, "briefs"))).filter(

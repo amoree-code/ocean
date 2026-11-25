@@ -8,6 +8,10 @@ import {
   extractSessionFacts,
   type FactTurn,
 } from "@ocean/brain/memory/session-facts.js";
+import {
+  ActivityTally,
+  type SessionActivity,
+} from "@ocean/core/domain/sessions/session-metadata.js";
 import { atomicWrite, withFileLock } from "@ocean/core/shared/fs-utils.js";
 import { oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import {
@@ -260,6 +264,19 @@ export async function runDesktopFacts(options: {
   return result;
 }
 
+// What a stretch of a Desktop chat did (T-334): its turns and the tool calls its text names
+// (`[tool name: …]`, see desktop-chat.ts). Desktop keeps no working folder, branch or model.
+function desktopActivity(messages: DesktopChatMessage[]): SessionActivity {
+  const tally = new ActivityTally();
+  for (const message of messages) {
+    if (!message.text.trim()) continue;
+    tally.turn(message.sender === "human" ? "user" : "assistant");
+    for (const call of message.text.matchAll(/^\[tool ([^\]:\s]+)/gm))
+      tally.tool(call[1]);
+  }
+  return tally.result();
+}
+
 async function captureOne(
   conversation: DesktopChat,
   complete: CompleteText | null,
@@ -336,6 +353,11 @@ async function captureOne(
         project: decision.projectId,
         conversationTitle: decision.title,
         claudeProject: decision.claudeProject,
+        identity: decision,
+        activity: desktopActivity(
+          dated.filter((message) => message.createdAt > claim.from),
+        ),
+        ...(extraction.call ? { extraction: extraction.call } : {}),
       })
     ).path;
   }

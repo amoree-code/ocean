@@ -130,6 +130,20 @@ session record is filed under one project, decided once: a hand binding (`ocean_
 project its Claude project's name answers to, else none — never a model guess. The record carries
 `conversation_title` and `claude_project` beside `project`, and the chat's title as its heading.
 
+### The metadata block in every session record (T-334)
+
+Every session record — CLI hook, Desktop and closeout — carries a bounded metadata block in its
+frontmatter, counted from the transcript, the Desktop message text or the session store, never
+asked of a model: `project_how` and `project_confidence` (how the project was decided), `branch`,
+`started`, `ended`, `duration_min`, `turns_user`, `turns_assistant`, `tools` (the top 5 with
+counts), `files` (the top 8, repo-relative), `model` (the chat's own) and `extraction`
+(`{model, input_chars, ms}` of the digest call). A key with nothing to count it from is left out:
+a closeout has no assistant turns or model, a Desktop chat no files or branch. A later stretch of
+the same session adds its counts to the record's. Every value sits on one line (JSON), so the
+start brief, the weekly patterns (`Project decided by`, `Hours`, `Tools`) and `brain_search` read
+the frontmatter instead of the body: `brain_search` takes `task` (any case) and `branch` (exact)
+and keeps only hits whose record names them.
+
 A Claude project name the refresh sees for the first time is linked when a project answers to it,
 only suggested (in `ocean project doctor`) when it is near a project's name, and otherwise
 registered as above and given that name as its alias. The first refresh on a machine only records

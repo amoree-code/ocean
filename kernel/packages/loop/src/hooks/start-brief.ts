@@ -1,5 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
+import { readMetadata } from "@ocean/core/domain/sessions/session-metadata.js";
+import { parseFrontmatter } from "@ocean/core/shared/fs-utils.js";
 import { DAILY_DIR, oceanPath } from "@ocean/core/shared/paths.js";
 import { listTasks } from "../tasks/list-tasks.js";
 
@@ -18,12 +20,14 @@ const clip = (text: string, max = ITEM_MAX_CHARS) => {
   return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
 };
 
-export type LastSession = { date: string; title: string; next: string };
-
-const frontmatterField = (text: string, key: string) =>
-  new RegExp(`^${key}:\\s*"?([^"\\n]*)"?\\s*$`, "m").exec(
-    text.slice(0, text.indexOf("\n---", 4)),
-  )?.[1] ?? "";
+// `task` and `branch` come from the record's metadata block (T-334), never its body.
+export type LastSession = {
+  date: string;
+  title: string;
+  next: string;
+  task?: string;
+  branch?: string;
+};
 
 // The newest session record of this project, by file name (records start with their date and
 // time). The archive is left alone: an archived session is not where the project stands.
@@ -62,8 +66,10 @@ export async function lastProjectSession(
       } catch {
         continue;
       }
-      if (frontmatterField(text, "type") !== "session") continue;
-      if (frontmatterField(text, "project") !== projectId) continue;
+      const fields = parseFrontmatter(text);
+      if (fields.type !== "session") continue;
+      if ((fields.project ?? "") !== projectId) continue;
+      const meta = readMetadata(fields);
       const next =
         /\n## Next\n\n([\s\S]*?)(?=\n## |$)/
           .exec(text)?.[1]
@@ -71,14 +77,22 @@ export async function lastProjectSession(
           .map((line) => line.replace(/^[-*]\s+/, "").trim())
           .find(Boolean) ?? "";
       return {
-        date: frontmatterField(text, "date"),
+        date: fields.date ?? "",
         title: /^# (.+)$/m.exec(text)?.[1]?.trim() ?? name,
         next,
+        ...(meta.task ? { task: meta.task } : {}),
+        ...(meta.branch ? { branch: meta.branch } : {}),
       };
     }
   }
   return null;
 }
+
+// " (T-334, feat/x)": the task and branch the last session worked on, when its record says.
+const lastWhere = (last: LastSession) => {
+  const where = [last.task, last.branch].filter(Boolean).join(", ");
+  return where ? ` (${where})` : "";
+};
 
 // The brief for a project Ocean knows, or null when there is nothing to say. Never throws: a
 // session must keep its bootstrap whatever state the workspace is in.
@@ -99,7 +113,7 @@ export async function startBrief(projectId: string): Promise<string | null> {
   if (last)
     items.push(
       clip(
-        `Last session${last.date ? ` ${last.date}` : ""}: ${last.title}${last.next ? ` — next: ${last.next}` : ""}`,
+        `Last session${last.date ? ` ${last.date}` : ""}${lastWhere(last)}: ${last.title}${last.next ? ` — next: ${last.next}` : ""}`,
       ),
     );
   if (!items.length) return null;

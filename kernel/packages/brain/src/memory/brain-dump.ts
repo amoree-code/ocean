@@ -12,8 +12,25 @@ import type {
   Session,
   SessionEvent,
 } from "@ocean/core/domain/sessions/session.js";
-import { sessionIdentity } from "@ocean/core/domain/sessions/session-identity.js";
+import {
+  NO_PROJECT,
+  type ProjectConfidence,
+  type ProjectHow,
+  sessionIdentity,
+} from "@ocean/core/domain/sessions/session-identity.js";
+import {
+  ActivityTally,
+  type ExtractionCost,
+  mergeActivity,
+  metadataLines,
+  readMetadata,
+  type SessionActivity,
+} from "@ocean/core/domain/sessions/session-metadata.js";
 import { cleanTitle } from "@ocean/core/shared/clean-title.js";
+import {
+  parseFrontmatter,
+  safeJsonParse,
+} from "@ocean/core/shared/fs-utils.js";
 import {
   localDate,
   localMoment,
@@ -25,7 +42,11 @@ import {
   oceanPath,
   oceanRoot,
 } from "@ocean/core/shared/paths.js";
-import { findGitRoot } from "@ocean/core/shared/project-resolution.js";
+import {
+  findGitRoot,
+  gitBranch,
+  repoRelative,
+} from "@ocean/core/shared/project-resolution.js";
 import type { LearnedSignal } from "./lesson-learning.js";
 import { isTrivialSession, type ModelNarrative } from "./model-narrative.js";
 import type { SessionDigest } from "./session-facts.js";
@@ -206,6 +227,47 @@ export function mergeDigests(
   };
 }
 
+// What an intercepted CLI session did, from its store events and the files git shows changed
+// (T-334). The store keeps the user's turns and Ocean's own MCP calls, not each assistant reply
+// or the client's tool calls, so those keys are left out rather than guessed.
+function closeoutActivity(
+  session: Session,
+  events: SessionEvent[],
+  changedFiles: string[],
+): SessionActivity {
+  const tally = new ActivityTally();
+  for (const event of events) {
+    if (
+      (event.type === "user_input" || event.type === "resume_requested") &&
+      withoutWrappers(event.data)
+    )
+      tally.turn("user");
+    if (event.type === "mcp_tool_call") {
+      const tool = safeJsonParse(event.data)?.tool;
+      if (typeof tool === "string") tally.tool(tool);
+    }
+  }
+  const { turnsUser, tools } = tally.result();
+  const root = findGitRoot(session.workingDirectory);
+  const files: Record<string, number> = {};
+  for (const line of changedFiles) {
+    // A `git status --short` line: status letters, then the path (a rename names both).
+    const named = line
+      .replace(/^[A-Z?!]{1,2}\s+/, "")
+      .split(" -> ")
+      .at(-1)
+      ?.replace(/^"|"$/g, "");
+    if (!named) continue;
+    const file = repoRelative(
+      path.resolve(session.workingDirectory, named),
+      root,
+    );
+    files[file] = (files[file] ?? 0) + 1;
+  }
+  const branch = gitBranch(session.workingDirectory);
+  return { turnsUser, tools, files, ...(branch ? { branch } : {}) };
+}
+
 /**
  * One session record per session in 01-daily/sessions/YYYY-MM/ (T-314; was 00-inbox/brain-dump/),
  * separate from the machine-oriented kernel/bridge/sessions/summaries/ dump. Prefers
@@ -329,6 +391,13 @@ export async function writeBrainDump(input: {
     'source: "closeout"',
     `status: ${status}`,
     `session_id: ${quote(session.sessionId)}`,
+    ...metadataLines({
+      projectHow: identity.how,
+      projectConfidence: identity.confidence,
+      started: session.createdAt,
+      ended: session.closedAt ?? session.updatedAt,
+      activity: closeoutActivity(session, events, changedFiles),
+    }),
     `date: ${date}`,
     "tags: []",
     "distilled: false",
@@ -472,12 +541,34 @@ export async function writeDigestRecord(input: {
   // A Claude Desktop chat's own title and the Claude project it sits in (T-333).
   conversationTitle?: string;
   claudeProject?: string;
+  // How the project was decided, what this stretch did and what reading it cost (T-334).
+  identity?: { how: ProjectHow; confidence: ProjectConfidence };
+  activity?: SessionActivity;
+  extraction?: ExtractionCost;
 }): Promise<{ path: string }> {
   const existing = await findSessionRecord(input.sessionId);
   const earlier =
     existing && isDigestRecord(existing.text)
       ? recordDigest(existing.text)
       : null;
+  // A later stretch adds its counts and cost to the ones the record already carries.
+  const before =
+    earlier && existing ? readMetadata(parseFrontmatter(existing.text)) : {};
+  const activity = mergeActivity(before.activity, input.activity);
+  const extraction =
+    before.extraction && input.extraction
+      ? {
+          model: input.extraction.model,
+          inputChars:
+            before.extraction.inputChars + input.extraction.inputChars,
+          ms: before.extraction.ms + input.extraction.ms,
+        }
+      : (input.extraction ?? before.extraction);
+  const identity =
+    input.identity ??
+    (input.project
+      ? { how: "path" as const, confidence: "high" as const }
+      : NO_PROJECT);
   const digest = earlier ? mergeDigests(earlier, input.digest) : input.digest;
   const existingDate = existing
     ? /^date: (\d{4}-\d{2}-\d{2})$/m.exec(existing.text)?.[1]
@@ -511,12 +602,18 @@ export async function writeDigestRecord(input: {
     `task: ${quote(input.task ?? "")}`,
     `provider: ${quote(input.provider)}`,
     'source: "digest"',
-    `started: ${quote(started)}`,
-    `ended: ${quote(input.endedAt)}`,
     "status: completed",
     `session_id: ${quote(input.sessionId)}`,
     ...optional("conversation_title", input.conversationTitle),
     ...optional("claude_project", input.claudeProject),
+    ...metadataLines({
+      projectHow: identity.how,
+      projectConfidence: identity.confidence,
+      started,
+      ended: input.endedAt,
+      ...(activity ? { activity } : {}),
+      ...(extraction ? { extraction } : {}),
+    }),
     `date: ${date}`,
     "tags: []",
     "distilled: false",

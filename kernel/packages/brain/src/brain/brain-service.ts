@@ -10,6 +10,11 @@ import {
   type BrainIndexReaderPort,
 } from "@ocean/core/domain/ports/brain-index-port.js";
 import type { EmbedderPort } from "@ocean/core/domain/ports/embedder-port.js";
+import { readMetadata } from "@ocean/core/domain/sessions/session-metadata.js";
+import {
+  FRONTMATTER_READ_BYTES,
+  readFrontmatterFile,
+} from "@ocean/core/shared/fs-utils.js";
 import {
   oceanRoot,
   resolveStorePath,
@@ -51,6 +56,10 @@ export type BrainSearchOptions = {
   // Answer as of this YYYY-MM-DD: only facts valid then (T-321). Absent = today, where a
   // superseded record still shows but ranks below its replacement.
   asOf?: string;
+  // Session records only (T-334): the task or branch their metadata block names. Read from each
+  // hit's frontmatter, so they narrow the ranked hits rather than widen the search.
+  task?: string;
+  branch?: string;
   // "Today" for the recency and staleness rules; tests pin it.
   now?: Date;
   embedder?: EmbedderPort | null;
@@ -275,6 +284,19 @@ export async function brainSearch(
         if (!dated || dated < options.since) continue;
       }
       if (options.asOf && !validOn(doc, options.asOf, successor)) continue;
+      if (options.task || options.branch) {
+        const head = await readFrontmatterFile(
+          resolveStorePath(root, String(doc.path)),
+          FRONTMATTER_READ_BYTES,
+        );
+        const meta = readMetadata(head?.fields ?? {});
+        if (
+          options.task &&
+          meta.task?.toLowerCase() !== options.task.trim().toLowerCase()
+        )
+          continue;
+        if (options.branch && meta.branch !== options.branch.trim()) continue;
+      }
       // Backstop for hits the SQL filter never saw (vector hits are not scope-filtered).
       if (
         options.scope &&
