@@ -149,17 +149,31 @@ type Found = {
 
 // Project uuid → name, from the claude.ai project responses Claude Desktop and the browsers
 // cached.
-function projectNames(entries: Cached[]): Map<string, string> {
+function projectNames(
+  entries: Cached[],
+  keep: (project: Record<string, unknown>) => boolean = () => true,
+): Map<string, string> {
   const names = new Map<string, string>();
   for (const { url, json } of entries) {
     if (/\/projects(_v2)?(\?|$)/.test(url))
       for (const project of list(json))
-        if (text(project.uuid))
+        if (text(project.uuid) && keep(project))
           names.set(text(project.uuid), text(project.name));
     const one = new RegExp(`/projects/(${UUID})(\\?|$)`).exec(url)?.[1];
-    if (one && text(object(json).name)) names.set(one, text(object(json).name));
+    if (one && text(object(json).name) && keep(object(json)))
+      names.set(one, text(object(json).name));
   }
   return names;
+}
+
+// A project the owner can delete is his own; one shared with him in a team organization (view
+// only) is not his to rename or to file under, so its name is not one of his. A response without
+// permissions says nothing either way, and the project is kept.
+function isOwned(project: Record<string, unknown>): boolean {
+  const permissions = project.permissions;
+  return (
+    !Array.isArray(permissions) || permissions.includes("chat_project:delete")
+  );
 }
 
 async function claudeEntries(home: string): Promise<Cached[]> {
@@ -200,7 +214,7 @@ function isFullList({ url, json }: Cached): boolean {
 // a project since deleted or renamed is still named by an older one (T-330): for each account the
 // newest full list is what it has, plus any project named in a response newer than that list. An
 // account with no full list keeps every name it was sent; an account not seen for a month is
-// dropped.
+// dropped; a project someone else made and only shared with the owner is left out.
 function currentProjectNames(entries: Cached[]): string[] {
   const byOrg = new Map<string, Cached[]>();
   for (const entry of entries) {
@@ -226,7 +240,7 @@ function currentProjectNames(entries: Cached[]): string[] {
     const kept = full
       ? items.filter((each) => each === full || each.at > full.at)
       : items;
-    names.push(...projectNames(kept).values());
+    names.push(...projectNames(kept, isOwned).values());
   }
   return [...new Set(names)].filter(Boolean);
 }
