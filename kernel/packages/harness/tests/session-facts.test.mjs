@@ -947,7 +947,10 @@ test("the same turns are extracted once; every call and repeat is logged and cos
     assert.equal(entries[0].session, "s-cost");
     assert.ok(entries[0].input_chars > 0);
     assert.equal(entries[1].input_chars, 0);
-    assert.match(extractionLogFile(), /bridge\/state\/extraction-log\.jsonl$/);
+    assert.match(
+      extractionLogFile().split(path.sep).join("/"),
+      /bridge\/state\/extraction-log\.jsonl$/,
+    );
 
     const summary = summarizeCost(entries, { days: 2, weeks: 1 });
     assert.equal(summary.days.length, 2);
