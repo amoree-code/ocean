@@ -27,6 +27,7 @@ import {
   serverHistoryDir,
 } from "../dist/application/pull/history-index.js";
 import { lastPullRecord, pull } from "../dist/application/pull/pull.js";
+import { claudeProjectNames } from "../dist/application/pull/server-capture.js";
 
 // T-305: `ocean pull` on a synthetic home and workspace — every client's memory and hand-written
 // instructions as candidates, a claude.ai export from ~/Downloads, and an index of every
@@ -694,7 +695,12 @@ test("history: server-side conversations come from snapshots, with their link an
 
 // A Chromium "simple cache" entry file: header, key (the URL), body, end record, response
 // headers, end record — the layout Claude Desktop and Chrome write.
-function cacheEntry(url, value, encoding) {
+function cacheEntry(
+  url,
+  value,
+  encoding,
+  date = "Sat, 01 Nov 2026 10:00:00 GMT",
+) {
   const key = Buffer.from(`1/0/_dk_https://site https://site ${url}`, "latin1");
   const header = Buffer.alloc(24);
   header.writeBigUInt64LE(0xfcfb6d1ba7725c30n, 0);
@@ -712,7 +718,7 @@ function cacheEntry(url, value, encoding) {
     Buffer.alloc(12),
   ]);
   const headers = Buffer.from(
-    `HTTP/1.1 200\0content-type: application/json\0${encoding ? `content-encoding: ${encoding}\0` : ""}date: Sat, 01 Nov 2026 10:00:00 GMT\0`,
+    `HTTP/1.1 200\0content-type: application/json\0${encoding ? `content-encoding: ${encoding}\0` : ""}date: ${date}\0`,
     "latin1",
   );
   return Buffer.concat([header, key, body, end, headers, end]);
@@ -879,4 +885,69 @@ test("pull --yes: claude.ai and ChatGPT come from Desktop's and the browsers' ca
     });
     assert.equal((await listCandidates()).length, texts.length);
   });
+});
+
+test("Claude project names: each account's newest full list wins, and an account not seen for a month is dropped", async () => {
+  const home = await mkdtemp(path.join(os.tmpdir(), "ocean-claude-names-"));
+  const dir = path.join(
+    home,
+    "Library/Application Support/Claude/Cache/Cache_Data",
+  );
+  await mkdir(dir, { recursive: true });
+  const api = (org) => `https://claude.ai/api/organizations/${org}`;
+  const now = "11111111-0000-4000-8000-000000000001";
+  const work = "22222222-0000-4000-8000-000000000002";
+  const old = "33333333-0000-4000-8000-000000000003";
+  const id = (n) => `aaaaaaaa-0000-4000-8000-${String(n).padStart(12, "0")}`;
+  const entries = [
+    // A lookup by uuid from before the project was deleted: superseded by the full list after it.
+    [
+      `${api(now)}/projects?limit=100&uuids=${id(9)}`,
+      [{ uuid: id(9), name: "Deleted" }],
+      "Sun, 23 Nov 2026 10:00:00 GMT",
+    ],
+    [
+      `${api(now)}/projects?limit=200`,
+      [
+        { uuid: id(1), name: "Kept" },
+        { uuid: id(2), name: "Also kept" },
+      ],
+      "Tue, 25 Nov 2026 09:00:00 GMT",
+    ],
+    // Starred only: never mistaken for the full list.
+    [
+      `${api(now)}/projects?limit=30&starred=true`,
+      [{ uuid: id(1), name: "Kept" }],
+      "Tue, 25 Nov 2026 10:00:00 GMT",
+    ],
+    // Created after the full list was fetched.
+    [
+      `${api(now)}/projects/${id(3)}`,
+      { uuid: id(3), name: "New since" },
+      "Tue, 25 Nov 2026 11:00:00 GMT",
+    ],
+    // Another account in use within the month, with no full list: every name it was sent.
+    [
+      `${api(work)}/projects?limit=1&uuids=${id(4)}`,
+      [{ uuid: id(4), name: "Work " }],
+      "Thu, 13 Nov 2026 10:00:00 GMT",
+    ],
+    // An account last seen in September.
+    [
+      `${api(old)}/projects?limit=200`,
+      [{ uuid: id(5), name: "Old account " }],
+      "Wed, 17 Sep 2026 10:00:00 GMT",
+    ],
+  ];
+  for (const [index, [url, value, date]] of entries.entries())
+    await writeFile(
+      path.join(dir, `${index}_0`),
+      cacheEntry(url, value, "gzip", date),
+    );
+  assert.deepEqual((await claudeProjectNames(home)).sort(), [
+    "Also kept",
+    "Kept",
+    "New since",
+    "Work ",
+  ]);
 });
