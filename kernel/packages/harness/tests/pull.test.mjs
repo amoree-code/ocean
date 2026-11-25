@@ -951,3 +951,40 @@ test("Claude project names: each account's newest full list wins, and an account
     "Work ",
   ]);
 });
+
+test("Claude project names: a project shared with the owner, which he cannot delete, is not one of his", async () => {
+  const home = await mkdtemp(path.join(os.tmpdir(), "ocean-claude-owned-"));
+  const dir = path.join(
+    home,
+    "Library/Application Support/Claude/Cache/Cache_Data",
+  );
+  await mkdir(dir, { recursive: true });
+  const id = (n) => `bbbbbbbb-0000-4000-8000-${String(n).padStart(12, "0")}`;
+  const own = ["chat_project:chat:view", "chat_project:delete"];
+  const viewOnly = ["chat_project:chat:view", "chat_project:view"];
+  await writeFile(
+    path.join(dir, "a_0"),
+    cacheEntry(
+      "https://claude.ai/api/organizations/44444444-0000-4000-8000-000000000004/projects?limit=200",
+      [
+        { uuid: id(1), name: "Mine", permissions: own },
+        { uuid: id(2), name: "A teammate's", permissions: viewOnly },
+        { uuid: id(3), name: "No permissions given" },
+      ],
+      "gzip",
+    ),
+  );
+  await writeFile(
+    path.join(dir, "b_0"),
+    cacheEntry(
+      `https://claude.ai/api/organizations/44444444-0000-4000-8000-000000000004/projects/${id(4)}`,
+      { uuid: id(4), name: "Opened, shared", permissions: viewOnly },
+      "gzip",
+      "Sun, 02 Nov 2026 10:00:00 GMT",
+    ),
+  );
+  assert.deepEqual((await claudeProjectNames(home)).sort(), [
+    "Mine",
+    "No permissions given",
+  ]);
+});
