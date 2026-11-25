@@ -240,6 +240,7 @@ const WRITERS = [
   "packages/loop/src/hooks/session-facts-hook.ts",
   "packages/loop/src/sessions/session-closeout.ts",
   "packages/loop/src/sessions/session-projects.ts",
+  "packages/loop/src/sessions/session-relink.ts",
 ];
 
 test("no record writer derives a project from a folder basename", async () => {
