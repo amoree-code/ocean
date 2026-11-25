@@ -70,8 +70,12 @@ test("falls back to the project name, then the short session id, when the title 
   const root = await mkdtemp(path.join(os.tmpdir(), "ocean-brain-dump-"));
   process.env.OCEAN_ROOT = root;
 
+  // The project is the store session's (T-331), never the folder's name.
   const withProject = await writeBrainDump({
-    session: baseSession({ workingDirectory: "/opt/projects/ameer" }),
+    session: baseSession({
+      workingDirectory: "/opt/projects/elsewhere",
+      projectId: "ameer",
+    }),
     events: [],
     changedFiles: [],
     narrative: { workLog: "شنو صار اليوم" },
@@ -186,7 +190,7 @@ test("mirrors task-observer signals under a Signals section when present, and om
   );
   assert.match(
     contentWithoutSignals,
-    /^---\ntype: session\nproject: ".*"\nprovider: ".*"\nsource: "closeout"\nstatus: (completed|failed)\nsession_id: "session-no-signals"\ndate: \d{4}-\d{2}-\d{2}\ntags: \[\]\ndistilled: false\n---\n/,
+    /^---\ntype: session\nproject: ".*"\ntask: ".*"\nprovider: ".*"\nsource: "closeout"\nstatus: (completed|failed)\nsession_id: "session-no-signals"\ndate: \d{4}-\d{2}-\d{2}\ntags: \[\]\ndistilled: false\n---\n/,
   );
   for (const heading of ["## Goal", "## Outcome"])
     assert.ok(contentWithoutSignals.includes(heading), heading);

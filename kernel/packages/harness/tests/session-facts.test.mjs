@@ -704,11 +704,13 @@ test("with digest, a stretch of a long session becomes a session record from the
         },
       });
     };
+    // A folder inside the workspace resolves to the workspace project (T-331: never its name).
+    await mkdir(path.join(root, "kernel"), { recursive: true });
     const run = await runSessionFacts(
       {
         session_id: "long-1",
         transcript_path: transcript,
-        cwd: path.join(root, "ocean"),
+        cwd: path.join(root, "kernel"),
       },
       defaultSessionStoreFactory,
       "claude",
