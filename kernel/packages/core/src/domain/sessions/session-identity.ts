@@ -14,6 +14,9 @@ export type ProjectHow =
   | "git-root"
   | "claude-project"
   | "model"
+  // Set by `ocean sessions relink` (T-337) on an old record whose project it decided after the
+  // fact; never recorded as an identity event.
+  | "backfill"
   | "none";
 
 export type ProjectConfidence = "high" | "medium" | "low" | "none";
