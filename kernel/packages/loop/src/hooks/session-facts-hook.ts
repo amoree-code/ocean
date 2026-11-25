@@ -1,6 +1,7 @@
 import { mkdir, open, stat } from "node:fs/promises";
 import path from "node:path";
 import { writeDigestRecord } from "@ocean/brain/memory/brain-dump.js";
+import { projectScope } from "@ocean/brain/memory/fact-routing.js";
 import { sessionFactsEnabled } from "@ocean/brain/memory/memory-audit.js";
 import {
   type CompleteText,
@@ -303,6 +304,10 @@ export type SessionFactsRun =
       candidates: string[];
       // Free triage found nothing worth a model call (T-329 phase 2).
       trivial?: boolean;
+      // These turns were extracted before; no model call (T-335).
+      repeat?: boolean;
+      // Project facts with no known project, kept in 00-inbox/unrouted/ (T-335).
+      unrouted?: string[];
       rejected: number;
       skipped: number;
     };
@@ -368,6 +373,8 @@ export async function runSessionFacts(
     turns: claim.slice.turns,
     complete,
     digest: options.digest,
+    scope: await projectScope(claim.identity.projectId),
+    log: { sessionId, client },
   });
   if (extraction.failed) {
     // Nothing was learned: hand the turns back, unless a later run already claimed past them.
@@ -425,6 +432,8 @@ export async function runSessionFacts(
     candidates: proposed.proposed,
     rejected: extraction.rejected.length,
     ...(extraction.triage && !extraction.triage.worth ? { trivial: true } : {}),
+    ...(extraction.repeat ? { repeat: true } : {}),
+    ...(proposed.unrouted.length ? { unrouted: proposed.unrouted } : {}),
     skipped: proposed.skipped.length,
   };
   const store = await openStore();

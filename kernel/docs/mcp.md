@@ -376,6 +376,17 @@ what the user asks for explicitly ("remember this", "forget that").
     only starts `ocean hook session-facts` as a detached process. Run it by hand to see what one
     transcript yields:
     `ocean hook session-facts --client claude --session <id> --transcript <path>`.
+  - **Project-aware (T-335).** A session bound to a project tells the model that project, and every
+    project fact goes to it. An unbound session sends the known projects instead (ids and aliases,
+    at most 1 KB); the model answers an id or `none`. A project fact with no known project is kept
+    in `00-inbox/unrouted/` with its `suggested_project`, never dropped; personal facts route as
+    before.
+  - **Cost (T-335).** Free triage skips the call for a trivial stretch, each tool result keeps at
+    most 240 characters of its line, and turns already extracted (same hash) are never sent again.
+    Every call and skipped repeat is a line in `bridge/state/extraction-log.jsonl`;
+    `ocean sessions cost [--days N] [--weeks N] [--json]` sums calls, input characters, estimated
+    tokens and time per day and week. The model stays `sonnet` (`OCEAN_SESSION_FACTS_MODEL`
+    overrides it).
 - **The owner's choice.** `ocean client apply` asks once whether to capture, because it costs one
   small model call per session. `--session-facts on|off` answers without a terminal. Until there is
   an answer, capture is off and `ocean doctor` reports `SESSION_FACTS_UNSET`.

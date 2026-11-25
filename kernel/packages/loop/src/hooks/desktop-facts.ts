@@ -1,6 +1,7 @@
 import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { writeDigestRecord } from "@ocean/brain/memory/brain-dump.js";
+import { projectScope } from "@ocean/brain/memory/fact-routing.js";
 import { sessionFactsEnabled } from "@ocean/brain/memory/memory-audit.js";
 import {
   type CompleteText,
@@ -177,6 +178,10 @@ export type DesktopConversationRun = {
   candidates?: string[];
   // Free triage found nothing worth a model call: a one-line record only (T-329 phase 2).
   trivial?: boolean;
+  // These turns were extracted before; no model call (T-335).
+  repeat?: boolean;
+  // Project facts with no known project, kept in 00-inbox/unrouted/ (T-335).
+  unrouted?: string[];
   // The project the record was filed under (T-333); absent when none was decided.
   project?: string;
   rejected?: number;
@@ -309,11 +314,15 @@ async function captureOne(
     .map(toTurn);
   if (!turns.some((turn) => turn.role === "user"))
     return { ...base, status: "no-user-text" };
+  // Decided before the call, so the model is told the project (T-335).
+  const decision = await conversationProjectDecision(conversation.uuid);
   // The same call also returns the conversation's digest for the day's log (no second call).
   const extraction = await extractSessionFacts({
     turns,
     complete,
     digest: true,
+    scope: await projectScope(decision.projectId),
+    log: { sessionId: `desktop:${conversation.uuid}`, client: DESKTOP_CLIENT },
   });
   if (extraction.failed) {
     // Nothing was learned: hand the turns back, unless a later run already claimed past them.
@@ -338,7 +347,6 @@ async function captureOne(
     facts: extraction.facts,
   });
   let record: string | undefined;
-  const decision = await conversationProjectDecision(conversation.uuid);
   if (extraction.digest) {
     const times = dated
       .filter((message) => message.createdAt > claim.from)
@@ -370,6 +378,8 @@ async function captureOne(
     candidates: proposed.proposed,
     rejected: extraction.rejected.length,
     ...(extraction.triage && !extraction.triage.worth ? { trivial: true } : {}),
+    ...(extraction.repeat ? { repeat: true } : {}),
+    ...(proposed.unrouted.length ? { unrouted: proposed.unrouted } : {}),
     skipped: proposed.skipped.length,
   };
 }

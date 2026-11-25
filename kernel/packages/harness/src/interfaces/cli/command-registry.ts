@@ -244,6 +244,7 @@ import {
   runSessionFactsCommand,
   startSessionFacts,
 } from "./session-facts-command.js";
+import { runSessionsCommand } from "./sessions-command.js";
 import { parseSetupArgs, SETUP_USAGE, setup } from "./setup-command.js";
 import { runTasksCommand } from "./tasks-command.js";
 import { runTelemetryCommand } from "./telemetry-command.js";
@@ -1881,4 +1882,5 @@ export const commandRegistry: Record<string, CommandHandler> = {
   run: commandRun,
   profiles: () => runProfilesCommand(process.argv.slice(3)),
   session: commandSession,
+  sessions: () => runSessionsCommand(process.argv.slice(3)),
 };

@@ -11,6 +11,16 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
+  extractionLogFile,
+  readExtractionLog,
+  summarizeCost,
+} from "@ocean/brain/memory/extraction-log.js";
+import {
+  MAX_PROJECT_LIST_BYTES,
+  projectListLine,
+  projectScope,
+} from "@ocean/brain/memory/fact-routing.js";
+import {
   memorySettings,
   readAudit,
   sessionFactsEnabled,
@@ -28,7 +38,9 @@ import {
   extractSessionFacts,
   filedFromSessions,
   parseFacts,
+  scopeFact,
   selectTurns,
+  TOOL_LINE_CHARS,
 } from "@ocean/brain/memory/session-facts.js";
 import { MemoryContractError } from "@ocean/core/domain/mcp/memory-contract.js";
 import { INBOX_DIR, STORE_DIR, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
@@ -41,6 +53,7 @@ import {
 import { openSessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
 import { defaultSessionStoreFactory } from "../dist/composition/runtime.js";
 import { finalText } from "../dist/infrastructure/providers/session-facts-completer.js";
+import { runSessionsCommand } from "../dist/interfaces/cli/sessions-command.js";
 
 const FIXTURES = path.resolve("tests/fixtures/session-facts");
 // Built here, never written to a file the secret scanners read.
@@ -209,7 +222,7 @@ test("a routable session fact is filed as a new record; the rest wait as candida
     );
     await seedStores(root);
     await registerNamedProject("Harbor");
-    const { filed, proposed } = await captureSessionFacts({
+    const { filed, proposed, unrouted } = await captureSessionFacts({
       sessionId: "s-route",
       client: "claude",
       facts: [
@@ -229,25 +242,36 @@ test("a routable session fact is filed as a new record; the rest wait as candida
     const record = await readFile(path.join(root, filed[0].path), "utf8");
     assert.match(record, /Tabs Over Spaces content\./);
     assert.match(record, /^> Tabs Over Spaces evidence$/m);
-    // No route: a candidate, for the owner's review.
+    // A project fact whose project is unknown is kept in 00-inbox/unrouted/ with its
+    // suggested project (T-335), never left without a home.
+    assert.equal(unrouted.length, 1);
+    assert.match(
+      unrouted[0],
+      /^00-inbox\/unrouted\/\d{4}-\d{2}-\d{2}-unknown-project-[0-9a-f]{8}\.md$/,
+    );
+    const kept = await readFile(path.join(root, unrouted[0]), "utf8");
+    assert.match(kept, /^suggested_project: "Nowhere"$/m);
+    assert.match(kept, /^source: "session:s-route"$/m);
+    assert.match(kept, /Unknown project content\./);
+    // No type: a candidate, for the owner's review.
     const targets = [];
     for (const file of proposed) {
       const text = await readFile(path.join(root, file), "utf8");
       targets.push(/^target: "(.*)"$/m.exec(text)[1]);
     }
-    assert.deepEqual(targets, ["", ""]);
+    assert.deepEqual(targets, [""]);
     const id = (file) => path.basename(file, ".md");
     await assert.rejects(
-      approveCandidate({ id: id(proposed[1]) }),
+      approveCandidate({ id: id(proposed[0]) }),
       (error) => error.code === "INVALID" && /--type/.test(error.message),
     );
     await assert.rejects(
-      approveCandidate({ id: id(proposed[1]), type: "astrology" }),
+      approveCandidate({ id: id(proposed[0]), type: "astrology" }),
       (error) =>
         error.code === "INVALID" && /unknown fact type/.test(error.message),
     );
     const routed = await approveCandidate({
-      id: id(proposed[1]),
+      id: id(proposed[0]),
       type: "goal",
     });
     assert.equal(routed.path, "02-personal/goals/no-type-at-all.md");
@@ -729,5 +753,236 @@ test("with digest, a stretch of a long session becomes a session record from the
       record,
       /^## Decisions\n\n- \[unverified\] The harvest owns the night block/m,
     );
+  });
+});
+
+// T-335: tool results stay lines of their own (so a tool-sourced fact can be checked), cut to
+// TOOL_LINE_CHARS each.
+test("selectTurns keeps tool results on their own lines, trimmed, and a tool fact grounds", async () => {
+  const long = `node v22.11.0 installed ${"x".repeat(1_000)}`;
+  const turns = [
+    { role: "user", text: "Which   node do we run?" },
+    {
+      role: "assistant",
+      text: `Checking.\n\n[tool result: ${long}]\n\nIt is   node 22.`,
+    },
+  ];
+  const [user, assistant] = selectTurns(turns);
+  assert.equal(user.text, "Which node do we run?");
+  const lines = assistant.text.split("\n");
+  assert.equal(lines.length, 3);
+  assert.equal(lines[1].length, TOOL_LINE_CHARS);
+  assert.match(lines[1], /^\[tool result: node v22\.11\.0 installed x+…\]$/);
+  assert.equal(lines[2], "It is node 22.");
+  const answer = JSON.stringify({
+    facts: [
+      {
+        title: "Node version",
+        content: "The project runs Node 22.11.0.",
+        source: "tool",
+        evidence: "node v22.11.0 installed",
+        reason: "r",
+        type: "project",
+      },
+      {
+        title: "Assistant prose",
+        content: "It is node 22.",
+        source: "tool",
+        evidence: "It is node 22.",
+        reason: "r",
+        type: "project",
+      },
+    ],
+  });
+  const complete = async () => answer;
+  const result = await extractSessionFacts({ turns, complete, triage: false });
+  assert.deepEqual(
+    result.facts.map((fact) => fact.title),
+    ["Node version"],
+  );
+  assert.equal(result.rejected.length, 1);
+});
+
+test("a bound session's prompt names its project, and project facts cannot leave it", () => {
+  const turns = [{ role: "user", text: "We deploy harbor on Fridays only." }];
+  const bound = { kind: "bound", project: "harbor" };
+  const prompt = buildFactsPrompt(turns, { scope: bound });
+  assert.match(prompt, /This conversation is in the project "harbor"/);
+  assert.match(prompt, /"project":"harbor"/);
+  assert.doesNotMatch(prompt, /Known projects/);
+  const projectFact = { ...fact("Deploys", "project", "elsewhere") };
+  assert.equal(scopeFact(projectFact, bound).project, "harbor");
+  assert.equal(scopeFact(fact("Deploys", "project"), bound).project, "harbor");
+  // A personal fact stays without a project.
+  assert.equal(scopeFact(fact("Tabs", "preference"), bound).project, undefined);
+});
+
+test("an unbound session's prompt lists projects within 1 KB; answers outside it are suggestions", () => {
+  const projects = Array.from({ length: 80 }, (_, i) => ({
+    id: `project-${i}`,
+    aliases: i === 1 ? ["Harbor App", "hbr"] : [],
+  }));
+  const line = projectListLine(projects);
+  assert.ok(Buffer.byteLength(line) <= MAX_PROJECT_LIST_BYTES);
+  assert.match(line, /^project-0; project-1 \(Harbor App, hbr\); project-2/);
+  assert.ok(!line.endsWith(";"));
+  const scope = { kind: "list", projects };
+  const prompt = buildFactsPrompt([{ role: "user", text: "hello there" }], {
+    scope,
+  });
+  assert.match(prompt, /Known projects, as id \(aliases\): project-0;/);
+  assert.match(prompt, /or "none"/);
+  assert.match(prompt, /suggested_project/);
+  // An id or an alias, any case, names the project.
+  assert.equal(
+    scopeFact(fact("a", "project", "HBR"), scope).project,
+    "project-1",
+  );
+  assert.equal(
+    scopeFact(fact("a", "project", "project-2"), scope).project,
+    "project-2",
+  );
+  // "none" with a suggestion, or a name not in the list: no project, a suggestion.
+  const none = scopeFact(
+    { ...fact("a", "project", "none"), suggestedProject: "Lighthouse" },
+    scope,
+  );
+  assert.equal(none.project, undefined);
+  assert.equal(none.suggestedProject, "Lighthouse");
+  const unknown = scopeFact(fact("a", "project", "Lighthouse"), scope);
+  assert.equal(unknown.project, undefined);
+  assert.equal(unknown.suggestedProject, "Lighthouse");
+  assert.deepEqual(
+    parseFacts(
+      JSON.stringify({
+        facts: [
+          {
+            title: "t",
+            content: "c",
+            evidence: "e",
+            project: "none",
+            suggested_project: "Lighthouse",
+          },
+        ],
+      }),
+    )[0].suggestedProject,
+    "Lighthouse",
+  );
+});
+
+test("projectScope binds a known project, else lists the registered ones", async () => {
+  await inWorkspace("scope", async () => {
+    await registerNamedProject("Harbor");
+    assert.deepEqual(await projectScope("harbor"), {
+      kind: "bound",
+      project: "harbor",
+    });
+    const listed = await projectScope(null);
+    assert.equal(listed.kind, "list");
+    assert.deepEqual(
+      listed.projects.map((project) => project.id),
+      ["harbor"],
+    );
+  });
+});
+
+test("the same turns are extracted once; every call and repeat is logged and costed", async () => {
+  await inWorkspace("cost", async () => {
+    const turns = [
+      { role: "user", text: "I always want answers in short bullet lists." },
+      { role: "assistant", text: "Understood, short bullets from now on." },
+    ];
+    let calls = 0;
+    const complete = async () => {
+      calls += 1;
+      return '{"facts":[]}';
+    };
+    complete.model = "sonnet";
+    const log = { sessionId: "s-cost", client: "claude" };
+    const first = await extractSessionFacts({
+      turns,
+      complete,
+      triage: false,
+      log,
+    });
+    assert.equal(first.repeat, undefined);
+    const second = await extractSessionFacts({
+      turns,
+      complete,
+      triage: false,
+      log,
+    });
+    assert.equal(second.repeat, true);
+    assert.equal(calls, 1);
+    // A failed answer does not count as extracted: the next run calls again.
+    const failing = async () => null;
+    failing.model = "sonnet";
+    const other = [
+      { role: "user", text: "Remember that my editor is Zed, always." },
+    ];
+    await extractSessionFacts({
+      turns: other,
+      complete: failing,
+      triage: false,
+      log,
+    });
+    const retry = await extractSessionFacts({
+      turns: other,
+      complete,
+      triage: false,
+      log,
+    });
+    assert.equal(retry.repeat, undefined);
+    assert.equal(calls, 2);
+    // Without log nothing is read or written.
+    await extractSessionFacts({ turns, complete, triage: false });
+    assert.equal(calls, 3);
+
+    const entries = await readExtractionLog();
+    assert.deepEqual(
+      entries.map((entry) => entry.outcome),
+      ["ok", "repeat", "failed", "ok"],
+    );
+    assert.equal(entries[0].model, "sonnet");
+    assert.equal(entries[0].session, "s-cost");
+    assert.ok(entries[0].input_chars > 0);
+    assert.equal(entries[1].input_chars, 0);
+    assert.match(
+      extractionLogFile().split(path.sep).join("/"),
+      /bridge\/state\/extraction-log\.jsonl$/,
+    );
+
+    const summary = summarizeCost(entries, { days: 2, weeks: 1 });
+    assert.equal(summary.days.length, 2);
+    assert.equal(summary.weeks.length, 1);
+    const today = summary.days[0];
+    assert.equal(today.calls, 3);
+    assert.equal(today.failed, 1);
+    assert.equal(today.repeats, 1);
+    assert.equal(
+      today.input_chars,
+      entries.reduce((sum, entry) => sum + entry.input_chars, 0),
+    );
+    assert.equal(today.est_tokens, Math.ceil(today.input_chars / 4));
+    assert.deepEqual(summary.weeks[0].calls, 3);
+    assert.equal(summary.days[1].calls, 0);
+
+    const printed = [];
+    const log0 = console.log;
+    console.log = (text) => printed.push(text);
+    try {
+      await runSessionsCommand(["cost", "--json", "--days", "1"]);
+      await runSessionsCommand(["cost"]);
+    } finally {
+      console.log = log0;
+    }
+    const json = JSON.parse(printed[0]);
+    assert.equal(json.days.length, 1);
+    assert.equal(json.days[0].calls, 3);
+    assert.match(
+      printed[1],
+      /^day\s+calls\s+failed\s+repeats\s+input chars\s+~tokens\s+time$/m,
+    );
+    assert.match(printed[1], /^week of\s+calls/m);
   });
 });

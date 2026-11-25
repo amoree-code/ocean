@@ -158,6 +158,7 @@ prints its usage and never runs it. To hand `--help` to a wrapped client, put it
 | `ocean memory` | search, read, review and maintain memory; `hygiene` re-checks records' paths, URLs and repos, `drift` finds records changed without an audited write | Reads; `approve`, `delete`, `restore`, `reindex`, `sync --apply`, `purge --yes`, `hygiene --yes`, `drift --yes` write |
 | `ocean pull` | pull what AI clients hold into Ocean as review candidates | Reads (dry run); `--yes` writes |
 | `ocean desktop` | capture facts from Claude Desktop's chat, read from the app's local store, as review candidates | Reads (`--dry-run`); a run writes candidates |
+| `ocean sessions` | `cost`: what session capture's extraction calls cost per day and week (calls, repeats skipped, input characters, estimated tokens, time), from `bridge/state/extraction-log.jsonl` | Reads |
 | `ocean observe` | run a command and record its output | Runs |
 | `ocean capture` / `idea` | capture ideas, then promote or discard them | Writes |
 | `ocean note` | `ocean note "<text>"`: capture a thought into `00-inbox/captures/` with frontmatter | Writes |

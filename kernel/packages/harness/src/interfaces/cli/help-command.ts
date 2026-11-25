@@ -5,7 +5,7 @@ const commandGroups = [
   ],
   [
     "Execution",
-    "run, profiles, session, service, intercept, operate, intent, gateway, schedule",
+    "run, profiles, session, sessions, service, intercept, operate, intent, gateway, schedule",
   ],
   [
     "Providers",
@@ -83,6 +83,10 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
   session: [
     "List, show, resume, promote and compact recorded sessions.",
     "ocean session list|show <session-id>|summary <session-id>|events <session-id>|resume <session-id> <prompt>|promote <session-id> [knowledge/<kind>] --approve|doctor [hours] [--apply]|compact [--keep-days N] [--simulate]|compact --apply --before <iso> --plan <fingerprint>",
+  ],
+  sessions: [
+    "What session capture's extraction model calls cost, per day and week, from bridge/state/extraction-log.jsonl.",
+    "ocean sessions cost [--days N] [--weeks N] [--json]",
   ],
   service: [
     "Run the background service in the foreground (setup's login entry starts it).",

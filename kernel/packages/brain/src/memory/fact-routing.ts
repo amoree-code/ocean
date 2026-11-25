@@ -1,7 +1,9 @@
 import { projectDir } from "@ocean/core/shared/paths.js";
 import {
   findProject,
+  projectAliases,
   projectSlug,
+  scanProjectManifests,
 } from "@ocean/core/shared/project-resolution.js";
 import { permanentRecord } from "./memory-paths.js";
 import routing from "./routing.json" with { type: "json" };
@@ -60,4 +62,63 @@ export function inTypeLocation(relative: string, type: string): boolean {
   if (/^04-projects\/(?:[^/]+\/)?[^/]+\/(?:memory|docs)\//.test(relative))
     return true;
   return relative.startsWith(folder);
+}
+
+// What the extraction model is told about projects (T-335). A session bound to a project names
+// it, and every project fact goes there. An unbound one gets the known projects to choose from,
+// or `none`; a project outside the list is only a suggestion and lands in 00-inbox/unrouted/.
+export type ProjectScope =
+  | { kind: "bound"; project: string }
+  | { kind: "list"; projects: { id: string; aliases: string[] }[] };
+
+export const MAX_PROJECT_LIST_BYTES = 1024;
+
+export async function projectScope(
+  projectId: string | null | undefined,
+): Promise<ProjectScope> {
+  if (projectId) return { kind: "bound", project: projectId };
+  const { manifests } = await scanProjectManifests();
+  return {
+    kind: "list",
+    projects: manifests.map((manifest) => {
+      let aliases: string[] = [];
+      try {
+        aliases = projectAliases(manifest);
+      } catch {
+        // a malformed alias list only drops the aliases
+      }
+      return { id: manifest.id, aliases };
+    }),
+  };
+}
+
+// The list as the prompt carries it, "id (alias, alias); id", cut at whole entries to stay
+// within MAX_PROJECT_LIST_BYTES.
+export function projectListLine(
+  projects: { id: string; aliases: string[] }[],
+): string {
+  let line = "";
+  for (const project of projects) {
+    const entry = project.aliases.length
+      ? `${project.id} (${project.aliases.join(", ")})`
+      : project.id;
+    const next = line ? `${line}; ${entry}` : entry;
+    if (Buffer.byteLength(next) > MAX_PROJECT_LIST_BYTES) break;
+    line = next;
+  }
+  return line;
+}
+
+// The project id a model's answer names within a list scope: an id or an alias, any case.
+export function listedProject(
+  projects: { id: string; aliases: string[] }[],
+  answer: string,
+): string | undefined {
+  const name = answer.trim().toLowerCase();
+  if (!name) return undefined;
+  return projects.find(
+    (project) =>
+      project.id.toLowerCase() === name ||
+      project.aliases.some((alias) => alias.toLowerCase() === name),
+  )?.id;
 }

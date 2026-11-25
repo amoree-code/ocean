@@ -239,6 +239,11 @@ export function sessionFactsLedgerFile(): string {
   return stateDir("memory", "session-facts.json");
 }
 
+// Project facts whose project Ocean does not know (T-335), one note each, for the owner to place.
+export function unroutedFile(name: string): string {
+  return oceanPath(INBOX_DIR, "unrouted", name);
+}
+
 export function auditFile(): string {
   return stateDir("memory", "audit.jsonl");
 }
