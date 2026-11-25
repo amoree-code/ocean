@@ -285,7 +285,7 @@ test("the session-start warning is bounded and said once per name per day", asyn
     );
     assert.equal(
       line,
-      'Ocean: "app" is linked to no project → ocean project bind <id> ~/code/app --add',
+      `Ocean: "app" is linked to no project → ocean project bind <id> ${path.join("~", "code", "app")} --add`,
     );
     assert.equal(
       await unlinkedFolderWarning({ ...project, gitRoot: null }, morning),
