@@ -5,15 +5,25 @@ import { redactSecrets } from "@ocean/core/domain/redaction/redaction.js";
 import type { ExtractionCost } from "@ocean/core/domain/sessions/session-metadata.js";
 import { atomicWrite, withFileLock } from "@ocean/core/shared/fs-utils.js";
 import { localDate } from "@ocean/core/shared/local-date.js";
+import { oceanPath } from "@ocean/core/shared/paths.js";
+import { projectSlug } from "@ocean/core/shared/project-resolution.js";
+import { appendExtractionLog, extractedBefore } from "./extraction-log.js";
 import {
   FACT_TYPES,
   type FactType,
   factTarget,
   isFactType,
+  listedProject,
+  type ProjectScope,
+  projectListLine,
 } from "./fact-routing.js";
 import { readAudit, sha256 } from "./memory-audit.js";
-import { sessionFactsLedgerFile } from "./memory-paths.js";
-import { proposeMemory, writeMemoryRecord } from "./memory-write.js";
+import { sessionFactsLedgerFile, unroutedFile } from "./memory-paths.js";
+import {
+  checkContent,
+  proposeMemory,
+  writeMemoryRecord,
+} from "./memory-write.js";
 import { type FactTurn, type Triage, triageTurns } from "./session-triage.js";
 
 // Automatic fact capture at the end of a session and before a compaction (T-313). The industry
@@ -53,9 +63,32 @@ export type SessionFact = {
   source?: Exclude<Evidence, "unverified">;
   reason: string;
   project?: string;
+  // A project the model named that Ocean does not know (T-335): kept with the fact in
+  // 00-inbox/unrouted/ so it is never lost for lack of a home.
+  suggestedProject?: string;
   // Which row of the routing table the fact belongs to; its target follows from it (T-314).
   type?: FactType;
 };
+
+// A fact's project as the scope allows it (T-335). Bound: a project fact always goes to the
+// session's project. Listed: an id or alias from the list, else the answer is only a suggestion.
+// Without a scope the model's answer stands (older callers, tests).
+export function scopeFact(
+  fact: SessionFact,
+  scope: ProjectScope | undefined,
+): SessionFact {
+  if (!scope) return fact;
+  const { project, suggestedProject, ...rest } = fact;
+  if (scope.kind === "bound")
+    return fact.type === "project" || project
+      ? { ...rest, project: scope.project }
+      : rest;
+  const id = project ? listedProject(scope.projects, project) : undefined;
+  if (id) return { ...rest, project: id };
+  const named = project && project.toLowerCase() !== "none" ? project : "";
+  const suggestion = suggestedProject || named;
+  return suggestion ? { ...rest, suggestedProject: suggestion } : rest;
+}
 
 // One model call: prompt in, the model's final text out; null when the call failed.
 // `model` names what answers, for the record's extraction cost (T-334); a completer that does
@@ -82,10 +115,36 @@ const MAX_CONTENT = 1_200;
 const MAX_EVIDENCE = 300;
 const MIN_EVIDENCE = 8;
 
+// A tool result keeps this much of its line in the prompt (T-335): enough to quote a version or
+// a path from, not enough to crowd out what the user said.
+export const TOOL_LINE_CHARS = 240;
+const TOOL_LINE = /^\[tool (?:result|error): /;
+
+// Spaces collapse within a line, but line breaks stay: a tool result is a line of its own, and
+// the evidence check finds it by its line (RESULT_LINE).
+function compactLines(text: string): string {
+  return text
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
+function trimToolLines(text: string): string {
+  return text
+    .split("\n")
+    .map((line) =>
+      TOOL_LINE.test(line) && line.length > TOOL_LINE_CHARS
+        ? `${line.slice(0, TOOL_LINE_CHARS - 2)}…]`
+        : line,
+    )
+    .join("\n");
+}
+
 // Secrets and private paths are replaced before any text reaches a model (the candidate check
-// runs again on the output). Turns are then chosen within the budget: the newest user turns
-// first, up to USER_SHARE of it, then the newest assistant turns in what is left, and the chosen
-// ones are put back in conversation order.
+// runs again on the output), and tool results are cut short after that. Turns are then chosen
+// within the budget: the newest user turns first, up to USER_SHARE of it, then the newest
+// assistant turns in what is left, and the chosen ones are put back in conversation order.
 export function selectTurns(
   turns: FactTurn[],
   budgetChars = DEFAULT_FACTS_BUDGET_CHARS,
@@ -94,7 +153,7 @@ export function selectTurns(
     .map((turn, index) => ({
       index,
       role: turn.role,
-      text: redactSecrets(turn.text.replace(/\s+/g, " ").trim()).slice(
+      text: trimToolLines(redactSecrets(compactLines(turn.text))).slice(
         0,
         MAX_TURN_CHARS,
       ),
@@ -149,10 +208,39 @@ const digestPrompt = (items: number) => [
   'evidence is "user" when the USER said or confirmed it (quote: an exact copy from one USER line), "tool" when a tool result in the conversation shows it (quote: an exact copy from that [tool result: …]), else "unverified" (quote: ""). An assistant claim nobody confirmed and no tool showed is "unverified"; a decision the user did not confirm is not a decision.',
 ];
 
+// What the prompt says about projects (T-335), and how the facts' project field reads.
+function projectRules(scope: ProjectScope | undefined): {
+  rules: string[];
+  field: string;
+} {
+  if (!scope)
+    return {
+      rules: [],
+      field: '"project":"project name if the fact is about one, else omit"',
+    };
+  if (scope.kind === "bound")
+    return {
+      rules: [
+        `This conversation is in the project "${scope.project}". Every project fact is about it: its project is "${scope.project}".`,
+      ],
+      field: `"project":"${scope.project}"`,
+    };
+  const list = projectListLine(scope.projects);
+  return {
+    rules: [
+      `Known projects, as id (aliases): ${list || "(none)"}.`,
+      'For a project fact, project is one id from that list, or "none" when it is about a project not listed; then give that project\'s name in suggested_project.',
+    ],
+    field:
+      '"project":"an id from the known projects, or none","suggested_project":"only when project is none"',
+  };
+}
+
 export function buildFactsPrompt(
   turns: FactTurn[],
-  options: { digest?: boolean; items?: number } = {},
+  options: { digest?: boolean; items?: number; scope?: ProjectScope } = {},
 ): string {
+  const projects = projectRules(options.scope);
   const transcript = turns
     .map(
       (turn) => `[${turn.role === "user" ? "USER" : "ASSISTANT"}] ${turn.text}`,
@@ -166,8 +254,9 @@ export function buildFactsPrompt(
     `Return at most ${MAX_FACTS} facts. Returning none is correct and common.`,
     ...(options.digest ? digestPrompt(options.items ?? DIGEST_ITEMS) : []),
     "Answer with JSON only, no prose and no code fence:",
-    `{"facts":[{"title":"short label","content":"the fact as one or two plain sentences","source":"user or tool","evidence":"an exact quote, copied character for character from one USER line (source user) or one [tool result: …] (source tool)","reason":"why it is durable","type":"one of the types below","project":"project name if the fact is about one, else omit"}]${options.digest ? ',"digest":{"title":"","goal":"","outcome":"","decisions":[{"text":"","evidence":"user","quote":""}],"fixes":[],"learned":[],"next":[]}' : ""}}`,
-    `type is one of: ${FACT_TYPES.join(", ")}. Use project only for a fact about one project, and then also give its project name; a fact about the user stays a personal type even when it came up in a project.`,
+    `{"facts":[{"title":"short label","content":"the fact as one or two plain sentences","source":"user or tool","evidence":"an exact quote, copied character for character from one USER line (source user) or one [tool result: …] (source tool)","reason":"why it is durable","type":"one of the types below",${projects.field}}]${options.digest ? ',"digest":{"title":"","goal":"","outcome":"","decisions":[{"text":"","evidence":"user","quote":""}],"fixes":[],"learned":[],"next":[]}' : ""}}`,
+    `type is one of: ${FACT_TYPES.join(", ")}. Use project only for a fact about one project, and then also give its project; a fact about the user stays a personal type even when it came up in a project.`,
+    ...projects.rules,
     'Answer {"facts":[]} when nothing qualifies.',
     "",
     "Conversation:",
@@ -277,6 +366,8 @@ export function parseFacts(text: string | null): SessionFact[] {
     if (value.source === "tool") fact.source = "tool";
     const project = clean(value.project, 64);
     if (project) fact.project = project;
+    const suggested = clean(value.suggested_project, 64);
+    if (suggested) fact.suggestedProject = suggested;
     if (isFactType(value.type)) fact.type = value.type;
     if (fact.title && fact.content && fact.evidence) facts.push(fact);
     if (facts.length === MAX_FACTS) break;
@@ -360,7 +451,12 @@ export type ExtractionResult = {
   triage?: Triage;
   // The model call's cost, when there was one (T-334).
   call?: ExtractionCost;
+  // These exact turns were extracted before, so no model call was made (T-335).
+  repeat?: boolean;
 };
+
+// The hash that identifies a stretch of transcript: the turns exactly as the model would see them.
+export const turnsHash = (turns: FactTurn[]) => sha256(JSON.stringify(turns));
 
 const FIRST_LINE_CHARS = 80;
 
@@ -387,6 +483,11 @@ export async function extractSessionFacts(options: {
   digest?: boolean;
   // false skips the free triage and always calls the model.
   triage?: boolean;
+  // What the model is told about projects (T-335); facts are held to it.
+  scope?: ProjectScope;
+  // Given: the call is logged (extraction-log.jsonl), and turns already extracted are not sent
+  // again (T-335). Omitted (tests, evals): no file is read or written.
+  log?: { sessionId: string; client: string };
 }): Promise<ExtractionResult> {
   const turns = selectTurns(options.turns, options.budgetChars);
   if (!turns.some((turn) => turn.role === "user"))
@@ -402,8 +503,42 @@ export async function extractSessionFacts(options: {
       triage,
       ...(options.digest ? { digest: trivialDigest(turns) } : {}),
     };
+  const hash = turnsHash(turns);
+  const model = options.complete.model || "unknown";
+  const logEntry = (
+    outcome: "ok" | "failed" | "repeat",
+    cost?: ExtractionCost,
+  ) =>
+    options.log
+      ? appendExtractionLog({
+          at: new Date().toISOString(),
+          client: options.log.client,
+          session: options.log.sessionId,
+          model,
+          input_chars: cost?.inputChars ?? 0,
+          ms: cost?.ms ?? 0,
+          hash,
+          outcome,
+        }).catch(() => {})
+      : Promise.resolve();
+  if (options.log && (await extractedBefore(hash).catch(() => false))) {
+    await logEntry("repeat");
+    return {
+      facts: [],
+      rejected: [],
+      prompt: "",
+      turns: turns.length,
+      failed: false,
+      triage,
+      repeat: true,
+    };
+  }
   const items = digestItems(turns);
-  const prompt = buildFactsPrompt(turns, { digest: options.digest, items });
+  const prompt = buildFactsPrompt(turns, {
+    digest: options.digest,
+    items,
+    scope: options.scope,
+  });
   let answer: string | null = null;
   const calledAt = Date.now();
   try {
@@ -412,13 +547,16 @@ export async function extractSessionFacts(options: {
     answer = null;
   }
   const call: ExtractionCost = {
-    model: options.complete.model || "unknown",
+    model,
     inputChars: prompt.length,
     ms: Date.now() - calledAt,
   };
+  const failed = factsList(answer) === null;
+  await logEntry(failed ? "failed" : "ok", call);
   const facts: SessionFact[] = [];
   const rejected: ExtractionResult["rejected"] = [];
-  for (const fact of parseFacts(answer)) {
+  for (const parsed of parseFacts(answer)) {
+    const fact = scopeFact(parsed, options.scope);
     if (isGrounded(fact, turns)) facts.push(fact);
     else
       rejected.push({
@@ -431,7 +569,7 @@ export async function extractSessionFacts(options: {
     rejected,
     prompt,
     turns: turns.length,
-    failed: factsList(answer) === null,
+    failed,
     call,
     triage,
     ...(options.digest ? { digest: parseDigest(answer, turns, items) } : {}),
@@ -463,6 +601,8 @@ export type CaptureResult = {
   filed: { path: string; auditId: string }[];
   // Left for the owner's review: a fact with no home, or one that would change a record.
   proposed: string[];
+  // Project facts whose project Ocean does not know, kept in 00-inbox/unrouted/ (T-335).
+  unrouted: string[];
   skipped: { title: string; reason: string }[];
 };
 
@@ -491,7 +631,12 @@ async function proposeLocked(options: {
   facts: SessionFact[];
 }): Promise<CaptureResult> {
   const ledger = await readLedger();
-  const result: CaptureResult = { filed: [], proposed: [], skipped: [] };
+  const result: CaptureResult = {
+    filed: [],
+    proposed: [],
+    unrouted: [],
+    skipped: [],
+  };
   for (const fact of options.facts) {
     const key = factKey(fact);
     if (ledger[key]) {
@@ -504,6 +649,20 @@ async function proposeLocked(options: {
     const content = `# ${fact.title}\n\n${fact.content}\n\n> ${fact.evidence}\n`;
     const source = `${SESSION_FACTS_SOURCE_PREFIX}${options.sessionId}`;
     const target = await factTarget(fact);
+    if (!target && fact.type === "project") {
+      // A project fact whose project Ocean does not know (T-335): kept, with the project the
+      // model suggested, for the owner to place.
+      const kept = await keepUnrouted(fact, content, source, options.client);
+      if (kept) {
+        ledger[key] = kept;
+        result.unrouted.push(kept);
+      } else
+        result.skipped.push({
+          title: fact.title,
+          reason: "unrouted fact refused (empty, too large or a secret)",
+        });
+      continue;
+    }
     if (target) {
       const written = await fileNew(target, content, source);
       if (written) {
@@ -537,8 +696,42 @@ async function proposeLocked(options: {
       });
     }
   }
-  if (result.proposed.length || result.filed.length) await writeLedger(ledger);
+  if (result.proposed.length || result.filed.length || result.unrouted.length)
+    await writeLedger(ledger);
   return result;
+}
+
+// One project fact with no known project, as a note in 00-inbox/unrouted/; its path, relative to
+// the workspace, or null when the content is refused.
+async function keepUnrouted(
+  fact: SessionFact,
+  content: string,
+  source: string,
+  client: string,
+): Promise<string | null> {
+  try {
+    checkContent(content);
+  } catch (error) {
+    if (error instanceof MemoryContractError) return null;
+    throw error;
+  }
+  const name = `${localDate()}-${projectSlug(fact.title) || "fact"}-${sha256(content).slice(0, 8)}.md`;
+  const file = unroutedFile(name);
+  await mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
+  const body = [
+    "---",
+    "type: unrouted",
+    `suggested_project: ${JSON.stringify(fact.suggestedProject ?? fact.project ?? "")}`,
+    `source: ${JSON.stringify(source)}`,
+    `client: ${JSON.stringify(client)}`,
+    `evidence: ${fact.source ?? "user"}`,
+    `created: ${new Date().toISOString()}`,
+    "---",
+    "",
+    content,
+  ].join("\n");
+  await atomicWrite(file, body, 0o600);
+  return path.relative(oceanPath(), file).split(path.sep).join("/");
 }
 
 export type FiledFact = { path: string; auditId: string; at: string };
