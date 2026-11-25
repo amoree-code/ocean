@@ -51,7 +51,10 @@ import {
 import {
   findProject,
   folderProject,
+  listProjectManifests,
+  registerNamedProject,
   scanProjectManifests,
+  suggestProjects,
 } from "@ocean/core/shared/project-resolution.js";
 import {
   createHandoff,
@@ -109,35 +112,100 @@ function withContextAck(list: McpTool[]): McpTool[] {
 // for the save to its local store before it is read.
 export const DESKTOP_SAVE_WAIT_SECONDS = 20;
 
-// `ocean_session_save` (T-329): the capture is a model call, longer than a tool call should
-// take, so it runs as its own detached `ocean desktop capture --latest`, like SessionEnd's.
-function startDesktopSave(): { status: string; message: string } {
+// A detached `ocean desktop …` run, so a model call or a wait never holds the tool call open.
+function startDesktop(args: string[]): boolean {
   try {
-    spawn(
-      process.execPath,
-      [
-        process.argv[1] ?? "",
-        "desktop",
-        "capture",
-        "--latest",
-        "--wait",
-        String(DESKTOP_SAVE_WAIT_SECONDS),
-      ],
-      { detached: true, stdio: "ignore" },
-    )
+    spawn(process.execPath, [process.argv[1] ?? "", "desktop", ...args], {
+      detached: true,
+      stdio: "ignore",
+    })
       .on("error", () => {})
       .unref();
+    return true;
   } catch {
+    return false;
+  }
+}
+
+// The project a tool argument names (T-333). A name no project answers to is refused with the
+// projects it probably means, never guessed.
+async function toolProject(ref: string): Promise<string> {
+  const manifests = await listProjectManifests();
+  const id = await findProject(ref);
+  if (id) return id;
+  const near = [
+    ...new Set(suggestProjects(manifests, ref).map((each) => each.id)),
+  ];
+  throw new Error(
+    `no project answers to '${ref}'${near.length ? `; did you mean ${near.join(", ")}?` : ""} (ocean_projects_list lists them)`,
+  );
+}
+
+// `ocean_session_save` (T-329): the capture is a model call, longer than a tool call should
+// take, so it runs as its own detached `ocean desktop capture --latest`, like SessionEnd's. A
+// project passed in binds the chat there first (T-333): explicit wins.
+async function startDesktopSave(
+  args: Record<string, unknown>,
+): Promise<{ status: string; message: string; project?: string }> {
+  const project =
+    typeof args.project === "string" && args.project.trim()
+      ? await toolProject(args.project.trim())
+      : undefined;
+  const started = startDesktop([
+    "capture",
+    "--latest",
+    ...(project ? ["--project", project] : []),
+    "--wait",
+    String(DESKTOP_SAVE_WAIT_SECONDS),
+  ]);
+  if (!started)
     return {
       status: "failed",
       message:
         "The capture could not start. The conversation is still captured once it has been quiet for two hours.",
     };
-  }
   return {
     status: "started",
+    ...(project ? { project } : {}),
     message:
       "Saving this conversation to Ocean in the background. Its session record appears in sessions/ within a few minutes.",
+  };
+}
+
+// `ocean_project_link` (T-333): this Desktop chat, and the Claude project it sits in, belong to
+// an Ocean project from now on. The project is found (or registered) now; the binding waits in
+// the background until the app has written this chat to its store.
+async function linkDesktopProject(args: Record<string, unknown>): Promise<{
+  status: string;
+  project: string;
+  created: boolean;
+  message: string;
+}> {
+  const ref = typeof args.project === "string" ? args.project.trim() : "";
+  const name = typeof args.name === "string" ? args.name.trim() : "";
+  let project: string;
+  let created = false;
+  if (ref) project = await toolProject(ref);
+  else if (name && args.create === true)
+    ({ id: project, created } = await registerNamedProject(name, [
+      "claude.ai",
+    ]));
+  else if (name) project = await toolProject(name);
+  else
+    throw new Error("pass project, or name (with create: true for a new one)");
+  const started = startDesktop([
+    "link",
+    project,
+    "--wait",
+    String(DESKTOP_SAVE_WAIT_SECONDS),
+  ]);
+  return {
+    status: started ? "started" : "failed",
+    project,
+    created,
+    message: started
+      ? `This chat and its Claude project are being linked to '${project}' in the background.`
+      : `The link could not start; run: ocean desktop link ${project}`,
   };
 }
 
@@ -290,11 +358,11 @@ const tools = new McpToolRegistry(
     {
       name: "ocean_session_save",
       description:
-        "Claude Desktop chat only: save this conversation to Ocean now, instead of waiting for it to close. Call it when the user says save, remember this conversation, or is about to leave. It starts a background capture of the most recently updated Desktop conversation (its session record, facts and raw transcript) and returns at once; the record lands in sessions/ within a few minutes. Claude Code and CLI sessions are captured at session end and need no call.",
+        "Claude Desktop chat only: save this conversation to Ocean now, instead of waiting for it to close. Call it when the user says save, remember this conversation, or is about to leave. It starts a background capture of the most recently updated Desktop conversation (its session record, facts and raw transcript) and returns at once; the record lands in sessions/ within a few minutes. Pass project (an Ocean project id or name) when the conversation is about one project: it files the record there. Claude Code and CLI sessions are captured at session end and need no call.",
       annotations: { readOnlyHint: false, destructiveHint: false },
       inputSchema: {
         type: "object",
-        properties: {},
+        properties: { project: { type: "string" } },
         additionalProperties: false,
       },
     },
@@ -474,11 +542,11 @@ const tools = new McpToolRegistry(
     {
       name: "ocean_context",
       description:
-        "Call this once at the start of a conversation when no Ocean start line is already in your context (clients without a session-start hook). Returns the bounded Ocean start line (256 bytes or less: the project bound to cwd and the operations available) and, when the user has rules, which ocean_policy names hold them. Holds no records; search for those.",
+        "Call this once at the start of a conversation when no Ocean start line is already in your context (clients without a session-start hook). Returns the bounded Ocean start line (256 bytes or less: the project bound to cwd and the operations available) and, when the user has rules, which ocean_policy names hold them. Pass project (an Ocean project id or name) instead of cwd when the conversation is about one project, as in a Claude Desktop project: the line and the start brief are that project's. Holds no records; search for those.",
       annotations: { readOnlyHint: true },
       inputSchema: {
         type: "object",
-        properties: { cwd: { type: "string" } },
+        properties: { cwd: { type: "string" }, project: { type: "string" } },
         additionalProperties: false,
       },
     },
@@ -501,6 +569,21 @@ const tools = new McpToolRegistry(
       inputSchema: {
         type: "object",
         properties: {},
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "ocean_project_link",
+      description:
+        "Claude Desktop chat only: link this conversation, and the Claude project it sits in, to an Ocean project, when the user says which project it belongs to. Pass project (an existing Ocean project id or name), or name with create: true to register a new project of that name. Its records, and the Claude project's later chats, are filed there from now on.",
+      annotations: { readOnlyHint: false, destructiveHint: false },
+      inputSchema: {
+        type: "object",
+        properties: {
+          project: { type: "string" },
+          name: { type: "string" },
+          create: { type: "boolean" },
+        },
         additionalProperties: false,
       },
     },
@@ -788,7 +871,8 @@ async function callTool(
       store.close();
     }
   }
-  if (name === "ocean_session_save") return startDesktopSave();
+  if (name === "ocean_session_save") return startDesktopSave(args);
+  if (name === "ocean_project_link") return linkDesktopProject(args);
   if (name === "ocean_session_promote") {
     const approval = mcpApprovalSchema.parse(args.approval);
     const actionArgs = {
@@ -866,6 +950,9 @@ async function callTool(
   if (name === "ocean_context")
     return oceanContext(
       typeof args.cwd === "string" && args.cwd ? args.cwd : process.cwd(),
+      typeof args.project === "string" && args.project.trim()
+        ? args.project.trim()
+        : undefined,
     );
   if (name === "ocean_policy") return readRules(requiredArgument(args, "name"));
   if (name === "ocean_projects_list")

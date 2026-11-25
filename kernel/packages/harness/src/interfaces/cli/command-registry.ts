@@ -30,6 +30,7 @@ import {
   bindProject,
   createProject,
   findGitRoot,
+  findProject,
   knownTaskPrefixes,
   linkNewProject,
   linkProjectAlias,
@@ -122,6 +123,7 @@ import {
   formatNameWarnings,
   projectDoctor,
 } from "@ocean/services/projects/project-doctor.js";
+import { projectSnippet } from "@ocean/services/projects/project-snippet.js";
 import {
   overviewTable,
   projectsOverview,
@@ -909,6 +911,15 @@ async function commandProject(): Promise<void> {
       console.error(error instanceof Error ? error.message : String(error));
       process.exitCode = 2;
     }
+  } else if (action === "snippet") {
+    // The lines a Claude Desktop project's instructions carry (T-333).
+    const id = await findProject(process.argv[4] ?? "");
+    if (!id) {
+      console.error("Usage: ocean project snippet <id>");
+      process.exitCode = 1;
+      return;
+    }
+    console.log(projectSnippet(id));
   } else if (action === "doctor") {
     // Every way the project names drifted apart, each with its fix (T-332). Advisory: exit 0.
     const warnings = await projectDoctor();
@@ -936,7 +947,7 @@ async function commandProject(): Promise<void> {
     else console.log(await renderProjectIndex());
   } else {
     console.error(
-      "Usage: ocean project resolve [path]|bind <name> <path> [--add]|register [path]|unbind <path>|rename <id> <new-id>|new <id> <category> [name]|move <id> <category> [--write]|list [--category <name>]|link <name> <id>|link <name> --new <category>|doctor [--json]|status [--json] [--write]|migrate [--write]|index [--write]",
+      "Usage: ocean project resolve [path]|bind <name> <path> [--add]|register [path]|unbind <path>|rename <id> <new-id>|new <id> <category> [name]|move <id> <category> [--write]|list [--category <name>]|link <name> <id>|link <name> --new <category>|snippet <id>|doctor [--json]|status [--json] [--write]|migrate [--write]|index [--write]",
     );
     process.exitCode = 1;
   }

@@ -10,6 +10,10 @@ import {
 } from "@ocean/brain/memory/session-facts.js";
 import { atomicWrite, withFileLock } from "@ocean/core/shared/fs-utils.js";
 import { oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
+import {
+  bindConversation,
+  conversationProjectDecision,
+} from "@ocean/core/shared/project-resolution.js";
 
 // Fact capture from Claude Desktop's plain chat (T-315). Desktop has no hooks, so a run reads
 // the conversations the app keeps locally (the reader is injected: it lives in harness) and
@@ -169,6 +173,8 @@ export type DesktopConversationRun = {
   candidates?: string[];
   // Free triage found nothing worth a model call: a one-line record only (T-329 phase 2).
   trivial?: boolean;
+  // The project the record was filed under (T-333); absent when none was decided.
+  project?: string;
   rejected?: number;
   skipped?: number;
 };
@@ -198,6 +204,9 @@ export async function runDesktopFacts(options: {
   since?: Date;
   // Only the most recently updated conversation, read now (`ocean_session_save`).
   latest?: boolean;
+  // With `latest`: bind that conversation to this project first (T-333) — an explicit choice
+  // wins over the Claude project the chat sits in.
+  project?: string;
   enabled?: () => Promise<boolean>;
 }): Promise<DesktopFactsRun> {
   if (!(await (options.enabled ?? sessionFactsEnabled)()))
@@ -218,6 +227,12 @@ export async function runDesktopFacts(options: {
         .filter((c) => (Date.parse(c.updatedAt) || 0) === newest)
         .slice(0, 1)
     : read.conversations;
+  if (options.project) {
+    if (!options.latest)
+      throw new Error("a project binds only the latest chat");
+    for (const conversation of conversations)
+      await bindConversation(conversation.uuid, options.project);
+  }
   const result = {
     status: "done" as const,
     conversations: read.conversations.length,
@@ -306,6 +321,7 @@ async function captureOne(
     facts: extraction.facts,
   });
   let record: string | undefined;
+  const decision = await conversationProjectDecision(conversation.uuid);
   if (extraction.digest) {
     const times = dated
       .filter((message) => message.createdAt > claim.from)
@@ -317,6 +333,9 @@ async function captureOne(
         startedAt: times[0] ?? newest,
         endedAt: newest,
         digest: extraction.digest,
+        project: decision.projectId,
+        conversationTitle: decision.title,
+        claudeProject: decision.claudeProject,
       })
     ).path;
   }
@@ -324,6 +343,7 @@ async function captureOne(
     ...base,
     status: "done",
     ...(record ? { record } : {}),
+    ...(decision.projectId ? { project: decision.projectId } : {}),
     filed: proposed.filed.map((item) => item.path),
     candidates: proposed.proposed,
     rejected: extraction.rejected.length,

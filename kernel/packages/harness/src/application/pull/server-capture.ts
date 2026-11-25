@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { mkdir, open, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import zlib from "node:zlib";
@@ -8,7 +9,14 @@ import {
   proposeImported,
 } from "@ocean/brain/memory/memory-harvest.js";
 import { atomicWrite } from "@ocean/core/shared/fs-utils.js";
-import { claudeProjectsFile } from "@ocean/core/shared/project-resolution.js";
+import {
+  type ClaudeConversation,
+  type ClaudeProjectLink,
+  claudeProjectsFile,
+  linkClaudeProjectName,
+  mergeClaudeConversations,
+  readClaudeProjects,
+} from "@ocean/core/shared/project-resolution.js";
 import { serverHistoryDir } from "./history-index.js";
 
 // claude.ai and ChatGPT keep their conversations, projects and memory on their servers (T-305).
@@ -154,18 +162,40 @@ function projectNames(entries: Cached[]): Map<string, string> {
   return names;
 }
 
+async function claudeEntries(home: string): Promise<Cached[]> {
+  return (await readCaches(home)).filter((entry) =>
+    entry.url.includes("claude.ai/"),
+  );
+}
+
 // The names of the owner's Claude projects that this machine has seen (T-307): what lets Ocean
 // tell a real Claude project from a topic a client calls a project. Read-only, from the caches.
 export async function claudeProjectNames(home: string): Promise<string[]> {
-  const entries = (await readCaches(home)).filter((entry) =>
-    entry.url.includes("claude.ai/"),
-  );
+  return namesIn(await claudeEntries(home));
+}
+
+function namesIn(entries: Cached[]): string[] {
   return [...new Set(projectNames(entries).values())].filter(Boolean);
 }
 
-// Writes those names (names only, owner-only file) where a tool call can read them at once.
-export async function refreshClaudeProjects(home: string): Promise<number> {
-  const names = await claudeProjectNames(home);
+export type ClaudeProjectsRefresh = {
+  names: number;
+  conversations: number;
+  linked: ClaudeProjectLink[];
+};
+
+// Writes those names (names only, owner-only file) where a tool call can read them at once, and
+// each conversation's title and Claude project (T-333). A name not in the last list is seen for
+// the first time and linked to its project; the very first list only records, so a new machine
+// never registers every Claude project it finds at once.
+export async function refreshClaudeProjects(
+  home: string,
+): Promise<ClaudeProjectsRefresh> {
+  const entries = await claudeEntries(home);
+  const names = namesIn(entries);
+  const previous = existsSync(claudeProjectsFile())
+    ? new Set(await readClaudeProjects())
+    : undefined;
   const file = claudeProjectsFile();
   await mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
   await atomicWrite(
@@ -173,7 +203,21 @@ export async function refreshClaudeProjects(home: string): Promise<number> {
     `${JSON.stringify({ at: new Date().toISOString(), names }, null, 2)}\n`,
     0o600,
   );
-  return names.length;
+  const found: Record<string, ClaudeConversation> = {};
+  for (const row of claudeAi(entries).conversations.values())
+    found[row.id] = {
+      title: row.title,
+      ...(row.projectName ? { projectName: row.projectName } : {}),
+      ...(row.updated ? { updated: row.updated } : {}),
+    };
+  const conversations = await mergeClaudeConversations(found);
+  const linked: ClaudeProjectLink[] = [];
+  // A name that cannot become a project (its folder is taken) is left to `ocean project doctor`.
+  for (const name of previous ? names.filter((n) => !previous.has(n)) : []) {
+    const link = await linkClaudeProjectName(name).catch(() => undefined);
+    if (link) linked.push(link);
+  }
+  return { names: names.length, conversations, linked };
 }
 
 function claudeAi(entries: Cached[]): Found {
