@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
+import { open, stat } from "node:fs/promises";
 import readline from "node:readline";
 import type {
   SessionStoreFactory,
@@ -109,6 +109,34 @@ export function transcriptTurn(
   if (record.type !== "user" && record.type !== "assistant") return null;
   const message = record.message as { content?: unknown } | undefined;
   return { role: record.type, text: textFromContent(message?.content) };
+}
+
+// A Codex rollout opens with a session_meta line naming its originator; `codex exec` writes
+// `codex_exec`. Those are headless runs (scripts, plugins, Ocean's own calls), not the owner's
+// sessions, so no hook records or reads them (T-336). Only the head of the file is read: the
+// originator comes before the long base instructions on that line.
+const HEAD_BYTES = 64 * 1024;
+
+export async function isHeadlessRun(
+  payload: ClaudeSessionEndPayload,
+  client: SessionEndClient,
+): Promise<boolean> {
+  if (client !== "codex" || !payload.transcript_path) return false;
+  let head = "";
+  try {
+    const file = await open(payload.transcript_path, "r");
+    try {
+      const buffer = Buffer.alloc(HEAD_BYTES);
+      const { bytesRead } = await file.read(buffer, 0, HEAD_BYTES, 0);
+      head = buffer.toString("utf8", 0, bytesRead).split("\n", 1)[0];
+    } finally {
+      await file.close();
+    }
+  } catch {
+    return false;
+  }
+  if (!/"type"\s*:\s*"session_meta"/.test(head)) return false;
+  return /"originator"\s*:\s*"codex_exec"/.test(head);
 }
 
 /**
@@ -221,6 +249,7 @@ export async function claudeSessionEndHook(
 ): Promise<void> {
   const sessionId = payload.session_id;
   if (!sessionId) return;
+  if (await isHeadlessRun(payload, client)) return;
   const cwd = payloadCwd(payload);
 
   const store = await openStore();

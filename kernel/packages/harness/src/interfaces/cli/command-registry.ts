@@ -136,6 +136,7 @@ import {
   repairClients,
 } from "../../application/clients/clients.js";
 import { desktopWatcherFindings } from "../../application/clients/desktop-watcher.js";
+import { hookTrustFindings } from "../../application/clients/hook-trust.js";
 import { nativeFindings } from "../../application/clients/native.js";
 import {
   MCP_ONLY_CLIENTS,
@@ -1537,6 +1538,7 @@ async function commandDoctor(): Promise<void> {
     ...(await desktopWatcherFindings()),
     ...(await clientDetectFindings()),
     ...(await nativeFindings()),
+    ...(await hookTrustFindings()),
     ...(await browserFindings()),
     ...(await gatewayFindings()),
     ...(await runningServerFindings()),

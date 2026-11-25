@@ -62,6 +62,14 @@ const EVENTS: Record<
   },
 };
 
+// The Ocean hook event a command runs, if it is an Ocean hook at all (read by hook-trust.ts).
+export function oceanHookEvent(command: unknown): HookEvent | undefined {
+  if (typeof command !== "string") return undefined;
+  return (Object.keys(EVENTS) as HookEvent[]).find((event) =>
+    EVENTS[event].pattern.test(command),
+  );
+}
+
 type HookAdapter = {
   client: string;
   // The `--client` value of `ocean hook session-start|session-end`.

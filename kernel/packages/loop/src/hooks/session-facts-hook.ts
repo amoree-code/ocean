@@ -27,6 +27,7 @@ import {
 import {
   type ClaudeSessionEndPayload,
   ensureHookSession,
+  isHeadlessRun,
   payloadCwd,
   type SessionEndClient,
   TRANSCRIPT_CLIENTS,
@@ -292,7 +293,7 @@ async function digestTimes(
 export type FactsCompleter = (client: SessionEndClient) => CompleteText | null;
 
 export type SessionFactsRun =
-  | { status: "off" | "no-transcript" | "nothing-new" }
+  | { status: "off" | "no-transcript" | "nothing-new" | "headless" }
   | { status: "no-provider" | "failed"; from: number; to: number }
   | {
       status: "done";
@@ -327,6 +328,7 @@ export async function runSessionFacts(
   const transcript = payload.transcript_path;
   if (!sessionId || !transcript || !TRANSCRIPT_CLIENTS.includes(client))
     return { status: "no-transcript" };
+  if (await isHeadlessRun(payload, client)) return { status: "headless" };
   const transcriptPath = path.resolve(transcript);
   const complete = completer(client);
 
