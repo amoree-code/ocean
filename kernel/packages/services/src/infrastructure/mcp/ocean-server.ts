@@ -386,6 +386,15 @@ const tools = new McpToolRegistry(
             description:
               "YYYY-MM-DD: only facts valid on that day (valid_from / superseded_by)",
           },
+          task: {
+            type: "string",
+            description:
+              'A task id: only session records whose metadata names it (with types ["session"])',
+          },
+          branch: {
+            type: "string",
+            description: "A git branch: only session records made on it",
+          },
           project: { type: "string" },
           cwd: { type: "string" },
         },
@@ -904,6 +913,12 @@ async function callTool(
         : undefined,
       since: isoDay(args.since, "since"),
       asOf: isoDay(args.asOf, "asOf"),
+      ...(typeof args.task === "string" && args.task.trim()
+        ? { task: args.task }
+        : {}),
+      ...(typeof args.branch === "string" && args.branch.trim()
+        ? { branch: args.branch }
+        : {}),
       indexPort: ports.brainIndex,
       embedder: ports.embedder ? await ports.embedder() : null,
     });

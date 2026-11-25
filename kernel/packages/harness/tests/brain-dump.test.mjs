@@ -190,7 +190,7 @@ test("mirrors task-observer signals under a Signals section when present, and om
   );
   assert.match(
     contentWithoutSignals,
-    /^---\ntype: session\nproject: ".*"\ntask: ".*"\nprovider: ".*"\nsource: "closeout"\nstatus: (completed|failed)\nsession_id: "session-no-signals"\ndate: \d{4}-\d{2}-\d{2}\ntags: \[\]\ndistilled: false\n---\n/,
+    /^---\ntype: session\nproject: ".*"\ntask: ".*"\nprovider: ".*"\nsource: "closeout"\nstatus: (completed|failed)\nsession_id: "session-no-signals"\nproject_how: "none"\nproject_confidence: "none"\nstarted: ".*"\nended: ".*"\nduration_min: \d+\nturns_user: 0\ndate: \d{4}-\d{2}-\d{2}\ntags: \[\]\ndistilled: false\n---\n/,
   );
   for (const heading of ["## Goal", "## Outcome"])
     assert.ok(contentWithoutSignals.includes(heading), heading);

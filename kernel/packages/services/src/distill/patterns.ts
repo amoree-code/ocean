@@ -1,6 +1,9 @@
 // The weekly digest's "## Patterns" (T-329 phase 5): counts, not prose — where the week went
 // (project, client), how it ended (status), what kept coming back (tasks, failures) and what it
-// left open. Deterministic: no model reads anything here.
+// left open. Deterministic: no model reads anything here. A record's metadata block (T-334)
+// is read where it has one; a record written before it falls back to its body.
+
+import type { RecordMetadata } from "@ocean/core/domain/sessions/session-metadata.js";
 
 export type PatternSession = {
   text: string;
@@ -10,6 +13,7 @@ export type PatternSession = {
   provider: string;
   // True when the record has no title of its own (it fell back to the project or file name).
   untitled: boolean;
+  meta?: RecordMetadata;
 };
 
 export type WeekFailure = { label: string; sessions: number };
@@ -46,12 +50,51 @@ export function weeklyPatterns(
       `- Untitled: ${untitled} of ${total} (${Math.round((untitled / total) * 100)}%)`,
     );
   // A task counts once per session that names it; only one named in two or more is a pattern.
+  // A record with a metadata block names its task in `task`; an older one, somewhere in its body.
   const tasks = tally(
-    sessions.flatMap((item) => [
-      ...new Set(item.text.match(/\bT-\d{1,4}\b/g) ?? []),
-    ]),
+    sessions.flatMap((item) =>
+      item.meta?.projectHow
+        ? item.meta.task
+          ? [item.meta.task]
+          : []
+        : [...new Set(item.text.match(/\bT-\d{1,4}\b/g) ?? [])],
+    ),
   ).filter(([, count]) => count >= 2);
   if (tasks.length) lines.push(`- Tasks across sessions: ${joined(tasks)}`);
+  const decided = tally(
+    sessions.flatMap((item) =>
+      item.meta?.projectHow ? [item.meta.projectHow] : [],
+    ),
+  );
+  if (decided.length) lines.push(`- Project decided by: ${joined(decided)}`);
+  // Hours per project, from each record's own span.
+  const minutes = new Map<string, number>();
+  for (const item of sessions)
+    if (item.meta?.durationMin)
+      minutes.set(
+        item.project || "none",
+        (minutes.get(item.project || "none") ?? 0) + item.meta.durationMin,
+      );
+  if (minutes.size)
+    lines.push(
+      `- Hours: ${[...minutes]
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+        .slice(0, TOP)
+        .map(([name, total]) => `${name} ${(total / 60).toFixed(1)}`)
+        .join(
+          " · ",
+        )}${minutes.size > TOP ? ` · +${minutes.size - TOP} more` : ""}`,
+    );
+  const tools = new Map<string, number>();
+  for (const item of sessions)
+    for (const [name, count] of Object.entries(
+      item.meta?.activity?.tools ?? {},
+    ))
+      tools.set(name, (tools.get(name) ?? 0) + count);
+  if (tools.size)
+    lines.push(
+      `- Tools: ${joined([...tools].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])))}`,
+    );
   const repeated = failures
     .filter((item) => item.sessions >= 2)
     .sort((a, b) => b.sessions - a.sessions || a.label.localeCompare(b.label));

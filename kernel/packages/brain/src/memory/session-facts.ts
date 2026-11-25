@@ -2,6 +2,7 @@ import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { MemoryContractError } from "@ocean/core/domain/mcp/memory-contract.js";
 import { redactSecrets } from "@ocean/core/domain/redaction/redaction.js";
+import type { ExtractionCost } from "@ocean/core/domain/sessions/session-metadata.js";
 import { atomicWrite, withFileLock } from "@ocean/core/shared/fs-utils.js";
 import { localDate } from "@ocean/core/shared/local-date.js";
 import {
@@ -57,7 +58,11 @@ export type SessionFact = {
 };
 
 // One model call: prompt in, the model's final text out; null when the call failed.
-export type CompleteText = (prompt: string) => Promise<string | null>;
+// `model` names what answers, for the record's extraction cost (T-334); a completer that does
+// not say is recorded as "unknown".
+export type CompleteText = ((prompt: string) => Promise<string | null>) & {
+  model?: string;
+};
 
 export const SESSION_FACTS_SOURCE_PREFIX = "session:";
 
@@ -353,6 +358,8 @@ export type ExtractionResult = {
   digest?: SessionDigest | null;
   // The free triage before the model; a chat it found trivial had no model call.
   triage?: Triage;
+  // The model call's cost, when there was one (T-334).
+  call?: ExtractionCost;
 };
 
 const FIRST_LINE_CHARS = 80;
@@ -398,11 +405,17 @@ export async function extractSessionFacts(options: {
   const items = digestItems(turns);
   const prompt = buildFactsPrompt(turns, { digest: options.digest, items });
   let answer: string | null = null;
+  const calledAt = Date.now();
   try {
     answer = await options.complete(prompt);
   } catch {
     answer = null;
   }
+  const call: ExtractionCost = {
+    model: options.complete.model || "unknown",
+    inputChars: prompt.length,
+    ms: Date.now() - calledAt,
+  };
   const facts: SessionFact[] = [];
   const rejected: ExtractionResult["rejected"] = [];
   for (const fact of parseFacts(answer)) {
@@ -419,6 +432,7 @@ export async function extractSessionFacts(options: {
     prompt,
     turns: turns.length,
     failed: factsList(answer) === null,
+    call,
     triage,
     ...(options.digest ? { digest: parseDigest(answer, turns, items) } : {}),
   };
