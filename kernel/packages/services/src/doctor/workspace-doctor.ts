@@ -41,6 +41,7 @@ import {
   scanProjectManifests,
   UNCATEGORIZED,
 } from "@ocean/core/shared/project-resolution.js";
+import { projectDoctor } from "../projects/project-doctor.js";
 
 const execFile = promisify(execFileCallback);
 
@@ -436,6 +437,36 @@ async function checkClaudeProjects(): Promise<Finding[]> {
     : [];
 }
 
+// Project names that drifted apart (T-332): the count here, each warning and its fix in
+// `ocean project doctor`.
+async function checkProjectNames(): Promise<Finding[]> {
+  const warnings = await projectDoctor().catch(() => null);
+  if (!warnings)
+    return [
+      {
+        code: "PROJECT_NAMES_UNCHECKED",
+        severity: "WARN",
+        message: "project names could not be checked",
+        fixable: false,
+      },
+    ];
+  return [
+    warnings.length
+      ? {
+          code: "PROJECT_NAMES",
+          severity: "WARN",
+          message: `${warnings.length} project name warning(s) — run \`ocean project doctor\` for each fix`,
+          fixable: false,
+        }
+      : {
+          code: "PROJECT_NAMES_OK",
+          severity: "OK",
+          message: "every project name is linked and unified",
+          fixable: false,
+        },
+  ];
+}
+
 // A project lives in its category folder (T-311): one still flat under 04-projects or waiting
 // in uncategorized/ is reported until `ocean project move` files it, and one id in two category
 // folders is an error, since only the first is read.
@@ -772,6 +803,7 @@ async function scanWorkspace(
     ...(await checkProjectLayout()),
     ...(await checkClaudeProjects()),
     ...(await checkProjectCategories()),
+    ...(await checkProjectNames()),
     ...(await checkProfileAuthority()),
   ];
 }

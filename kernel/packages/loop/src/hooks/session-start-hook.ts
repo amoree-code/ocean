@@ -22,6 +22,7 @@ import {
   recordConnected,
 } from "@ocean/core/shared/visibility.js";
 import { startBrief } from "./start-brief.js";
+import { unlinkedFolderWarning } from "./unlinked-warning.js";
 
 // The documented Claude Code SessionStart hook contract on this machine (verified against
 // the live ~/.claude/settings.json hook entries, e.g. the existing ai-guard-push PreToolUse
@@ -196,6 +197,8 @@ export async function claudeSessionStartHook(
   if (project.status !== "bound") {
     const unreadable = await unreadableManifestsWarning();
     if (unreadable) parts.push(unreadable);
+    const unlinked = await unlinkedFolderWarning(project);
+    if (unlinked) parts.push(unlinked);
   }
   if (project.status === "bound") {
     const brief = await startBrief(project.projectId);

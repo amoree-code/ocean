@@ -111,7 +111,8 @@ test("distill --week writes a digest, proposes decisions and lessons, marks reco
     // T-329 phase 5: counts sit above the prose sections; no session store, no failures line.
     assert.match(
       digest,
-      /## Patterns\n\n- Projects: p 1\n- Clients: claude 1\n- Status: completed 1\n\n## Decisions/,
+      // T-332: the record's project `p` is no project, so the doctor's count rides along.
+      /## Patterns\n\n- Projects: p 1\n- Clients: claude 1\n- Status: completed 1\n\n## Projects\n\n- 1 project name warning\(s\) — run `ocean project doctor`\n\n## Decisions/,
     );
     // A section with several lines is taken whole.
     assert.ok(digest.includes("Second decision stays too."));
