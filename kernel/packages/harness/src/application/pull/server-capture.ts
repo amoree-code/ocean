@@ -174,8 +174,65 @@ export async function claudeProjectNames(home: string): Promise<string[]> {
   return namesIn(await claudeEntries(home));
 }
 
+// An account whose newest list is this much older than the newest list of any account is one
+// this machine no longer uses: its cached names are not the owner's projects today.
+const STALE_ACCOUNT_MS = 30 * 24 * 60 * 60 * 1000;
+
+const PROJECT_LIST = /\/projects(_v2)?(\?|$)/;
+
+// A list of every project the account has: not a lookup by uuid, not starred, not filtered by
+// creator, type or search, not the archive, and not a page cut short by its limit.
+function isFullList({ url, json }: Cached): boolean {
+  const query = new URL(url, "https://claude.ai").searchParams;
+  if (
+    ["uuids", "starred", "filter", "creator_filter", "type"].some((key) =>
+      query.has(key),
+    )
+  )
+    return false;
+  if (query.get("is_archived") === "true" || query.get("searchQuery"))
+    return false;
+  const limit = Number(query.get("limit"));
+  return !(limit && list(json).length >= limit);
+}
+
+// The names of the projects the owner has now. A cache keeps every response it was ever sent, so
+// a project since deleted or renamed is still named by an older one (T-330): for each account the
+// newest full list is what it has, plus any project named in a response newer than that list. An
+// account with no full list keeps every name it was sent; an account not seen for a month is
+// dropped.
+function currentProjectNames(entries: Cached[]): string[] {
+  const byOrg = new Map<string, Cached[]>();
+  for (const entry of entries) {
+    if (!entry.url.includes("/projects")) continue;
+    const org = /\/organizations\/([^/?]+)/.exec(entry.url)?.[1] ?? "";
+    byOrg.set(org, [...(byOrg.get(org) ?? []), entry]);
+  }
+  const newestList = (items: Cached[]) =>
+    Math.max(
+      0,
+      ...items
+        .filter((each) => PROJECT_LIST.test(each.url))
+        .map((each) => each.at),
+    );
+  const latest = Math.max(0, ...[...byOrg.values()].map(newestList));
+  const names: string[] = [];
+  for (const items of byOrg.values()) {
+    const newest = newestList(items);
+    if (newest && latest - newest > STALE_ACCOUNT_MS) continue;
+    const full = items
+      .filter((each) => PROJECT_LIST.test(each.url) && isFullList(each))
+      .sort((a, b) => b.at - a.at)[0];
+    const kept = full
+      ? items.filter((each) => each === full || each.at > full.at)
+      : items;
+    names.push(...projectNames(kept).values());
+  }
+  return [...new Set(names)].filter(Boolean);
+}
+
 function namesIn(entries: Cached[]): string[] {
-  return [...new Set(projectNames(entries).values())].filter(Boolean);
+  return currentProjectNames(entries);
 }
 
 export type ClaudeProjectsRefresh = {
