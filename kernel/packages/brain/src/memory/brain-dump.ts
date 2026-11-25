@@ -469,6 +469,9 @@ export async function writeDigestRecord(input: {
   // From the store session's identity (T-331); "" when unbound, never a folder name.
   project?: string;
   task?: string;
+  // A Claude Desktop chat's own title and the Claude project it sits in (T-333).
+  conversationTitle?: string;
+  claudeProject?: string;
 }): Promise<{ path: string }> {
   const existing = await findSessionRecord(input.sessionId);
   const earlier =
@@ -486,10 +489,12 @@ export async function writeDigestRecord(input: {
     (existing ? /^started: "([^"]+)"$/m.exec(existing.text)?.[1] : undefined) ??
     input.startedAt;
   const title = cleanTitle(
-    safeText(digest.title || digest.goal, 400),
+    safeText(input.conversationTitle || digest.title || digest.goal, 400),
     input.project || "Conversation",
   );
   const quote = (value: string) => JSON.stringify(value);
+  const optional = (key: string, value: string | undefined) =>
+    value ? [`${key}: ${quote(safeText(value, 200))}`] : [];
   const list = (heading: string, items: string[]) =>
     items.length
       ? [
@@ -510,6 +515,8 @@ export async function writeDigestRecord(input: {
     `ended: ${quote(input.endedAt)}`,
     "status: completed",
     `session_id: ${quote(input.sessionId)}`,
+    ...optional("conversation_title", input.conversationTitle),
+    ...optional("claude_project", input.claudeProject),
     `date: ${date}`,
     "tags: []",
     "distilled: false",

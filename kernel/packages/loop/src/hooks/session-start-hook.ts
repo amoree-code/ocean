@@ -10,6 +10,8 @@ import { oceanRoot, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import {
   autoRegisterProject,
   gitChangedFiles,
+  listProjectManifests,
+  matchProject,
   type ProjectManifest,
   type ProjectResolution,
   projectRules,
@@ -217,7 +219,28 @@ export async function claudeSessionStartHook(
 // The same bounded bootstrap line a session-start hook gives, for clients without hooks (T-307).
 // Read-only: it never registers a project, and it carries no records or warnings, only a pointer
 // to the rules.
-export async function oceanContext(cwd: string): Promise<string> {
+// A project named outright (T-333: a Claude Desktop chat has no cwd that means anything), as the
+// bound resolution the start line and brief take. A name no project answers to is an error.
+async function namedProject(ref: string): Promise<ProjectResolution> {
+  const manifests = await listProjectManifests();
+  const id = matchProject(manifests, ref);
+  const manifest = manifests.find((candidate) => candidate.id === id);
+  if (!manifest) throw new Error(`no project answers to '${ref}'`);
+  return {
+    status: "bound",
+    projectId: manifest.id,
+    name: manifest.name,
+    path: manifest.paths[0] ?? "",
+    matchedOn: "path",
+    confidence: "high",
+  };
+}
+
+export async function oceanContext(
+  cwd: string,
+  projectRef?: string,
+): Promise<string> {
+  if (projectRef) return contextFor(await namedProject(projectRef));
   const project = await resolveProject(cwd).catch(
     (): ProjectResolution => ({
       status: "unbound",
@@ -226,6 +249,10 @@ export async function oceanContext(cwd: string): Promise<string> {
       confidence: "none",
     }),
   );
+  return contextFor(project);
+}
+
+async function contextFor(project: ProjectResolution): Promise<string> {
   const bootstrap = buildOceanBootstrap(project);
   await recordIssuedAck(bootstrap.ack);
   // A hookless client never sees the rules a hook client gets as its CLAUDE.md copy: a pointer

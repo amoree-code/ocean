@@ -1195,6 +1195,153 @@ export async function readClaudeProjects(): Promise<string[]> {
   }
 }
 
+// Claude conversation uuid → its title and the Claude project it sits in (T-333), as `ocean
+// pull` and the always-on service last read them from the caches. Grow-only: a conversation the
+// cache has dropped keeps the last title and project it was seen with.
+export type ClaudeConversation = {
+  title: string;
+  projectName?: string;
+  updated?: string;
+};
+
+export function claudeConversationsFile(): string {
+  return oceanPath(SYSTEM_DIR, "state", "clients", "claude-conversations.json");
+}
+
+async function readJsonMap<T>(file: string): Promise<Record<string, T>> {
+  try {
+    const parsed = JSON.parse(await readFile(file, "utf8")) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, T>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+async function writeOwnerJson(file: string, value: unknown): Promise<void> {
+  await mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
+  await atomicWrite(file, `${JSON.stringify(value, null, 2)}\n`, 0o600);
+}
+
+export async function readClaudeConversations(): Promise<
+  Record<string, ClaudeConversation>
+> {
+  const parsed = await readJsonMap<{ conversations?: unknown }>(
+    claudeConversationsFile(),
+  );
+  const conversations = (parsed as { conversations?: unknown }).conversations;
+  return conversations && typeof conversations === "object"
+    ? (conversations as Record<string, ClaudeConversation>)
+    : {};
+}
+
+export async function mergeClaudeConversations(
+  found: Record<string, ClaudeConversation>,
+): Promise<number> {
+  const file = claudeConversationsFile();
+  return withFileLock(file, async () => {
+    const conversations = { ...(await readClaudeConversations()) };
+    for (const [uuid, seen] of Object.entries(found)) {
+      const known = conversations[uuid];
+      conversations[uuid] = {
+        title: seen.title || known?.title || "",
+        ...((seen.projectName ?? known?.projectName)
+          ? { projectName: seen.projectName ?? known?.projectName }
+          : {}),
+        ...((seen.updated ?? known?.updated)
+          ? { updated: seen.updated ?? known?.updated }
+          : {}),
+      };
+    }
+    await writeOwnerJson(file, {
+      at: new Date().toISOString(),
+      conversations,
+    });
+    return Object.keys(conversations).length;
+  });
+}
+
+// A Desktop chat bound to a project by hand (`ocean_project_link`, `capture --project`): the
+// explicit evidence, ahead of the Claude project the chat sits in.
+function conversationProjectsFile(): string {
+  return oceanPath(
+    SYSTEM_DIR,
+    "state",
+    "clients",
+    "conversation-projects.json",
+  );
+}
+
+export async function bindConversation(
+  uuid: string,
+  projectId: string,
+): Promise<void> {
+  if (!uuid) throw new Error("a conversation to bind is required");
+  const manifests = await listProjectManifests();
+  if (!manifests.some((manifest) => manifest.id === projectId))
+    throw new Error(`no project '${projectId}'`);
+  const file = conversationProjectsFile();
+  await withFileLock(file, async () => {
+    const bindings = await readJsonMap<string>(file);
+    await writeOwnerJson(file, { ...bindings, [uuid]: projectId });
+  });
+}
+
+export type ConversationDecision = ProjectDecision & {
+  title?: string;
+  claudeProject?: string;
+};
+
+// The project of one Claude conversation, decided once (T-333): a hand binding, else the Claude
+// project it sits in when that name matches a project, else none. Never a model guess.
+export async function conversationProjectDecision(
+  uuid: string,
+): Promise<ConversationDecision> {
+  const seen = (await readClaudeConversations())[uuid];
+  const facts = {
+    ...(seen?.title ? { title: seen.title } : {}),
+    ...(seen?.projectName ? { claudeProject: seen.projectName } : {}),
+  };
+  const manifests = await listProjectManifests();
+  const bound = (await readJsonMap<string>(conversationProjectsFile()))[uuid];
+  if (bound && manifests.some((manifest) => manifest.id === bound))
+    return { projectId: bound, how: "explicit", confidence: "high", ...facts };
+  const named = seen?.projectName
+    ? matchProject(manifests, seen.projectName)
+    : undefined;
+  if (named)
+    return {
+      projectId: named,
+      how: "claude-project",
+      confidence: "high",
+      ...facts,
+    };
+  return { ...NO_PROJECT, ...facts };
+}
+
+export type ClaudeProjectLink =
+  | { name: string; status: "linked" | "registered"; id: string }
+  | { name: string; status: "suggested"; suggestions: string[] };
+
+// First sight of a Claude project name (T-333): a name a project answers to is linked; a name
+// near some project's is only suggested, so a typo never becomes a second project; any other
+// name becomes a project of its own, linked to that name.
+export async function linkClaudeProjectName(
+  name: string,
+): Promise<ClaudeProjectLink> {
+  const manifests = await listProjectManifests();
+  const known = matchProject(manifests, name);
+  if (known) return { name, status: "linked", id: known };
+  const suggestions = [
+    ...new Set(suggestProjects(manifests, name).map((each) => each.id)),
+  ];
+  if (suggestions.length) return { name, status: "suggested", suggestions };
+  const { id } = await registerNamedProject(name, ["claude.ai"]);
+  await linkProjectAlias(name, id);
+  return { name, status: "registered", id };
+}
+
 export async function findProject(ref: string): Promise<string | undefined> {
   return matchProject(await listProjectManifests(), ref);
 }

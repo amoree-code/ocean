@@ -3,6 +3,10 @@ import {
   runDesktopFacts,
 } from "@ocean/loop/hooks/desktop-facts.js";
 import {
+  linkLatestDesktopChat,
+  refreshClaudeConversations,
+} from "../../application/clients/desktop-link.js";
+import {
   ClaudeExportError,
   readExportChats,
 } from "../../infrastructure/desktop/claude-export.js";
@@ -13,7 +17,7 @@ import {
 import { sessionFactsCompleter } from "../../infrastructure/providers/session-facts-completer.js";
 
 export const desktopUsage =
-  "ocean desktop capture [--dry-run] [--export <folder>] [--since <date>] [--quiet <minutes>] [--latest] [--wait <seconds>] [--json]";
+  "ocean desktop capture [--dry-run] [--export <folder>] [--since <date>] [--quiet <minutes>] [--latest [--project <id>]] [--wait <seconds>] [--json] | ocean desktop link <id> [--wait <seconds>]";
 
 function flagValue(args: string[], flag: string): string | undefined {
   const index = args.indexOf(flag);
@@ -63,8 +67,36 @@ async function dryRun(source: Source, json: boolean): Promise<void> {
 // unpacked claude.ai data export's conversations.json instead (every device's conversations),
 // with the same cursor, so a conversation already read from the app is not read again; an
 // export is static, so it has no quiet window, and its run is not the watcher's last run.
+async function waitFor(args: string[]): Promise<void> {
+  const wait = Number(flagValue(args, "--wait") ?? 0);
+  if (Number.isFinite(wait) && wait > 0)
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.min(wait, 300) * 1000),
+    );
+}
+
+// `ocean desktop link <id>` (T-333): binds the newest Desktop chat and its Claude project to the
+// project, after `--wait` seconds so the chat that asked is in the app's store.
+async function runDesktopLink(rest: string[]): Promise<void> {
+  const [project] = rest;
+  if (!project || project.startsWith("--")) {
+    console.error(`Usage: ${desktopUsage}`);
+    process.exitCode = 1;
+    return;
+  }
+  await waitFor(rest);
+  console.log(
+    JSON.stringify(
+      await linkLatestDesktopChat({ project, read: () => readDesktopChats() }),
+      null,
+      2,
+    ),
+  );
+}
+
 export async function runDesktopCommand(args: string[]): Promise<void> {
   const [action, ...rest] = args;
+  if (action === "link") return runDesktopLink(rest);
   const since = flagValue(rest, "--since");
   const quiet = flagValue(rest, "--quiet");
   const sinceDate = since ? new Date(since) : undefined;
@@ -80,11 +112,16 @@ export async function runDesktopCommand(args: string[]): Promise<void> {
     return;
   }
   const json = rest.includes("--json");
-  const wait = Number(flagValue(rest, "--wait") ?? 0);
-  if (Number.isFinite(wait) && wait > 0)
-    await new Promise((resolve) =>
-      setTimeout(resolve, Math.min(wait, 300) * 1000),
-    );
+  const project = flagValue(rest, "--project");
+  if (
+    rest.includes("--project") &&
+    (!project || project.startsWith("--") || !rest.includes("--latest"))
+  ) {
+    console.error(`Usage: ${desktopUsage}`);
+    process.exitCode = 1;
+    return;
+  }
+  await waitFor(rest);
   const exportDir = flagValue(rest, "--export");
   if (rest.includes("--export") && (!exportDir || exportDir.startsWith("--"))) {
     console.error(`Usage: ${desktopUsage}`);
@@ -99,11 +136,15 @@ export async function runDesktopCommand(args: string[]): Promise<void> {
       await dryRun(read, json);
       return;
     }
+    // The chat just used gets its title and Claude project on file first (T-333).
+    if (rest.includes("--latest") && !exportDir)
+      await refreshClaudeConversations();
     const run = await runDesktopFacts({
       read,
       complete: sessionFactsCompleter("claude"),
       since: sinceDate,
       latest: rest.includes("--latest"),
+      project,
       quietMs:
         quietMinutes !== undefined
           ? quietMinutes * 60_000
