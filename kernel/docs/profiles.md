@@ -211,3 +211,9 @@ the bundle (at most 2 KB). `ocean_profiles_list` returns each profile's name, ki
 description and triggers. Each session choice is appended to
 `bridge/state/profiles/selections.jsonl` with `source: hook | context`. A profile that does
 not load is skipped, and the session keeps its start line.
+
+The fourteen shipped profiles live in `templates/profiles-v3/` (`base` plus thirteen domains that
+`extends: base`). `ocean setup` installs any a workspace lacks and never replaces one that is
+there. `ocean project bind`, `ocean project register` and the session-start auto-register write
+the profile the repository points at into `project.json` `profiles` when the project has none,
+once; `base` is what an empty list already means, so it is never written.

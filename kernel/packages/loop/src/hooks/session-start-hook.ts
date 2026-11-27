@@ -7,6 +7,7 @@ import { rulesPointer } from "@ocean/core/shared/charter.js";
 import { recordIssuedAck } from "@ocean/core/shared/context-ack.js";
 import { truncateUtf8 } from "@ocean/core/shared/fs-utils.js";
 import { oceanRoot, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
+import { fillProjectProfiles } from "@ocean/core/shared/project-profile-fill.js";
 import {
   autoRegisterProject,
   expandHome,
@@ -108,8 +109,10 @@ async function registerIfUnbound(
 ): Promise<ProjectResolution> {
   if (resolved.status !== "unbound") return resolved;
   try {
-    return (await autoRegisterProject(cwd, { resolution: resolved }))
-      .resolution;
+    const registered = await autoRegisterProject(cwd, { resolution: resolved });
+    if (registered.status === "registered")
+      await fillProjectProfiles(registered.projectId, registered.path);
+    return registered.resolution;
   } catch {
     return resolved;
   }

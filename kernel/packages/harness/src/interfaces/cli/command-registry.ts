@@ -25,6 +25,7 @@ import {
   oceanRoot,
   SYSTEM_DIR,
 } from "@ocean/core/shared/paths.js";
+import { fillProjectProfiles } from "@ocean/core/shared/project-profile-fill.js";
 import {
   autoRegisterProject,
   bindProject,
@@ -778,6 +779,8 @@ async function commandProject(): Promise<void> {
       process.exitCode = 1;
     } else {
       const result = await bindProject(name, targetPath, { addPath });
+      if (result.created && !result.conflict)
+        await fillProjectProfiles(result.binding.id, targetPath);
       console.log(JSON.stringify(result, null, 2));
       if (result.conflict) process.exitCode = 2;
     }
@@ -823,6 +826,8 @@ async function commandProject(): Promise<void> {
     const result = await autoRegisterProject(process.argv[4] ?? process.cwd(), {
       explicit: true,
     });
+    if (result.status === "registered" && result.resolution.status === "bound")
+      await fillProjectProfiles(result.projectId, result.resolution.path);
     console.log(JSON.stringify(result, null, 2));
     if (result.status !== "registered") process.exitCode = 2;
   } else if (action === "unbind") {

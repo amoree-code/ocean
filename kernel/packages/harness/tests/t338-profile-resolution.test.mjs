@@ -312,3 +312,105 @@ test("choosing a profile by name never changes its identity", () => {
   });
   assert.equal(profileIdentity(profile), before);
 });
+
+// The 14 shipped domain profiles (templates/profiles-v3): each loads with `extends` resolved,
+// and the resolver can pick the right one from what the profile itself declares.
+test("the 14 shipped v3 profiles load, extend base, and resolve from their own triggers", async () => {
+  const { readdir, cp } = await import("node:fs/promises");
+  const { loadProfile } = await import("@ocean/core/shared/profile-loader.js");
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-t338-shipped-"));
+  const previous = process.env.OCEAN_ROOT;
+  process.env.OCEAN_ROOT = root;
+  try {
+    const dir = path.join(root, SYSTEM_DIR, "profiles");
+    await mkdir(dir, { recursive: true });
+    const source = new URL("../templates/profiles-v3/", import.meta.url);
+    await cp(source, dir, { recursive: true });
+    const names = (await readdir(dir)).map((f) => f.replace(/\.md$/, ""));
+    assert.equal(names.length, 14);
+    const loaded = [];
+    for (const name of names) {
+      const profile = await loadProfile(name);
+      assert.equal(profile.name, name);
+      assert.equal(profile.schemaVersion, 3);
+      assert.ok(profile.clients.claude?.enabled, `${name} inherits clients`);
+      assert.ok(Buffer.byteLength(profile.instructions) <= 1024, name);
+      loaded.push(profile);
+    }
+    const candidates = loaded.map(({ name, triggers, signals }) => ({
+      name,
+      triggers,
+      signals,
+    }));
+    const ads = resolveProfile({
+      profiles: candidates,
+      prompt: "audit my meta ads campaign roas and retargeting",
+    });
+    assert.equal(ads.primary, "base");
+    assert.ok(ads.secondary.includes("marketing-ads"), JSON.stringify(ads));
+    const ui = resolveProfile({
+      profiles: candidates,
+      signals: ["dep:react", "dep:tailwindcss"],
+    });
+    assert.equal(ui.primary, "frontend");
+    // Every skill a profile lists is a single bare name, none twice within a profile.
+    for (const profile of loaded) {
+      assert.equal(new Set(profile.skills).size, profile.skills.length);
+      for (const skill of profile.skills)
+        assert.match(skill, /^[a-z0-9][a-z0-9-]*$/);
+    }
+  } finally {
+    if (previous === undefined) delete process.env.OCEAN_ROOT;
+    else process.env.OCEAN_ROOT = previous;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+// Registering a project writes the profile its repository points at into project.json, once.
+test("a newly bound project gets its profile from the repository, and an edit is never replaced", async () => {
+  const { cp } = await import("node:fs/promises");
+  const { bindProject, listProjectManifests, writeManifest } = await import(
+    "@ocean/core/shared/project-resolution.js"
+  );
+  const { fillProjectProfiles } = await import(
+    "@ocean/core/shared/project-profile-fill.js"
+  );
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-t338-fill-"));
+  const previous = process.env.OCEAN_ROOT;
+  process.env.OCEAN_ROOT = root;
+  try {
+    await mkdir(path.join(root, SYSTEM_DIR), { recursive: true });
+    await cp(
+      new URL("../templates/profiles-v3/", import.meta.url),
+      path.join(root, SYSTEM_DIR, "profiles"),
+      { recursive: true },
+    );
+    const make = async (name, deps) => {
+      const repo = path.join(root, "code", name);
+      await mkdir(repo, { recursive: true });
+      await writeFile(
+        path.join(repo, "package.json"),
+        JSON.stringify({ dependencies: deps }),
+      );
+      return repo;
+    };
+    const ui = await make("shop-ui", { react: "1", next: "1" });
+    const plain = await make("notes", {});
+    await bindProject("shop-ui", ui);
+    await bindProject("notes", plain);
+    assert.deepEqual(await fillProjectProfiles("shop-ui", ui), ["frontend"]);
+    assert.equal(await fillProjectProfiles("notes", plain), null);
+    const read = async (id) =>
+      (await listProjectManifests()).find((m) => m.id === id);
+    assert.deepEqual((await read("shop-ui")).profiles, ["frontend"]);
+    assert.equal((await read("notes")).profiles, undefined);
+    // The owner's edit stays.
+    await writeManifest({ ...(await read("shop-ui")), profiles: ["backend"] });
+    assert.equal(await fillProjectProfiles("shop-ui", ui), null);
+    assert.deepEqual((await read("shop-ui")).profiles, ["backend"]);
+  } finally {
+    if (previous === undefined) delete process.env.OCEAN_ROOT;
+    else process.env.OCEAN_ROOT = previous;
+    await rm(root, { recursive: true, force: true });
+  }
+});
