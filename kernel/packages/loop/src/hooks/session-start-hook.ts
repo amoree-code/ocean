@@ -9,6 +9,7 @@ import { truncateUtf8 } from "@ocean/core/shared/fs-utils.js";
 import { oceanRoot, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import {
   autoRegisterProject,
+  expandHome,
   gitChangedFiles,
   listProjectManifests,
   matchProject,
@@ -19,6 +20,12 @@ import {
   resolveProject,
   scanProjectManifests,
 } from "@ocean/core/shared/project-resolution.js";
+import {
+  profileBrief,
+  recordProfileSelection,
+  type SessionProfile,
+  sessionProfile,
+} from "@ocean/core/shared/session-profile.js";
 import {
   connectedLine,
   recordConnected,
@@ -181,11 +188,23 @@ export async function claudeSessionStartHook(
     } catch (error) {
       rulesProblem = error instanceof Error ? error.message : String(error);
     }
-  const bootstrap = buildOceanBootstrap(project, { rules: rules.length });
+  const profile = await sessionProfile({
+    projectId: project.status === "bound" ? project.projectId : undefined,
+    cwd,
+  });
+  const bootstrap = buildOceanBootstrap(project, {
+    rules: rules.length,
+    profile: profile.primary,
+  });
   const shown = project.status === "bound" ? project.projectId : project.status;
   await Promise.all([
     recordIssuedAck(bootstrap.ack),
     recordConnected(cwd, shown),
+    recordProfileSelection({
+      source: "hook",
+      project: shown,
+      session: profile,
+    }),
   ]);
   // Beside the 256-byte bootstrap, never inside it: the authority claim is its own line.
   const parts = [bootstrap.content, MEMORY_AUTHORITY_LINE];
@@ -206,6 +225,8 @@ export async function claudeSessionStartHook(
     const brief = await startBrief(project.projectId);
     if (brief) parts.push(brief);
   }
+  const briefLine = profileBrief(profile);
+  if (briefLine) parts.push(briefLine);
   if (warning) parts.push(warning);
   return {
     systemMessage: connectedLine(shown),
@@ -230,7 +251,8 @@ async function namedProject(ref: string): Promise<ProjectResolution> {
     status: "bound",
     projectId: manifest.id,
     name: manifest.name,
-    path: manifest.paths[0] ?? "",
+    // project.json keeps paths portable (`~/…`); the repository signals need the real one.
+    path: expandHome(manifest.paths[0] ?? ""),
     matchedOn: "path",
     confidence: "high",
   };
@@ -249,19 +271,36 @@ export async function oceanContext(
       confidence: "none",
     }),
   );
-  return contextFor(project);
+  return contextFor(project, cwd);
 }
 
-async function contextFor(project: ProjectResolution): Promise<string> {
-  const bootstrap = buildOceanBootstrap(project);
-  await recordIssuedAck(bootstrap.ack);
+async function contextFor(
+  project: ProjectResolution,
+  cwd?: string,
+): Promise<string> {
+  // A named project (Desktop) has no cwd of its own: its signals come from its own folder.
+  const profile: SessionProfile = await sessionProfile({
+    projectId: project.status === "bound" ? project.projectId : undefined,
+    cwd: cwd ?? (project.status === "bound" ? project.path : undefined),
+  });
+  const bootstrap = buildOceanBootstrap(project, { profile: profile.primary });
+  await Promise.all([
+    recordIssuedAck(bootstrap.ack),
+    recordProfileSelection({
+      source: "context",
+      project: project.status === "bound" ? project.projectId : project.status,
+      session: profile,
+    }),
+  ]);
   // A hookless client never sees the rules a hook client gets as its CLAUDE.md copy: a pointer
   // beside the bounded line, never inside it (T-328).
   const rules = await rulesPointer();
   // The same start brief a hook client gets, so a hookless client starts where the project stands.
   const brief =
     project.status === "bound" ? await startBrief(project.projectId) : null;
-  return [bootstrap.content, rules, brief].filter(Boolean).join("\n");
+  return [bootstrap.content, rules, brief, profileBrief(profile)]
+    .filter(Boolean)
+    .join("\n");
 }
 
 // Clients that take the bootstrap through their own hooks instead of a same-name shim (T-266).

@@ -27,10 +27,12 @@ function projectTag(project: ProjectResolution): string {
 // absence), and names the on-demand operations a client can call. Never Ocean file content.
 export function buildOceanBootstrap(
   project: ProjectResolution,
-  extra: { rules?: number } = {},
+  extra: { rules?: number; profile?: string } = {},
 ): OceanBootstrap {
   const rules = extra.rules && extra.rules > 0 ? ` rules=${extra.rules}` : "";
-  const line = `ocean=1 project=${projectTag(project)} confidence=${project.confidence}${rules} ops=${SUPPORTED_OPERATIONS}`;
+  // The session's primary profile (T-338): a name only, its bundle is fetched on demand.
+  const profile = extra.profile ? ` profile=${extra.profile}` : "";
+  const line = `ocean=1 project=${projectTag(project)} confidence=${project.confidence}${rules}${profile} ops=${SUPPORTED_OPERATIONS}`;
   const ack = contextAck(line);
   const content = `${line} ack=${ack}`;
   const bytes = Buffer.byteLength(content, "utf8");

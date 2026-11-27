@@ -48,15 +48,20 @@ import {
   oceanRoot,
   SYSTEM_DIR,
 } from "@ocean/core/shared/paths.js";
-import { listProfileNames } from "@ocean/core/shared/profile-files.js";
 import {
   findProject,
   folderProject,
   listProjectManifests,
   registerNamedProject,
+  resolveProject,
   scanProjectManifests,
   suggestProjects,
 } from "@ocean/core/shared/project-resolution.js";
+import {
+  profileBundle,
+  profileCatalog,
+  sessionProfile,
+} from "@ocean/core/shared/session-profile.js";
 import {
   createHandoff,
   getHandoff,
@@ -234,11 +239,23 @@ const tools = new McpToolRegistry(
     },
     {
       name: "ocean_profiles_list",
-      description: "List available Ocean profiles.",
+      description:
+        "List the Ocean profiles (domain bundles of skills and tools): name, kind, description and the triggers that point at each. Call ocean_profile_get for one when the request is clearly another profile's domain.",
       annotations: { readOnlyHint: true },
       inputSchema: {
         type: "object",
         properties: {},
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "ocean_profile_get",
+      description:
+        "Read one Ocean profile's bundle (2 KB or less): its skills, gateway tools, connectors, Composio toolkits and instructions. Without name, the profile chosen for this session (the start line's profile=). Call it only when the one-line profile brief is not enough.",
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: "object",
+        properties: { name: { type: "string" }, cwd: { type: "string" } },
         additionalProperties: false,
       },
     },
@@ -740,8 +757,47 @@ function textResult(value: unknown): {
   };
 }
 
-async function profiles(): Promise<string[]> {
-  return listProfileNames();
+async function profiles() {
+  const catalog = await profileCatalog();
+  return {
+    profiles: catalog.profiles.map((profile) => ({
+      name: profile.name,
+      kind: profile.kind,
+      description: profile.description,
+      triggers: profile.triggers,
+    })),
+    ...(catalog.problems.length ? { problems: catalog.problems } : {}),
+  };
+}
+
+// A named profile, or the one this session's project and folder resolve to (T-338 P2).
+async function profileGet(name: string | undefined, cwd: string) {
+  const catalog = await profileCatalog();
+  let wanted = name;
+  if (!wanted) {
+    const project = await resolveProject(cwd).catch(() => null);
+    wanted = (
+      await sessionProfile({
+        projectId: project?.status === "bound" ? project.projectId : undefined,
+        cwd,
+        catalog,
+      })
+    ).primary;
+  }
+  const profile = catalog.profiles.find(
+    (candidate) => candidate.name === wanted,
+  );
+  if (!profile) {
+    const problem = catalog.problems.find(
+      (candidate) => candidate.name === wanted,
+    );
+    throw new Error(
+      problem
+        ? `profile ${wanted} does not load: ${problem.error}`
+        : `no profile named ${wanted}; ocean_profiles_list names them`,
+    );
+  }
+  return profileBundle(profile);
 }
 
 const MUTATING_TOOLS = new Set([
@@ -788,7 +844,17 @@ async function callTool(
       findings: report.findings,
     };
   }
-  if (name === "ocean_profiles_list") return { profiles: await profiles() };
+  if (name === "ocean_profiles_list") return await profiles();
+  if (name === "ocean_profile_get") {
+    const wanted =
+      typeof args.name === "string" && args.name.trim()
+        ? args.name.trim()
+        : undefined;
+    return profileGet(
+      wanted,
+      typeof args.cwd === "string" && args.cwd ? args.cwd : process.cwd(),
+    );
+  }
   if (name === "ocean_tasks_list") {
     const text = (key: string) =>
       typeof args[key] === "string" && args[key] ? args[key] : undefined;

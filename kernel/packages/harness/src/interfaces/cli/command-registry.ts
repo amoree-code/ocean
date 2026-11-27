@@ -46,6 +46,7 @@ import {
   unbindProjectPath,
   writeProjectIndex,
 } from "@ocean/core/shared/project-resolution.js";
+import { projectSignals } from "@ocean/core/shared/repo-signals.js";
 import { recordSynced } from "@ocean/core/shared/visibility.js";
 import {
   claudeSessionEndHook,
@@ -160,7 +161,6 @@ import {
   buildSkillIndex,
   loadSkillIndex,
   PROMPT_HOOK_CLIENTS,
-  projectSignals,
   ROUTE_THRESHOLD,
   routerLine,
   routeSkills,

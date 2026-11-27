@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { mkdtempSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -97,6 +98,11 @@ test("ocean hook session-start CLI prints the connected message beside the boots
   const result = spawnSync(process.execPath, [MAIN, "hook", "session-start"], {
     input: JSON.stringify({ cwd: os.tmpdir() }),
     encoding: "utf8",
+    // Never the owner's workspace: the hook writes its ledgers under OCEAN_ROOT.
+    env: {
+      ...process.env,
+      OCEAN_ROOT: mkdtempSync(path.join(os.tmpdir(), "ocean-visibility-cli-")),
+    },
   });
   assert.equal(result.status, 0, result.stderr);
   const output = JSON.parse(result.stdout);

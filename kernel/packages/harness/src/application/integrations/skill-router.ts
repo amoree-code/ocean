@@ -3,6 +3,13 @@ import os from "node:os";
 import path from "node:path";
 import { atomicWrite } from "@ocean/core/shared/fs-utils.js";
 import { oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
+import { projectSignals } from "@ocean/core/shared/repo-signals.js";
+import {
+  isContentWord,
+  normalizeText,
+  stem,
+  tokenize,
+} from "@ocean/core/shared/text-tokens.js";
 import { clientSkillRoots } from "@ocean/market/skills/core-skill-sync.js";
 
 // Skill router (T-325). A client only picks a skill by itself when the skill's description sits
@@ -213,47 +220,6 @@ export async function loadSkillIndex(home = os.homedir()): Promise<SkillIndex> {
   return buildSkillIndex(home);
 }
 
-const STOP_WORDS = new Set(
-  (
-    "a an the and or but if of to in on at by for with from as is are was were be been being " +
-    "it its this that these those i me my we our us you your he she they them their what which " +
-    "who whom how when where why can could should would will shall do does did done doing have " +
-    "has had not no yes so than then there here about into over under up down out any all some " +
-    "each every more most other such only own same too very just also use used using user users " +
-    "owner says say said ask asks asked want wants need needs please let lets get got make made " +
-    "via per etc skill skills like one two new now way well really thing things help"
-  ).split(" "),
-);
-
-const isContentWord = (word: string) =>
-  word.length >= 2 && !STOP_WORDS.has(word);
-
-function normalizeText(text: string): string {
-  return (
-    text
-      .toLowerCase()
-      .normalize("NFKC")
-      .match(/[\p{L}\p{N}]+/gu)
-      ?.join(" ") ?? ""
-  );
-}
-
-// Light suffix stripping so "writing tests" meets "write a test"; the same on both sides.
-function stem(word: string): string {
-  let out = word;
-  if (out.length > 5 && out.endsWith("ing")) out = out.slice(0, -3);
-  else if (out.length > 4 && out.endsWith("ed")) out = out.slice(0, -2);
-  else if (out.length > 4 && out.endsWith("es")) out = out.slice(0, -2);
-  else if (out.length > 3 && out.endsWith("s") && !out.endsWith("ss"))
-    out = out.slice(0, -1);
-  if (out.length > 3 && out.endsWith("e")) out = out.slice(0, -1);
-  return out;
-}
-
-export function tokenize(text: string): string[] {
-  return normalizeText(text).split(" ").filter(isContentWord).map(stem);
-}
-
 // Message shapes that carry intent no single word does: "Zustand or Redux?" is a comparison.
 function expansions(message: string): string[] {
   const words: string[] = [];
@@ -274,48 +240,6 @@ type Prepared = {
   tf: Map<string, number>;
   length: number;
 };
-
-// Words the working directory names: its package.json dependencies and its top-level file
-// names (`vitest.config.ts` → vitest, `graphify-out` → graphify).
-export async function projectSignals(cwd: string): Promise<Set<string>> {
-  const terms = new Set<string>();
-  const dirs = [cwd];
-  let current = cwd;
-  for (let depth = 0; depth < 5; depth++) {
-    const marker = await stat(path.join(current, "package.json")).catch(() =>
-      stat(path.join(current, ".git")).catch(() => null),
-    );
-    if (marker) {
-      if (current !== cwd) dirs.push(current);
-      break;
-    }
-    const parent = path.dirname(current);
-    if (parent === current) break;
-    current = parent;
-  }
-  for (const dir of dirs) {
-    try {
-      for (const entry of await readdir(dir))
-        terms.add(entry.toLowerCase().split(/[.\-_]/)[0]);
-    } catch {}
-    try {
-      const pkg = JSON.parse(
-        await readFile(path.join(dir, "package.json"), "utf8"),
-      );
-      for (const deps of [pkg?.dependencies, pkg?.devDependencies])
-        if (deps && typeof deps === "object")
-          for (const dep of Object.keys(deps)) {
-            const [scope, name] = dep.startsWith("@")
-              ? dep.slice(1).split("/")
-              : [dep, ""];
-            terms.add(`dep:${scope.toLowerCase()}`);
-            if (name) terms.add(`dep:${name.toLowerCase()}`);
-          }
-    } catch {}
-  }
-  terms.delete("");
-  return terms;
-}
 
 // Whether the working directory points at this skill: a file named like it, or a dependency
 // named like it (or like its first word: `next` → next-best-practices).

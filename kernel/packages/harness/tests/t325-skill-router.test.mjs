@@ -3,11 +3,11 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { projectSignals } from "@ocean/core/shared/repo-signals.js";
 import {
   buildSkillIndex,
   frontmatterField,
   loadSkillIndex,
-  projectSignals,
   routeSkills,
   skillRouterHook,
   triggerPhrases,

@@ -9,6 +9,10 @@ Ocean is this user's single memory and the authority. Your own built-in memory
 (Claude's memory on claude.ai, a CLI's memory file) is not a separate store to weigh
 against it: it is a copy that Ocean captures.
 
+Work in the session's profile: the start line's `profile=` (or `ocean_context`'s) and
+its one-line brief name the skills and tools to reach for first. When the request is
+clearly another domain, call `ocean_profile_get` with that profile's name.
+
 When a message touches the user's own world (their projects, code, tasks, people,
 preferences or past decisions), or they ask where their memory lives or what you
 remember:
