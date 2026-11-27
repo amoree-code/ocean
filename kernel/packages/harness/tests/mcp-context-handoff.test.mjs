@@ -89,11 +89,11 @@ test("ocean_context is the bounded start line: 256 bytes or less, project resolv
   });
 });
 
-test("ocean_context points a hookless client at the rules, and ocean_policy reads them", async () => {
+test("ocean_context points a hookless client at the rules and reads them by policy", async () => {
   await withRoot(async (root) => {
     const call = await as("rules-client");
     const bare = await call("ocean_context", { cwd: os.tmpdir() });
-    assert.doesNotMatch(bare.result.content[0].text, /ocean_policy/);
+    assert.doesNotMatch(bare.result.content[0].text, /policy "core"/);
     await mkdir(path.join(root, "charter", "policies"), { recursive: true });
     await writeFile(
       path.join(root, "charter", "core.md"),
@@ -101,17 +101,22 @@ test("ocean_context points a hookless client at the rules, and ocean_policy read
     );
     await writeFile(
       path.join(root, "charter", "policies", "response.md"),
-      "# Response\n\nLabelled lines.\n",
+      '---\ntriggers: ["report"]\ndigest: "Labelled lines."\n---\n\n# Response\n\nLabelled lines.\n',
     );
     const text = (await call("ocean_context", { cwd: os.tmpdir() })).result
       .content[0].text;
     const [line, pointer] = text.split("\n");
     assert.ok(Buffer.byteLength(line) <= 256);
     assert.match(line, /ack=[0-9a-f]{8}$/);
+    assert.match(pointer, /call ocean_context with policy "core"/);
+    // The policy index a hook client would get per prompt (T-339 P1 §1.4).
     assert.match(
-      pointer,
-      /ocean_policy with name "core".*"response" \(report shape\)/,
+      text,
+      /Policies \(ocean_context with policy=<name>.*response \[report\]/,
     );
+    // T-339 P2: ocean_policy folded into ocean_context; the old tool still answers.
+    const viaContext = await call("ocean_context", { policy: "core" });
+    assert.match(viaContext.result.content[0].text, /Reply in Arabic/);
     const core = await call("ocean_policy", { name: "core" });
     assert.match(core.result.content[0].text, /Reply in Arabic/);
     const response = await call("ocean_policy", { name: "response" });

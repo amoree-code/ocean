@@ -1,3 +1,8 @@
+---
+triggers: ["verify", "test", "prove", "does it work", "check it", "تاكد", "اختبر", "جرب"]
+digest: "Executed is not verified: run the check that proves the claim; say what was verified and what was assumed, separately."
+---
+
 # Policy — verification
 
 Load when proving a change works.

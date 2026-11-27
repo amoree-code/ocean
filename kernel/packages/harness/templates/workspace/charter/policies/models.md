@@ -1,3 +1,8 @@
+---
+triggers: ["which model", "effort", "delegate", "subagent", "opus", "sonnet", "موديل", "وكيل"]
+digest: "Deterministic tools first; Sonnet by default; effort follows the task's class; no subagents unless asked by name."
+---
+
 # Policy — model and effort routing
 
 Load when choosing a model, choosing an effort level, or delegating.

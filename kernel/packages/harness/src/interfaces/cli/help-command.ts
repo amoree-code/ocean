@@ -9,7 +9,7 @@ const commandGroups = [
   ],
   [
     "Providers",
-    "client, clients, install, update, remove, auth, mcp, market, browser",
+    "client, clients, install, update, remove, auth, mcp, market, connectors, scout, browser",
   ],
   [
     "Knowledge",
@@ -132,11 +132,19 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
   ],
   mcp: [
     "Print MCP client configs, or serve Ocean's MCP server and gateway.",
-    "ocean mcp config|playwright-config|gateway-config|serve|gateway|status [--check] [--json]|browser-service uninstall",
+    "ocean mcp config|playwright-config|gateway-config|serve|gateway|status [--check] [--json]|probe-client [report] [--log <file>]|browser-service uninstall",
   ],
   market: [
     "List, install, update and run marketplace packages; permissions need --yes.",
     "ocean market list|install <name> [--version <v>]|update <name>|uninstall <name>|search <term>|add <server.json|registry name>|secret list|set|remove <name> [<value name>] [--index <file>]... [--yes] [--accept-flagged]",
+  ],
+  connectors: [
+    "List, check and add connector entries (pinned, token-free); adding needs --approve.",
+    "ocean connectors list [--profile <name>] [--json]|doctor|add <entry.json> --approve|remove <id>|auth <id>",
+  ],
+  scout: [
+    "Search for servers a profile could use and write a report; installs nothing.",
+    "ocean scout <profile>",
   ],
   browser: [
     "Drive a browser session; uploads and submits need --approve.",

@@ -471,7 +471,9 @@ test("ocean mcp gateway routes a client call to Ocean's own server", async () =>
     const names = (await request(2, "tools/list", {})).result.tools.map(
       (tool) => tool.name,
     );
-    assert.ok(names.includes("ocean__ocean_status"), names.join(", "));
+    // T-339: Ocean lists its 8 core tools; ocean_status is off the list but still callable.
+    assert.ok(names.includes("ocean__ocean_context"), names.join(", "));
+    assert.ok(!names.includes("ocean__ocean_status"), names.join(", "));
     assert.ok(
       names.some((name) => name.startsWith("obsidian__")),
       names.join(", "),

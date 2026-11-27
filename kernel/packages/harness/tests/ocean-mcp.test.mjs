@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { access, mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, realpath, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -38,24 +38,14 @@ test("Ocean MCP exposes provider-neutral tools without Obsidian", async () => {
     assert.deepEqual(
       listed.result.tools.map((tool) => tool.name),
       [
-        "ocean_status",
-        "ocean_profile_get",
-        "ocean_tasks_list",
-        "ocean_task_get",
-        "ocean_session_save",
         "brain_search",
         "brain_read",
-        "brain_neighbors",
         "memory_read",
-        "memory_history",
         "memory_write",
         "memory_propose",
-        "memory_delete",
-        "memory_restore",
         "ocean_context",
-        "ocean_policy",
-        "ocean_handoff_create",
-        "people_lookup",
+        "ocean_tools",
+        "ocean_call",
       ],
     );
     const status = await handle({
@@ -150,8 +140,19 @@ test("brain_search and brain_neighbors take project/cwd and show only that proje
       id: 1,
       method: "tools/list",
     });
+    // brain_neighbors sits in the brain-extra group: ocean_tools hands over its schema.
+    const extra = JSON.parse(
+      (
+        await handle({
+          jsonrpc: "2.0",
+          id: 9,
+          method: "tools/call",
+          params: { name: "ocean_tools", arguments: { open: ["brain-extra"] } },
+        })
+      ).result.content[0].text,
+    );
     for (const name of ["brain_search", "brain_neighbors"]) {
-      const schema = listed.result.tools.find(
+      const schema = [...listed.result.tools, ...extra.tools].find(
         (tool) => tool.name === name,
       ).inputSchema;
       assert.equal(schema.properties.project.type, "string");
@@ -374,10 +375,11 @@ test("ocean_handoffs_list filters by project", async () => {
   }
 });
 
-// T-338 P5: core is listed to every client; ops opens with OCEAN_MCP_TOOLS=all or when
-// ocean_profile_get names ocean-ops, which tells the client with list_changed. A tool left off
-// the list still answers tools/call (the `ocean clients verify` self-check calls ocean_ping).
-test("Ocean MCP lists core tools, opens ops on ocean-ops, and keeps ops callable", async () => {
+// T-339 P2 (after T-338 P5): eight core tools are listed to every client; a group opens with
+// OCEAN_MCP_TOOLS=all, when ocean_profile_get names ocean-ops, through ocean_tools, or when the
+// prompt hook's selection file for the folder names it — each tells the client with
+// list_changed. A tool left off the list still answers tools/call and ocean_call.
+test("Ocean MCP lists core tools, opens groups, and keeps every tool callable", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ocean-mcp-groups-"));
   const serve = (env) => {
     const child = spawn(
@@ -422,8 +424,12 @@ test("Ocean MCP lists core tools, opens ops on ocean-ops, and keeps ops callable
     });
     assert.equal(init.result.capabilities.tools.listChanged, true);
     const core = names(await plain.request(2, "tools/list"));
-    assert.equal(core.length, 18);
+    assert.equal(core.length, 8);
     assert.ok(!core.includes("ocean_ping"));
+    const bytes = Buffer.byteLength(
+      JSON.stringify((await plain.request(20, "tools/list")).result.tools),
+    );
+    assert.ok(bytes <= 6_000, `core tools/list is ${bytes} bytes`);
     const ping = await plain.request(3, "tools/call", {
       name: "ocean_ping",
       arguments: {},
@@ -439,16 +445,104 @@ test("Ocean MCP lists core tools, opens ops on ocean-ops, and keeps ops callable
       ),
     );
     const opened = names(await plain.request(5, "tools/list"));
-    assert.equal(opened.length, 31);
+    assert.equal(opened.length, 25);
     assert.ok(opened.includes("ocean_ping"));
+    // ocean_call runs an unlisted tool; it never calls itself.
+    const viaCall = await plain.request(6, "tools/call", {
+      name: "ocean_call",
+      arguments: { name: "people_lookup", arguments: { name: "nobody" } },
+    });
+    assert.ok(viaCall.result, JSON.stringify(viaCall.error));
+    const loop = await plain.request(7, "tools/call", {
+      name: "ocean_call",
+      arguments: { name: "ocean_call", arguments: {} },
+    });
+    assert.match(loop.error.message, /cannot call itself/);
+    // ocean_tools opens a group and returns its schemas.
+    const before = plain.messages.length;
+    const tasks = await plain.request(8, "tools/call", {
+      name: "ocean_tools",
+      arguments: { open: ["tasks"] },
+    });
+    assert.deepEqual(
+      tasks.result.structuredContent.tools.map((tool) => tool.name).sort(),
+      ["ocean_task_get", "ocean_tasks_list"],
+    );
+    assert.ok(
+      plain.messages
+        .slice(before)
+        .some(
+          (message) => message.method === "notifications/tools/list_changed",
+        ),
+    );
+    assert.equal(names(await plain.request(9, "tools/list")).length, 27);
+    const unknown = await plain.request(10, "tools/call", {
+      name: "ocean_tools",
+      arguments: { open: ["nope"] },
+    });
+    assert.match(unknown.error.message, /Unknown tool group/);
   } finally {
     plain.child.kill();
+  }
+
+  // A client the probe found never re-lists (Codex) is pointed at ocean_call.
+  const codex = serve({ OCEAN_MCP_TOOLS: "" });
+  try {
+    await codex.request(1, "initialize", {
+      clientInfo: { name: "codex-mcp-client" },
+    });
+    const opened = await codex.request(2, "tools/call", {
+      name: "ocean_tools",
+      arguments: { open: ["tasks"] },
+    });
+    assert.match(
+      opened.result.structuredContent.call,
+      /does not re-list.*ocean_call/,
+    );
+  } finally {
+    codex.child.kill();
+  }
+
+  // The hook writes the folder's selection file; a running server opens what it names.
+  const watched = serve({ OCEAN_MCP_TOOLS: "" });
+  try {
+    await watched.request(1, "initialize", {
+      clientInfo: { name: "groups-test" },
+    });
+    assert.equal(names(await watched.request(2, "tools/list")).length, 8);
+    const { writeToolSelection } = await import(
+      "@ocean/core/shared/tool-groups.js"
+    );
+    const previous = process.env.OCEAN_ROOT;
+    process.env.OCEAN_ROOT = root;
+    try {
+      await writeToolSelection(await realpath(root), {
+        primary: "base",
+        secondary: [],
+        groups: ["people"],
+      });
+    } finally {
+      if (previous === undefined) delete process.env.OCEAN_ROOT;
+      else process.env.OCEAN_ROOT = previous;
+    }
+    const deadline = Date.now() + 5_000;
+    while (
+      !watched.messages.some(
+        (message) => message.method === "notifications/tools/list_changed",
+      ) &&
+      Date.now() < deadline
+    )
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    const after = names(await watched.request(3, "tools/list"));
+    assert.ok(after.includes("people_lookup"), after.join());
+  } finally {
+    watched.child.kill();
   }
 
   const all = serve({ OCEAN_MCP_TOOLS: "all" });
   try {
     await all.request(1, "initialize", { clientInfo: { name: "groups-test" } });
-    assert.equal(names(await all.request(2, "tools/list")).length, 31);
+    assert.equal(names(await all.request(2, "tools/list")).length, 33);
   } finally {
     all.child.kill();
   }

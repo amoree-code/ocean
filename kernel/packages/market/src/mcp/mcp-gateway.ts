@@ -69,7 +69,11 @@ export type GatewaySkip = {
 
 export type McpRoot = { uri: string; name?: string };
 // What the gateway hands a member's client: the roots it may forward to the member.
-export type GatewayClientContext = { roots: () => Promise<McpRoot[]> };
+export type GatewayClientContext = {
+  roots: () => Promise<McpRoot[]>;
+  // The member said its tool, resource or prompt list changed; the gateway re-lists it.
+  onListChanged?: () => void;
+};
 
 // The profile a gateway serves (T-338 P4, plan §3.4): a member is listed only when the
 // profile's `mcp` names it, by capability (`dev.ocean/chrome-devtools`), by its last segment
@@ -711,7 +715,10 @@ export class McpGateway {
   }
 
   #clientFor(member: GatewayMember): GatewayClient {
-    return this.options.client(member, { roots: () => this.#currentRoots() });
+    return this.options.client(member, {
+      roots: () => this.#currentRoots(),
+      onListChanged: () => void this.#refresh(member),
+    });
   }
 
   // Only members about to be shown are loaded: a hidden server never runs and its tools never
@@ -941,6 +948,41 @@ export class McpGateway {
         },
       ],
     };
+  }
+
+  // T-339 P2: the prompt hook's selection for this folder (primary and secondary profiles).
+  // The gateway follows it without `gateway__use_profile`, and only ever widens: members the
+  // session already sees stay listed. Returns whether the client was told its list changed.
+  async followSelection(selection: {
+    primary: string;
+    secondary: string[];
+  }): Promise<boolean> {
+    const available = this.options.profiles?.available;
+    if (!this.#profile || !available) return false;
+    const names = [selection.primary, ...selection.secondary];
+    const mcp = [
+      ...new Set([
+        ...this.#profile.mcp,
+        ...names.flatMap(
+          (name) =>
+            available.find((profile) => profile.name === name)?.mcp ?? [],
+        ),
+      ]),
+    ];
+    const known = available.some(
+      (profile) => profile.name === selection.primary,
+    );
+    const name = known ? selection.primary : this.#profile.name;
+    if (name === this.#profile.name && mcp.length === this.#profile.mcp.length)
+      return false;
+    const before = this.#tools.map((tool) => tool.name).join();
+    this.#profile = { name, mcp };
+    await this.#load(this.members.filter((member) => this.#visible(member)));
+    this.#rebuild();
+    if (this.#tools.map((tool) => tool.name).join() === before) return false;
+    this.#log(`profile ${name} (from the prompt hook's selection)`);
+    this.#announce();
+    return true;
   }
 
   // Tells the client the lists changed (MCP `notifications/*/list_changed`).

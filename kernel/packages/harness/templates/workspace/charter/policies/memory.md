@@ -1,3 +1,8 @@
+---
+triggers: ["remember", "my preference", "about me", "forget", "تذكر", "احفظ", "عني"]
+digest: "Memory is what is true about him: one home per fact, read the index first, never load everything, never store secrets."
+---
+
 # Policy — memory
 
 Load when recording or retrieving a durable fact about the owner.

@@ -1,0 +1,5 @@
+---
+"@amoree-code/ocean": minor
+---
+
+T-339 Context v4: `charter/core.md` keeps only the hard boundaries and a router line; every policy carries trigger frontmatter, and the prompt hook adds at most two matching policy lines per prompt, once per session (`ocean policy list` shows triggers, `ocean policy validate` checks them, `ocean_context {policy}` reads one). Ocean's MCP server lists 8 core tools (about 5.8 KB of schemas); `ocean_tools` opens a group and `ocean_call` calls any tool through the write gate; the prompt hook's selection widens the server's and the gateway's lists with `list_changed`, and a member's own `list_changed` reaches the client. `ocean mcp probe-client` measures which clients re-list; a client known not to (Codex) is told to use `ocean_call`. `ocean connectors list|doctor|add --approve|remove|auth` keeps one hub of pinned, token-free connector entries (built-in: Meta through Composio, for `marketing-ads` and `analysis`), and the gateway lists an MCP connector only where the profile uses it. `ocean scout <profile>` writes a read-only report of candidate servers and installs nothing.

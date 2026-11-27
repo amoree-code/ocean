@@ -29,6 +29,9 @@ export type McpClientOptions = {
   // Set: the client offers MCP roots and answers the server's `roots/list` with these (the
   // gateway passes its own client's roots through, T-338 P4).
   roots?: () => Promise<{ uri: string; name?: string }[]>;
+  // Set: told the method of every notification the server sends (`notifications/tools/
+  // list_changed`, say), so the gateway can pass a member's change on (T-339 P2).
+  onNotification?: (method: string) => void;
 };
 
 export class McpClient {
@@ -209,7 +212,11 @@ export class McpClient {
       } catch {
         continue;
       }
-      if (response.id === undefined) continue;
+      if (response.id === undefined) {
+        if (typeof response.method === "string")
+          this.options.onNotification?.(response.method);
+        continue;
+      }
       // A request from the server: answer `ping` and (when offered) `roots/list`, decline the rest.
       if (response.method !== undefined) {
         const roots = this.options.roots;

@@ -1,6 +1,13 @@
 import { mkdir, readdir, readFile, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import {
+  type PolicyMatch,
+  policyCatalog,
+  policyLine,
+  routePolicies,
+} from "@ocean/core/shared/charter.js";
+import { matchTriggers } from "@ocean/core/shared/context-triggers.js";
 import { atomicWrite } from "@ocean/core/shared/fs-utils.js";
 import { oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import { resolveProject } from "@ocean/core/shared/project-resolution.js";
@@ -15,6 +22,11 @@ import {
   stem,
   tokenize,
 } from "@ocean/core/shared/text-tokens.js";
+import {
+  PROFILE_DEFAULT_GROUPS,
+  TOOL_GROUPS,
+  writeToolSelection,
+} from "@ocean/core/shared/tool-groups.js";
 import { clientSkillRoots } from "@ocean/market/skills/core-skill-sync.js";
 
 // Skill router (T-325). A client only picks a skill by itself when the skill's description sits
@@ -280,12 +292,22 @@ function fileFor(skill: IndexedSkill, client: string): string {
 // triggered.
 export type ProfileSkills = { primary: Set<string>; secondary: Set<string> };
 
+// What the session's profiles bring to one prompt: their skills (a boost), their policies and
+// their tool groups (T-339).
+export type PromptProfiles = {
+  skills: ProfileSkills;
+  primary: string;
+  secondary: string[];
+  policies: string[];
+  groups: string[];
+};
+
 // The primary comes from the project, task and repository, as at session start, so it holds
 // for the session; the prompt only adds secondaries. Never throws: no profiles, no boost.
-export async function promptProfileSkills(
+export async function promptProfiles(
   cwd: string,
   prompt: string,
-): Promise<ProfileSkills | undefined> {
+): Promise<PromptProfiles | undefined> {
   try {
     const catalog = await profileCatalog();
     const project = await resolveProject(cwd).catch(() => null);
@@ -295,15 +317,39 @@ export async function promptProfileSkills(
       prompt,
       catalog,
     });
-    const skillsOf = (name: string) =>
-      catalog.profiles.find((profile) => profile.name === name)?.skills ?? [];
+    const of = (name: string) =>
+      catalog.profiles.find((profile) => profile.name === name);
+    const all = [session.primary, ...session.secondary];
     return {
-      primary: new Set(skillsOf(session.primary)),
-      secondary: new Set(session.secondary.flatMap(skillsOf)),
+      skills: {
+        primary: new Set(of(session.primary)?.skills ?? []),
+        secondary: new Set(
+          session.secondary.flatMap((name) => of(name)?.skills ?? []),
+        ),
+      },
+      primary: session.primary,
+      secondary: session.secondary,
+      policies: [...new Set(all.flatMap((name) => of(name)?.policies ?? []))],
+      groups: [
+        ...new Set(
+          all.flatMap((name) => [
+            ...(of(name)?.tools ?? []),
+            ...(PROFILE_DEFAULT_GROUPS[name] ?? []),
+          ]),
+        ),
+      ],
     };
   } catch {
     return undefined;
   }
+}
+
+// The Ocean tool groups this prompt's words open.
+export function promptGroups(prompt: string): string[] {
+  if (!prompt.trim() || prompt.trimStart().startsWith("/")) return [];
+  return Object.entries(TOOL_GROUPS)
+    .filter(([, group]) => matchTriggers(group.triggers, prompt).score > 0)
+    .map(([name]) => name);
 }
 
 // BM25 over each description (the name counts double), plus trigger-phrase hits, the
@@ -427,7 +473,10 @@ export function routerLine(matches: SkillMatch[]): string {
 
 type RouterState = {
   // Skills already named in a session are not named again in it.
-  sessions: Record<string, { at: number; skills: string[] }>;
+  sessions: Record<
+    string,
+    { at: number; skills: string[]; policies?: string[]; groups?: string[] }
+  >;
   // How often each skill was named, for spotting weak or noisy triggers.
   hits: Record<string, number>;
 };
@@ -458,8 +507,19 @@ const HOOK_EVENT: Record<string, string> = {
 
 export const PROMPT_HOOK_CLIENTS = Object.keys(HOOK_EVENT);
 
+// One line naming the groups this prompt opened, so a client that never re-lists still knows
+// the tools exist and how to reach them.
+export function groupsLine(groups: string[]): string {
+  const named = groups
+    .map((name) => `${name} (${TOOL_GROUPS[name]?.tools.join(", ")})`)
+    .join("; ");
+  return `Ocean tools opened: ${named}. If they are not listed, run one through ocean_call.`;
+}
+
 // `ocean hook prompt --client <c>`: the hook payload in, the client's additional-context
 // output (or nothing) out. Never throws on a bad payload: a prompt hook must not block a prompt.
+// Names at most one skill line, two policy digests and the tool groups the prompt opened, each
+// once per session; writes the folder's tool selection the MCP servers follow (T-339).
 export async function skillRouterHook(
   payload: Record<string, unknown>,
   client: string,
@@ -470,35 +530,77 @@ export async function skillRouterHook(
   const cwd = typeof payload.cwd === "string" ? payload.cwd : process.cwd();
   const session =
     typeof payload.session_id === "string" ? payload.session_id : "";
-  const index = await loadSkillIndex(home);
-  const [signals, profiles] = await Promise.all([
+  const [index, signals, profiles, policies] = await Promise.all([
+    loadSkillIndex(home),
     projectSignals(cwd),
-    promptProfileSkills(cwd, prompt),
+    promptProfiles(cwd, prompt),
+    policyCatalog().catch(() => []),
   ]);
-  const { matches } = routeSkills(index, prompt, { signals, client, profiles });
-  if (!matches.length) return null;
+  const { matches } = routeSkills(index, prompt, {
+    signals,
+    client,
+    profiles: profiles?.skills,
+  });
   const state = await readState();
-  const seen = new Set(session ? (state.sessions[session]?.skills ?? []) : []);
-  const fresh = matches.filter((match) => !seen.has(match.name));
-  if (!fresh.length) return null;
+  const entry = session ? state.sessions[session] : undefined;
+  const seenSkills = new Set(entry?.skills ?? []);
+  // The profile's own policies arrived with the start brief; a prompt never repeats them.
+  const seenPolicies = new Set([
+    ...(entry?.policies ?? []),
+    ...(profiles?.policies ?? []),
+  ]);
+  const seenGroups = new Set(entry?.groups ?? []);
+  const fresh = matches.filter((match) => !seenSkills.has(match.name));
+  const policyMatches: PolicyMatch[] = routePolicies(policies, prompt, {
+    max: Number.POSITIVE_INFINITY,
+  })
+    .filter((match) => !seenPolicies.has(match.name))
+    .slice(0, 2);
+  const groups = [
+    ...new Set([...(profiles?.groups ?? []), ...promptGroups(prompt)]),
+  ];
+  const newGroups = groups.filter((name) => !seenGroups.has(name));
+  try {
+    await writeToolSelection(cwd, {
+      primary: profiles?.primary ?? "base",
+      secondary: profiles?.secondary ?? [],
+      groups,
+    });
+  } catch {}
+  // Profile groups are listed from the start; only the ones this prompt's words opened are said.
+  const spoken = newGroups.filter(
+    (name) => !(profiles?.groups ?? []).includes(name),
+  );
+  if (!fresh.length && !policyMatches.length && !newGroups.length) return null;
   const now = Date.now();
-  for (const [id, entry] of Object.entries(state.sessions))
-    if (!entry || now - entry.at > SESSION_TTL_MS) delete state.sessions[id];
+  for (const [id, item] of Object.entries(state.sessions))
+    if (!item || now - item.at > SESSION_TTL_MS) delete state.sessions[id];
   if (session)
     state.sessions[session] = {
       at: now,
-      skills: [...seen, ...fresh.map((match) => match.name)],
+      skills: [...seenSkills, ...fresh.map((match) => match.name)],
+      policies: [...seenPolicies, ...policyMatches.map((match) => match.name)],
+      groups: [...seenGroups, ...newGroups],
     };
   for (const match of fresh)
     state.hits[match.name] = (state.hits[match.name] ?? 0) + 1;
+  for (const match of policyMatches)
+    state.hits[`policy:${match.name}`] =
+      (state.hits[`policy:${match.name}`] ?? 0) + 1;
   try {
     await mkdir(path.dirname(statePath()), { recursive: true });
     await atomicWrite(statePath(), `${JSON.stringify(state, null, 2)}\n`);
   } catch {}
+  const lines = [
+    ...(fresh.length ? [routerLine(fresh)] : []),
+    ...policyMatches.map(policyLine),
+    ...(spoken.length ? [groupsLine(spoken)] : []),
+  ];
+  if (!lines.length) return null;
   return {
     hookSpecificOutput: {
       hookEventName: HOOK_EVENT[client] ?? "UserPromptSubmit",
-      additionalContext: routerLine(fresh),
+      additionalContext: lines.join("\n"),
     },
   };
 }

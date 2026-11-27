@@ -1,3 +1,8 @@
+---
+triggers: ["concise", "shorter", "too long", "summary", "اختصر", "مختصر", "طويل"]
+digest: "Answer first, no preamble or recap; cut filler; one question at a time; length follows what the reader needs."
+---
+
 # Policy — concise output
 
 Load when producing any response: a chat reply, a report, a checkpoint note.

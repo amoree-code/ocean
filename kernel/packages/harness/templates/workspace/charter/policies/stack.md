@@ -1,3 +1,8 @@
+---
+triggers: ["scaffold", "which library", "new project", "setup project", "مشروع جديد", "مكتبه"]
+digest: "pnpm, Node 22 LTS via fnm, TypeScript strict; prefer the stack's defaults over a new library."
+---
+
 # Policy — technical defaults
 
 Load when choosing libraries or scaffolding a project.

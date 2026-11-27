@@ -296,7 +296,9 @@ test("ocean mcp gateway routes a client call to an installed remote server", asy
       `${names.join(", ")}\n${io.stderr}`,
     );
     assert.ok(!names.includes("remote__poisoned"), names.join(", "));
-    assert.ok(names.includes("ocean__ocean_status"), names.join(", "));
+    // T-339: Ocean lists its 8 core tools; ocean_status is off the list but still callable.
+    assert.ok(names.includes("ocean__ocean_context"), names.join(", "));
+    assert.ok(!names.includes("ocean__ocean_status"), names.join(", "));
     const echo = await request(3, "tools/call", {
       name: "remote__echo",
       arguments: { text: "through the gateway" },

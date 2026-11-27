@@ -1,5 +1,6 @@
 import {
   CORE_RULES,
+  policyCatalog,
   policyNames,
   readCoreRules,
   readRules,
@@ -8,7 +9,36 @@ import {
 export async function runPolicyCommand(name = "list"): Promise<void> {
   const names = await policyNames();
   if (name === "list") {
-    console.log(JSON.stringify({ policies: names }, null, 2));
+    // Name, triggers and digest: what the prompt hook routes on (T-339 P1).
+    const catalog = await policyCatalog();
+    console.log(
+      JSON.stringify(
+        {
+          policies: catalog.map(({ name, triggers, digest }) => ({
+            name,
+            triggers,
+            digest,
+          })),
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+  if (name === "validate") {
+    // Every policy carries triggers and a digest of at most 200 bytes, or none is routed.
+    const problems = (await policyCatalog())
+      .filter((entry) => entry.problems.length)
+      .map(({ name, problems }) => ({ name, problems }));
+    console.log(
+      JSON.stringify(
+        { ok: problems.length === 0, policies: names.length, problems },
+        null,
+        2,
+      ),
+    );
+    if (problems.length) process.exitCode = 1;
     return;
   }
   if (name === "doctor") {

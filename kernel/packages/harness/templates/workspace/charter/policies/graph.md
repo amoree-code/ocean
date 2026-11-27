@@ -1,3 +1,8 @@
+---
+triggers: ["graph", "unfamiliar code", "large repo", "where is", "codebase map", "وين موجود"]
+digest: "Graph explains, files decide, tests prove: ask the graph for where to look, then open the real file at the span."
+---
+
 # Policy — Graph Brain
 
 Load when navigating an unfamiliar or large tree. Graph Brain is an **accelerator, not a

@@ -90,9 +90,10 @@ test("context cost measures Ocean's MCP schemas over a real tools/list", async (
       [process.execPath, path.resolve("dist/main.js"), "mcp", "serve"],
       root,
     );
-    assert.equal(listing.tools, 18);
+    // T-339: 8 core tools, at most 6,000 B of schemas.
+    assert.equal(listing.tools, 8);
     assert.ok(
-      listing.bytes > 0 && listing.bytes <= 12_288,
+      listing.bytes > 0 && listing.bytes <= 6_000,
       String(listing.bytes),
     );
     assert.equal(

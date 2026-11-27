@@ -16,9 +16,11 @@ import {
 } from "@ocean/market/mcp/mcp-gateway.js";
 import { planMcpLaunch } from "@ocean/market/mcp/mcp-launch.js";
 import { McpClient } from "@ocean/services/infrastructure/mcp/mcp-client.js";
+import { gatewayClientFor } from "../dist/interfaces/cli/mcp-gateway-command.js";
 
 // A stdio MCP server that records each start in a file, echoes calls, fails `fail` with the text
-// it is given, and answers `roots` with the roots it asks its client for.
+// it is given, answers `roots` with the roots it asks its client for, and on `grow` adds a tool
+// and sends `notifications/tools/list_changed`.
 const fakeServer = `
 const fs = require("node:fs");
 const [name, tools, starts] = [process.argv[2], JSON.parse(process.argv[3]), process.argv[4]];
@@ -38,6 +40,12 @@ process.stdin.on("data", (c) => {
     if (q.method === "tools/call" && q.params.name === "roots") {
       waiting.set("r" + q.id, (answer) => send({ jsonrpc: "2.0", id: q.id, result: { content: [{ type: "text", text: JSON.stringify(answer.result ?? answer.error) }] } }));
       send({ jsonrpc: "2.0", id: "r" + q.id, method: "roots/list" });
+      continue;
+    }
+    if (q.method === "tools/call" && q.params.name === "grow") {
+      tools.push({ name: "grown" });
+      send({ jsonrpc: "2.0", id: q.id, result: { content: [{ type: "text", text: "grew" }] } });
+      send({ jsonrpc: "2.0", method: "notifications/tools/list_changed" });
       continue;
     }
     const result = q.method === "tools/list" ? { tools }
@@ -207,6 +215,130 @@ test("use_profile switches the listed tools and tells the client its list change
     );
     const call = await gateway.call("chrome-devtools__list_pages", {});
     assert.equal(call.content[0].text, "chrome-devtools:list_pages");
+  } finally {
+    gateway.close();
+  }
+});
+
+test("the gateway follows the prompt hook's selection, and only ever widens", async () => {
+  const { members, started } = await fixture();
+  const { gateway, log } = gatewayFor(members, { profiles: profiles("base") });
+  const sent = [];
+  gateway.attach((message) => sent.push(message));
+  try {
+    await gateway.handle({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {},
+    });
+    await gateway.handle({
+      jsonrpc: "2.0",
+      method: "notifications/initialized",
+    });
+    assert.deepEqual(await names(gateway), [
+      "gateway__use_profile",
+      "ocean__ocean_status",
+    ]);
+    // A front-end prompt: chrome-devtools and ocean-uiux appear without use_profile.
+    assert.equal(
+      await gateway.followSelection({ primary: "frontend", secondary: [] }),
+      true,
+    );
+    assert.equal(gateway.profile, "frontend");
+    const listed = await names(gateway);
+    assert.ok(
+      listed.includes("chrome-devtools__list_pages"),
+      listed.join(", "),
+    );
+    assert.ok(
+      listed.includes("ocean-uiux__search_components"),
+      listed.join(", "),
+    );
+    assert.ok(
+      sent.some((m) => m.method === "notifications/tools/list_changed"),
+    );
+    assert.ok(
+      log.some((line) => /from the prompt hook's selection/.test(line)),
+      log.join("\n"),
+    );
+    // A narrower selection later never takes tools away.
+    sent.length = 0;
+    assert.equal(
+      await gateway.followSelection({ primary: "base", secondary: [] }),
+      false,
+    );
+    assert.deepEqual(await names(gateway), listed);
+    assert.equal(sent.length, 0);
+    // The same selection again changes nothing; an unknown name widens nothing.
+    assert.equal(
+      await gateway.followSelection({ primary: "frontend", secondary: [] }),
+      false,
+    );
+    assert.equal(
+      await gateway.followSelection({ primary: "nope", secondary: ["nope"] }),
+      false,
+    );
+    assert.equal(
+      (await started()).filter((name) => name === "chrome-devtools").length,
+      1,
+    );
+  } finally {
+    gateway.close();
+  }
+  // Without profiles there is nothing to follow.
+  const open = gatewayFor(members);
+  try {
+    assert.equal(
+      await open.gateway.followSelection({
+        primary: "frontend",
+        secondary: [],
+      }),
+      false,
+    );
+  } finally {
+    open.gateway.close();
+  }
+});
+
+test("a member's own list_changed reaches the client, with the new tool listed", async () => {
+  const { members } = await fixture();
+  const devtools = members[1];
+  devtools.args[2] = JSON.stringify([
+    ...JSON.parse(devtools.args[2]),
+    { name: "grow" },
+  ]);
+  const { gateway } = gatewayFor(members, {
+    client: (member, context) =>
+      gatewayClientFor(member, "test", undefined, context),
+  });
+  const sent = [];
+  gateway.attach((message) => sent.push(message));
+  try {
+    await gateway.handle({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {},
+    });
+    await gateway.handle({
+      jsonrpc: "2.0",
+      method: "notifications/initialized",
+    });
+    assert.ok(!(await names(gateway)).includes("chrome-devtools__grown"));
+    const grew = await gateway.call("chrome-devtools__grow", {});
+    assert.equal(grew.content[0].text, "grew");
+    const deadline = Date.now() + 2000;
+    while (
+      !(await names(gateway)).includes("chrome-devtools__grown") &&
+      Date.now() < deadline
+    )
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    assert.ok((await names(gateway)).includes("chrome-devtools__grown"));
+    assert.ok(
+      sent.some((m) => m.method === "notifications/tools/list_changed"),
+      JSON.stringify(sent),
+    );
   } finally {
     gateway.close();
   }

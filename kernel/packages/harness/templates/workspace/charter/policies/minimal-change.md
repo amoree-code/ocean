@@ -1,3 +1,8 @@
+---
+triggers: ["new file", "add dependency", "refactor", "abstraction", "new package", "ملف جديد", "مكتبه"]
+digest: "Smallest change that works: reuse before adding; a new file, dependency or abstraction needs a reason; never cut tests."
+---
+
 # Policy — minimal change
 
 Load before writing new code, and before proposing a new file, dependency, or abstraction.
