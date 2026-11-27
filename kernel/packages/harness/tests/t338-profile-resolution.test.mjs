@@ -291,13 +291,20 @@ test("a named project's portable path (~/...) still reads the repository's signa
   await workspace(async ({ root }) => {
     // The workspace stands in for the home directory, so `~/repos/web` is the fixture repo.
     await project(root, "web", { paths: ["~/repos/web"] });
-    const home = process.env.HOME;
+    // os.homedir() reads HOME on POSIX and USERPROFILE on Windows.
+    const saved = {
+      HOME: process.env.HOME,
+      USERPROFILE: process.env.USERPROFILE,
+    };
     process.env.HOME = root;
+    process.env.USERPROFILE = root;
     try {
       const text = await oceanContext(os.tmpdir(), "web");
       assert.match(text.split("\n")[0], / profile=frontend ops=/);
     } finally {
-      process.env.HOME = home;
+      for (const [key, value] of Object.entries(saved))
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
     }
   });
 });
