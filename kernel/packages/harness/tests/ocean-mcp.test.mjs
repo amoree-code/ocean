@@ -40,6 +40,7 @@ test("Ocean MCP exposes provider-neutral tools without Obsidian", async () => {
         "ocean_status",
         "ocean_doctor",
         "ocean_profiles_list",
+        "ocean_profile_get",
         "ocean_tasks_list",
         "ocean_task_get",
         "ocean_handoffs_list",

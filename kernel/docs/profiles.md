@@ -182,3 +182,38 @@ explicit `--profile` always wins. Every selection, suggested or overridden, is a
 `bridge/config/runtime.json` sets `"autoProfile": true`; otherwise `defaultProfile` applies as
 before. The suggestion never widens a run on its own: it names an installed profile, whose own
 `writePolicy` and allowed paths still bound what the run may do.
+
+## Choosing a profile for a session (T-338)
+
+One resolver, `resolveProfile()` (`packages/core/src/domain/profiles/profile-resolution.ts`),
+serves both `ocean run` and interactive sessions. It makes no model call. The primary profile
+is, in order:
+
+1. the first installed name in the project's `project.json` `profiles` (the rest become
+   secondary);
+2. the task's `kind`, then its title and objective, scored against each profile's `triggers`;
+3. the repository's signals (`package.json` dependencies as `dep:<name>`, top-level file names
+   such as `components.json` or `Dockerfile`) against each profile's `signals`;
+4. otherwise `base` (or `default` when only the older set is installed).
+
+Prompt text never moves the primary. A strong trigger match (two triggers, or one phrase of
+two words or more) adds up to two secondary profiles. A profile that declares no `triggers`
+keeps the words of the old rule table, and the old names answer for the new ones
+(`tester` ↔ `qa-testing`, `reviewer` ↔ `code-review`, `security-auditor` ↔ `security`,
+`researcher` ↔ `analysis`, `strategist` ↔ `product-strategy`, `developer` ↔
+`frontend`/`backend`, `default` ↔ `base`). A profile is chosen by name only, so its identity,
+and a session's resume, never change.
+
+Delivery: the start line (hook clients) and `ocean_context` (hookless clients) carry
+`profile=<name>` within the 256-byte cap, with one brief line of at most 200 bytes beside it
+(`Profile frontend · skills: … · tools: …`). The MCP tool `ocean_profile_get {name?}` returns
+the bundle (at most 2 KB). `ocean_profiles_list` returns each profile's name, kind,
+description and triggers. Each session choice is appended to
+`bridge/state/profiles/selections.jsonl` with `source: hook | context`. A profile that does
+not load is skipped, and the session keeps its start line.
+
+The fourteen shipped profiles live in `templates/profiles-v3/` (`base` plus thirteen domains that
+`extends: base`). `ocean setup` installs any a workspace lacks and never replaces one that is
+there. `ocean project bind`, `ocean project register` and the session-start auto-register write
+the profile the repository points at into `project.json` `profiles` when the project has none,
+once; `base` is what an empty list already means, so it is never written.

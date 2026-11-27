@@ -210,6 +210,10 @@ export type ProjectManifest = {
   // Other names the project goes by (T-332): Claude project names, old folder ids. Kept as
   // written like tags; read through projectAliases.
   aliases?: unknown;
+  // The profiles this project works in (T-338), first one primary for its sessions. Filled
+  // from the repository's signals at register and scan time; the owner may edit it. Kept as
+  // written like aliases; read through projectProfiles.
+  profiles?: unknown;
   // Who the project belongs to, one of PROJECT_CATEGORIES: the category folder it sits in
   // (T-311), or, for a project still flat under 04-projects, the value written in its
   // project.json. Read through projectCategory.
@@ -223,6 +227,7 @@ export const MAX_PROJECT_VERIFY_BYTES = 300;
 export const MAX_PROJECT_TAGS = 10;
 export const MAX_PROJECT_FORMER_PATHS = 20;
 export const MAX_PROJECT_ALIASES = 20;
+export const MAX_PROJECT_PROFILES = 5;
 
 const MANIFEST_FILE = "project.json";
 
@@ -368,6 +373,17 @@ export function projectAliases(
   return lineList("aliases", manifest.aliases, MAX_PROJECT_ALIASES, 200);
 }
 
+// Read best-effort: a typo here must never unbind the project or break its session start.
+export function projectProfiles(
+  manifest: Pick<ProjectManifest, "profiles">,
+): string[] {
+  try {
+    return lineList("profiles", manifest.profiles, MAX_PROJECT_PROFILES, 64);
+  } catch {
+    return [];
+  }
+}
+
 // Matching reads aliases best-effort: a typo in one manifest's aliases never unbinds it.
 function aliasesOrNone(manifest: Pick<ProjectManifest, "aliases">): string[] {
   try {
@@ -417,6 +433,7 @@ function parseManifest(folder: string, raw: string, category?: string) {
       ? { formerPaths: parsed.formerPaths }
       : {}),
     ...(parsed.aliases !== undefined ? { aliases: parsed.aliases } : {}),
+    ...(parsed.profiles !== undefined ? { profiles: parsed.profiles } : {}),
     ...(category === UNCATEGORIZED
       ? {}
       : category !== undefined

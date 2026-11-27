@@ -25,6 +25,7 @@ import {
   oceanRoot,
   SYSTEM_DIR,
 } from "@ocean/core/shared/paths.js";
+import { fillProjectProfiles } from "@ocean/core/shared/project-profile-fill.js";
 import {
   autoRegisterProject,
   bindProject,
@@ -46,6 +47,7 @@ import {
   unbindProjectPath,
   writeProjectIndex,
 } from "@ocean/core/shared/project-resolution.js";
+import { projectSignals } from "@ocean/core/shared/repo-signals.js";
 import { recordSynced } from "@ocean/core/shared/visibility.js";
 import {
   claudeSessionEndHook,
@@ -87,6 +89,8 @@ import {
   copyClientSkills,
   linkClientSkills,
   populateSkillHub,
+  skillDuplicates,
+  skillProfileReport,
   skillSurfaceReport,
 } from "@ocean/market/skills/skill-hub.js";
 import {
@@ -160,7 +164,6 @@ import {
   buildSkillIndex,
   loadSkillIndex,
   PROMPT_HOOK_CLIENTS,
-  projectSignals,
   ROUTE_THRESHOLD,
   routerLine,
   routeSkills,
@@ -778,6 +781,8 @@ async function commandProject(): Promise<void> {
       process.exitCode = 1;
     } else {
       const result = await bindProject(name, targetPath, { addPath });
+      if (result.created && !result.conflict)
+        await fillProjectProfiles(result.binding.id, targetPath);
       console.log(JSON.stringify(result, null, 2));
       if (result.conflict) process.exitCode = 2;
     }
@@ -823,6 +828,8 @@ async function commandProject(): Promise<void> {
     const result = await autoRegisterProject(process.argv[4] ?? process.cwd(), {
       explicit: true,
     });
+    if (result.status === "registered" && result.resolution.status === "bound")
+      await fillProjectProfiles(result.projectId, result.resolution.path);
     console.log(JSON.stringify(result, null, 2));
     if (result.status !== "registered") process.exitCode = 2;
   } else if (action === "unbind") {
@@ -1329,9 +1336,35 @@ async function commandSkill(): Promise<void> {
     // Core skills per client, then the surface check: every installed client holds the
     // skills Ocean keeps for it (T-319 C5). A gap fails the command.
     const surface = await skillSurfaceReport();
+    const profiles = await skillProfileReport();
+    const duplicates = await skillDuplicates();
     console.log(
-      JSON.stringify({ core: await coreSkillReports(), surface }, null, 2),
+      JSON.stringify(
+        { core: await coreSkillReports(), surface, profiles, duplicates },
+        null,
+        2,
+      ),
     );
+    for (const { profile, skill } of profiles.missing)
+      console.error(
+        `NOT CONSISTENT: profile ${profile} names missing skill ${skill}`,
+      );
+    for (const { profile, skill } of profiles.clientOnly)
+      console.error(
+        `profile ${profile} names ${skill}, held only by a client (not core or the hub)`,
+      );
+    for (const { name, error } of profiles.problems)
+      console.error(`NOT CONSISTENT: profile ${name} does not load: ${error}`);
+    if (profiles.noProfile.length)
+      console.error(
+        `${profiles.noProfile.length} hub skill(s) in no profile: ${profiles.noProfile.join(", ")}`,
+      );
+    // A skill loaded twice by one client warns: the model sees two near-identical entries.
+    for (const { client, skill, at } of duplicates)
+      console.error(
+        `DUPLICATE: ${client} loads ${skill} twice: ${at.join(", ")}`,
+      );
+    if (!profiles.consistent) process.exitCode = 1;
     if (!surface.consistent) {
       for (const row of surface.clients)
         if (row.missing.length)

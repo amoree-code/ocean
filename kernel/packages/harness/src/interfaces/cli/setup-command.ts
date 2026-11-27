@@ -235,6 +235,18 @@ export async function setup(options: SetupOptions = {}): Promise<void> {
         "utf8",
       ),
     );
+  // T-338 P2: the domain profiles (base, frontend, ...) the resolver chooses from. A profile
+  // already present, or edited by the owner, is never replaced.
+  const bundles = new URL("../../../templates/profiles-v3/", import.meta.url);
+  const present = new Set(await listProfileNames());
+  for (const file of (await readdir(bundles)).sort()) {
+    const name = file.replace(/\.md$/, "");
+    if (file.endsWith(".md") && !present.has(name))
+      await ensureFile(
+        oceanPath(SYSTEM_DIR, "profiles", file),
+        await readFile(new URL(file, bundles), "utf8"),
+      );
+  }
   // T-245: the runtime config names the default profile, so `ocean run` without --profile
   // no longer depends on the historical fallback. An existing file is never replaced.
   await ensureFile(

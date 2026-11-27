@@ -81,6 +81,9 @@ test("setup isolates its writes to OCEAN_ROOT and the (fake) home directory, nev
       );
     }
     await stat(path.join(privateRoot, SYSTEM_DIR, "profiles", "default.md"));
+    // T-338 P2: the domain profiles the resolver chooses from are installed beside it.
+    for (const name of ["base", "frontend", "marketing-ads", "ocean-ops"])
+      await stat(path.join(privateRoot, SYSTEM_DIR, "profiles", `${name}.md`));
     // T-245: setup writes the runtime config, which loads and names a v2 default profile.
     assert.deepEqual(
       JSON.parse(

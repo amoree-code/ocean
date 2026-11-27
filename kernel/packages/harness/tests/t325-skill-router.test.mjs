@@ -3,11 +3,11 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { projectSignals } from "@ocean/core/shared/repo-signals.js";
 import {
   buildSkillIndex,
   frontmatterField,
   loadSkillIndex,
-  projectSignals,
   routeSkills,
   skillRouterHook,
   triggerPhrases,
@@ -177,6 +177,49 @@ test("the working directory breaks a tie between similar skills", async () => {
     assert.equal(
       top(routeSkills(index, "write tests for the parser", { signals }))[0],
       "vitest",
+    );
+  });
+});
+
+// T-338 P3: the session's primary profile breaks the same tie; a secondary profile the
+// prompt triggered does too, and neither makes a match from nothing.
+test("the session's profiles boost their skills", async () => {
+  await withHome(async ({ home }) => {
+    const index = await buildSkillIndex(home, false);
+    const message = "write tests for the parser";
+    const tdd = new Set(["test-driven-development"]);
+    const none = new Set();
+    assert.equal(
+      top(
+        routeSkills(index, message, {
+          profiles: { primary: tdd, secondary: none },
+        }),
+      )[0],
+      "test-driven-development",
+    );
+    const boosted = routeSkills(index, message, {
+      profiles: { primary: none, secondary: tdd },
+    });
+    assert.equal(top(boosted)[0], "test-driven-development");
+    assert.ok(boosted.matches[0].why.includes("secondary profile"));
+    // A boost every candidate shares changes nothing about which are close (it may lift a
+    // weak match over the threshold, as the project signal does).
+    const all = new Set(index.skills.map((skill) => skill.name));
+    assert.deepEqual(
+      top(
+        routeSkills(index, "good morning", {
+          profiles: { primary: all, secondary: none },
+        }),
+      ),
+      top(routeSkills(index, "good morning")),
+    );
+    assert.deepEqual(
+      top(
+        routeSkills(index, "good evening friend", {
+          profiles: { primary: new Set(["day-start"]), secondary: none },
+        }),
+      ),
+      [],
     );
   });
 });

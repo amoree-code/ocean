@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { mkdtempSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -14,6 +15,11 @@ import {
   sessionStartHookForClient,
   WORKTREE_WARNING_MAX_BYTES,
 } from "@ocean/loop/hooks/session-start-hook.js";
+
+// The hook writes its ledgers (acks, visibility, profile selections) under OCEAN_ROOT, so neither
+// an in-process call nor a spawned CLI run ever touches the owner's workspace.
+process.env.OCEAN_ROOT = mkdtempSync(path.join(os.tmpdir(), "ocean-hook-cli-"));
+const CLI_ENV = { ...process.env };
 
 // The authority line rides beside the bootstrap as its own line (T-328), never inside it.
 const AUTHORITY_BYTES = Buffer.byteLength(MEMORY_AUTHORITY_LINE) + 1;
@@ -77,7 +83,7 @@ test("ocean hook session-start CLI: bounded stdout JSON, run from a cwd outside 
   const result = spawnSync(
     process.execPath,
     [path.resolve("dist/main.js"), "hook", "session-start"],
-    { input: payload, encoding: "utf8" },
+    { input: payload, encoding: "utf8", env: CLI_ENV },
   );
   assert.equal(result.status, 0, result.stderr);
   const parsed = JSON.parse(result.stdout.trim());
@@ -96,7 +102,7 @@ test("ocean hook session-start CLI works with no stdin payload at all (falls bac
   const result = spawnSync(
     process.execPath,
     [path.resolve("dist/main.js"), "hook", "session-start"],
-    { input: "", encoding: "utf8" },
+    { input: "", encoding: "utf8", env: CLI_ENV },
   );
   assert.equal(result.status, 0, result.stderr);
   const parsed = JSON.parse(result.stdout.trim());
@@ -113,7 +119,11 @@ test("ocean hook session-start --client codex keeps the hookSpecificOutput shape
       "--client",
       "codex",
     ],
-    { input: JSON.stringify({ cwd: os.tmpdir() }), encoding: "utf8" },
+    {
+      input: JSON.stringify({ cwd: os.tmpdir() }),
+      encoding: "utf8",
+      env: CLI_ENV,
+    },
   );
   assert.equal(result.status, 0, result.stderr);
   const parsed = JSON.parse(result.stdout.trim());
@@ -131,7 +141,11 @@ test("ocean hook session-start --client gemini keeps the hookSpecificOutput shap
       "--client",
       "gemini",
     ],
-    { input: JSON.stringify({ cwd: os.tmpdir() }), encoding: "utf8" },
+    {
+      input: JSON.stringify({ cwd: os.tmpdir() }),
+      encoding: "utf8",
+      env: CLI_ENV,
+    },
   );
   assert.equal(result.status, 0, result.stderr);
   const parsed = JSON.parse(result.stdout.trim());
@@ -152,6 +166,7 @@ test("ocean hook session-start --client hermes emits Hermes' {context} shape onl
     {
       input: JSON.stringify({ cwd: os.tmpdir(), session_id: "sess_1" }),
       encoding: "utf8",
+      env: CLI_ENV,
     },
   );
   assert.equal(result.status, 0, result.stderr);
@@ -168,7 +183,7 @@ function runHook(args, input) {
   return spawnSync(
     process.execPath,
     [path.resolve("dist/main.js"), "hook", "session-start", ...args],
-    { input, encoding: "utf8" },
+    { input, encoding: "utf8", env: CLI_ENV },
   );
 }
 
@@ -203,7 +218,7 @@ test("ocean hook session-start rejects an unknown or missing --client value", ()
     const result = spawnSync(
       process.execPath,
       [path.resolve("dist/main.js"), "hook", "session-start", ...args],
-      { input: "", encoding: "utf8" },
+      { input: "", encoding: "utf8", env: CLI_ENV },
     );
     assert.equal(result.status, 1);
     assert.equal(result.stdout, "");
@@ -490,7 +505,11 @@ test("a bound project with rules gets rules=N and the bounded rules block", asyn
           ? result.context
           : result.hookSpecificOutput.additionalContext;
       const [bootstrap, authority, ...rest] = text.split("\n");
-      assert.match(bootstrap, /project=lab .* rules=2 ops=/, client);
+      assert.match(
+        bootstrap,
+        /project=lab .* rules=2 profile=base ops=/,
+        client,
+      );
       assert.equal(authority, MEMORY_AUTHORITY_LINE, client);
       assert.ok(Buffer.byteLength(bootstrap) <= OCEAN_BOOTSTRAP_MAX_BYTES);
       assert.equal(
