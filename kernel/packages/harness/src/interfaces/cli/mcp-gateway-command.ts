@@ -1,13 +1,23 @@
+import { pathToFileURL } from "node:url";
 import { MEMORY_INSTRUCTIONS } from "@ocean/core/domain/mcp/memory-contract.js";
+import { resolveProject } from "@ocean/core/shared/project-resolution.js";
+import {
+  profileCatalog,
+  sessionProfile,
+} from "@ocean/core/shared/session-profile.js";
 import { marketplacePaths } from "@ocean/market/install/default-marketplace.js";
 import {
   type GatewayClient,
+  type GatewayClientContext,
   type GatewayMember,
+  type GatewayProfile,
+  gatewayManifestStore,
   gatewayMembers,
   McpGateway,
   readGatewayAccess,
   serveMcpGateway,
 } from "@ocean/market/mcp/mcp-gateway.js";
+import { pinNpmPackage } from "@ocean/market/mcp/mcp-launch.js";
 import { keychainStore } from "@ocean/market/security/secrets.js";
 import { McpClient } from "@ocean/services/infrastructure/mcp/mcp-client.js";
 import { RemoteMcpClient } from "../../infrastructure/mcp/remote-mcp-client.js";
@@ -20,6 +30,7 @@ export function gatewayClientFor(
   member: GatewayMember,
   version: string,
   stderrLabel = `ocean mcp gateway [${member.capability}]`,
+  context?: GatewayClientContext,
 ): GatewayClient {
   return member.transport === "remote"
     ? new RemoteMcpClient(member, version)
@@ -30,7 +41,51 @@ export function gatewayClientFor(
         env: member.env,
         inheritEnv: member.inheritEnv,
         stderrLabel,
+        ...(context ? { roots: context.roots } : {}),
       });
+}
+
+// The profile this gateway gates by: `--profile <name>`, else the one Ocean resolves for the
+// folder the client started it in (Claude Code: the project; Desktop: `/`, which resolves to
+// base). `--profile '*'`: no gating. The active profile carries its secondary profiles' MCPs
+// too, as the session does. No installed profiles: no gating.
+async function gatewayProfiles(
+  args: string[],
+  cwd: string,
+): Promise<
+  { active: GatewayProfile; available: GatewayProfile[] } | undefined
+> {
+  const asked = args.includes("--profile")
+    ? args[args.indexOf("--profile") + 1]
+    : undefined;
+  if (asked === "*") return undefined;
+  const catalog = await profileCatalog();
+  // No profiles installed: nothing to gate by, so every member stays listed.
+  if (!catalog.profiles.length) return undefined;
+  const available = catalog.profiles.map((profile) => ({
+    name: profile.name,
+    mcp: profile.mcp,
+  }));
+  const mcpOf = (name: string) =>
+    available.find((profile) => profile.name === name)?.mcp ?? [];
+  if (asked) return { active: { name: asked, mcp: mcpOf(asked) }, available };
+  const atRoot = cwd === "/" || /^[A-Za-z]:\\?$/.test(cwd);
+  const project = atRoot
+    ? undefined
+    : await resolveProject(cwd).catch(() => undefined);
+  const session = await sessionProfile({
+    projectId: project?.status === "bound" ? project.projectId : undefined,
+    cwd: atRoot ? undefined : cwd,
+    catalog,
+  });
+  const names = [session.primary, ...session.secondary];
+  return {
+    active: {
+      name: session.primary,
+      mcp: [...new Set(names.flatMap(mcpOf))],
+    },
+    available,
+  };
 }
 
 // `ocean mcp gateway`: one stdio MCP endpoint for every registered server. Logs go to stderr,
@@ -44,14 +99,47 @@ export async function runMcpGatewayCommand(args: string[] = []): Promise<void> {
   const { members, skipped } = await gatewayMembers({
     serversRoot: paths.mcpServers,
     stateRoot: paths.mcpState,
+    packagesRoot: paths.mcpPackages,
     firstParty,
     secrets: keychainStore(),
   });
+  // Ocean's own servers left out on purpose (`--installed-only`) are not news; anything else is.
   for (const skip of skipped)
-    log(`${skip.capability} not routed: ${skip.reason}`);
+    if (!skip.uninstalled) log(`${skip.capability} not routed: ${skip.reason}`);
   const version = await oceanVersion();
+  const cwd = process.cwd();
+  const atRoot = cwd === "/" || /^[A-Za-z]:\\?$/.test(cwd);
+  const profiles = await gatewayProfiles(args, cwd).catch((error) => {
+    log(
+      `profiles unreadable, every member listed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return undefined;
+  });
+  const pinning = new Set<string>();
   const gateway = new McpGateway(members, {
-    client: (member) => gatewayClientFor(member, version),
+    client: (member, context) => {
+      // A member still on npx gets a pinned copy in the background; the next start uses it.
+      if (member.transport !== "remote" && member.pin) {
+        const { identifier, version: pinned } = member.pin;
+        const key = `${identifier}@${pinned}`;
+        if (!pinning.has(key)) {
+          pinning.add(key);
+          pinNpmPackage(paths.mcpPackages, identifier, pinned).then(
+            () => log(`${key} pinned; the next start skips npx`),
+            (error: unknown) =>
+              log(
+                `${key} not pinned: ${error instanceof Error ? error.message : String(error)}`,
+              ),
+          );
+        }
+      }
+      return gatewayClientFor(
+        member,
+        version,
+        `ocean mcp gateway [${member.capability}]`,
+        context,
+      );
+    },
     version,
     log,
     // When Ocean's own server sits behind the gateway and this client may see it, the client
@@ -63,6 +151,11 @@ export async function runMcpGatewayCommand(args: string[] = []): Promise<void> {
     clientId: args.includes("--client")
       ? args[args.indexOf("--client") + 1]
       : undefined,
+    ...(profiles ? { profiles } : {}),
+    // Ocean's memory contract holds in every profile.
+    ungated: [OCEAN_SERVER],
+    manifests: gatewayManifestStore(paths.gatewayManifests, version),
+    ...(atRoot ? {} : { roots: [{ uri: pathToFileURL(cwd).href }] }),
   });
   await serveMcpGateway(gateway);
 }

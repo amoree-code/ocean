@@ -62,7 +62,7 @@
   {
     "name": "use-browser",
     "description": "Open a supplied URL, understand the user's requested outcome from the live page, complete the browser task, and verify the result.",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "category": "core"
   },
   {
