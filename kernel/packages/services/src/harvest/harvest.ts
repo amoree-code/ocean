@@ -14,6 +14,7 @@ import {
   itemEvidence,
   untagged,
 } from "@ocean/brain/memory/session-facts.js";
+import { isValidProjectId } from "@ocean/core/domain/context/project-id.js";
 import { containsKnownSecret } from "@ocean/core/domain/redaction/redaction.js";
 import type {
   Session,
@@ -31,6 +32,7 @@ import {
   KNOWLEDGE_DIR,
   oceanPath,
   SYSTEM_DIR,
+  WORKSPACE_PROJECT_ID,
 } from "@ocean/core/shared/paths.js";
 import { keepTicks, noteFile, putBlock, readBlock } from "../day/note.js";
 import { section } from "../distill/distill.js";
@@ -271,10 +273,26 @@ function similarity(a: string, b: string): number {
   return shared / Math.min(left.size, right.size);
 }
 
+// A record's title: the first sentence, or for a "problem → fix" line the problem (the fix is
+// the body). A long one is cut at a word, never mid-word.
+const TITLE_CHARS = 90;
 const titleOf = (text: string) => {
-  const sentence = text.split(/(?<=[.!?])\s/)[0] ?? text;
-  return sentence.length > 90 ? `${sentence.slice(0, 87).trim()}…` : sentence;
+  const head = text.split(" → ")[0] ?? text;
+  const sentence = (head.split(/(?<=[.!?])\s/)[0] ?? head).trim();
+  if (sentence.length <= TITLE_CHARS) return sentence;
+  const cut = sentence.slice(0, TITLE_CHARS - 1);
+  const space = cut.lastIndexOf(" ");
+  const kept = space > TITLE_CHARS / 2 ? cut.slice(0, space) : cut;
+  return `${kept.replace(/[\s,;:–-]+$/, "")}…`;
 };
+
+// A lesson from one project's session is that project's (T-256 scope), so a search from
+// another project does not surface it. Ocean's own lessons stay global: every session on
+// this machine runs on Ocean.
+const scopeOf = (project: string | undefined) =>
+  project && project !== WORKSPACE_PROJECT_ID && isValidProjectId(project)
+    ? [`scope: project:${project}`]
+    : [];
 
 function setField(text: string, key: string, value: string): string {
   const end = text.startsWith("---\n") ? text.indexOf("\n---", 3) : -1;
@@ -339,6 +357,7 @@ async function fileItem(
     ...(item.session.project
       ? [`project: ${JSON.stringify(item.session.project)}`]
       : []),
+    ...scopeOf(item.session.project),
     `created: ${item.session.date}`,
     `last_verified: ${item.session.date}`,
     "---",
