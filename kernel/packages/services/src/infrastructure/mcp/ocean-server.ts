@@ -90,6 +90,56 @@ type Response = {
   error?: { code: number; message: string; data?: Record<string, unknown> };
 };
 
+// Ocean's tools come in two groups (T-338 P5, plan §3.4). Core is listed to every client; ops —
+// maintenance of Ocean itself — is listed only when the session's profile is `ocean-ops`, after
+// `ocean_profile_get` names it, or with OCEAN_MCP_TOOLS=all. A tool left off the list still
+// answers `tools/call`, so self-checks and saved instructions that name one keep working.
+export const OCEAN_OPS_TOOLS = new Set([
+  "ocean_profiles_list",
+  "ocean_session_get",
+  "ocean_session_summary",
+  "ocean_session_events",
+  "ocean_session_promote",
+  "ocean_handoffs_list",
+  "ocean_handoff_get",
+  "ocean_project_link",
+  "ocean_projects_list",
+  "ocean_chat_skill",
+  "ocean_doctor",
+  "ocean_ping",
+  "ocean_capabilities",
+]);
+const OPS_PROFILE = "ocean-ops";
+// undefined until the first tools/list resolves it from the session's folder.
+let opsListed: boolean | undefined;
+// Writes a server-initiated message (a list_changed notification) to the client, when one is open.
+let notifyClient: ((message: Record<string, unknown>) => void) | undefined;
+
+async function resolveOpsListed(cwd: string): Promise<boolean> {
+  if (process.env.OCEAN_MCP_TOOLS === "all") return true;
+  // Desktop launches at the filesystem root: no project, so the base profile.
+  if (cwd === "/" || /^[A-Za-z]:\\?$/.test(cwd)) return false;
+  try {
+    const catalog = await profileCatalog();
+    const project = await resolveProject(cwd).catch(() => undefined);
+    const session = await sessionProfile({
+      projectId: project?.status === "bound" ? project.projectId : undefined,
+      cwd,
+      catalog,
+    });
+    return [session.primary, ...session.secondary].includes(OPS_PROFILE);
+  } catch {
+    return false;
+  }
+}
+
+async function listedTools(): Promise<McpTool[]> {
+  opsListed ??= await resolveOpsListed(process.cwd());
+  return opsListed
+    ? tools.list()
+    : tools.list().filter((tool) => !OCEAN_OPS_TOOLS.has(tool.name));
+}
+
 // Every tool takes an optional contextAck: the ack=<hash> from the Ocean start line, echoed on a
 // client's first Ocean call (T-319 CONTEXT-ACK). The server takes it off before the tool runs.
 function withContextAck(list: McpTool[]): McpTool[] {
@@ -105,8 +155,7 @@ function withContextAck(list: McpTool[]): McpTool[] {
           ...schema?.properties,
           contextAck: {
             type: "string",
-            description:
-              "The ack=<hash> value from the Ocean start line; pass it on your first Ocean call.",
+            description: "Start-line ack; first call only.",
           },
         },
       },
@@ -850,6 +899,14 @@ async function callTool(
       typeof args.name === "string" && args.name.trim()
         ? args.name.trim()
         : undefined;
+    // Naming ocean-ops opens its tools for the rest of this connection.
+    if (wanted === OPS_PROFILE && opsListed !== true) {
+      opsListed = true;
+      notifyClient?.({
+        jsonrpc: "2.0",
+        method: "notifications/tools/list_changed",
+      });
+    }
     return profileGet(
       wanted,
       typeof args.cwd === "string" && args.cwd ? args.cwd : process.cwd(),
@@ -1256,12 +1313,17 @@ export async function handleOceanMcpRequest(
       clientName = info.name;
     contextAckChecked = false;
     authoritySent = false;
+    opsListed = undefined;
     return {
       jsonrpc: "2.0",
       id: request.id,
       result: {
         protocolVersion: "2025-06-18",
-        capabilities: { tools: {}, resources: {}, prompts: {} },
+        capabilities: {
+          tools: { listChanged: true },
+          resources: {},
+          prompts: {},
+        },
         // `name` is the machine id; `title` (MCP 2025-06-18) is the one display name every
         // client shows, under the one config key `ocean` → tool prefix `mcp__ocean__` (T-328).
         serverInfo: {
@@ -1274,7 +1336,11 @@ export async function handleOceanMcpRequest(
     };
   }
   if (request.method === "tools/list")
-    return { jsonrpc: "2.0", id: request.id, result: { tools: tools.list() } };
+    return {
+      jsonrpc: "2.0",
+      id: request.id,
+      result: { tools: await listedTools() },
+    };
   if (request.method === "resources/list")
     return { jsonrpc: "2.0", id: request.id, result: { resources } };
   if (request.method === "resources/read") {
@@ -1379,6 +1445,8 @@ export async function runOceanMcpServer(ports: OceanMcpPorts): Promise<void> {
   let buffer = "";
   // Requests still being answered when stdin ends: the connection's session closes after them.
   const inFlight = new Set<Promise<void>>();
+  notifyClient = (message) =>
+    process.stdout.write(`${JSON.stringify(message)}\n`);
   process.stdin.setEncoding("utf8");
   process.stdin.on("data", (chunk: string) => {
     const work = handleChunk(chunk);

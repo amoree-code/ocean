@@ -133,11 +133,13 @@ test("initialize carries the memory contract; capabilities and ping answer", asy
     const capabilities = await call("ocean_capabilities");
     assert.equal(capabilities.contract, 1);
     assert.equal(capabilities.writes, true);
+    // ocean_ping is an ops tool (T-338 P5): list every group to read its annotations.
+    process.env.OCEAN_MCP_TOOLS = "all";
     const listed = await handle({
       jsonrpc: "2.0",
       id: 2,
       method: "tools/list",
-    });
+    }).finally(() => delete process.env.OCEAN_MCP_TOOLS);
     const byName = Object.fromEntries(
       listed.result.tools.map((tool) => [tool.name, tool]),
     );

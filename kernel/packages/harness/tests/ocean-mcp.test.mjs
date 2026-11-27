@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { access, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -38,23 +39,13 @@ test("Ocean MCP exposes provider-neutral tools without Obsidian", async () => {
       listed.result.tools.map((tool) => tool.name),
       [
         "ocean_status",
-        "ocean_doctor",
-        "ocean_profiles_list",
         "ocean_profile_get",
         "ocean_tasks_list",
         "ocean_task_get",
-        "ocean_handoffs_list",
-        "ocean_handoff_get",
-        "ocean_session_get",
-        "ocean_session_summary",
-        "ocean_session_events",
-        "ocean_session_promote",
         "ocean_session_save",
         "brain_search",
         "brain_read",
         "brain_neighbors",
-        "ocean_ping",
-        "ocean_capabilities",
         "memory_read",
         "memory_history",
         "memory_write",
@@ -63,11 +54,8 @@ test("Ocean MCP exposes provider-neutral tools without Obsidian", async () => {
         "memory_restore",
         "ocean_context",
         "ocean_policy",
-        "ocean_projects_list",
-        "ocean_project_link",
         "ocean_handoff_create",
         "people_lookup",
-        "ocean_chat_skill",
       ],
     );
     const status = await handle({
@@ -383,5 +371,85 @@ test("ocean_handoffs_list filters by project", async () => {
   } finally {
     if (previous === undefined) delete process.env.OCEAN_ROOT;
     else process.env.OCEAN_ROOT = previous;
+  }
+});
+
+// T-338 P5: core is listed to every client; ops opens with OCEAN_MCP_TOOLS=all or when
+// ocean_profile_get names ocean-ops, which tells the client with list_changed. A tool left off
+// the list still answers tools/call (the `ocean clients verify` self-check calls ocean_ping).
+test("Ocean MCP lists core tools, opens ops on ocean-ops, and keeps ops callable", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-mcp-groups-"));
+  const serve = (env) => {
+    const child = spawn(
+      process.execPath,
+      [path.resolve("dist/main.js"), "mcp", "serve"],
+      {
+        cwd: root,
+        env: { ...process.env, OCEAN_ROOT: root, ...env },
+        stdio: ["pipe", "pipe", "ignore"],
+      },
+    );
+    const messages = [];
+    let buffer = "";
+    const waiters = [];
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      buffer += chunk;
+      let newline = buffer.indexOf("\n");
+      while (newline >= 0) {
+        messages.push(JSON.parse(buffer.slice(0, newline)));
+        buffer = buffer.slice(newline + 1);
+        newline = buffer.indexOf("\n");
+      }
+      for (const waiter of waiters.splice(0)) waiter();
+    });
+    const request = async (id, method, params = {}) => {
+      child.stdin.write(
+        `${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`,
+      );
+      while (!messages.some((message) => message.id === id))
+        await new Promise((resolve) => waiters.push(resolve));
+      return messages.find((message) => message.id === id);
+    };
+    return { child, messages, request };
+  };
+  const names = (reply) => reply.result.tools.map((tool) => tool.name);
+
+  const plain = serve({ OCEAN_MCP_TOOLS: "" });
+  try {
+    const init = await plain.request(1, "initialize", {
+      clientInfo: { name: "groups-test" },
+    });
+    assert.equal(init.result.capabilities.tools.listChanged, true);
+    const core = names(await plain.request(2, "tools/list"));
+    assert.equal(core.length, 18);
+    assert.ok(!core.includes("ocean_ping"));
+    const ping = await plain.request(3, "tools/call", {
+      name: "ocean_ping",
+      arguments: {},
+    });
+    assert.equal(ping.result.structuredContent.ok, true);
+    await plain.request(4, "tools/call", {
+      name: "ocean_profile_get",
+      arguments: { name: "ocean-ops" },
+    });
+    assert.ok(
+      plain.messages.some(
+        (message) => message.method === "notifications/tools/list_changed",
+      ),
+    );
+    const opened = names(await plain.request(5, "tools/list"));
+    assert.equal(opened.length, 31);
+    assert.ok(opened.includes("ocean_ping"));
+  } finally {
+    plain.child.kill();
+  }
+
+  const all = serve({ OCEAN_MCP_TOOLS: "all" });
+  try {
+    await all.request(1, "initialize", { clientInfo: { name: "groups-test" } });
+    assert.equal(names(await all.request(2, "tools/list")).length, 31);
+  } finally {
+    all.child.kill();
   }
 });

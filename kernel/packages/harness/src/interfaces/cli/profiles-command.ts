@@ -1,3 +1,9 @@
+import { profileCatalog } from "@ocean/core/shared/session-profile.js";
+import {
+  profileDoctor,
+  readSelections,
+  selectionsLog,
+} from "../../application/profiles/profile-doctor.js";
 import {
   applyProfileMigration,
   planProfileMigration,
@@ -13,7 +19,7 @@ import {
 import { loadProfile } from "../../infrastructure/filesystem/profile-loader.js";
 
 const usage =
-  "Usage: ocean profiles validate | upgrade --check | --apply | --rollback | migrate --check | --apply | --rollback | suggest --task <id> [--profile <name>]";
+  "Usage: ocean profiles doctor [--days <n>] [--json] | validate | upgrade --check | --apply | --rollback | migrate --check | --apply | --rollback | suggest --task <id> [--profile <name>]";
 
 function print(value: unknown): void {
   console.log(JSON.stringify(value, null, 2));
@@ -22,6 +28,38 @@ function print(value: unknown): void {
 export async function runProfilesCommand(args: string[]): Promise<void> {
   const [action, mode] = args;
   try {
+    // T-338 P5: the selection log read back as findings and suggestions; never edits anything.
+    if (action === "doctor") {
+      const daysAt = args.indexOf("--days");
+      const days = daysAt >= 0 ? Number(args[daysAt + 1]) : 30;
+      if (!Number.isInteger(days) || days <= 0) throw new Error(usage);
+      const catalog = await profileCatalog();
+      const report = profileDoctor(
+        await readSelections(),
+        catalog.profiles.map((profile) => profile.name),
+        { days, log: selectionsLog() },
+      );
+      if (args.includes("--json")) {
+        print(report);
+        return;
+      }
+      const counts = (record: Record<string, number>) =>
+        Object.entries(record)
+          .sort((a, b) => b[1] - a[1])
+          .map(([name, count]) => `${name} ${count}`)
+          .join(", ") || "none";
+      console.log(
+        `Profile selections, last ${report.days} days: ${report.sessions} sessions, ${report.tasks} tasks${report.unreadable ? `, ${report.unreadable} unreadable lines` : ""}`,
+      );
+      console.log(`  profiles: ${counts(report.byProfile)}`);
+      console.log(`  session confidence: ${counts(report.byConfidence)}`);
+      if (!report.findings.length) console.log("No routing findings.");
+      for (const finding of report.findings) {
+        console.log(`- ${finding.kind}: ${finding.detail}`);
+        console.log(`  suggest: ${finding.suggestion}`);
+      }
+      return;
+    }
     if (action === "suggest") {
       const value = (flag: string) => {
         const index = args.indexOf(flag);

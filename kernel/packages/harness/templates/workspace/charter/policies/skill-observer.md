@@ -31,6 +31,13 @@ the session:
   task's own checkpoint note (`ocean tasks checkpoint <ID> --note "..."`), or the
   session record if there is no task
 
+## Profile routing — at session end only
+
+Run `ocean profiles doctor`. It reads the profile selection log and prints each repeated
+routing miss with a `suggest:` line: a trigger to add to a profile, or a profile to bind to
+a project. Offer each suggestion to the owner in one line and apply it only on his explicit
+yes, as an ordinary edit of that profile or `project.json`. No findings ⇒ say nothing.
+
 ## What this never does
 
 - **Never rewrites a skill file automatically.** An observation is a candidate for a human
