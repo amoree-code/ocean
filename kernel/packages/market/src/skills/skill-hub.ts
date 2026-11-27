@@ -437,13 +437,14 @@ export type SkillProfileReport = {
   problems: { name: string; error: string }[];
 };
 
-// Skill names any client holds, nested folders included (Claude's synced/<id>/<skill>,
+// Where each skill sits under one root, nested folders included (Claude's synced/<id>/<skill>,
 // hermes' <category>/<skill>), to a bounded depth.
-export async function clientHeldSkills(
-  home = os.homedir(),
-  depth = 4,
-): Promise<Set<string>> {
-  const names = new Set<string>();
+async function skillFolders(
+  root: string,
+  depth: number,
+  into: Map<string, string[]>,
+  skip: string[] = [],
+): Promise<void> {
   const walk = async (dir: string, left: number): Promise<void> => {
     let entries: Dirent[];
     try {
@@ -453,6 +454,7 @@ export async function clientHeldSkills(
     }
     for (const entry of entries) {
       if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
+      if (dir === root && skip.includes(entry.name)) continue;
       const full = path.join(dir, entry.name);
       const isDirectory =
         entry.isDirectory() ||
@@ -468,13 +470,89 @@ export async function clientHeldSkills(
           () => false,
         )
       )
-        names.add(entry.name);
+        into.set(entry.name, [...(into.get(entry.name) ?? []), full]);
       else if (left > 1) await walk(full, left - 1);
     }
   };
+  await walk(root, depth);
+}
+
+// Skill names any client holds, nested folders included.
+export async function clientHeldSkills(
+  home = os.homedir(),
+  depth = 4,
+): Promise<Set<string>> {
+  const names = new Map<string, string[]>();
   for (const root of Object.values(clientSkillRoots))
-    await walk(root(home), depth);
-  return names;
+    await skillFolders(root(home), depth, names);
+  return new Set(names.keys());
+}
+
+export type SkillDuplicate = {
+  client: SkillClient;
+  skill: string;
+  at: string[];
+};
+
+// Skills a client loads twice: two folders under its root, or (Claude) a user skill and an
+// enabled plugin's skill of the same name (T-338 P3: one ocean-memory per client).
+export async function skillDuplicates(
+  home = os.homedir(),
+  depth = 4,
+): Promise<SkillDuplicate[]> {
+  const duplicates: SkillDuplicate[] = [];
+  for (const client of Object.keys(clientSkillRoots) as SkillClient[]) {
+    // Claude's synced/<account>/<skill> are Desktop's per-account caches, which Claude Code
+    // does not load as user skills: copies there are not duplicates.
+    const held = new Map<string, string[]>();
+    await skillFolders(
+      clientSkillRoots[client](home),
+      depth,
+      held,
+      client === "claude" ? ["synced"] : [],
+    );
+    if (client === "claude")
+      for (const [plugin, root] of await claudePluginSkillRoots(home)) {
+        const fromPlugin = new Map<string, string[]>();
+        await skillFolders(root, 1, fromPlugin);
+        for (const name of fromPlugin.keys())
+          held.set(name, [...(held.get(name) ?? []), `plugin ${plugin}`]);
+      }
+    for (const [skill, at] of held)
+      if (at.length > 1) duplicates.push({ client, skill, at });
+  }
+  return duplicates.sort(
+    (a, b) =>
+      a.client.localeCompare(b.client) || a.skill.localeCompare(b.skill),
+  );
+}
+
+// Enabled Claude Code plugins and the skills folder of each one's installed copy.
+async function claudePluginSkillRoots(
+  home: string,
+): Promise<[string, string][]> {
+  const readJson = async (file: string): Promise<Record<string, unknown>> =>
+    JSON.parse(await readFile(file, "utf8").catch(() => "{}")) as Record<
+      string,
+      unknown
+    >;
+  const settings = await readJson(path.join(home, ".claude", "settings.json"));
+  const installed = await readJson(
+    path.join(home, ".claude", "plugins", "installed_plugins.json"),
+  );
+  const enabled = (settings.enabledPlugins ?? {}) as Record<string, unknown>;
+  const records = (installed.plugins ?? {}) as Record<
+    string,
+    { installPath?: string }[]
+  >;
+  return Object.entries(enabled)
+    .filter(([, on]) => on === true)
+    .flatMap(([plugin]) => {
+      const installPath = records[plugin]?.[0]?.installPath;
+      return installPath
+        ? [[plugin, path.join(installPath, "skills")] as [string, string]]
+        : [];
+    });
 }
 
 // Every hub skill belongs to at least one profile, and no profile names a skill nobody holds.

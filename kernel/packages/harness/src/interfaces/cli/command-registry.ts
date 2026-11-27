@@ -89,6 +89,7 @@ import {
   copyClientSkills,
   linkClientSkills,
   populateSkillHub,
+  skillDuplicates,
   skillProfileReport,
   skillSurfaceReport,
 } from "@ocean/market/skills/skill-hub.js";
@@ -1336,9 +1337,10 @@ async function commandSkill(): Promise<void> {
     // skills Ocean keeps for it (T-319 C5). A gap fails the command.
     const surface = await skillSurfaceReport();
     const profiles = await skillProfileReport();
+    const duplicates = await skillDuplicates();
     console.log(
       JSON.stringify(
-        { core: await coreSkillReports(), surface, profiles },
+        { core: await coreSkillReports(), surface, profiles, duplicates },
         null,
         2,
       ),
@@ -1356,6 +1358,11 @@ async function commandSkill(): Promise<void> {
     if (profiles.noProfile.length)
       console.error(
         `${profiles.noProfile.length} hub skill(s) in no profile: ${profiles.noProfile.join(", ")}`,
+      );
+    // A skill loaded twice by one client warns: the model sees two near-identical entries.
+    for (const { client, skill, at } of duplicates)
+      console.error(
+        `DUPLICATE: ${client} loads ${skill} twice: ${at.join(", ")}`,
       );
     if (!profiles.consistent) process.exitCode = 1;
     if (!surface.consistent) {

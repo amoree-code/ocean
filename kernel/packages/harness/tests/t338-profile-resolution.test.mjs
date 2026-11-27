@@ -458,3 +458,47 @@ test("skillProfileReport flags a missing skill and lists hub skills in no profil
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("skillDuplicates names a skill a client loads twice, an enabled plugin's included", async () => {
+  const { skillDuplicates } = await import("@ocean/market/skills/skill-hub.js");
+  const home = await mkdtemp(path.join(os.tmpdir(), "ocean-t338-dup-"));
+  const skill = async (dir, name) => {
+    await mkdir(path.join(dir, name), { recursive: true });
+    await writeFile(path.join(dir, name, "SKILL.md"), `# ${name}\n`);
+  };
+  try {
+    const claude = path.join(home, ".claude");
+    await skill(path.join(claude, "skills"), "ocean-memory");
+    await skill(path.join(claude, "skills"), "solo");
+    await skill(path.join(claude, "skills", "synced", "id"), "xlsx");
+    await skill(path.join(claude, "skills", "synced", "other"), "xlsx");
+    // Desktop's synced/<account> caches are not loaded by Claude Code: not duplicates.
+    // The same skill from an enabled plugin, and from a disabled one (not loaded, not counted).
+    const on = path.join(claude, "plugins", "cache", "on");
+    const off = path.join(claude, "plugins", "cache", "off");
+    await skill(path.join(on, "skills"), "ocean-memory");
+    await skill(path.join(off, "skills"), "solo");
+    await writeFile(
+      path.join(claude, "settings.json"),
+      JSON.stringify({ enabledPlugins: { "ocean@ocean": true, "x@x": false } }),
+    );
+    await writeFile(
+      path.join(claude, "plugins", "installed_plugins.json"),
+      JSON.stringify({
+        plugins: {
+          "ocean@ocean": [{ installPath: on }],
+          "x@x": [{ installPath: off }],
+        },
+      }),
+    );
+    await skill(path.join(home, ".codex", "skills"), "ocean-memory");
+    const duplicates = await skillDuplicates(home);
+    assert.deepEqual(
+      duplicates.map(({ client, skill, at }) => [client, skill, at.length]),
+      [["claude", "ocean-memory", 2]],
+    );
+    assert.equal(duplicates[0].at[1], "plugin ocean@ocean");
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
