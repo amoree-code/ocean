@@ -414,3 +414,47 @@ test("a newly bound project gets its profile from the repository, and an edit is
     await rm(root, { recursive: true, force: true });
   }
 });
+
+// `ocean skill doctor`: a profile naming a skill nobody holds fails; a hub skill in no profile,
+// or a skill only a client holds, only warns.
+test("skillProfileReport flags a missing skill and lists hub skills in no profile", async () => {
+  const { skillProfileReport } = await import(
+    "@ocean/market/skills/skill-hub.js"
+  );
+  const root = await mkdtemp(path.join(os.tmpdir(), "ocean-t338-doctor-"));
+  const previous = process.env.OCEAN_ROOT;
+  process.env.OCEAN_ROOT = root;
+  try {
+    const hub = path.join(root, "hub");
+    for (const name of ["listed", "orphan"]) {
+      await mkdir(path.join(hub, name), { recursive: true });
+      await writeFile(path.join(hub, name, "SKILL.md"), `# ${name}\n`);
+    }
+    const profiles = path.join(root, SYSTEM_DIR, "profiles");
+    await mkdir(profiles, { recursive: true });
+    const base = await readFile(
+      new URL("../templates/profiles/default.md", import.meta.url),
+      "utf8",
+    );
+    await writeFile(
+      path.join(profiles, "default.md"),
+      base.replace("skills: []", "skills: [listed, ghost, xlsx]"),
+    );
+    // A skill a client ships itself (nested, as Claude's synced/<id>/<skill>) only warns.
+    const home = path.join(root, "home");
+    const held = path.join(home, ".claude", "skills", "synced", "id", "xlsx");
+    await mkdir(held, { recursive: true });
+    await writeFile(path.join(held, "SKILL.md"), "# xlsx\n");
+    const report = await skillProfileReport({ hub, home });
+    assert.equal(report.consistent, false);
+    assert.deepEqual(report.missing, [{ profile: "default", skill: "ghost" }]);
+    assert.deepEqual(report.clientOnly, [
+      { profile: "default", skill: "xlsx" },
+    ]);
+    assert.deepEqual(report.noProfile, ["orphan"]);
+  } finally {
+    if (previous === undefined) delete process.env.OCEAN_ROOT;
+    else process.env.OCEAN_ROOT = previous;
+    await rm(root, { recursive: true, force: true });
+  }
+});

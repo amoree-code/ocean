@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { Dirent } from "node:fs";
 import {
   cp,
   lstat,
@@ -14,6 +15,7 @@ import {
 import os from "node:os";
 import path from "node:path";
 import { oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
+import { profileCatalog } from "@ocean/core/shared/session-profile.js";
 import {
   clientSkillRoots,
   coreSkillNames,
@@ -417,5 +419,91 @@ export async function skillSurfaceReport(
   return {
     consistent: clients.every((row) => !row.installed || !row.missing.length),
     clients,
+  };
+}
+
+export type SkillProfileReport = {
+  // False when a profile names a skill nobody holds; a skill in no profile, or held only by
+  // a client, only warns.
+  consistent: boolean;
+  profiles: number;
+  // Hub skills no profile lists: each is adopted into a profile or archived (T-338 P3).
+  noProfile: string[];
+  // A profile naming a skill that is neither core, in the hub, nor held by any client.
+  missing: { profile: string; skill: string }[];
+  // A profile naming a skill a client ships itself (xlsx, pdf, ...), not core or the hub.
+  clientOnly: { profile: string; skill: string }[];
+  // A profile that does not load.
+  problems: { name: string; error: string }[];
+};
+
+// Skill names any client holds, nested folders included (Claude's synced/<id>/<skill>,
+// hermes' <category>/<skill>), to a bounded depth.
+export async function clientHeldSkills(
+  home = os.homedir(),
+  depth = 4,
+): Promise<Set<string>> {
+  const names = new Set<string>();
+  const walk = async (dir: string, left: number): Promise<void> => {
+    let entries: Dirent[];
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
+      const full = path.join(dir, entry.name);
+      const isDirectory =
+        entry.isDirectory() ||
+        (entry.isSymbolicLink() &&
+          (await stat(full).then(
+            (s) => s.isDirectory(),
+            () => false,
+          )));
+      if (!isDirectory) continue;
+      if (
+        await stat(path.join(full, "SKILL.md")).then(
+          () => true,
+          () => false,
+        )
+      )
+        names.add(entry.name);
+      else if (left > 1) await walk(full, left - 1);
+    }
+  };
+  for (const root of Object.values(clientSkillRoots))
+    await walk(root(home), depth);
+  return names;
+}
+
+// Every hub skill belongs to at least one profile, and no profile names a skill nobody holds.
+export async function skillProfileReport(
+  options: { hub?: string; home?: string } = {},
+): Promise<SkillProfileReport> {
+  const core = new Set(await coreSkillNames());
+  const hub = await skillDirectories(options.hub ?? skillHubRoot()).catch(
+    () => [] as string[],
+  );
+  const known = new Set([...core, ...hub]);
+  const catalog = await profileCatalog();
+  const listed = new Set<string>();
+  const unknown: SkillProfileReport["missing"] = [];
+  for (const profile of catalog.profiles)
+    for (const skill of profile.skills) {
+      listed.add(skill);
+      if (!known.has(skill)) unknown.push({ profile: profile.name, skill });
+    }
+  const held = unknown.length
+    ? await clientHeldSkills(options.home)
+    : new Set<string>();
+  const missing = unknown.filter(({ skill }) => !held.has(skill));
+  return {
+    consistent: !missing.length && !catalog.problems.length,
+    profiles: catalog.profiles.length,
+    noProfile: hub.filter((name) => !listed.has(name)).sort(),
+    missing,
+    clientOnly: unknown.filter(({ skill }) => held.has(skill)),
+    problems: catalog.problems,
   };
 }

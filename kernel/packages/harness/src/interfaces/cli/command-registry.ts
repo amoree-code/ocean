@@ -89,6 +89,7 @@ import {
   copyClientSkills,
   linkClientSkills,
   populateSkillHub,
+  skillProfileReport,
   skillSurfaceReport,
 } from "@ocean/market/skills/skill-hub.js";
 import {
@@ -1334,9 +1335,29 @@ async function commandSkill(): Promise<void> {
     // Core skills per client, then the surface check: every installed client holds the
     // skills Ocean keeps for it (T-319 C5). A gap fails the command.
     const surface = await skillSurfaceReport();
+    const profiles = await skillProfileReport();
     console.log(
-      JSON.stringify({ core: await coreSkillReports(), surface }, null, 2),
+      JSON.stringify(
+        { core: await coreSkillReports(), surface, profiles },
+        null,
+        2,
+      ),
     );
+    for (const { profile, skill } of profiles.missing)
+      console.error(
+        `NOT CONSISTENT: profile ${profile} names missing skill ${skill}`,
+      );
+    for (const { profile, skill } of profiles.clientOnly)
+      console.error(
+        `profile ${profile} names ${skill}, held only by a client (not core or the hub)`,
+      );
+    for (const { name, error } of profiles.problems)
+      console.error(`NOT CONSISTENT: profile ${name} does not load: ${error}`);
+    if (profiles.noProfile.length)
+      console.error(
+        `${profiles.noProfile.length} hub skill(s) in no profile: ${profiles.noProfile.join(", ")}`,
+      );
+    if (!profiles.consistent) process.exitCode = 1;
     if (!surface.consistent) {
       for (const row of surface.clients)
         if (row.missing.length)
