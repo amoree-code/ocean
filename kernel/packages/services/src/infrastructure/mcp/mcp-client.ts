@@ -26,6 +26,9 @@ export type McpClientOptions = {
   // they are drained.
   stderrLabel?: string;
   allowedTools?: string[];
+  // Set: the client offers MCP roots and answers the server's `roots/list` with these (the
+  // gateway passes its own client's roots through, T-338 P4).
+  roots?: () => Promise<{ uri: string; name?: string }[]>;
 };
 
 export class McpClient {
@@ -73,7 +76,7 @@ export class McpClient {
     );
     const initialized = (await this.request("initialize", {
       protocolVersion: "2025-06-18",
-      capabilities: {},
+      capabilities: this.options.roots ? { roots: { listChanged: false } } : {},
       clientInfo: { name: "ocean", version: "0.3.2" },
     })) as { capabilities?: unknown } | undefined;
     const capabilities = initialized?.capabilities;
@@ -207,8 +210,27 @@ export class McpClient {
         continue;
       }
       if (response.id === undefined) continue;
-      // A request from the server: answer `ping`, decline the rest (no client capabilities).
+      // A request from the server: answer `ping` and (when offered) `roots/list`, decline the rest.
       if (response.method !== undefined) {
+        const roots = this.options.roots;
+        if (response.method === "roots/list" && roots) {
+          const id = response.id;
+          void roots().then(
+            (list) =>
+              this.send({ jsonrpc: "2.0", id, result: { roots: list } }),
+            (error: unknown) =>
+              this.send({
+                jsonrpc: "2.0",
+                id,
+                error: {
+                  code: -32603,
+                  message:
+                    error instanceof Error ? error.message : String(error),
+                },
+              }),
+          );
+          continue;
+        }
         this.send(
           response.method === "ping"
             ? { jsonrpc: "2.0", id: response.id, result: {} }

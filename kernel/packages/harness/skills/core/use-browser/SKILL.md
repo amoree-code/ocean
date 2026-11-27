@@ -1,7 +1,7 @@
 ---
 name: use-browser
 description: Open a supplied URL, understand the user's requested outcome from the live page, complete the browser task, and verify the result.
-version: 1.1.0
+version: 1.2.0
 category: core
 ---
 
@@ -21,12 +21,35 @@ The skill defines the task and verification contract. Pick the backend in this o
 
 Do not switch to `claude-in-chrome`, an extension, or another browser connector unless the user explicitly asks for that backend. If the browser cannot be reached, report the exact error and stop (the usual cause: the browser is closed or its inspect page's remote debugging is off, and `ocean doctor` says which); do not ask the user to install a different browser extension as the first workaround.
 
-With the MCP tools:
+## Browser playbook (MCP tools)
 
-- Act on snapshot `uid`s. After the first full snapshot, later snapshots on the same page carry only the lines that changed, and unchanged `uid`s still work; call `take_snapshot` when you need the whole tree again. A very large page is cut to its interactive elements and headings, with the whole tree saved to the file the note names.
-- `list_pages` shows every tab; other replies show only the selected tab.
-- Take a screenshot only when the answer is visual (layout, RTL/Arabic rendering, charts, proof of a result). The reply carries a `Preview:` path the owner can open.
-- The browser asks the owner once to allow the connection; it is shared by every session. `ocean browser stop` ends it.
+The failures that cost the most turns are the same few; each rule below prevents one.
+
+1. **Load the schemas first.** When the client defers tool schemas, load every browser tool you
+   expect to use in one call before the first one. A call to an unloaded tool fails.
+2. **Tools missing?** They are listed only in a profile that uses the browser (`frontend`,
+   `qa-testing`). Call `gateway__use_profile` with one of those; if the tools still do not
+   appear, this client does not reload its tool list: say so and suggest a new session.
+3. **Pages first, after any reconnect.** `list_pages`, then `select_page` (or `new_page`), before
+   anything else, and again whenever a reply says "No page found", "Page ids have changed" or
+   "Target closed". Page ids do not survive the browser or the gateway restarting.
+4. **Snapshot after every navigation.** `take_snapshot` after `navigate_page`, a click that
+   loads a page, or a submit, and before the next `click` or `fill`. A `uid` belongs to one
+   snapshot of one page: "uid not found" means the snapshot is stale, not that the element is gone.
+5. **Act on snapshot `uid`s.** Later snapshots on the same page carry only the changed lines, and
+   unchanged `uid`s still work; call `take_snapshot` for the whole tree again. A very large page
+   is cut to its interactive elements and headings, with the whole tree in the file the note names.
+6. **Snapshots, not screenshots.** A screenshot costs far more context and gives no `uid`s. Take
+   one only when the answer is visual (layout, RTL/Arabic rendering, charts, proof of a result),
+   and always with `filePath` so the image goes to disk, not into the reply.
+7. **Wait on exact text, briefly.** `wait_for` the exact text the next state shows, with a short
+   timeout (5–10 s). A long wait on vague text hides a failure behind a timeout.
+8. **One retry, then stop.** A reversible step gets at most one retry after a fresh snapshot;
+   a consequential one (submit, upload, purchase, message) gets none.
+
+`list_pages` shows every tab; other replies show only the selected tab. The browser asks the
+owner once to allow the connection; it is shared by every session. `ocean browser stop` ends it.
+Errors from the gateway end with a one-line hint naming the next call: follow it.
 
 ## Cost-aware execution
 

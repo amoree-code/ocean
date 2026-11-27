@@ -1,3 +1,6 @@
+import { execFile } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { mkdir, mkdtemp, rename, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { CapabilityPermissions } from "@ocean/core/domain/capabilities/capability-manifest.js";
@@ -22,6 +25,9 @@ export type McpLaunch =
       args: string[];
       env: Record<string, string>;
       cwd: string;
+      // An npm package that runs through `npx` because no pinned copy is installed yet; the
+      // gateway installs one so the next start skips npx (T-338 P4).
+      pin?: { identifier: string; version: string };
     }
   | {
       transport: "remote";
@@ -239,6 +245,8 @@ export function planMcpLaunch(
     home?: string;
     execPath?: string;
     secret?: (name: string) => string | undefined;
+    // Where pinned npm packages live (`<root>/<id>@<version>`); unset: always npx.
+    packagesRoot?: string;
   },
 ): McpLaunch {
   const home = options.home ?? os.homedir();
@@ -363,15 +371,135 @@ export function planMcpLaunch(
       throw missing(capability, variable.name);
   }
 
-  const args = [
-    ...base.args,
-    ...resolveArguments(stdio.packageArguments, "packageArguments"),
-  ];
+  const packageArgs = resolveArguments(
+    stdio.packageArguments,
+    "packageArguments",
+  );
+  // An exact npm version with no runtime arguments can run from a pinned copy: node starts the
+  // package's bin directly, with no npx resolving and no registry round trip on each start.
+  const identifier = String(stdio.identifier);
+  const version = typeof stdio.version === "string" ? stdio.version : "";
+  const pinnable =
+    registryType === "npm" &&
+    EXACT_VERSION.test(version) &&
+    !asList(stdio.runtimeArguments).length;
+  if (pinnable && options.packagesRoot) {
+    const bin = pinnedBin(options.packagesRoot, identifier, version);
+    if (bin)
+      return {
+        transport: "stdio",
+        command: options.execPath ?? process.execPath,
+        args: [bin, ...packageArgs],
+        env,
+        cwd: options.stateDir,
+      };
+  }
   return {
     transport: "stdio",
     command: base.command,
-    args,
+    args: [...base.args, ...packageArgs],
     env,
     cwd: options.stateDir,
+    ...(pinnable && options.packagesRoot
+      ? { pin: { identifier, version } }
+      : {}),
   };
+}
+
+const EXACT_VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+
+const pinnedDir = (root: string, identifier: string, version: string) =>
+  path.join(root, `${identifier.replace(/[\\/]/g, "__")}@${version}`);
+
+// The pinned copy's bin script, or undefined when it is not installed (or names no bin).
+export function pinnedBin(
+  root: string,
+  identifier: string,
+  version: string,
+): string | undefined {
+  const packageDir = path.join(
+    pinnedDir(root, identifier, version),
+    "node_modules",
+    ...identifier.split("/"),
+  );
+  const manifest = path.join(packageDir, "package.json");
+  if (!existsSync(manifest)) return undefined;
+  try {
+    const json = JSON.parse(readFileSync(manifest, "utf8")) as {
+      version?: unknown;
+      bin?: unknown;
+    };
+    if (json.version !== version) return undefined;
+    const unscoped = identifier.split("/").pop() ?? identifier;
+    const bin =
+      typeof json.bin === "string"
+        ? json.bin
+        : json.bin && typeof json.bin === "object"
+          ? ((json.bin as Record<string, unknown>)[unscoped] ??
+            (Object.values(json.bin).length === 1
+              ? Object.values(json.bin)[0]
+              : undefined))
+          : undefined;
+    if (typeof bin !== "string") return undefined;
+    const file = path.join(packageDir, bin);
+    return existsSync(file) ? file : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// Installs one exact npm version under `root` with the npm beside the running node. Built in a
+// temporary folder and renamed into place, so a start that races it sees all of it or none.
+export async function pinNpmPackage(
+  root: string,
+  identifier: string,
+  version: string,
+  options: { execPath?: string; env?: NodeJS.ProcessEnv } = {},
+): Promise<string> {
+  const target = pinnedDir(root, identifier, version);
+  const existing = pinnedBin(root, identifier, version);
+  if (existing) return existing;
+  await mkdir(root, { recursive: true });
+  const temp = await mkdtemp(path.join(root, ".pin-"));
+  const nodeDir = path.dirname(options.execPath ?? process.execPath);
+  const windows = process.platform === "win32";
+  try {
+    await new Promise<void>((resolve, reject) => {
+      execFile(
+        windows ? "npm.cmd" : "npm",
+        [
+          "install",
+          "--prefix",
+          temp,
+          "--no-save",
+          "--no-audit",
+          "--no-fund",
+          // Install scripts stay off, as an extra layer: the servers pinned so far need none.
+          "--ignore-scripts",
+          `${identifier}@${version}`,
+        ],
+        {
+          env: {
+            ...(options.env ?? process.env),
+            PATH: [nodeDir, (options.env ?? process.env).PATH ?? ""].join(
+              path.delimiter,
+            ),
+          },
+          shell: windows,
+          timeout: 300_000,
+        },
+        (error) => (error ? reject(error) : resolve()),
+      );
+    });
+    await rename(temp, target).catch(async (error: NodeJS.ErrnoException) => {
+      // Another gateway pinned it first.
+      if (error.code !== "EEXIST" && error.code !== "ENOTEMPTY") throw error;
+    });
+  } finally {
+    await rm(temp, { recursive: true, force: true });
+  }
+  const bin = pinnedBin(root, identifier, version);
+  if (!bin)
+    throw new Error(`${identifier}@${version} installed but names no bin`);
+  return bin;
 }

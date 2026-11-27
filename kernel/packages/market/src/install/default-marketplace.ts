@@ -18,6 +18,10 @@ export const marketplacePaths = () => ({
   mcpServers: oceanPath(SYSTEM_DIR, "market", "mcp"),
   plugins: oceanPath(SYSTEM_DIR, "market", "plugins"),
   mcpState: oceanPath(SYSTEM_DIR, "market", "state"),
+  // Pinned npm copies of installed MCP servers, so a start needs no npx (T-338 P4).
+  mcpPackages: oceanPath(SYSTEM_DIR, "market", "packages"),
+  // The gateway's cached member listings (T-338 P4).
+  gatewayManifests: oceanPath(SYSTEM_DIR, "market", "gateway-manifests"),
   gatewayAccess: oceanPath(SYSTEM_DIR, "market", "gateway-access.json"),
   lock: oceanPath(SYSTEM_DIR, "installed", "ocean.lock"),
 });
