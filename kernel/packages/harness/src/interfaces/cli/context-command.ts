@@ -20,6 +20,14 @@ import {
   resolveProject,
 } from "@ocean/core/shared/project-resolution.js";
 import { z } from "zod";
+import {
+  GATEWAY_COMMAND,
+  readGatewayClients,
+} from "../../application/clients/clients.js";
+import {
+  type McpListing,
+  measureMcpSchemas,
+} from "../../application/clients/mcp-schema-cost.js";
 import { oceanVersion } from "../../version.js";
 import { listTasks } from "./tasks-command.js";
 
@@ -161,8 +169,35 @@ export async function runContextCostCommand(args: string[]): Promise<void> {
     projectDir: options.project,
     budget: options.budget,
   });
+  // MCP schemas (T-338 P5): Ocean's servers as a session in this folder sees them, and as
+  // Claude Desktop sees them (it starts at the filesystem root, so the base profile). A client
+  // wired per-server instead of to the gateway is charged Ocean's server only.
+  const oceanCommand = [process.execPath, process.argv[1] ?? ""];
+  const [folder, desktop] = await Promise.all([
+    measureMcpSchemas(options.project, oceanCommand, GATEWAY_COMMAND),
+    measureMcpSchemas("/", oceanCommand, GATEWAY_COMMAND),
+  ]);
+  const gatewayClients = readGatewayClients();
+  const adapterId = (client: string) =>
+    client === "claude" ? "claude-code" : client;
+  const bytesOf = (listing: McpListing) => listing?.bytes ?? 0;
+  const mcpBytes = (client: string) =>
+    client === "agents"
+      ? null
+      : bytesOf(folder.ocean) +
+        (gatewayClients.has(adapterId(client)) ? bytesOf(folder.gateway) : 0);
+  const mcp = {
+    folder,
+    desktop: {
+      ...desktop,
+      gatewayWired: gatewayClients.has("claude-desktop"),
+    },
+    clients: Object.fromEntries(
+      report.clients.map((client) => [client.client, mcpBytes(client.client)]),
+    ),
+  };
   if (options.json) {
-    console.log(JSON.stringify(report, null, 2));
+    console.log(JSON.stringify({ ...report, mcp }, null, 2));
     return;
   }
   const sum = (files: { bytes: number }[]) =>
@@ -175,6 +210,7 @@ export async function runContextCostCommand(args: string[]): Promise<void> {
     "skill-fm",
     "skill-body",
     "always-on",
+    "mcp",
     "status",
   ];
   const rows = report.clients.map((client) => [
@@ -185,6 +221,9 @@ export async function runContextCostCommand(args: string[]): Promise<void> {
     String(client.skills.frontmatterBytes),
     String(client.skills.bodyBytes),
     String(client.alwaysOnBytes),
+    costStatus(client) === "absent"
+      ? "-"
+      : String(mcpBytes(client.client) ?? "-"),
     costStatus(client),
   ]);
   const widths = header.map((title, column) =>
@@ -205,4 +244,17 @@ export async function runContextCostCommand(args: string[]): Promise<void> {
     );
     for (const note of client.notes) console.log(`  note: ${note}`);
   });
+  const listing = (name: string, value: McpListing) =>
+    value
+      ? `${name} ${value.bytes} (${value.tools} tools)`
+      : `${name} did not answer`;
+  console.log(
+    "MCP schemas from Ocean's servers (tools/list bytes, per request)",
+  );
+  console.log(
+    `  this folder: ${listing("ocean", folder.ocean)}, ${listing("gateway", folder.gateway)}`,
+  );
+  console.log(
+    `  claude-desktop (/): ${listing("ocean", desktop.ocean)}, ${listing("gateway", desktop.gateway)}${mcp.desktop.gatewayWired ? "" : " (not gateway-wired)"}`,
+  );
 }

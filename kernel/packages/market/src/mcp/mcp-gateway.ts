@@ -1069,6 +1069,23 @@ export class McpGateway {
     this.#tools.push({ ...tool, name });
   }
 
+  // A tool a visible member serves but does not list (Ocean's ops tools outside ocean-ops,
+  // T-338 P5): the call goes to that member, whose own answer decides — never invented here.
+  #unlisted(name: string): Route | undefined {
+    const split = name.indexOf("__");
+    if (split <= 0) return undefined;
+    const prefix = name.slice(0, split);
+    const member = this.members.find(
+      (candidate) => candidate.prefix === prefix && this.#visible(candidate),
+    );
+    const loaded = member && this.#loaded.get(member.capability);
+    const tool = name.slice(split + 2);
+    // A tool the member did list but the gateway left out (poisoned, injected) stays out.
+    if (!loaded || loaded.listing.tools.some((listed) => listed.name === tool))
+      return undefined;
+    return { client: loaded.client, tool };
+  }
+
   async tools(): Promise<McpTool[]> {
     await this.start();
     return [...this.#tools];
@@ -1077,7 +1094,7 @@ export class McpGateway {
   async call(name: string, args: Record<string, unknown>): Promise<unknown> {
     await this.start();
     if (name === PROFILE_TOOL && this.#profile) return this.#useProfile(args);
-    const route = this.#routes.get(name);
+    const route = this.#routes.get(name) ?? this.#unlisted(name);
     if (!route) throw new GatewayError(-32602, `Unknown MCP tool: ${name}`);
     try {
       return withHint(await route.client.forwardToolCall(route.tool, args));
