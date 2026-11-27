@@ -78,7 +78,7 @@ export const commandHelp: Record<string, [summary: string, usage: string]> = {
   ],
   profiles: [
     "Validate, upgrade or suggest agent profiles.",
-    "ocean profiles validate | upgrade --check | --apply | --rollback | suggest --task <id> [--profile <name>]",
+    "ocean profiles validate | upgrade --check | --apply | --rollback | migrate --check | --apply | --rollback | suggest --task <id> [--profile <name>]",
   ],
   session: [
     "List, show, resume, promote and compact recorded sessions.",

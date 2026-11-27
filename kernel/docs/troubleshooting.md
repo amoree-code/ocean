@@ -26,10 +26,10 @@ as the prompt text (`src/main.ts`), so pass it last.
 
 ## Profile load fails
 
-`loadProfile` reads `<workspace>/bridge/profiles/<name>.json` and validates it with Zod
+`loadProfile` reads `<workspace>/bridge/profiles/<name>.md` (or `.json`) and validates it with Zod
 (see [profiles.md](profiles.md)). Failures mean either the file does not exist (run
-`ocean setup` to create `bridge/profiles/default.json`, or add the named profile yourself)
-or it does not match the schema — check `provider` is one of `claude`/`codex`/`gemini`/`antigravity`/
+`ocean setup` to create `bridge/profiles/default.md`, or add the named profile yourself)
+, it exists as both `.md` and `.json`, or it does not match the schema — check `provider` is one of `claude`/`codex`/`gemini`/`antigravity`/
 `hermes` and every required field is present.
 
 ## Session resume rejected: "Provider does not support resume yet"

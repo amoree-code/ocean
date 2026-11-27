@@ -15,6 +15,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { selectProfileClient } from "@ocean/core/domain/profiles/profile.js";
+import { parseProfileMarkdown } from "@ocean/core/domain/profiles/profile-markdown.js";
 import { upgradeProfile } from "@ocean/core/domain/profiles/profile-upgrade.js";
 import { validateProfile } from "@ocean/core/domain/profiles/profile-validator.js";
 import {
@@ -188,10 +189,17 @@ test("a credential in a profile is rejected, and the report never repeats it", (
 
 test("every shipped template is already v2 and valid", async () => {
   const dir = path.resolve("templates/profiles");
-  for (const file of await readdir(dir)) {
-    const raw = JSON.parse(await readFile(path.join(dir, file), "utf8"));
+  const files = await readdir(dir);
+  assert.ok(files.length > 0);
+  for (const file of files) {
+    // T-338: templates ship as Markdown.
+    assert.match(file, /\.md$/);
+    const raw = parseProfileMarkdown(
+      await readFile(path.join(dir, file), "utf8"),
+      file,
+    );
     assert.equal(raw.schemaVersion, 2, file);
-    assert.equal(validateProfile(raw).name, file.replace(/\.json$/, ""));
+    assert.equal(validateProfile(raw).name, file.replace(/\.md$/, ""));
     assert.equal(upgradeProfile(raw).status, "current", file);
   }
 });

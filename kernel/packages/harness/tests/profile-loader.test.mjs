@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { parseProfileMarkdown } from "@ocean/core/domain/profiles/profile-markdown.js";
 import { SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import { openSessionStore } from "@ocean/loop/infrastructure/persistence/session-store.js";
 import { loadProfileDistribution } from "../dist/application/profiles/profile-distribution.js";
@@ -103,11 +104,12 @@ test("all practical role profiles use the universal client contract", async () =
   );
   const profilesDirectory = path.join(root, SYSTEM_DIR, "profiles");
   await mkdir(profilesDirectory, { recursive: true });
-  const template = JSON.parse(
+  const template = parseProfileMarkdown(
     await readFile(
-      new URL("../templates/profiles/default.json", import.meta.url),
+      new URL("../templates/profiles/default.md", import.meta.url),
       "utf8",
     ),
+    "default.md",
   );
   const names = [
     "default",

@@ -80,7 +80,7 @@ test("setup isolates its writes to OCEAN_ROOT and the (fake) home directory, nev
         `expected ${directory} under the private root`,
       );
     }
-    await stat(path.join(privateRoot, SYSTEM_DIR, "profiles", "default.json"));
+    await stat(path.join(privateRoot, SYSTEM_DIR, "profiles", "default.md"));
     // T-245: setup writes the runtime config, which loads and names a v2 default profile.
     assert.deepEqual(
       JSON.parse(

@@ -82,7 +82,7 @@ the same three constants, so they track any future layout change):
   `00-inbox/INBOX.md`), empty private files with placeholders only, and the required empty
   directories (`00-inbox/candidates`, `00-inbox/native`, `04-projects/_template/…`). A file that
   already exists is never replaced.
-- Writes `bridge/profiles/default.json` from the template in `packages/harness/templates/`,
+- Writes `bridge/profiles/default.md` from the template in `packages/harness/templates/`,
   without overwriting existing files.
 - Installs a per-OS startup entry that launches `kernel/packages/harness/dist/main.js service`
   with the workspace root as its working directory: a macOS `launchd` plist under

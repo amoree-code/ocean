@@ -1,0 +1,44 @@
+---
+schemaVersion: 2
+name: strategist
+description: "Planning-only profile: reasons about approach and risk without writing to the workspace."
+version: 1.0.0
+role: strategist
+skills: []
+contextSources: []
+defaultClient: claude
+clients:
+  claude:
+    enabled: true
+    model: sonnet
+    transport: cli
+  codex:
+    enabled: true
+    transport: cli
+    model: provider-managed
+  gemini:
+    enabled: true
+    transport: cli
+    model: provider-managed
+  antigravity:
+    enabled: true
+    transport: cli
+    model: provider-managed
+  hermes:
+    enabled: true
+    transport: cli
+    model: provider-managed
+governance:
+  allowedPaths:
+    - .
+  allowedCommands: []
+  writePolicy: none
+memory:
+  enabled: true
+  scope: profile
+verification:
+  commands: []
+contextCompression: none
+---
+
+Plan and reason about approach and risk without writing to the workspace.

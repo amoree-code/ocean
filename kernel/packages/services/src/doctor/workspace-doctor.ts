@@ -35,6 +35,10 @@ import {
   workspaceTasksRoot,
 } from "@ocean/core/shared/paths.js";
 import {
+  listProfileEntries,
+  profileCollisions,
+} from "@ocean/core/shared/profile-files.js";
+import {
   ensureProjectLayout,
   listProjectManifests,
   PROJECT_ROOT_ENTRIES,
@@ -651,28 +655,34 @@ async function checkProfileAuthority(): Promise<Finding[]> {
         fixable: false,
       },
     ];
-  const legacy: string[] = [];
-  for (const entry of await readdir(root, { withFileTypes: true })) {
-    if (
-      entry.isDirectory() &&
-      (await exists(path.join(root, entry.name, "profile.json")))
-    )
-      legacy.push(entry.name);
-  }
-  return legacy.length
-    ? [
-        {
-          code: "PROFILE_AUTHORITY_DRIFT",
-          severity: "WARN",
-          message: `legacy profile directories remain active: ${legacy.join(", ")}`,
-          fixable: false,
-        },
-      ]
+  const entries = await listProfileEntries(root);
+  const legacy = entries
+    .filter((entry) => entry.format === "directory")
+    .map((entry) => entry.name);
+  const collisions = profileCollisions(entries);
+  const findings: Finding[] = [];
+  if (collisions.length)
+    findings.push({
+      code: "PROFILE_COLLISION",
+      severity: "FAIL",
+      message: `profiles exist in more than one form (keep one): ${collisions.join(", ")}`,
+      fixable: false,
+    });
+  if (legacy.length)
+    findings.push({
+      code: "PROFILE_AUTHORITY_DRIFT",
+      severity: "WARN",
+      message: `legacy profile directories remain active: ${legacy.join(", ")}`,
+      fixable: false,
+    });
+  return findings.length
+    ? findings
     : [
         {
           code: "PROFILE_AUTHORITY_CANONICAL",
           severity: "OK",
-          message: "profiles use canonical root-level JSON authority",
+          message:
+            "profiles use canonical root-level Markdown or JSON authority",
           fixable: false,
         },
       ];

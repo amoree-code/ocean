@@ -81,7 +81,7 @@ export function upgradeProfile(raw: unknown): ProfileUpgrade {
   } catch (error) {
     return { status: "rejected", issues: [(error as Error).message] };
   }
-  if (v1.schemaVersion === 2) return { status: "current" };
+  if (v1.schemaVersion >= 2) return { status: "current" };
 
   const changes: string[] = [];
   const rawClients = (input.clients ?? {}) as Record<

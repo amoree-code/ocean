@@ -1,13 +1,39 @@
 # Profiles
 
-A profile is one JSON file describing one agent configuration. `profile.json` is the machine-enforced
-contract, including concise instructions and verification commands.
+A profile is one Markdown file describing one agent configuration: YAML frontmatter holds every
+field (the machine-enforced contract) and the body is the instructions. A `<name>.json` profile
+with an `instructions` field still loads.
 
 ## Storage and loading
 
-Profiles live at `<workspace>/bridge/profiles/<name>.json` (see [workspace.md](workspace.md)).
-`loadProfile(name)` (`src/infrastructure/filesystem/profile-loader.ts`) reads and validates the single
-canonical JSON file; legacy profile directories are read only for compatibility during migration.
+Profiles live at `<workspace>/bridge/profiles/<name>.md` (or `<name>.json`; see
+[workspace.md](workspace.md)). `loadProfile(name)` (`src/infrastructure/filesystem/profile-loader.ts`)
+reads and validates the single canonical file; a name kept as both `.md` and `.json` is refused
+(and `ocean doctor` reports it as `PROFILE_COLLISION`); legacy profile directories are read only
+for compatibility. Every reader lists profiles through `@ocean/core/shared/profile-files`.
+
+```markdown
+---
+schemaVersion: 2
+name: frontend
+extends: default
+role: frontend engineer
+skills:
+  - responsive-craft
+---
+
+Mind RTL and both locales.
+```
+
+`extends: <profile>` inherits the parent's fields; the child's replace them key by key (a nested
+map such as `clients` is replaced whole). Cycles and chains deeper than 4 are refused. Schema
+version 3 adds `kind` (`role` | `domain`), `triggers`, `signals`, `mcp`, `connectors`, `composio`
+and `plugins`; none of them changes a v1 or v2 profile's identity.
+
+`ocean profiles migrate --check | --apply | --rollback` converts JSON profiles to Markdown: the
+identity is unchanged (so sessions still resume), every JSON file is copied with its checksum to
+`bridge/profiles/.migrate/` first, one rejected profile blocks the whole apply, and rollback
+restores a JSON file only while its Markdown file is unedited.
 
 ## Schema (`src/domain/profiles/profile.ts`)
 
@@ -84,7 +110,7 @@ read back with `profileIdentity: ""`.
 These three are easy to conflate because all three can be named on the command line, but
 they answer different questions:
 
-- **Profile** (`bridge/profiles/<name>.json`) — *how* an agent runs: provider, model, role,
+- **Profile** (`bridge/profiles/<name>.md`) — *how* an agent runs: provider, model, role,
   skills, and read/write policy. It is configuration, reused across many runs, and owns no
   data of its own.
 - **Project** (`04-projects/<name>/`) — *what* the work is about: the tasks, plans, and
@@ -102,39 +128,23 @@ A profile is loaded by name for a run; the run happens against a project's files
 
 ## Default profile
 
-`ocean setup` writes `bridge/profiles/default.json` from
-`templates/profiles/default.json` if it does not already exist:
-
-```json
-{
-  "name": "default",
-  "description": "General-purpose assistant profile for ad-hoc work across the active workspace.",
-  "version": "1.0.0",
-  "provider": "claude",
-  "model": "sonnet",
-  "role": "general assistant",
-  "skills": [],
-  "allowedPaths": ["."],
-  "allowedCommands": [],
-  "writePolicy": "workspace",
-  "contextSources": []
-}
-```
+`ocean setup` writes `bridge/profiles/default.md` from `templates/profiles/default.md` unless a
+`default` profile already exists in any form.
 
 ## Role profiles
 
 `templates/profiles/` also ships public starter templates for three other roles; unlike
 `default`, `ocean setup` does not install these automatically — copy the one you need into
-`bridge/profiles/<name>.json` under the workspace root:
+`bridge/profiles/<name>.md` under the workspace root:
 
-- **`strategist.json`** — plans and reasons about approach; `writePolicy: "none"`.
-- **`developer.json`** — implements and fixes code; `writePolicy: "workspace"`.
-- **`reviewer.json`** — reviews changes and reports findings; `writePolicy: "none"`.
+- **`strategist.md`** — plans and reasons about approach; `writePolicy: "none"`.
+- **`developer.md`** — implements and fixes code; `writePolicy: "workspace"`.
+- **`reviewer.md`** — reviews changes and reports findings; `writePolicy: "none"`.
 
 The active instances a workspace actually runs with live only at `<workspace
-root>/bridge/profiles/<name>.json` — never inside `kernel/`.
+root>/bridge/profiles/<name>.md` — never inside `kernel/`.
 
-The root-level JSON form is canonical. The older directory form with `profile.json` and
+The root-level file (Markdown or JSON) is canonical. The older directory form with `profile.json` and
 `instructions.md` remains read-compatible during migration; it is not a second authority.
 
 ## Skill roots

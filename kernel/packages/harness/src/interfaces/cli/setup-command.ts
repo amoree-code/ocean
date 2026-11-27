@@ -28,6 +28,7 @@ import {
   TEMPLATES_DIR,
   WORKSPACE_PROJECT_ID,
 } from "@ocean/core/shared/paths.js";
+import { listProfileNames } from "@ocean/core/shared/profile-files.js";
 import { connectObsidianVault } from "@ocean/services/obsidian/vault-discovery.js";
 import { seedWorkspaceTemplate } from "../../application/layout/workspace-template.js";
 import {
@@ -224,13 +225,16 @@ export async function setup(options: SetupOptions = {}): Promise<void> {
     oceanPath(KNOWLEDGE_DIR, "KNOWLEDGE.md"),
     "# Knowledge\n\n## Records (generated)\n",
   );
-  await ensureFile(
-    oceanPath(SYSTEM_DIR, "profiles", "default.json"),
-    await readFile(
-      new URL("../../../templates/profiles/default.json", import.meta.url),
-      "utf8",
-    ),
-  );
+  // T-338: profiles ship as Markdown; a default kept in any form (an older `default.json`
+  // too) is never joined by a second copy.
+  if (!(await listProfileNames()).includes("default"))
+    await ensureFile(
+      oceanPath(SYSTEM_DIR, "profiles", "default.md"),
+      await readFile(
+        new URL("../../../templates/profiles/default.md", import.meta.url),
+        "utf8",
+      ),
+    );
   // T-245: the runtime config names the default profile, so `ocean run` without --profile
   // no longer depends on the historical fallback. An existing file is never replaced.
   await ensureFile(
