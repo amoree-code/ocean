@@ -376,3 +376,48 @@ test("the journal leaves out a bare status as an outcome", async () => {
     assert.doesNotMatch(note, /Outcome: Completed/);
   });
 });
+
+test("a project's lesson is scoped to it, Ocean's stays global; a long fix is titled by its problem, cut at a word", async () => {
+  await withRoot(async (root) => {
+    const session = (project, title, sections) =>
+      `---\ntype: session\nproject: "${project}"\nprovider: "claude-desktop"\nstatus: completed\nsession_id: "${project}"\ndate: 2026-11-20\ntags: []\ndistilled: false\n---\n\n# ${title}\n\n## Goal\n\n${title}\n\n${sections}`;
+    await write(
+      root,
+      "01-daily/sessions/2026-11/study.md",
+      session(
+        "study-abroad",
+        "Exam practice",
+        "## Problems → fixes\n\n- Swap loop traced wrongly with index and value mixed up → the assistant ran the code and walked through each line.\n\n## Learned\n\n- A Python list swap inside a range loop over half the length reverses the whole list in place without any extra copy of it.\n",
+      ),
+    );
+    await write(
+      root,
+      "01-daily/sessions/2026-11/ocean.md",
+      session(
+        "ocean",
+        "Ocean work",
+        "## Learned\n\n- The pull command is a dry run until it is given the yes flag.\n",
+      ),
+    );
+    const result = await harvestDay({ date: "2026-11-20", apply: true });
+    assert.equal(result.created.length, 3);
+    const read = async (file) => readFile(path.join(root, file), "utf8");
+    const files = await readdir(path.join(root, "05-knowledge/lessons"));
+    const texts = await Promise.all(
+      files.map((name) => read(`05-knowledge/lessons/${name}`)),
+    );
+    const fix = texts.find((text) => text.includes("Swap loop"));
+    assert.match(fix, /^scope: project:study-abroad$/m);
+    assert.match(
+      fix,
+      /^# Swap loop traced wrongly with index and value mixed up$/m,
+    );
+    const long = texts.find((text) => text.includes("reverses the whole"));
+    const heading = /^# (.+)$/m.exec(long)[1];
+    assert.ok(heading.length <= 90 && heading.endsWith("…"), heading);
+    // Cut at a word: what is kept is followed by a space in the full text.
+    assert.ok(long.includes(`${heading.slice(0, -1)} `), heading);
+    const own = texts.find((text) => text.includes("dry run"));
+    assert.doesNotMatch(own, /^scope:/m);
+  });
+});
