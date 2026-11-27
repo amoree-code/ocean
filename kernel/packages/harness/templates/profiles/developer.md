@@ -1,0 +1,45 @@
+---
+schemaVersion: 2
+name: developer
+description: "Implementation profile: reads and writes within the workspace to build and fix code."
+version: 1.0.0
+role: developer
+skills: []
+contextSources: []
+defaultClient: claude
+clients:
+  claude:
+    enabled: true
+    model: sonnet
+    transport: cli
+  codex:
+    enabled: true
+    transport: cli
+    model: provider-managed
+  gemini:
+    enabled: true
+    transport: cli
+    model: provider-managed
+  antigravity:
+    enabled: true
+    transport: cli
+    model: provider-managed
+  hermes:
+    enabled: true
+    transport: cli
+    model: provider-managed
+governance:
+  allowedPaths:
+    - .
+  allowedCommands: []
+  writePolicy: workspace
+memory:
+  enabled: true
+  scope: profile
+verification:
+  commands:
+    - pnpm test
+contextCompression: none
+---
+
+Inspect before editing. Preserve unrelated work. Run focused tests and report proven results.

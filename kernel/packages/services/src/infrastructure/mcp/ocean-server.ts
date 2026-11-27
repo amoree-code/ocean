@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { readdir, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import {
   brainNeighbors,
@@ -48,6 +48,7 @@ import {
   oceanRoot,
   SYSTEM_DIR,
 } from "@ocean/core/shared/paths.js";
+import { listProfileNames } from "@ocean/core/shared/profile-files.js";
 import {
   findProject,
   folderProject,
@@ -740,17 +741,7 @@ function textResult(value: unknown): {
 }
 
 async function profiles(): Promise<string[]> {
-  try {
-    return (
-      await readdir(oceanPath(SYSTEM_DIR, "profiles"), { withFileTypes: true })
-    )
-      .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
-      .map((entry) => entry.name.slice(0, -5))
-      .sort();
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
-    throw error;
-  }
+  return listProfileNames();
 }
 
 const MUTATING_TOOLS = new Set([

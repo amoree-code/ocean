@@ -1,3 +1,8 @@
+import {
+  applyProfileMigration,
+  planProfileMigration,
+  rollbackProfileMigration,
+} from "../../application/profiles/profile-migration-service.js";
 import { selectProfileForTask } from "../../application/profiles/profile-suggestion.js";
 import {
   applyProfileUpgrade,
@@ -8,7 +13,7 @@ import {
 import { loadProfile } from "../../infrastructure/filesystem/profile-loader.js";
 
 const usage =
-  "Usage: ocean profiles validate | upgrade --check | --apply | --rollback | suggest --task <id> [--profile <name>]";
+  "Usage: ocean profiles validate | upgrade --check | --apply | --rollback | migrate --check | --apply | --rollback | suggest --task <id> [--profile <name>]";
 
 function print(value: unknown): void {
   console.log(JSON.stringify(value, null, 2));
@@ -62,6 +67,34 @@ export async function runProfilesCommand(args: string[]): Promise<void> {
     }
     if (action === "upgrade" && mode === "--rollback") {
       const result = await rollbackProfileUpgrade();
+      print(result);
+      if (result.skipped.length) process.exitCode = 1;
+      return;
+    }
+    // T-338: JSON profiles → Markdown. Identity is unchanged, so sessions still resume.
+    if (action === "migrate" && mode === "--check") {
+      const plan = await planProfileMigration();
+      print(plan.map(({ next: _next, ...entry }) => entry));
+      if (plan.some((e) => e.status === "rejected" || e.status === "collision"))
+        process.exitCode = 1;
+      return;
+    }
+    if (action === "migrate" && mode === "--apply") {
+      const result = await applyProfileMigration();
+      print({
+        migrated: result.migrated,
+        blocked: result.blocked.map(({ next: _next, ...entry }) => entry),
+        ...(result.migrated.length
+          ? {
+              note: "`ocean profiles migrate --rollback` restores the JSON files while the Markdown files are unedited.",
+            }
+          : {}),
+      });
+      if (result.blocked.length) process.exitCode = 1;
+      return;
+    }
+    if (action === "migrate" && mode === "--rollback") {
+      const result = await rollbackProfileMigration();
       print(result);
       if (result.skipped.length) process.exitCode = 1;
       return;

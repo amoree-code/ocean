@@ -1,9 +1,19 @@
 import { createHash } from "node:crypto";
-import { mkdir, readdir, readFile, stat } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
+import {
+  parseProfileMarkdown,
+  renderProfileMarkdown,
+} from "@ocean/core/domain/profiles/profile-markdown.js";
 import { upgradeProfile } from "@ocean/core/domain/profiles/profile-upgrade.js";
 import { atomicWrite, withFileLock } from "@ocean/core/shared/fs-utils.js";
-import { oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
+import {
+  listProfileEntries,
+  listProfileNames,
+  type ProfileEntry,
+  profileCollisions,
+  profilesDir,
+} from "@ocean/core/shared/profile-files.js";
 
 // The current-profile upgrade (T-245 Phase 5): dry run → manifest, apply once with a
 // checksummed v1 copy of every file it replaces, rollback from that manifest. It works only
@@ -12,7 +22,13 @@ import { oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 export type UpgradeEntry = {
   name: string;
   file: string;
-  status: "current" | "upgrade" | "rejected" | "collision" | "legacy-directory";
+  status:
+    | "current"
+    | "upgrade"
+    | "rejected"
+    | "collision"
+    | "legacy-directory"
+    | "inherits";
   changes?: string[];
   issues?: string[];
   v1Sha256?: string;
@@ -27,15 +43,14 @@ export type UpgradeManifest = {
     v1Sha256: string;
     v2Sha256: string;
     backup: string;
+    // The profile's file name; absent in manifests written before Markdown profiles, which
+    // only ever upgraded `<name>.json`.
+    file?: string;
   }[];
 };
 
 const sha256 = (text: string) =>
   createHash("sha256").update(text).digest("hex");
-
-export function profilesDir(): string {
-  return oceanPath(SYSTEM_DIR, "profiles");
-}
 
 // Backups and the manifest live beside the profiles, under a name no profile can have.
 function upgradeDir(): string {
@@ -57,79 +72,103 @@ async function readManifest(): Promise<UpgradeManifest | null> {
   }
 }
 
-async function isDirectory(target: string): Promise<boolean> {
-  return (await stat(target).catch(() => null))?.isDirectory() ?? false;
+// How each form is named in a collision message, `.json` first as it always was.
+const formOrder = { json: 0, md: 1, directory: 2 } as const;
+function describeForm(entry: ProfileEntry): string {
+  return entry.format === "directory"
+    ? `the legacy directory ${entry.name}/`
+    : path.basename(entry.file);
 }
 
 export async function planProfileUpgrade(): Promise<UpgradeEntry[]> {
-  const dir = profilesDir();
-  const names = (await readdir(dir).catch(() => [] as string[])).sort();
+  const listed = await listProfileEntries();
+  const collisions = new Set(profileCollisions(listed));
   const entries: UpgradeEntry[] = [];
-  for (const entry of names) {
-    const full = path.join(dir, entry);
-    if (entry.startsWith(".")) continue;
-    if (entry.endsWith(".json")) {
-      const name = entry.slice(0, -".json".length);
-      if (await isDirectory(path.join(dir, name))) {
-        entries.push({
-          name,
-          file: full,
-          status: "collision",
-          issues: [`both ${entry} and the legacy directory ${name}/ exist`],
-        });
-        continue;
-      }
-      const source = await readFile(full, "utf8");
-      let raw: unknown;
-      try {
-        raw = JSON.parse(source);
-      } catch {
-        // The parser's message quotes the file around the error; it is not repeated.
-        entries.push({
-          name,
-          file: full,
-          status: "rejected",
-          issues: ["invalid JSON"],
-        });
-        continue;
-      }
-      const result = upgradeProfile(raw);
-      const declared = (raw as { name?: unknown })?.name;
-      if (result.status !== "rejected" && declared !== name) {
-        entries.push({
-          name,
-          file: full,
-          status: "rejected",
-          issues: [`declares name "${String(declared)}", expected "${name}"`],
-        });
-        continue;
-      }
-      if (result.status === "upgrade") {
-        const next = `${JSON.stringify(result.profile, null, 2)}\n`;
-        entries.push({
-          name,
-          file: full,
-          status: "upgrade",
-          changes: result.changes,
-          v1Sha256: sha256(source),
-          v2Sha256: sha256(next),
-          next,
-        });
-      } else if (result.status === "rejected")
-        entries.push({
-          name,
-          file: full,
-          status: "rejected",
-          issues: result.issues,
-        });
-      else entries.push({ name, file: full, status: "current" });
-    } else if ((await isDirectory(full)) && !names.includes(`${entry}.json`))
+  for (const item of listed) {
+    const { name } = item;
+    if (collisions.has(name)) {
+      if (entries.some((entry) => entry.name === name)) continue;
+      const forms = listed
+        .filter((entry) => entry.name === name)
+        .sort((a, b) => formOrder[a.format] - formOrder[b.format])
+        .map(describeForm);
       entries.push({
-        name: entry,
-        file: full,
+        name,
+        file: item.file,
+        status: "collision",
+        issues: [`both ${forms.join(" and ")} exist`],
+      });
+      continue;
+    }
+    if (item.format === "directory") {
+      entries.push({
+        name,
+        file: path.dirname(item.file),
         status: "legacy-directory",
         issues: ["legacy directory profiles are not upgraded; convert by hand"],
       });
+      continue;
+    }
+    const full = item.file;
+    const markdown = item.format === "md";
+    const source = await readFile(full, "utf8");
+    let raw: unknown;
+    try {
+      raw = markdown ? parseProfileMarkdown(source, full) : JSON.parse(source);
+    } catch {
+      // The parser's message quotes the file around the error; it is not repeated.
+      entries.push({
+        name,
+        file: full,
+        status: "rejected",
+        issues: [markdown ? "invalid frontmatter" : "invalid JSON"],
+      });
+      continue;
+    }
+    // A profile that extends another holds only what it changes, so alone it is not a whole
+    // profile to upgrade; the upgrade is the parent's (T-338).
+    const parent = (raw as { extends?: unknown })?.extends;
+    if (parent !== undefined) {
+      entries.push({
+        name,
+        file: full,
+        status: "inherits",
+        issues: [`extends ${String(parent)}; upgrade that profile instead`],
+      });
+      continue;
+    }
+    const result = upgradeProfile(raw);
+    const declared = (raw as { name?: unknown })?.name;
+    if (result.status !== "rejected" && declared !== name) {
+      entries.push({
+        name,
+        file: full,
+        status: "rejected",
+        issues: [`declares name "${String(declared)}", expected "${name}"`],
+      });
+      continue;
+    }
+    if (result.status === "upgrade") {
+      const next = markdown
+        ? renderProfileMarkdown(result.profile as Record<string, unknown>)
+        : `${JSON.stringify(result.profile, null, 2)}\n`;
+      entries.push({
+        name,
+        file: full,
+        status: "upgrade",
+        changes: result.changes,
+        v1Sha256: sha256(source),
+        v2Sha256: sha256(next),
+        next,
+      });
+    } else if (result.status === "rejected")
+      entries.push({
+        name,
+        file: full,
+        status: "rejected",
+        issues: result.issues,
+      });
+    else entries.push({ name, file: full, status: "current" });
   }
   return entries;
 }
@@ -167,7 +206,7 @@ export async function applyProfileUpgrade(): Promise<{
         );
       const backup = path.join(
         upgradeDir(),
-        `${entry.name}.${entry.v1Sha256?.slice(0, 12)}.v1.json`,
+        `${entry.name}.${entry.v1Sha256?.slice(0, 12)}.v1${path.extname(entry.file)}`,
       );
       await atomicWrite(backup, source, 0o600);
       if (sha256(await readFile(backup, "utf8")) !== entry.v1Sha256)
@@ -179,6 +218,7 @@ export async function applyProfileUpgrade(): Promise<{
         v1Sha256: entry.v1Sha256 as string,
         v2Sha256: entry.v2Sha256 as string,
         backup: path.basename(backup),
+        file: path.basename(entry.file),
       });
     }
     await atomicWrite(
@@ -204,7 +244,7 @@ export async function rollbackProfileUpgrade(): Promise<{
     const restored: string[] = [];
     const skipped: { name: string; reason: string }[] = [];
     for (const entry of manifest.entries) {
-      const file = path.join(profilesDir(), `${entry.name}.json`);
+      const file = path.join(profilesDir(), entry.file ?? `${entry.name}.json`);
       const current = await readFile(file, "utf8").catch(() => null);
       if (current === null || sha256(current) === entry.v1Sha256) {
         if (current !== null) restored.push(entry.name);
@@ -238,15 +278,8 @@ export async function validateProfiles(
 ): Promise<
   { name: string; ok: boolean; schemaVersion?: number; error?: string }[]
 > {
-  const dir = profilesDir();
-  const names = new Set<string>();
-  for (const entry of await readdir(dir).catch(() => [] as string[])) {
-    if (entry.startsWith(".")) continue;
-    if (entry.endsWith(".json")) names.add(entry.slice(0, -".json".length));
-    else if (await isDirectory(path.join(dir, entry))) names.add(entry);
-  }
   const results = [];
-  for (const name of [...names].sort()) {
+  for (const name of await listProfileNames()) {
     try {
       const profile = await load(name);
       results.push({ name, ok: true, schemaVersion: profile.schemaVersion });

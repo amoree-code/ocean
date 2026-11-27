@@ -54,7 +54,7 @@ const governanceSchema = z.object({
   network: z.string().min(1).optional(),
 });
 
-// A profile name is also a filename (profiles/<name>.json) and a memory namespace
+// A profile name is also a filename (profiles/<name>.md or .json) and a memory namespace
 // (memory/profiles/<name>.json), so it is restricted to characters that can never form a path.
 // Lowercase only: on a case-insensitive filesystem "Alpha" and "alpha" would share one file.
 const profileNamePattern = /^[a-z0-9][a-z0-9_-]{0,63}$/;
@@ -66,9 +66,12 @@ export function assertProfileName(name: string): string {
   return name;
 }
 
+const bundleList = z.array(z.string().min(1)).optional();
+
 const rawProfileSchema = z.object({
-  // Absent means 1. Schema v1 stays readable for one release; v2 is what new profiles use.
-  schemaVersion: z.union([z.literal(1), z.literal(2)]).default(1),
+  // Absent means 1. Schema v1 stays readable for one release; v2 is what role profiles use and
+  // v3 (T-338) adds the domain-bundle fields below.
+  schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3)]).default(1),
   name: z.string().regex(profileNamePattern, "Invalid profile name"),
   description: z.string().default(""),
   version: z.string().min(1).default("1.0.0"),
@@ -94,7 +97,36 @@ const rawProfileSchema = z.object({
     .default({ commands: [] }),
   contextCompression: z.enum(["none", "ocean-bounded"]).default("none"),
   instructions: z.string().default(""),
+  // v3 (T-338): a profile as a domain bundle. Names only, never launch config or secrets.
+  kind: z.enum(["role", "domain"]).optional(),
+  // The profile this one inherits from; resolved by the loader before validation.
+  extends: z
+    .string()
+    .regex(profileNamePattern, "Invalid profile name")
+    .optional(),
+  // Words in a prompt or task that point at this profile.
+  triggers: bundleList,
+  // Repository signals (dependencies, files) that point at this profile.
+  signals: bundleList,
+  // Ocean gateway members this profile exposes.
+  mcp: bundleList,
+  // Account connectors (claude.ai) the profile uses; Ocean names them, never toggles them.
+  connectors: bundleList,
+  // Composio toolkits the profile uses.
+  composio: bundleList,
+  // Client plugins the profile recommends; enabling a plugin is global to a client.
+  plugins: bundleList,
 });
+
+const V3_FIELDS = [
+  "kind",
+  "triggers",
+  "signals",
+  "mcp",
+  "connectors",
+  "composio",
+  "plugins",
+] as const;
 
 // Schema v2 makes explicit what v1 left to defaults: a default client, a model on every
 // enabled client, and a closed memory scope.
@@ -120,7 +152,17 @@ function refineV2(
 
 export const profileSchema = rawProfileSchema
   .superRefine((input, context) => {
-    if (input.schemaVersion === 2) refineV2(input, context);
+    if (input.schemaVersion >= 2) refineV2(input, context);
+    // A bundle field on v1/v2 would be outside the identity hash, so an edit to it could never
+    // be detected; it needs v3.
+    if (input.schemaVersion < 3)
+      for (const field of V3_FIELDS)
+        if (input[field] !== undefined)
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [field],
+            message: `${field} requires schemaVersion 3`,
+          });
     for (const [client, binding] of Object.entries(input.clients)) {
       if (!providerSchema.safeParse(client).success)
         context.addIssue({
@@ -242,8 +284,20 @@ export function profileIdentity(profile: Profile): string {
     instructions: profile.instructions,
     // v2-only fields are appended only for v2, so every v1 identity stays what it was and a
     // v1 session can still be resumed after this release.
-    ...(profile.schemaVersion === 2
+    ...(profile.schemaVersion >= 2
       ? { schemaVersion: profile.schemaVersion }
+      : {}),
+    // v3 bundle fields, likewise only for v3, so a v2 identity is unchanged.
+    ...(profile.schemaVersion === 3
+      ? {
+          kind: profile.kind ?? "role",
+          triggers: profile.triggers ?? [],
+          signals: profile.signals ?? [],
+          mcp: profile.mcp ?? [],
+          connectors: profile.connectors ?? [],
+          composio: profile.composio ?? [],
+          plugins: profile.plugins ?? [],
+        }
       : {}),
   };
   return createHash("sha256").update(JSON.stringify(canonical)).digest("hex");

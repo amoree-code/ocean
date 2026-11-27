@@ -4,12 +4,10 @@ import {
   assertProfileName,
   type Profile,
 } from "@ocean/core/domain/profiles/profile.js";
+import { parseProfileMarkdown } from "@ocean/core/domain/profiles/profile-markdown.js";
 import { validateProfile } from "@ocean/core/domain/profiles/profile-validator.js";
-import {
-  oceanPath,
-  resolveWithin,
-  SYSTEM_DIR,
-} from "@ocean/core/shared/paths.js";
+import { resolveWithin } from "@ocean/core/shared/paths.js";
+import { profilesDir } from "@ocean/core/shared/profile-files.js";
 
 function missingAsNull(error: unknown): null {
   if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
@@ -26,41 +24,104 @@ function parseProfile(source: string, file: string): unknown {
   }
 }
 
-// The name inside the file must be the name it was loaded by: the name keys sessions and the
-// profile's memory namespace, so a mismatch would read or write another profile's facts.
-function requireName(profile: Profile, name: string, file: string): Profile {
-  if (profile.name !== name)
-    throw new Error(
-      `Profile ${file} declares name "${profile.name}", expected "${name}"`,
-    );
-  return profile;
+function asRecord(value: unknown, file: string): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new Error(`Profile ${file} must be an object`);
+  return value as Record<string, unknown>;
 }
 
-export async function loadProfile(name: string): Promise<Profile> {
+// The name inside the file must be the name it was loaded by: the name keys sessions and the
+// profile's memory namespace, so a mismatch would read or write another profile's facts.
+function requireName(
+  raw: { name?: unknown },
+  name: string,
+  file: string,
+): void {
+  if (raw.name !== name)
+    throw new Error(
+      `Profile ${file} declares name "${String(raw.name)}", expected "${name}"`,
+    );
+}
+
+// One profile's own fields, unvalidated and before inheritance; the name is checked by the
+// caller, after validation, so an invalid name is reported as invalid first. `<name>.md` and `<name>.json`
+// together are ambiguous and refused; only a missing canonical file falls through to the
+// legacy directory form, and a file that exists but cannot be read or parsed is an error,
+// never a silent fallback.
+async function readRawProfile(
+  name: string,
+): Promise<{ raw: Record<string, unknown>; file: string }> {
   assertProfileName(name);
-  const root = oceanPath(SYSTEM_DIR, "profiles");
-  const file = resolveWithin(root, `${name}.json`);
-  // Only a missing canonical file falls through to the legacy directory form; a file that
-  // exists but cannot be read, parsed or validated is an error, never a silent fallback.
-  const source = await readFile(file, "utf8").catch(missingAsNull);
-  if (source !== null)
-    return requireName(validateProfile(parseProfile(source, file)), name, file);
+  const root = profilesDir();
+  const markdownFile = resolveWithin(root, `${name}.md`);
+  const jsonFile = resolveWithin(root, `${name}.json`);
+  const markdown = await readFile(markdownFile, "utf8").catch(missingAsNull);
+  const json = await readFile(jsonFile, "utf8").catch(missingAsNull);
+  if (markdown !== null && json !== null)
+    throw new Error(
+      `Profile ${name} exists as both ${name}.md and ${name}.json; keep one`,
+    );
+  if (markdown !== null)
+    return {
+      raw: parseProfileMarkdown(markdown, markdownFile),
+      file: markdownFile,
+    };
+  if (json !== null)
+    return {
+      raw: asRecord(parseProfile(json, jsonFile), jsonFile),
+      file: jsonFile,
+    };
   const directory = resolveWithin(root, name);
   if ((await stat(directory).catch(missingAsNull))?.isDirectory()) {
     const legacy = path.join(directory, "profile.json");
-    const input = parseProfile(
-      await readFile(legacy, "utf8"),
+    const input = asRecord(
+      parseProfile(await readFile(legacy, "utf8"), legacy),
       legacy,
-    ) as Record<string, unknown>;
+    );
     const instructions = await readFile(
       path.join(directory, "instructions.md"),
       "utf8",
     ).catch(() => "");
-    return requireName(
-      validateProfile({ ...input, instructions }),
-      name,
-      legacy,
-    );
+    return {
+      raw: { ...input, instructions },
+      file: legacy,
+    };
   }
   throw new Error(`Profile not found: ${name}`);
+}
+
+// A chain deeper than this is a mistake, not a design.
+const MAX_EXTENDS = 4;
+
+// `extends: <parent>` (T-338): the child's fields replace the parent's, key by key (a nested
+// map such as `clients` is replaced whole, never merged). `name` and `extends` are the child's.
+// A parent must declare its own file's name, like any profile.
+async function resolveRawProfile(
+  name: string,
+  chain: string[] = [],
+): Promise<{ raw: Record<string, unknown>; file: string }> {
+  if (chain.includes(name))
+    throw new Error(
+      `Profile inheritance cycle: ${[...chain, name].join(" → ")}`,
+    );
+  if (chain.length > MAX_EXTENDS)
+    throw new Error(
+      `Profile ${chain[0]} extends more than ${MAX_EXTENDS} deep`,
+    );
+  const own = await readRawProfile(name);
+  const parentName = own.raw.extends;
+  if (parentName === undefined) return own;
+  if (typeof parentName !== "string")
+    throw new Error(`Profile ${name}: extends must be a profile name`);
+  const parent = await resolveRawProfile(parentName, [...chain, name]);
+  requireName(parent.raw, parentName, parent.file);
+  const { extends: _parentExtends, ...inherited } = parent.raw;
+  return { raw: { ...inherited, ...own.raw }, file: own.file };
+}
+
+export async function loadProfile(name: string): Promise<Profile> {
+  const { raw, file } = await resolveRawProfile(name);
+  const profile = validateProfile(raw);
+  requireName(profile, name, file);
+  return profile;
 }
