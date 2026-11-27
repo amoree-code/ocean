@@ -3,7 +3,12 @@ import os from "node:os";
 import path from "node:path";
 import { atomicWrite } from "@ocean/core/shared/fs-utils.js";
 import { oceanPath, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
+import { resolveProject } from "@ocean/core/shared/project-resolution.js";
 import { projectSignals } from "@ocean/core/shared/repo-signals.js";
+import {
+  profileCatalog,
+  sessionProfile,
+} from "@ocean/core/shared/session-profile.js";
 import {
   isContentWord,
   normalizeText,
@@ -44,6 +49,10 @@ export type SkillMatch = {
 
 // Below this a match is noise; tuned on the owner's installed skills (`ocean skill route`).
 export const ROUTE_THRESHOLD = 7;
+// What being in the session's primary profile adds to a skill that already matched, and being
+// in a profile the prompt itself triggered (T-338 P3). Neither makes a match from nothing.
+const PRIMARY_BOOST = 4;
+const SECONDARY_BOOST = 3;
 // A runner-up within this share of the top score counts as close (named, or ambiguous).
 const SECOND_RATIO = 0.8;
 // What a word found in only one skill is worth (≈ its raw IDF across ~150 skills).
@@ -267,12 +276,47 @@ function fileFor(skill: IndexedSkill, client: string): string {
   return Object.values(skill.files)[0] ?? "";
 }
 
-// BM25 over each description (the name counts double), plus trigger-phrase hits and the
-// working-directory signal. Pure: the same index, message and signals give the same answer.
+// The skills of the session's primary profile, and of the secondary profiles this prompt
+// triggered.
+export type ProfileSkills = { primary: Set<string>; secondary: Set<string> };
+
+// The primary comes from the project, task and repository, as at session start, so it holds
+// for the session; the prompt only adds secondaries. Never throws: no profiles, no boost.
+export async function promptProfileSkills(
+  cwd: string,
+  prompt: string,
+): Promise<ProfileSkills | undefined> {
+  try {
+    const catalog = await profileCatalog();
+    const project = await resolveProject(cwd).catch(() => null);
+    const session = await sessionProfile({
+      projectId: project?.status === "bound" ? project.projectId : undefined,
+      cwd,
+      prompt,
+      catalog,
+    });
+    const skillsOf = (name: string) =>
+      catalog.profiles.find((profile) => profile.name === name)?.skills ?? [];
+    return {
+      primary: new Set(skillsOf(session.primary)),
+      secondary: new Set(session.secondary.flatMap(skillsOf)),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+// BM25 over each description (the name counts double), plus trigger-phrase hits, the
+// working-directory signal and the session's profiles. Pure: the same index, message and signals give the same answer.
 export function routeSkills(
   index: SkillIndex,
   message: string,
-  options: { signals?: Set<string>; client?: string; limit?: number } = {},
+  options: {
+    signals?: Set<string>;
+    client?: string;
+    limit?: number;
+    profiles?: ProfileSkills;
+  } = {},
 ): { matches: SkillMatch[]; candidates: SkillMatch[] } {
   const empty = { matches: [], candidates: [] };
   const text = message.slice(0, MESSAGE_CHARS);
@@ -304,6 +348,9 @@ export function routeSkills(
   const b = 0.75;
   const signals = options.signals ?? new Set<string>();
   const scored: SkillMatch[] = [];
+  // The profile boost each match got: a boost shared by the top skill and a runner-up must
+  // not make them look closer than their own words do.
+  const boostOf = new Map<string, number>();
   for (const item of prepared) {
     let score = 0;
     const why: string[] = [];
@@ -334,6 +381,15 @@ export function routeSkills(
       score += 4;
       why.push("project");
     }
+    if (score > 0 && options.profiles?.primary.has(item.skill.name)) {
+      score += PRIMARY_BOOST;
+      boostOf.set(item.skill.name, PRIMARY_BOOST);
+      why.push("profile");
+    } else if (score > 0 && options.profiles?.secondary.has(item.skill.name)) {
+      score += SECONDARY_BOOST;
+      boostOf.set(item.skill.name, SECONDARY_BOOST);
+      why.push("secondary profile");
+    }
     if (score <= 0) continue;
     scored.push({
       name: item.skill.name,
@@ -349,9 +405,14 @@ export function routeSkills(
   // Close runners-up: one is named alongside the top skill; two or more mean the message is
   // generic ("write tests" with three test skills and nothing in the project to choose), so
   // nothing is named.
+  const shared = (item: SkillMatch) =>
+    Math.min(boostOf.get(item.name) ?? 0, boostOf.get(top.name) ?? 0);
   const close = scored
     .slice(1)
-    .filter((item) => item.score >= top.score * SECOND_RATIO);
+    .filter(
+      (item) =>
+        item.score - shared(item) >= (top.score - shared(item)) * SECOND_RATIO,
+    );
   if (close.length >= 2) return { matches: [], candidates };
   const matches = [top, ...close];
   return { matches, candidates };
@@ -410,10 +471,11 @@ export async function skillRouterHook(
   const session =
     typeof payload.session_id === "string" ? payload.session_id : "";
   const index = await loadSkillIndex(home);
-  const { matches } = routeSkills(index, prompt, {
-    signals: await projectSignals(cwd),
-    client,
-  });
+  const [signals, profiles] = await Promise.all([
+    projectSignals(cwd),
+    promptProfileSkills(cwd, prompt),
+  ]);
+  const { matches } = routeSkills(index, prompt, { signals, client, profiles });
   if (!matches.length) return null;
   const state = await readState();
   const seen = new Set(session ? (state.sessions[session]?.skills ?? []) : []);

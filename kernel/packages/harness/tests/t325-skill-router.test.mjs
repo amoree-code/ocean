@@ -181,6 +181,49 @@ test("the working directory breaks a tie between similar skills", async () => {
   });
 });
 
+// T-338 P3: the session's primary profile breaks the same tie; a secondary profile the
+// prompt triggered does too, and neither makes a match from nothing.
+test("the session's profiles boost their skills", async () => {
+  await withHome(async ({ home }) => {
+    const index = await buildSkillIndex(home, false);
+    const message = "write tests for the parser";
+    const tdd = new Set(["test-driven-development"]);
+    const none = new Set();
+    assert.equal(
+      top(
+        routeSkills(index, message, {
+          profiles: { primary: tdd, secondary: none },
+        }),
+      )[0],
+      "test-driven-development",
+    );
+    const boosted = routeSkills(index, message, {
+      profiles: { primary: none, secondary: tdd },
+    });
+    assert.equal(top(boosted)[0], "test-driven-development");
+    assert.ok(boosted.matches[0].why.includes("secondary profile"));
+    // A boost every candidate shares changes nothing about which are close (it may lift a
+    // weak match over the threshold, as the project signal does).
+    const all = new Set(index.skills.map((skill) => skill.name));
+    assert.deepEqual(
+      top(
+        routeSkills(index, "good morning", {
+          profiles: { primary: all, secondary: none },
+        }),
+      ),
+      top(routeSkills(index, "good morning")),
+    );
+    assert.deepEqual(
+      top(
+        routeSkills(index, "good evening friend", {
+          profiles: { primary: new Set(["day-start"]), secondary: none },
+        }),
+      ),
+      [],
+    );
+  });
+});
+
 test("the prompt hook injects one line per skill, once per session", async () => {
   await withHome(async ({ home }) => {
     const payload = { prompt: "good morning", session_id: "s1", cwd: home };
