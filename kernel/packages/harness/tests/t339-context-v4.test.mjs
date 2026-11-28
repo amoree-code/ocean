@@ -221,7 +221,8 @@ test("the shipped templates fit the budgets and every policy parses clean", asyn
     path.join(TEMPLATES, "profiles-v3", "base.md"),
     "utf8",
   );
-  const body = base.replace(/^---[\s\S]*?\n---\n/, "").trim();
+  // CRLF on a Windows checkout: the fence still ends the frontmatter.
+  const body = base.replace(/^---[\s\S]*?\r?\n---\r?\n/, "").trim();
   assert.ok(
     Buffer.byteLength(body) <= BASE_BODY_MAX_BYTES,
     `base body is ${Buffer.byteLength(body)} B`,

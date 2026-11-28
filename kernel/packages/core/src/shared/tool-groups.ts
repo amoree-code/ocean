@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { realpathSync } from "node:fs";
 import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { atomicWrite } from "./fs-utils.js";
@@ -157,11 +158,17 @@ export type ToolSelection = {
 
 const SELECTION_TTL_MS = 24 * 60 * 60 * 1000;
 
+// One key per folder however it is spelled: the hook and the server may see a symlinked path,
+// or (Windows) an 8.3 short name or another letter case, for the same folder.
 export function selectionKey(cwd: string): string {
-  return createHash("sha256")
-    .update(path.resolve(cwd))
-    .digest("hex")
-    .slice(0, 16);
+  let folder = path.resolve(cwd);
+  try {
+    folder = realpathSync.native(folder);
+  } catch {
+    // Not there yet: hash the resolved spelling.
+  }
+  if (process.platform === "win32") folder = folder.toLowerCase();
+  return createHash("sha256").update(folder).digest("hex").slice(0, 16);
 }
 
 export function selectionPath(cwd: string): string {
@@ -231,6 +238,7 @@ export async function writeToolSelection(
 export const CLIENT_RELISTS: Record<string, boolean> = {
   "codex-mcp-client": false, // Codex 0.156.1, 2026-11-28
   "gemini-cli-mcp-client": true, // Gemini CLI 0.61.0, 2026-11-28
+  Cursor: false, // cursor-agent (clientInfo 1.0.0), 2026-11-28
 };
 
 export function clientRelists(
