@@ -242,10 +242,24 @@ export const CLIENT_RELISTS: Record<string, boolean> = {
   // Hermes 0.19.0 sends the Python SDK default name. It re-lists, but `hermes -z` keeps the
   // model's tool list fixed for the turn, so an opened tool is not callable until later.
   mcp: false, // 2026-11-28
+  "claude-ai": false, // Claude Desktop app host, 2026-11-28
+};
+
+// Clients whose `clientInfo.name` ends in the MCP server's own name (`<prefix><server>`), so one
+// entry covers `ocean`, `ocean-gateway` and any other server name.
+export const CLIENT_RELISTS_BY_PREFIX: Record<string, boolean> = {
+  "local-agent-mode-": false, // Claude Desktop chat agent (clientInfo 1.0.0), 2026-11-28
 };
 
 export function clientRelists(
   clientName: string | undefined,
 ): boolean | undefined {
-  return clientName === undefined ? undefined : CLIENT_RELISTS[clientName];
+  if (clientName === undefined) return undefined;
+  if (Object.hasOwn(CLIENT_RELISTS, clientName))
+    return CLIENT_RELISTS[clientName];
+  const prefix = Object.keys(CLIENT_RELISTS_BY_PREFIX).find(
+    (candidate) =>
+      clientName.startsWith(candidate) && clientName.length > candidate.length,
+  );
+  return prefix === undefined ? undefined : CLIENT_RELISTS_BY_PREFIX[prefix];
 }
