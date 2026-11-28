@@ -239,6 +239,9 @@ export const CLIENT_RELISTS: Record<string, boolean> = {
   "codex-mcp-client": false, // Codex 0.156.1, 2026-11-28
   "gemini-cli-mcp-client": true, // Gemini CLI 0.61.0, 2026-11-28
   Cursor: false, // cursor-agent (clientInfo 1.0.0), 2026-11-28
+  // Hermes 0.19.0 sends the Python SDK default name. It re-lists, but `hermes -z` keeps the
+  // model's tool list fixed for the turn, so an opened tool is not callable until later.
+  mcp: false, // 2026-11-28
 };
 
 export function clientRelists(
