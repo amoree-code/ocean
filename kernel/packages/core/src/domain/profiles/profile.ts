@@ -116,6 +116,9 @@ const rawProfileSchema = z.object({
   composio: bundleList,
   // Client plugins the profile recommends; enabling a plugin is global to a client.
   plugins: bundleList,
+  // T-339: policies summoned with this profile, and Ocean MCP tool groups listed with it.
+  policies: bundleList,
+  tools: bundleList,
 });
 
 const V3_FIELDS = [
@@ -126,6 +129,8 @@ const V3_FIELDS = [
   "connectors",
   "composio",
   "plugins",
+  "policies",
+  "tools",
 ] as const;
 
 // Schema v2 makes explicit what v1 left to defaults: a default client, a model on every
@@ -297,6 +302,9 @@ export function profileIdentity(profile: Profile): string {
           connectors: profile.connectors ?? [],
           composio: profile.composio ?? [],
           plugins: profile.plugins ?? [],
+          // T-339 fields join the identity only when set, so every earlier v3 identity holds.
+          ...(profile.policies?.length ? { policies: profile.policies } : {}),
+          ...(profile.tools?.length ? { tools: profile.tools } : {}),
         }
       : {}),
   };

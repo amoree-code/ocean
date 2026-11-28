@@ -1,3 +1,8 @@
+---
+triggers: ["commit", "branch", "push", "merge", "pull request", "rebase", "stash", "كومت", "بوش", "دمج", "فرع"]
+digest: "Local git is free; push needs approval each time; never main; land via PR; merge only on an explicit instruction naming it."
+---
+
 # Policy — git
 
 Load for anything beyond reading git state. The hard remote boundary is in the bootstrap

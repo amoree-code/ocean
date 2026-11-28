@@ -1,3 +1,8 @@
+---
+triggers: ["what to read", "how much context", "read the repo", "explore", "اقرا", "سياق"]
+digest: "Storage is not context: load in layers, stop once you can act, expand on evidence; under-reading is a failure."
+---
+
 # Policy — context admission
 
 Load when deciding what to read, how much of it, and when to stop.

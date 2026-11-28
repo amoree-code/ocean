@@ -29,3 +29,9 @@ ocean policy list            # what exists, and when each applies
 
 A module states what must be true. It never states how one client implements it — that is
 the adapter's, and lives in the public repo.
+## Frontmatter (T-339)
+
+Every policy opens with `triggers:` (English words, or Iraqi Arabic phrases matched as
+substrings) and a `digest:` of at most 200 bytes. The prompt hook adds the digest of at most
+two matching policies to a prompt, once per session; `ocean policy validate` fails on a policy
+without them.

@@ -214,6 +214,7 @@ import { runBrowserServiceCommand } from "./browser-service-command.js";
 import { runCaptureCommand } from "./capture-command.js";
 import { runClientTestCommand } from "./client-test-command.js";
 import { runClientsCommand } from "./clients-command.js";
+import { runConnectorsCommand, runScoutCommand } from "./connectors-command.js";
 import { runContextCommand, runContextCostCommand } from "./context-command.js";
 import { runCuratorCommand } from "./curator-command.js";
 import { runDailyCommand } from "./daily-command.js";
@@ -231,6 +232,7 @@ import { runInterestsCommand } from "./interests-command.js";
 import { runLayoutCommand } from "./layout-command.js";
 import { runMarketCommand } from "./market-command.js";
 import { runMcpGatewayCommand } from "./mcp-gateway-command.js";
+import { runMcpProbeCommand } from "./mcp-probe-command.js";
 import { runMcpStatusCommand } from "./mcp-status-command.js";
 import { runMemoryCommand } from "./memory-command.js";
 import { runMigrateCommand } from "./migrate-command.js";
@@ -582,11 +584,13 @@ async function commandMcp(): Promise<void> {
     await runMcpGatewayCommand(process.argv.slice(4));
   else if (action === "status")
     await runMcpStatusCommand(process.argv.slice(4));
+  else if (action === "probe-client")
+    await runMcpProbeCommand(process.argv.slice(4));
   else if (action === "browser-service")
     await runBrowserServiceCommand(process.argv[4] ?? "");
   else {
     console.error(
-      "Usage: ocean mcp config|playwright-config|gateway-config|serve|gateway|status [--check] [--json]|browser-service uninstall",
+      "Usage: ocean mcp config|playwright-config|gateway-config|serve|gateway|status [--check] [--json]|probe-client [report] [--log <file>]|browser-service uninstall",
     );
     process.exitCode = 1;
   }
@@ -1880,6 +1884,10 @@ export const commandRegistry: Record<string, CommandHandler> = {
   pull: () => runPullCommand(process.argv.slice(3)),
   desktop: () => runDesktopCommand(process.argv.slice(3)),
   mcp: commandMcp,
+  connectors: () => runConnectorsCommand(process.argv.slice(3)),
+  scout: async () => {
+    await runScoutCommand(process.argv.slice(3));
+  },
   market: commandMarket,
   obsidian: commandObsidian,
   capture: commandCapture,

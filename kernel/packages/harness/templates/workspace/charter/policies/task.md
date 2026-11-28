@@ -1,3 +1,8 @@
+---
+triggers: ["task", "ticket", "start work", "done", "backlog", "تاسك", "مهمه", "تكت", "خلصت"]
+digest: "The task declares its own status; open one only when asked or work spans sessions; completion is verification passing."
+---
+
 # Policy — the task loop
 
 Load when starting, checkpointing or completing a unit of work.

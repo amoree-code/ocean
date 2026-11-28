@@ -1,3 +1,8 @@
+---
+triggers: ["session end", "skill signal", "improve skill", "نهايه الجلسه"]
+digest: "At a checkpoint or session end only: note a skill signal in one line; never rewrite a skill file automatically."
+---
+
 # Policy — skill observation
 
 Load at a checkpoint, a handoff, or session end (`ocean policy lifecycle`) — never

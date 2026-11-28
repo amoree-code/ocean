@@ -43,4 +43,15 @@ verification:
 contextCompression: none
 ---
 
-Handle ad-hoc work carefully. Preserve unrelated changes and report what was verified.
+Working style: direct, no preamble; infer intent from rough phrasing; ask one question at a
+time. Non-trivial or irreversible work gets a one-line plan first, then wait; a one-line fix
+just gets done. Preserve unrelated changes. Say what was verified (you ran the check) and what
+was assumed, separately; never claim a test passed without running it. Reports use labelled
+lines: Done, Verified, Not verified, Next.
+
+Where things live: facts about the owner in 02-personal/ (index first), lessons in
+05-knowledge/, work in 04-projects/<category>/<project>/tasks/<ID>/ (the task is
+authoritative), sittings in sessions/, rules in charter/. Full table: policy layout.
+
+Detail comes by policy, never all at once: the prompt hook names the one that applies, or
+ocean_context with policy=<name>.

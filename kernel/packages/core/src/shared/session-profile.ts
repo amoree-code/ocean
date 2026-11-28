@@ -30,6 +30,8 @@ export type ProfileSummary = {
   connectors: string[];
   composio: string[];
   plugins: string[];
+  policies: string[];
+  tools: string[];
   instructions: string;
 };
 
@@ -51,6 +53,8 @@ function summary(profile: Profile): ProfileSummary {
     connectors: profile.connectors ?? [],
     composio: profile.composio ?? [],
     plugins: profile.plugins ?? [],
+    policies: profile.policies ?? [],
+    tools: profile.tools ?? [],
     instructions: profile.instructions,
   };
 }
@@ -192,4 +196,15 @@ export async function recordProfileSelection(entry: {
       { mode: 0o600 },
     );
   } catch {}
+}
+
+// The base profile's body (T-339 P1): the working style and the short "where things live" that
+// left `charter/core.md`. Every session gets it — by the start hook, or `ocean_context` for a
+// client without one — whatever its primary profile, capped at 1,200 bytes.
+export const BASE_BODY_MAX_BYTES = 1_200;
+
+export function baseProfileBody(catalog: ProfileCatalog): string | null {
+  const base = catalog.profiles.find((profile) => profile.name === "base");
+  const body = base?.instructions.trim();
+  return body ? fitBytes(body, BASE_BODY_MAX_BYTES) : null;
 }

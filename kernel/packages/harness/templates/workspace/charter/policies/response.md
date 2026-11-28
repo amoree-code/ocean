@@ -1,3 +1,8 @@
+---
+triggers: ["report", "write up", "status update", "تقرير", "شنو صار"]
+digest: "Reports use labelled lines: Done, Verified, Not verified, Next (one step, a question when it needs his yes)."
+---
+
 # Policy — response format
 
 Load when writing a substantial reply or a report.

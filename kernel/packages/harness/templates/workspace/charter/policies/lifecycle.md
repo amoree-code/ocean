@@ -1,3 +1,8 @@
+---
+triggers: ["compact", "checkpoint", "restart", "hand off", "continue later", "context full", "كمل بعدين", "تسليم"]
+digest: "Durable state on disk, not in context: checkpoint before compacting; restarting is the owner's move; state what you cannot know."
+---
+
 # Policy — the context lifecycle
 
 Load when deciding whether this session should keep going.

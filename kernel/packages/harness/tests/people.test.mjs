@@ -96,10 +96,14 @@ test("lookupPerson matches file name, title or alias exactly, never a part of a 
 test("people_lookup is a read-only MCP tool", async () => {
   const root = await workspace();
   await withRoot(root, async () => {
+    // T-339: people_lookup sits in the `people` group, off the core list; list every group.
+    process.env.OCEAN_MCP_TOOLS = "all";
     const listed = await handle({
       jsonrpc: "2.0",
       id: 1,
       method: "tools/list",
+    }).finally(() => {
+      delete process.env.OCEAN_MCP_TOOLS;
     });
     const tool = listed.result.tools.find((t) => t.name === "people_lookup");
     assert.equal(tool.annotations.readOnlyHint, true);

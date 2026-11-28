@@ -1,3 +1,8 @@
+---
+triggers: ["claude code", "hook", "settings.json", "slash command", "skill file"]
+digest: "Claude Code detail: tech stack, task loop, memory schema and graph use beyond the bootstrap; read when working on the client itself."
+---
+
 # Claude Code — extended context
 
 Claude-Code-specific detail beyond `governance/rules/core.md`. Loaded on demand via

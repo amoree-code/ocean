@@ -1,3 +1,8 @@
+---
+triggers: ["lesson", "decision", "what we learned", "postmortem", "درس", "قرار"]
+digest: "Knowledge is what work taught: check 05-knowledge/decisions before contradicting one; write once, dedupe, link."
+---
+
 # Policy — knowledge
 
 Load when recording or retrieving what past work taught.

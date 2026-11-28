@@ -3,7 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import { buildOceanBootstrap } from "@ocean/context/context/resource-injection.js";
 import { MEMORY_AUTHORITY_LINE } from "@ocean/core/domain/mcp/memory-contract.js";
-import { rulesPointer } from "@ocean/core/shared/charter.js";
+import {
+  policyCatalog,
+  readRules,
+  rulesPointer,
+} from "@ocean/core/shared/charter.js";
 import { recordIssuedAck } from "@ocean/core/shared/context-ack.js";
 import { truncateUtf8 } from "@ocean/core/shared/fs-utils.js";
 import { oceanRoot, SYSTEM_DIR } from "@ocean/core/shared/paths.js";
@@ -22,7 +26,9 @@ import {
   scanProjectManifests,
 } from "@ocean/core/shared/project-resolution.js";
 import {
+  baseProfileBody,
   profileBrief,
+  profileCatalog,
   recordProfileSelection,
   type SessionProfile,
   sessionProfile,
@@ -191,9 +197,11 @@ export async function claudeSessionStartHook(
     } catch (error) {
       rulesProblem = error instanceof Error ? error.message : String(error);
     }
+  const catalog = await profileCatalog().catch(() => undefined);
   const profile = await sessionProfile({
     projectId: project.status === "bound" ? project.projectId : undefined,
     cwd,
+    catalog,
   });
   const bootstrap = buildOceanBootstrap(project, {
     rules: rules.length,
@@ -230,6 +238,16 @@ export async function claudeSessionStartHook(
   }
   const briefLine = profileBrief(profile);
   if (briefLine) parts.push(briefLine);
+  const base = catalog ? baseProfileBody(catalog) : null;
+  if (base) parts.push(base);
+  // The active profile's own policies, as digests (T-339 P1 §1.4); a prompt opens the rest.
+  if (profile.profile?.policies.length) {
+    const policies = await policyCatalog().catch(() => []);
+    for (const name of profile.profile.policies) {
+      const entry = policies.find((candidate) => candidate.name === name);
+      if (entry?.digest) parts.push(`Policy ${name}: ${entry.digest}`);
+    }
+  }
   if (warning) parts.push(warning);
   return {
     systemMessage: connectedLine(shown),
@@ -264,7 +282,10 @@ async function namedProject(ref: string): Promise<ProjectResolution> {
 export async function oceanContext(
   cwd: string,
   projectRef?: string,
+  policy?: string,
 ): Promise<string> {
+  // T-339 P2: `ocean_policy` folded in — a named policy (or "core") is returned as is.
+  if (policy) return readRules(policy);
   if (projectRef) return contextFor(await namedProject(projectRef));
   const project = await resolveProject(cwd).catch(
     (): ProjectResolution => ({
@@ -282,9 +303,11 @@ async function contextFor(
   cwd?: string,
 ): Promise<string> {
   // A named project (Desktop) has no cwd of its own: its signals come from its own folder.
+  const catalog = await profileCatalog().catch(() => undefined);
   const profile: SessionProfile = await sessionProfile({
     projectId: project.status === "bound" ? project.projectId : undefined,
     cwd: cwd ?? (project.status === "bound" ? project.path : undefined),
+    catalog,
   });
   const bootstrap = buildOceanBootstrap(project, { profile: profile.primary });
   await Promise.all([
@@ -301,7 +324,32 @@ async function contextFor(
   // The same start brief a hook client gets, so a hookless client starts where the project stands.
   const brief =
     project.status === "bound" ? await startBrief(project.projectId) : null;
-  return [bootstrap.content, rules, brief, profileBrief(profile)]
+  // The base body and the policies a hook client would get per prompt (T-339 P1 §1.4): the
+  // active profile's own policy digests, and every policy with its first triggers.
+  const base = catalog ? baseProfileBody(catalog) : null;
+  const policies = rules ? await policyCatalog().catch(() => []) : [];
+  const own = (profile.profile?.policies ?? [])
+    .map((name) => policies.find((entry) => entry.name === name))
+    .filter((entry) => entry?.digest)
+    .map((entry) => `Policy ${entry?.name}: ${entry?.digest}`);
+  const index = policies.length
+    ? `Policies (ocean_context with policy=<name> when one applies): ${policies
+        .map((entry) =>
+          entry.triggers.length
+            ? `${entry.name} [${entry.triggers.slice(0, 3).join(", ")}]`
+            : entry.name,
+        )
+        .join("; ")}`
+    : null;
+  return [
+    bootstrap.content,
+    rules,
+    brief,
+    profileBrief(profile),
+    base,
+    ...own,
+    index,
+  ]
     .filter(Boolean)
     .join("\n");
 }

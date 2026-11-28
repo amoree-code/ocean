@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { mkdirSync, watch } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import {
@@ -63,6 +64,15 @@ import {
   sessionProfile,
 } from "@ocean/core/shared/session-profile.js";
 import {
+  CORE_TOOLS,
+  clientRelists,
+  GROUP_NAMES,
+  PROFILE_DEFAULT_GROUPS,
+  readToolSelection,
+  selectionPath,
+  TOOL_GROUPS,
+} from "@ocean/core/shared/tool-groups.js";
+import {
   createHandoff,
   getHandoff,
   getTask,
@@ -90,54 +100,151 @@ type Response = {
   error?: { code: number; message: string; data?: Record<string, unknown> };
 };
 
-// Ocean's tools come in two groups (T-338 P5, plan §3.4). Core is listed to every client; ops —
-// maintenance of Ocean itself — is listed only when the session's profile is `ocean-ops`, after
-// `ocean_profile_get` names it, or with OCEAN_MCP_TOOLS=all. A tool left off the list still
-// answers `tools/call`, so self-checks and saved instructions that name one keep working.
-export const OCEAN_OPS_TOOLS = new Set([
-  "ocean_profiles_list",
-  "ocean_session_get",
-  "ocean_session_summary",
-  "ocean_session_events",
-  "ocean_session_promote",
-  "ocean_handoffs_list",
-  "ocean_handoff_get",
-  "ocean_project_link",
-  "ocean_projects_list",
-  "ocean_chat_skill",
-  "ocean_doctor",
-  "ocean_ping",
-  "ocean_capabilities",
-]);
+// Ocean's tools (T-339 P2, after T-338 P5's core/ops split): eight core tools are listed to every
+// client; every other tool sits in a group (`@ocean/core/shared/tool-groups`) that is listed once
+// opened — by the session's profile (`tools:` and the profile's default groups), by the prompt
+// hook's selection file for this folder, by `ocean_tools`, or by OCEAN_MCP_TOOLS=all. A tool off
+// the list still answers `tools/call`, and `ocean_call` runs one for a client that refuses names
+// it was not shown. Opening a group sends `notifications/tools/list_changed`.
 const OPS_PROFILE = "ocean-ops";
 // undefined until the first tools/list resolves it from the session's folder.
-let opsListed: boolean | undefined;
+let openGroups: Set<string> | undefined;
 // Writes a server-initiated message (a list_changed notification) to the client, when one is open.
 let notifyClient: ((message: Record<string, unknown>) => void) | undefined;
 
-async function resolveOpsListed(cwd: string): Promise<boolean> {
-  if (process.env.OCEAN_MCP_TOOLS === "all") return true;
+async function resolveOpenGroups(cwd: string): Promise<Set<string>> {
+  if (process.env.OCEAN_MCP_TOOLS === "all") return new Set(GROUP_NAMES);
+  const open = new Set<string>();
   // Desktop launches at the filesystem root: no project, so the base profile.
-  if (cwd === "/" || /^[A-Za-z]:\\?$/.test(cwd)) return false;
+  if (cwd === "/" || /^[A-Za-z]:\\?$/.test(cwd)) return open;
   try {
-    const catalog = await profileCatalog();
+    const [catalog, selection] = await Promise.all([
+      profileCatalog(),
+      readToolSelection(cwd),
+    ]);
     const project = await resolveProject(cwd).catch(() => undefined);
     const session = await sessionProfile({
       projectId: project?.status === "bound" ? project.projectId : undefined,
       cwd,
       catalog,
     });
-    return [session.primary, ...session.secondary].includes(OPS_PROFILE);
+    for (const name of [session.primary, ...session.secondary]) {
+      const profile = catalog.profiles.find((entry) => entry.name === name);
+      for (const group of [
+        ...(profile?.tools ?? []),
+        ...(PROFILE_DEFAULT_GROUPS[name] ?? []),
+      ])
+        if (group in TOOL_GROUPS) open.add(group);
+    }
+    for (const group of selection?.groups ?? [])
+      if (group in TOOL_GROUPS) open.add(group);
   } catch {
-    return false;
+    // The core set alone.
   }
+  return open;
+}
+
+function listedNames(open: Set<string>): Set<string> {
+  const names = new Set<string>(CORE_TOOLS);
+  for (const group of open)
+    for (const tool of TOOL_GROUPS[group]?.tools ?? []) names.add(tool);
+  return names;
 }
 
 async function listedTools(): Promise<McpTool[]> {
-  opsListed ??= await resolveOpsListed(process.cwd());
-  return opsListed
-    ? tools.list()
-    : tools.list().filter((tool) => !OCEAN_OPS_TOOLS.has(tool.name));
+  openGroups ??= await resolveOpenGroups(process.cwd());
+  const names = listedNames(openGroups);
+  return tools.list().filter((tool) => names.has(tool.name));
+}
+
+// Opens groups for the rest of this connection; tells the client when the list grew.
+async function openToolGroups(groups: readonly string[]): Promise<string[]> {
+  openGroups ??= await resolveOpenGroups(process.cwd());
+  const added = groups.filter(
+    (group) => group in TOOL_GROUPS && !openGroups?.has(group),
+  );
+  for (const group of added) openGroups.add(group);
+  if (added.length)
+    notifyClient?.({
+      jsonrpc: "2.0",
+      method: "notifications/tools/list_changed",
+    });
+  return added;
+}
+
+// The hook writes this folder's selection file as a conversation moves on; a server follows it
+// (debounced) and opens what it names. Best-effort: no watcher, no harm — `ocean_tools` remains.
+function watchToolSelection(cwd: string): void {
+  if (process.env.OCEAN_MCP_TOOLS === "all") return;
+  const file = selectionPath(cwd);
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+    const watcher = watch(path.dirname(file), (_event, changed) => {
+      if (changed && String(changed) !== path.basename(file)) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        readToolSelection(cwd)
+          .then((selection) =>
+            selection ? openToolGroups(selection.groups) : [],
+          )
+          .catch(() => {});
+      }, 250);
+      timer.unref?.();
+    });
+    watcher.unref?.();
+    watcher.on("error", () => watcher.close());
+  } catch {
+    // No watch on this filesystem.
+  }
+}
+
+// `ocean_tools`: the groups and what each holds; with `open`, opens them and returns their tools'
+// definitions, so a client that never refreshes its list still has the schemas for `ocean_call`.
+async function toolsTool(args: Record<string, unknown>): Promise<unknown> {
+  const wanted = (
+    Array.isArray(args.open)
+      ? args.open
+      : typeof args.open === "string"
+        ? args.open.split(",")
+        : []
+  )
+    .map((item) => String(item).trim())
+    .filter(Boolean);
+  const unknown = wanted.filter((group) => !(group in TOOL_GROUPS));
+  if (unknown.length)
+    throw new Error(
+      `Unknown tool group: ${unknown.join(", ")}. Groups: ${GROUP_NAMES.join(", ")}`,
+    );
+  if (!wanted.length) {
+    openGroups ??= await resolveOpenGroups(process.cwd());
+    return {
+      core: [...CORE_TOOLS],
+      groups: GROUP_NAMES.map((name) => ({
+        name,
+        open: openGroups?.has(name) ?? false,
+        tools: TOOL_GROUPS[name]?.tools ?? [],
+      })),
+    };
+  }
+  const opened = await openToolGroups(wanted);
+  const names = new Set(
+    wanted.flatMap((group) => TOOL_GROUPS[group]?.tools ?? []),
+  );
+  return {
+    opened,
+    tools: withContextAck(tools.list())
+      .filter((tool) => names.has(tool.name))
+      .map(({ name, description, inputSchema }) => ({
+        name,
+        description,
+        inputSchema,
+      })),
+    call:
+      clientRelists(clientName) === false
+        ? "This client does not re-list tools: call these through ocean_call {name, arguments}."
+        : "Call one directly, or through ocean_call {name, arguments}.",
+  };
 }
 
 // Every tool takes an optional contextAck: the ack=<hash> from the Ocean start line, echoed on a
@@ -436,7 +543,7 @@ const tools = new McpToolRegistry(
     {
       name: "brain_search",
       description:
-        "Call this first, before answering anything about the user or their world: a project, repo or code of theirs, a task ID, a person they name, a past decision or preference, or words like my, our, last time, as before. Also before planning, writing or reviewing anything for them. Ocean is their memory and the authority: asked where memory lives or what you remember, answer from Ocean, since this client's own memory is only a copy Ocean captures. Searches the markdown memory/knowledge index (hybrid FTS + vector when available); read only the results you need with brain_read and cite their paths. In a conversation about one project, pass its name or id as project: the search then covers that project and global records only. Otherwise the project bound to `cwd`; unbound sessions see global only.",
+        "Call this first, before answering anything about the user or their world: a project, repo or code of theirs, a task ID, a person they name, a past decision or preference, or words like my, our, last time, as before; and before planning, writing or reviewing for them. Asked where memory lives or what you remember, answer from Ocean, since this client's own memory is only a copy Ocean captures. Read only the results you need with brain_read and cite their paths. Pass project (name or id) for one project; otherwise the project bound to `cwd`.",
       annotations: { readOnlyHint: true },
       inputSchema: {
         type: "object",
@@ -567,7 +674,7 @@ const tools = new McpToolRegistry(
     {
       name: "memory_propose",
       description:
-        "Call this when the user states something worth keeping across sessions (a decision, preference, correction of how you work, or project fact) without asking you to remember it, for a fact you inferred, or for one imported from another tool's memory: it queues it for the user's review. It is not memory until approved. In a conversation about one project, pass its name (as the user's Claude project is called) or Ocean id as project, and kind instead of target: `fact` (a decision, preference or detail) or `doc` (a spec, brief or longer notes), each with a kebab-case name, is filed in that project's memory/ or docs/ — written at once when the user allows it; `todo` (work to do) waits for review as a backlog line. Optionally say why (reason). If the fact disagrees with one of the user's own notes in 02-personal/notes, pass that note's path as contradicts: the note is never edited, and the disagreement waits in 02-personal/CONFLICTS.md for the user.",
+        "Call this when the user states something worth keeping across sessions (a decision, preference, correction of how you work, or project fact) without asking you to remember it, or for a fact you inferred or imported: it queues it for review; not memory until approved. For one project pass project (name or Ocean id) and kind instead of target: `fact` or `doc` (with a kebab-case name) is filed in its memory/ or docs/, `todo` waits as a backlog line. Optional reason. If it disagrees with a note in 02-personal/notes, pass that path as contradicts.",
       annotations: { readOnlyHint: false, destructiveHint: false },
       inputSchema: {
         type: "object",
@@ -618,22 +725,54 @@ const tools = new McpToolRegistry(
     {
       name: "ocean_context",
       description:
-        "Call this once at the start of a conversation when no Ocean start line is already in your context (clients without a session-start hook). Returns the bounded Ocean start line (256 bytes or less: the project bound to cwd and the operations available) and, when the user has rules, which ocean_policy names hold them. Pass project (an Ocean project id or name) instead of cwd when the conversation is about one project, as in a Claude Desktop project: the line and the start brief are that project's. Holds no records; search for those.",
+        'Call this once at the start of a conversation with no Ocean start line in context (no session-start hook): returns the start line, start brief, base working style and policy index. Pass project instead of cwd for one project. Pass policy ("core" for the hard rules, or an index name) for its full text.',
       annotations: { readOnlyHint: true },
       inputSchema: {
         type: "object",
-        properties: { cwd: { type: "string" }, project: { type: "string" } },
+        properties: {
+          cwd: { type: "string" },
+          project: { type: "string" },
+          policy: { type: "string" },
+        },
         additionalProperties: false,
       },
     },
     {
       name: "ocean_policy",
       description:
-        'Read the user\'s own rules: name "core" (language, direction, working style) or a policy such as "response" (report shape). Call it when ocean_context names it, before your first substantial reply.',
+        'Read the user\'s own rules: name "core" (language, direction, working style) or a policy such as "response" (report shape). Same as ocean_context with policy.',
       annotations: { readOnlyHint: true },
       inputSchema: {
         type: "object",
         properties: { name: { type: "string" } },
+        required: ["name"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "ocean_tools",
+      description:
+        "Ocean lists eight core tools; the rest sit in groups (tasks, sessions, handoffs, projects, profiles, ops, people, memory-admin, brain-extra, skills). No arguments: the groups and what is open. open: group names to list them here and get their tools' schemas.",
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: "object",
+        properties: {
+          open: { type: "array", items: { type: "string" } },
+        },
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "ocean_call",
+      description:
+        "Run any Ocean tool by name, listed or not (for a client that will not call a name it was not shown): name and its arguments.",
+      annotations: { readOnlyHint: false },
+      inputSchema: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          arguments: { type: "object" },
+        },
         required: ["name"],
         additionalProperties: false,
       },
@@ -899,14 +1038,9 @@ async function callTool(
       typeof args.name === "string" && args.name.trim()
         ? args.name.trim()
         : undefined;
-    // Naming ocean-ops opens its tools for the rest of this connection.
-    if (wanted === OPS_PROFILE && opsListed !== true) {
-      opsListed = true;
-      notifyClient?.({
-        jsonrpc: "2.0",
-        method: "notifications/tools/list_changed",
-      });
-    }
+    // Naming ocean-ops opens its groups for the rest of this connection.
+    if (wanted === OPS_PROFILE)
+      await openToolGroups(PROFILE_DEFAULT_GROUPS[OPS_PROFILE] ?? []);
     return profileGet(
       wanted,
       typeof args.cwd === "string" && args.cwd ? args.cwd : process.cwd(),
@@ -1082,8 +1216,26 @@ async function callTool(
       typeof args.project === "string" && args.project.trim()
         ? args.project.trim()
         : undefined,
+      typeof args.policy === "string" && args.policy.trim()
+        ? args.policy.trim()
+        : undefined,
     );
   if (name === "ocean_policy") return readRules(requiredArgument(args, "name"));
+  if (name === "ocean_tools") return toolsTool(args);
+  if (name === "ocean_call") {
+    const inner = requiredArgument(args, "name");
+    if (inner === "ocean_call")
+      throw new Error("ocean_call cannot call itself");
+    if (!tools.has(inner)) throw new Error(`Unknown tool: ${inner}`);
+    const innerArgs =
+      args.arguments &&
+      typeof args.arguments === "object" &&
+      !Array.isArray(args.arguments)
+        ? (args.arguments as Record<string, unknown>)
+        : {};
+    const { contextAck: _ack, ...rest } = innerArgs;
+    return callTool(inner, rest, ports);
+  }
   if (name === "ocean_projects_list")
     return {
       projects: (await scanProjectManifests()).manifests
@@ -1313,7 +1465,7 @@ export async function handleOceanMcpRequest(
       clientName = info.name;
     contextAckChecked = false;
     authoritySent = false;
-    opsListed = undefined;
+    openGroups = undefined;
     return {
       jsonrpc: "2.0",
       id: request.id,
@@ -1447,6 +1599,7 @@ export async function runOceanMcpServer(ports: OceanMcpPorts): Promise<void> {
   const inFlight = new Set<Promise<void>>();
   notifyClient = (message) =>
     process.stdout.write(`${JSON.stringify(message)}\n`);
+  watchToolSelection(process.cwd());
   process.stdin.setEncoding("utf8");
   process.stdin.on("data", (chunk: string) => {
     const work = handleChunk(chunk);

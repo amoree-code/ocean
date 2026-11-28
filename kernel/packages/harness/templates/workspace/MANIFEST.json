@@ -49,6 +49,7 @@
     "charter/policies/git.md": "default",
     "charter/policies/graph.md": "default",
     "charter/policies/knowledge.md": "default",
+    "charter/policies/layout.md": "default",
     "charter/policies/lifecycle.md": "default",
     "charter/policies/memory.md": "default",
     "charter/policies/minimal-change.md": "default",
