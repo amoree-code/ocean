@@ -17,6 +17,7 @@ import { SYSTEM_DIR } from "@ocean/core/shared/paths.js";
 import { BASE_BODY_MAX_BYTES } from "@ocean/core/shared/session-profile.js";
 import {
   CORE_TOOLS,
+  clientRelists,
   readToolSelection,
   TOOL_GROUPS,
   writeToolSelection,
@@ -535,4 +536,15 @@ test("scout writes only its report and installs nothing", async () => {
       [],
     );
   });
+});
+
+test("clientRelists: exact names, server-suffixed names and unknown clients", () => {
+  assert.equal(clientRelists("gemini-cli-mcp-client"), true);
+  assert.equal(clientRelists("claude-ai"), false);
+  assert.equal(clientRelists("local-agent-mode-ocean"), false);
+  assert.equal(clientRelists("local-agent-mode-ocean-gateway"), false);
+  assert.equal(clientRelists("local-agent-mode-"), undefined);
+  assert.equal(clientRelists("toString"), undefined);
+  assert.equal(clientRelists("qwen-cli-mcp-client-ocean"), undefined);
+  assert.equal(clientRelists(undefined), undefined);
 });
